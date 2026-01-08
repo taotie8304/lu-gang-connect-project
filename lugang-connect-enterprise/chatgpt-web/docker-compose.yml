@@ -1,0 +1,41 @@
+# 鲁港通AI (Lugang Chat) Docker Compose Configuration
+# 用于 lugang-connect-enterprise 集成部署
+version: '3'
+
+services:
+  lugang-chat:
+    image: lugang-chat:latest
+    container_name: lugang-chat
+    restart: always
+    ports:
+      - "3000:3210"
+    environment:
+      # ========== API 配置 ==========
+      # 连接到 lugang-connect-enterprise 后端
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-sk-eQ795WM2ZBuRZlOR9fEaEf2f50334f31939a676d39377b13}
+      OPENAI_PROXY_URL: ${OPENAI_PROXY_URL:-http://156.225.30.134:8080/v1}
+      
+      # ========== 启用/禁用 Provider ==========
+      ENABLED_OPENAI: 1
+      ENABLED_OLLAMA: 0
+      ENABLED_AWS_BEDROCK: 0
+      ENABLED_COMFYUI: 0
+      ENABLED_FAL: 0
+      
+      # ========== 模型限制 ==========
+      # 仅允许使用指定的中国境内模型
+      OPENAI_MODEL_LIST: "-all,+deepseek-chat=DeepSeek对话,+qwen-plus=通义千问Plus,+qwen-turbo=通义千问Turbo,+qwen-max=通义千问Max"
+      
+      # ========== 默认配置 ==========
+      DEFAULT_AGENT_CONFIG: "model=qwen-max"
+      
+      # ========== 功能开关 ==========
+      # 禁用远程资源拉取和更新检查
+      FEATURE_FLAGS: "-webrtc_sync,-check_updates"
+      
+      # ========== 禁用远程资源 ==========
+      AGENTS_INDEX_URL: ""
+      PLUGINS_INDEX_URL: ""
+      
+    volumes:
+      - ./lugang-data:/root/.lugang-chat

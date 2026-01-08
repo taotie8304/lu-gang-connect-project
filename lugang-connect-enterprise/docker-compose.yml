@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  lugang-enterprise:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lugang-enterprise
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    ports:
+      - "8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

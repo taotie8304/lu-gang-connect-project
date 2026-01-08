@@ -1,0 +1,21 @@
+{
+  "name": "鲁港通企业版",
+  "version": "1.0.0",
+  "description": "智能双语知识库系统 - 企业级AI管理平台",
+  "author": "鲁港通团队",
+  "license": "商业许可证",
+  "components": {
+    "ai_management": "基于One API的AI模型管理",
+    "knowledge_base": "鲁港通专业知识库",
+    "frontend": "现代化Web界面",
+    "backend": "Go语言高性能后端"
+  },
+  "features": [
+    "多AI模型统一管理",
+    "鲁港专业知识库",
+    "智能问答系统",
+    "用户权限管理",
+    "计费和配额控制",
+    "企业级部署支持"
+  ]
+}
