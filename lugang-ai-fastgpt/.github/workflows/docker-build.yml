@@ -27,8 +27,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./projects/app/Dockerfile
+          context: ./lugang-ai-fastgpt
+          file: ./lugang-ai-fastgpt/projects/app/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository_owner }}/lugang-ai:latest
