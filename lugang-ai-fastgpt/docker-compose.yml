@@ -66,7 +66,7 @@ services:
 
   # ===== 鲁港通AI主应用 =====
   lugang-ai:
-    image: ghcr.io/taotie8304/lugang-ai:latest
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt:v4.8.14
     container_name: lugang-ai-app
     restart: always
     ports:
