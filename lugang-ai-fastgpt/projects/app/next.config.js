@@ -19,6 +19,13 @@ const nextConfig = {
   productionBrowserSourceMaps: false,
   // 优化编译性能
   swcMinify: true, // 使用 SWC 压缩（生产环境已默认）
+  // Docker 构建时跳过类型检查和 ESLint（加速构建，类型检查在开发时进行）
+  typescript: {
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
   async headers() {
     return [
       {
