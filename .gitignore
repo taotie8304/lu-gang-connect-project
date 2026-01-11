@@ -167,7 +167,7 @@ cython_debug/
 
 # Local development files
 uploads/
-logs/
+/logs/
 *.db
 *.sqlite
 
@@ -183,7 +183,7 @@ logs/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
-data/
-models/
-checkpoints/
+# Project specific (only root level)
+/data/
+/models/
+/checkpoints/
