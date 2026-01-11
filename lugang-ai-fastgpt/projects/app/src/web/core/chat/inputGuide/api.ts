@@ -28,11 +28,13 @@ export const getChatInputGuideList = (data: ChatInputGuideProps) =>
   POST<ChatInputGuideResponse>(`/core/chat/inputGuide/list`, data);
 
 export const queryChatInputGuideList = (data: QueryChatInputGuideBody, url?: string) => {
-  if (url) {
+  // 验证 customUrl 是否是有效的 URL（必须以 http:// 或 https:// 开头）
+  if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
     return GET<QueryChatInputGuideResponse>(url, data, {
-      withCredentials: !url
+      withCredentials: false
     });
   }
+  // 如果 customUrl 无效或为空，使用默认的 API 端点
   return POST<QueryChatInputGuideResponse>(`/core/chat/inputGuide/query`, data);
 };
 
