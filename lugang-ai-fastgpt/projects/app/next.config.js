@@ -10,7 +10,9 @@ const isDev = process.env.NODE_ENV === 'development';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  basePath: process.env.NEXT_PUBLIC_BASE_URL,
+  // 只有当 NEXT_PUBLIC_BASE_URL 有实际值时才设置 basePath
+  // 空字符串或 undefined 时不设置 basePath
+  ...(process.env.NEXT_PUBLIC_BASE_URL ? { basePath: process.env.NEXT_PUBLIC_BASE_URL } : {}),
   i18n,
   output: 'standalone',
   reactStrictMode: isDev ? false : true,
