@@ -36,6 +36,9 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+          build-args: |
+            proxy=
+            base_url=
 
       - name: Image digest
         run: echo "Image pushed successfully!"
