@@ -72,3 +72,9 @@
     - ✅ 将 `pnpm --filter=app build` 改为 `pnpm --filter=lugang-ai-app build`
     - ✅ 原因：package.json 中的包名是 `lugang-ai-app`，而非 `app`
     - _File: lugang-ai-fastgpt/projects/app/Dockerfile_
+
+  - [x] 8.2 修复 keyframes 导入错误
+    - ✅ 移除 `@emotion/react` 的 `keyframes` 导入（构建时报错）
+    - ✅ 改用 CSS `transition` 和 `opacity` 实现淡入淡出效果
+    - ✅ 简化动画实现，提高兼容性
+    - _File: lugang-ai-fastgpt/projects/app/src/components/core/chat/ChatContainer/ChatBox/components/home/WelcomeHomeBox.tsx_

@@ -2,22 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../../Provider';
 import { DEFAULT_LOGO_BANNER_URL } from '@/pageComponents/chat/constants';
-import { Box, Flex, Image, keyframes } from '@chakra-ui/react';
+import { Box, Flex, Image } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-
-// 文字渐变动画
-const gradientAnimation = keyframes`
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-`;
-
-// 光晕动画
-const glowAnimation = keyframes`
-  0% { opacity: 0.4; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(1.05); }
-  100% { opacity: 0.4; transform: scale(1); }
-`;
 
 // 鲁港通默认欢迎语配置
 const LUGANG_SLOGANS: Record<string, string> = {
@@ -36,13 +22,18 @@ const WelcomeHomeBox = () => {
   
   // 语言切换状态（普通话/粤语交替）
   const [currentLang, setCurrentLang] = useState<string>('zh-CN');
+  const [isVisible, setIsVisible] = useState(true);
   
   // 语言切换效果
   useEffect(() => {
     if (!enableUserChatOnly) return;
     
     const interval = setInterval(() => {
-      setCurrentLang((prev) => prev === 'zh-CN' ? 'zh-Hant' : 'zh-CN');
+      setIsVisible(false);
+      setTimeout(() => {
+        setCurrentLang((prev) => prev === 'zh-CN' ? 'zh-Hant' : 'zh-CN');
+        setIsVisible(true);
+      }, 300);
     }, 4000); // 每4秒切换一次
     
     return () => clearInterval(interval);
@@ -67,7 +58,6 @@ const WelcomeHomeBox = () => {
           borderRadius="50%"
           background="radial-gradient(ellipse at center, rgba(147, 197, 253, 0.3) 0%, rgba(147, 197, 253, 0.1) 40%, transparent 70%)"
           filter="blur(40px)"
-          animation={`${glowAnimation} 4s ease-in-out infinite`}
           pointerEvents="none"
           zIndex={0}
         />
@@ -93,15 +83,14 @@ const WelcomeHomeBox = () => {
           py={2}
           position="relative"
           zIndex={1}
-          background="linear-gradient(135deg, #ec4899 0%, #f97316 25%, #ec4899 50%, #8b5cf6 75%, #ec4899 100%)"
-          backgroundSize="200% 200%"
-          animation={`${gradientAnimation} 5s ease infinite`}
+          background="linear-gradient(135deg, #ec4899 0%, #f97316 50%, #8b5cf6 100%)"
           backgroundClip="text"
           sx={{
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent'
           }}
-          transition="opacity 0.5s ease-in-out"
+          opacity={isVisible ? 1 : 0}
+          transition="opacity 0.3s ease-in-out"
         >
           {displaySlogan}
         </Box>
