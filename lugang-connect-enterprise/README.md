@@ -17,14 +17,42 @@
 
 ## 🚀 快速开始
 
+### 方式一：使用预构建镜像（推荐）
+
+```bash
+# 拉取最新镜像
+docker pull ghcr.io/taotie8304/lugang-oneapi:latest
+
+# 运行容器
+docker run -d \
+  --name lugang-oneapi \
+  -p 8080:8080 \
+  -v $(pwd)/data:/app/data \
+  -e SQL_DSN="your_database_connection_string" \
+  -e SESSION_SECRET="your_session_secret" \
+  ghcr.io/taotie8304/lugang-oneapi:latest
+```
+
+### 方式二：Docker Compose 部署
+
+```bash
+# 1. 创建配置文件
+cp .env.example .env
+# 编辑 .env 文件，配置数据库连接等
+
+# 2. 启动服务
+docker-compose up -d
+```
+
 ### 环境要求
 
 - Docker 20.0+
 - Docker Compose 2.0+
+- MySQL 5.6+ 或 8.0+
 - 4GB+ 内存
 - 10GB+ 磁盘空间
 
-### 一键启动
+### 一键启动（本地构建）
 
 **Linux/Mac:**
 ```bash

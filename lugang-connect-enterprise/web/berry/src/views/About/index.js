@@ -18,6 +18,9 @@ import BiotechIcon from '@mui/icons-material/Biotech';
 import SchoolIcon from '@mui/icons-material/School';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 
+// 可配置的背景图片 - 可以通过环境变量或配置文件修改
+const HERO_BACKGROUND_IMAGE = process.env.REACT_APP_HERO_BG_IMAGE || 'https://airscend.com/lvdijinrongzhongxin.jpg';
+
 const About = () => {
   return (
     <Box sx={{ backgroundColor: '#0a1628' }}>
@@ -25,7 +28,7 @@ const About = () => {
       <Box
         sx={{
           minHeight: '100vh',
-          backgroundImage: 'url(https://airscend.com/lvdijinrongzhongxin.jpg)',
+          backgroundImage: `url(${HERO_BACKGROUND_IMAGE})`,
           backgroundSize: 'cover',
           backgroundPosition: 'center',
           backgroundAttachment: 'fixed',
