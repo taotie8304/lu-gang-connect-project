@@ -1,0 +1,43 @@
+<svg viewBox="0 0 180 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="0.375" y="0.375" width="35.25" height="35.25" rx="8.625" fill="white"/>
+<rect x="0.375" y="0.375" width="35.25" height="35.25" rx="8.625" stroke="#ECECEC" stroke-width="0.75"/>
+<path d="M20.3958 13.2672C20.3958 12.302 20.0983 11.3585 19.5408 10.556C18.9834 9.75351 18.191 9.12804 17.264 8.75868C16.337 8.38933 15.3169 8.29269 14.3328 8.48099C13.3487 8.66928 12.4447 9.13405 11.7352 9.81653C11.0257 10.499 10.5425 11.3685 10.3468 12.3151C10.151 13.2618 10.2515 14.243 10.6355 15.1347C11.0194 16.0264 11.6697 16.7885 12.504 17.3247C13.3383 17.8609 14.3192 18.1471 15.3226 18.1471V13.2672H20.3958Z" fill="url(#paint0_linear_lugang)"/>
+<path d="M25.7508 13.2672C25.7508 12.6263 25.6332 11.9918 25.4046 11.3997C25.1759 10.8076 24.8409 10.2697 24.4184 9.81652C23.996 9.36338 23.4945 9.00392 22.9426 8.75868C22.3907 8.51344 21.7991 8.38722 21.2017 8.38722C20.6043 8.38722 20.0128 8.51344 19.4609 8.75868C18.9089 9.00392 18.4074 9.36338 17.985 9.81653C17.5626 10.2697 17.2275 10.8076 16.9989 11.3997C16.7703 11.9918 16.6526 12.6263 16.6526 13.2672L25.7508 13.2672Z" fill="url(#paint1_linear_lugang)"/>
+<path d="M24.9163 21.0898C24.9163 20.5454 24.8228 20.0063 24.6411 19.5033C24.4594 19.0004 24.1932 18.5433 23.8575 18.1584C23.5218 17.7734 23.1233 17.4681 22.6847 17.2597C22.2461 17.0514 21.7761 16.9441 21.3014 16.9441V21.0898H24.9163Z" fill="url(#paint2_linear_lugang)"/>
+<path d="M15.3224 19.5946C14.6562 19.5946 13.9964 19.7095 13.3809 19.9328C12.7654 20.1561 12.2061 20.4833 11.735 20.8959C11.2639 21.3084 10.8902 21.7982 10.6353 22.3372C10.3803 22.8763 10.2491 23.454 10.2491 24.0374C10.2491 24.6209 10.3803 25.1986 10.6353 25.7376C10.8902 26.2767 11.2639 26.7664 11.735 27.179C12.2061 27.5915 12.7654 27.9188 13.3809 28.1421C13.9964 28.3653 14.6562 28.4803 15.3224 28.4803L15.3224 19.5946Z" fill="url(#paint3_linear_lugang)"/>
+<path d="M15.3225 13.0739L15.3225 23.9887L10.249 23.9887L10.249 13.0739H15.3225Z" fill="url(#paint4_linear_lugang)"/>
+<path d="M21.3551 13.2664L15.2649 13.2664L15.2649 8.38721L21.3551 8.38721V13.2664Z" fill="url(#paint5_linear_lugang)"/>
+<path d="M21.3551 21.0882H17.9847V16.9442L21.3551 16.9442V21.0882Z" fill="url(#paint6_linear_lugang)"/>
+<!-- 鲁港通 文字 -->
+<text x="44" y="24" font-family="PingFang SC, Microsoft YaHei, sans-serif" font-size="16" font-weight="600" fill="#111824">鲁港通</text>
+<defs>
+<linearGradient id="paint0_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint1_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint2_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint3_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint4_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint5_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+<linearGradient id="paint6_linear_lugang" x1="17.9999" y1="8.38721" x2="17.9999" y2="28.4803" gradientUnits="userSpaceOnUse">
+<stop stop-color="#3B82F6"/>
+<stop offset="1" stop-color="#60A5FA"/>
+</linearGradient>
+</defs>
+</svg>
