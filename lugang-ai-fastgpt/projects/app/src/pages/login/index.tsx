@@ -21,8 +21,14 @@ const Login = () => {
   const { setUserInfo } = useUserStore();
   const { feConfigs } = useSystemStore();
 
-  // 鲁港通：获取默认跳转路径
-  const getDefaultRoute = useCallback(() => {
+  // 鲁港通：根据用户角色获取跳转路径
+  // 管理员（团队所有者）直接跳转到管理后台，普通用户跳转到聊天界面
+  const getDefaultRoute = useCallback((isOwner: boolean) => {
+    // 管理员始终跳转到管理后台
+    if (isOwner) {
+      return '/dashboard/agent';
+    }
+    // 普通用户根据配置决定跳转路径
     return feConfigs?.enableUserChatOnly ? '/chat' : '/dashboard/agent';
   }, [feConfigs?.enableUserChatOnly]);
 
@@ -31,7 +37,9 @@ const Login = () => {
       setUserInfo(res.user);
 
       const decodeLastRoute = validateRedirectUrl(lastRoute);
-      const defaultRoute = getDefaultRoute();
+      // 鲁港通：判断是否为管理员（团队所有者）
+      const isOwner = res.user.permission?.isOwner ?? false;
+      const defaultRoute = getDefaultRoute(isOwner);
 
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
@@ -50,7 +58,12 @@ const Login = () => {
           return defaultRoute;
         }
 
-        // 鲁港通：如果没有指定 lastRoute，使用默认路径
+        // 鲁港通：管理员始终跳转到管理后台，忽略 lastRoute
+        if (isOwner) {
+          return defaultRoute;
+        }
+
+        // 普通用户：如果没有指定 lastRoute，使用默认路径
         return decodeLastRoute || defaultRoute;
       })();
 
@@ -61,8 +74,9 @@ const Login = () => {
 
   useMount(() => {
     clearToken();
-    const defaultRoute = getDefaultRoute();
-    router.prefetch(defaultRoute);
+    // 预加载两个可能的路由
+    router.prefetch('/dashboard/agent');
+    router.prefetch('/chat');
   });
 
   return <LoginModal onSuccess={loginSuccess} />;
