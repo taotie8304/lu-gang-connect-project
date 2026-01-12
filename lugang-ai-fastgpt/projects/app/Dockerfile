@@ -41,7 +41,7 @@ RUN apk add --no-cache libc6-compat && npm install -g pnpm@9.4.0
 
 ENV NODE_OPTIONS="--max-old-space-size=4096"
 ENV NEXT_PUBLIC_BASE_URL=$base_url
-RUN pnpm --filter=app build
+RUN pnpm --filter=lugang-ai-app build
 
 # --------- runner -----------
 FROM node:20.14.0-alpine AS runner

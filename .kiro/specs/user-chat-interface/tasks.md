@@ -64,3 +64,11 @@
 
 - 所有修改通过配置项控制，可切换回原有模式
 - 管理后台功能完整保留
+
+## Bug Fixes
+
+- [x] 8. Docker 构建修复
+  - [x] 8.1 修复 pnpm filter 包名不匹配问题
+    - ✅ 将 `pnpm --filter=app build` 改为 `pnpm --filter=lugang-ai-app build`
+    - ✅ 原因：package.json 中的包名是 `lugang-ai-app`，而非 `app`
+    - _File: lugang-ai-fastgpt/projects/app/Dockerfile_
