@@ -1,23 +1,13 @@
-name: Build and Push Docker Image
+name: Build One API Docker Image
 
 on:
   push:
     branches:
       - main
     paths:
-      - '**'
-      - '!README.md'
-      - '!docs/**'
+      - 'lugang-connect-enterprise/**'
+      - '.github/workflows/oneapi-build.yml'
   workflow_dispatch:
-    inputs:
-      use_proxy:
-        description: '使用国内镜像加速'
-        required: false
-        default: 'true'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
 
 env:
   REGISTRY: ghcr.io
@@ -64,8 +54,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./lugang-connect-enterprise
+          file: ./lugang-connect-enterprise/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -75,7 +65,7 @@ jobs:
 
       - name: Image digest
         run: |
-          echo "✅ Image pushed successfully!"
+          echo "✅ One API Image pushed successfully!"
           echo "📦 Tags: ${{ steps.meta.outputs.tags }}"
           echo ""
           echo "🚀 部署命令:"
