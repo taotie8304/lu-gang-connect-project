@@ -116,20 +116,28 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
         }}
       >
         <FormControl isInvalid={!!errors.username}>
+          {/* 鲁港通：淡蓝色边框输入框 */}
           <Input
-            bg={'myGray.50'}
+            bg={'white'}
             size={'lg'}
             placeholder={placeholder}
+            borderColor={'blue.200'}
+            _hover={{ borderColor: 'blue.300' }}
+            _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }}
             {...register('username', {
               required: true
             })}
           ></Input>
         </FormControl>
-        <FormControl mt={7} isInvalid={!!errors.password}>
+        <FormControl mt={6} isInvalid={!!errors.password}>
+          {/* 鲁港通：淡蓝色边框输入框 */}
           <Input
-            bg={'myGray.50'}
+            bg={'white'}
             size={'lg'}
             type={'password'}
+            borderColor={'blue.200'}
+            _hover={{ borderColor: 'blue.300' }}
+            _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }}
             placeholder={
               isCommunityVersion
                 ? t('login:root_password_placeholder')
@@ -146,14 +154,19 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
         </FormControl>
         <PolicyTip isCenter={false} />
 
+        {/* 鲁港通：蓝色登录按钮 */}
         <Button
           type="submit"
-          my={[5, 7]}
+          my={[5, 6]}
           w={'100%'}
-          size={['md', 'md']}
-          h={[10, 10]}
-          fontWeight={['medium', 'medium']}
-          colorScheme="blue"
+          size={['md', 'lg']}
+          h={[10, 12]}
+          fontWeight={'semibold'}
+          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
+          color={'white'}
+          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
+          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
+          borderRadius={'lg'}
           isLoading={requesting}
           onClick={handleSubmit(onclickLogin)}
         >
@@ -163,27 +176,27 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
         <Flex
           align={'center'}
           justifyContent={['flex-end', 'center']}
-          color={'primary.700'}
+          color={'blue.600'}
           fontWeight={'medium'}
         >
           {feConfigs?.find_password_method && feConfigs.find_password_method.length > 0 && (
             <Box
               cursor={'pointer'}
-              _hover={{ textDecoration: 'underline' }}
+              _hover={{ textDecoration: 'underline', color: 'blue.700' }}
               onClick={() => setPageType('forgetPassword')}
-              fontSize="mini"
+              fontSize="sm"
             >
               {t('login:forget_password')}
             </Box>
           )}
           {feConfigs?.register_method && feConfigs.register_method.length > 0 && (
             <Flex alignItems={'center'}>
-              <Box mx={3} h={'12px'} w={'1px'} bg={'myGray.250'}></Box>
+              <Box mx={3} h={'12px'} w={'1px'} bg={'blue.200'}></Box>
               <Box
                 cursor={'pointer'}
-                _hover={{ textDecoration: 'underline' }}
+                _hover={{ textDecoration: 'underline', color: 'blue.700' }}
                 onClick={() => setPageType('register')}
-                fontSize="mini"
+                fontSize="sm"
               >
                 {t('login:register')}
               </Box>

@@ -15,6 +15,7 @@ import { authCode } from '@fastgpt/service/support/user/auth/controller';
 import { createUserSession } from '@fastgpt/service/support/user/session';
 import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
+import { syncUserToOneApi } from '@/service/integration/oneapi';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { username, password, code, language = 'zh-CN' } = req.body as PostLoginProps;
@@ -63,6 +64,14 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     lastLoginTmbId: userDetail.team.tmbId,
     language
   });
+
+  // 鲁港通：同步用户到 One API（首次登录时自动创建）
+  try {
+    await syncUserToOneApi(user.username, userDetail.team.memberName || user.username);
+  } catch (error) {
+    // 同步失败不影响登录流程，仅记录日志
+    console.error('Failed to sync user to One API:', error);
+  }
 
   const token = await createUserSession({
     userId: user._id,

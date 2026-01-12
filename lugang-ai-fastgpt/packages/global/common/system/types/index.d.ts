@@ -147,6 +147,7 @@ export type FastGPTFeConfigsType = {
   defaultChatAppId?: string;      // 默认聊天应用 ID
   enableUserChatOnly?: boolean;   // 启用纯聊天模式（普通用户直接进入聊天界面）
   adminPath?: string;             // 管理后台路径，默认 /admin
+  oneApiUrl?: string;             // One API 服务地址，用于充值跳转
 };
 
 export type SystemEnvType = {

@@ -22,5 +22,6 @@ export enum ChatSettingTabOptionEnum {
   FAVOURITE_APPS = 'f'
 }
 
-export const DEFAULT_LOGO_BANNER_URL = '/imgs/chat/fastgpt_banner.svg';
-export const DEFAULT_LOGO_BANNER_COLLAPSED_URL = '/imgs/chat/fastgpt_banner_fold.svg';
+// 鲁港通品牌 Banner
+export const DEFAULT_LOGO_BANNER_URL = '/imgs/chat/lugang_banner.svg';
+export const DEFAULT_LOGO_BANNER_COLLAPSED_URL = '/imgs/chat/lugang_banner_fold.svg';

@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
-import { Box, Button, Flex, ModalBody, ModalFooter, useDisclosure } from '@chakra-ui/react';
+import { Box, Button, Flex, ModalBody, ModalFooter, Text, useDisclosure } from '@chakra-ui/react';
 import { type NotSufficientModalType, useSystemStore } from '@/web/common/system/useSystemStore';
 import ExtraPlan from '@/pageComponents/price/ExtraPlan';
 import StandardPlan from '@/pageComponents/price/Standard';
@@ -12,12 +12,111 @@ import { standardSubLevelMap } from '@fastgpt/global/support/wallet/sub/constant
 import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import { useMount } from 'ahooks';
 import { useRouter } from 'next/router';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+
+/**
+ * 鲁港通 - 简化版额度不足提示（普通用户纯聊天模式）
+ */
+const LugangQuotaModal = ({
+  onClose,
+  feConfigs
+}: {
+  onClose: () => void;
+  feConfigs: any;
+}) => {
+  // 跳转到 One API 充值页面
+  const handleRecharge = () => {
+    const oneApiUrl = feConfigs?.oneApiUrl || 'https://api.airscend.com';
+    window.open(`${oneApiUrl}/topup`, '_blank');
+    onClose();
+  };
+
+  return (
+    <MyModal 
+      isOpen 
+      onClose={onClose}
+      title=""
+      w={'400px'}
+      isCentered
+    >
+      <ModalBody textAlign="center" py={6}>
+        {/* 图标 */}
+        <Flex
+          w="64px"
+          h="64px"
+          mx="auto"
+          mb={4}
+          borderRadius="full"
+          bg="blue.50"
+          alignItems="center"
+          justifyContent="center"
+        >
+          <MyIcon name="support/bill/payRecordLight" w="32px" h="32px" color="blue.500" />
+        </Flex>
+
+        {/* 标题 */}
+        <Text fontSize="lg" fontWeight="600" color="gray.800" mb={2}>
+          额度不足
+        </Text>
+
+        {/* 描述 */}
+        <Text fontSize="sm" color="gray.500" mb={4}>
+          您的对话额度已用完，请充值后继续使用
+        </Text>
+
+        {/* 提示 */}
+        <Box
+          bg="blue.50"
+          borderRadius="lg"
+          p={3}
+          mb={2}
+        >
+          <Text fontSize="xs" color="blue.600">
+            充值后额度将实时到账，您可以继续享受鲁港通AI服务
+          </Text>
+        </Box>
+      </ModalBody>
+
+      <ModalFooter justifyContent="center" gap={3} pt={0} pb={6}>
+        <Button
+          variant="outline"
+          borderColor="gray.200"
+          color="gray.600"
+          onClick={onClose}
+          minW="100px"
+        >
+          稍后再说
+        </Button>
+        <Button
+          bg="linear-gradient(135deg, #3B82F6 0%, #60A5FA 100%)"
+          color="white"
+          _hover={{
+            bg: 'linear-gradient(135deg, #2563EB 0%, #3B82F6 100%)'
+          }}
+          onClick={handleRecharge}
+          minW="100px"
+          leftIcon={<MyIcon name="support/bill/priceLight" w="16px" />}
+        >
+          立即充值
+        </Button>
+      </ModalFooter>
+    </MyModal>
+  );
+};
 
 const NotSufficientModal = () => {
   const { t } = useTranslation();
-  const { notSufficientModalType: type, setNotSufficientModalType } = useSystemStore();
+  const { notSufficientModalType: type, setNotSufficientModalType, feConfigs } = useSystemStore();
+  const { userInfo } = useUserStore();
 
   const onClose = () => setNotSufficientModalType(undefined);
+
+  // 检查是否为管理员
+  const isOwner = userInfo?.permission?.isOwner ?? false;
+  // 是否启用纯聊天模式
+  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
+  // 普通用户在纯聊天模式下显示简化版模态框
+  const showLugangModal = enableUserChatOnly && !isOwner && type === TeamErrEnum.aiPointsNotEnough;
 
   const {
     isOpen: isRechargeModalOpen,
@@ -36,6 +135,11 @@ const NotSufficientModal = () => {
     [TeamErrEnum.reRankNotEnough]: t('common:code_error.team_error.re_rank_not_enough'),
     [TeamErrEnum.ticketNotAvailable]: t('common:code_error.team_error.ticket_not_available')
   };
+
+  // 鲁港通：普通用户显示简化版模态框
+  if (showLugangModal) {
+    return <LugangQuotaModal onClose={onClose} feConfigs={feConfigs} />;
+  }
 
   return type ? (
     <>

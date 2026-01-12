@@ -1,5 +1,5 @@
-import React, { useCallback } from 'react';
-import { Box, Flex, Text } from '@chakra-ui/react';
+import React, { useCallback, useState, useEffect } from 'react';
+import { Box, Flex, Text, Spinner } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
@@ -9,11 +9,19 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import { useRouter } from 'next/router';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { GET } from '@/web/common/api/request';
 
 type UserAvatarPopoverProps = {
   isCollapsed: boolean;
   children: React.ReactNode;
   placement?: Parameters<typeof MyPopover>[0]['placement'];
+};
+
+// 额度响应类型
+type QuotaResponse = {
+  quota: number;
+  usedQuota: number;
+  remainingQuota: number;
 };
 
 const UserAvatarPopover = ({
@@ -27,10 +35,35 @@ const UserAvatarPopover = ({
   const { setUserInfo, userInfo } = useUserStore();
   const { feConfigs } = useSystemStore();
 
-  // 检查是否为管理员
-  const isAdmin = userInfo?.team?.permission?.hasManagePer;
+  // 检查是否为管理员（团队所有者）
+  const isOwner = userInfo?.permission?.isOwner ?? false;
   // 是否启用纯聊天模式
-  const enableUserChatOnly = feConfigs?.enableUserChatOnly;
+  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
+  // 普通用户在纯聊天模式下显示简化菜单
+  const showSimplifiedMenu = enableUserChatOnly && !isOwner;
+
+  // 鲁港通：额度状态
+  const [quotaData, setQuotaData] = useState<QuotaResponse | null>(null);
+  const [quotaLoading, setQuotaLoading] = useState(false);
+
+  // 获取用户额度
+  useEffect(() => {
+    if (showSimplifiedMenu && userInfo) {
+      setQuotaLoading(true);
+      GET<QuotaResponse>('/api/integration/oneapi/quota')
+        .then((data) => {
+          setQuotaData(data);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch quota:', err);
+          // 如果获取失败，显示默认值
+          setQuotaData({ quota: 0, usedQuota: 0, remainingQuota: 0 });
+        })
+        .finally(() => {
+          setQuotaLoading(false);
+        });
+    }
+  }, [showSimplifiedMenu, userInfo]);
 
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
 
@@ -44,8 +77,25 @@ const UserAvatarPopover = ({
   }, [router]);
 
   const handleGoToAdmin = useCallback(() => {
-    router.push(feConfigs?.adminPath || '/admin');
-  }, [router, feConfigs?.adminPath]);
+    router.push('/dashboard/agent');
+  }, [router]);
+
+  // 鲁港通：跳转到充值页面
+  const handleGoToRecharge = useCallback(() => {
+    // 跳转到 One API 充值页面
+    const oneApiUrl = feConfigs?.oneApiUrl || 'https://api.airscend.com';
+    window.open(`${oneApiUrl}/topup`, '_blank');
+  }, [feConfigs?.oneApiUrl]);
+
+  // 格式化额度显示（One API 额度单位是 1/500000 美元）
+  const formatQuota = (value: number) => {
+    // 转换为人民币显示（假设 1 美元 = 7.2 人民币）
+    const cnyValue = (value / 500000) * 7.2;
+    if (cnyValue >= 10000) {
+      return `${(cnyValue / 10000).toFixed(2)}万`;
+    }
+    return cnyValue.toFixed(2);
+  };
 
   return (
     <>
@@ -57,7 +107,7 @@ const UserAvatarPopover = ({
         }
         trigger="hover"
         placement={placement}
-        w="180px"
+        w="200px"
         {...props}
       >
         {({ onClose }) => {
@@ -74,6 +124,11 @@ const UserAvatarPopover = ({
           const onAdmin = useCallback(() => {
             onClose();
             handleGoToAdmin();
+          }, [onClose]);
+
+          const onRecharge = useCallback(() => {
+            onClose();
+            handleGoToRecharge();
           }, [onClose]);
 
           return (
@@ -98,6 +153,52 @@ const UserAvatarPopover = ({
                 </Flex>
               )}
 
+              {/* 鲁港通：额度显示 - 仅普通用户在纯聊天模式下显示 */}
+              {showSimplifiedMenu && (
+                <Flex
+                  alignItems="center"
+                  py={2}
+                  px={2}
+                  borderRadius="md"
+                  bg="blue.50"
+                  gap={2}
+                  mb={1}
+                >
+                  <MyIcon name="support/bill/payRecordLight" w="16px" color="blue.500" />
+                  <Box flex={1}>
+                    <Text fontSize="12px" color="myGray.500">当前额度</Text>
+                    <Text fontSize="14px" fontWeight="600" color="blue.600">
+                      {quotaLoading ? (
+                        <Spinner size="xs" />
+                      ) : quotaData !== null ? (
+                        `¥ ${formatQuota(quotaData.remainingQuota)}`
+                      ) : (
+                        '--'
+                      )}
+                    </Text>
+                  </Box>
+                </Flex>
+              )}
+
+              {/* 鲁港通：充值入口 - 仅普通用户在纯聊天模式下显示 */}
+              {showSimplifiedMenu && (
+                <Flex
+                  alignItems="center"
+                  cursor="pointer"
+                  _hover={{ bg: 'blue.50' }}
+                  py={1.5}
+                  px={2}
+                  borderRadius="4px"
+                  gap={2}
+                  onClick={onRecharge}
+                  w="100%"
+                  color="blue.600"
+                >
+                  <MyIcon name="support/bill/priceLight" w="16px" />
+                  <Text fontSize="14px" fontWeight="500">充值额度</Text>
+                </Flex>
+              )}
+
               {/* 个人中心 */}
               <Flex
                 alignItems="center"
@@ -115,7 +216,7 @@ const UserAvatarPopover = ({
               </Flex>
 
               {/* 管理后台入口 - 仅管理员且启用纯聊天模式时显示 */}
-              {isAdmin && enableUserChatOnly && (
+              {isOwner && enableUserChatOnly && (
                 <Flex
                   alignItems="center"
                   cursor="pointer"
@@ -128,7 +229,7 @@ const UserAvatarPopover = ({
                   w="100%"
                 >
                   <MyIcon name="common/setting" w="16px" />
-                  <Text fontSize="14px">{t('common:admin_dashboard') || '管理后台'}</Text>
+                  <Text fontSize="14px">管理后台</Text>
                 </Flex>
               )}
 

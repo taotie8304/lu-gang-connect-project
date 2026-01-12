@@ -98,13 +98,32 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     })
     .join('/');
 
+  // 鲁港通：淡蓝色输入框样式
+  const inputStyles = {
+    bg: 'white',
+    borderColor: 'blue.200',
+    _hover: { borderColor: 'blue.300' },
+    _focus: { borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }
+  };
+
   return (
     <>
-      <Box fontWeight={'medium'} fontSize={'lg'} textAlign={'center'} color={'myGray.900'}>
+      {/* 鲁港通：淡蓝色渐变标题 */}
+      <Box 
+        fontWeight={'semibold'} 
+        fontSize={'xl'} 
+        textAlign={'center'} 
+        background="linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)"
+        backgroundClip="text"
+        sx={{
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}
+      >
         {t('user:register.register_account', { account: feConfigs?.systemTitle })}
       </Box>
       <Box
-        mt={9}
+        mt={8}
         onKeyDown={(e) => {
           if (!openCodeAuthModal && e.key === 'Enter' && !e.shiftKey && !requesting) {
             handleSubmit(onclickRegister, onSubmitErr)();
@@ -113,7 +132,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
       >
         <FormControl isInvalid={!!errors.username}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             placeholder={placeholder}
             {...register('username', {
@@ -127,7 +146,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
         </FormControl>
         <FormControl
-          mt={6}
+          mt={5}
           isInvalid={!!errors.code}
           display={'flex'}
           alignItems={'center'}
@@ -135,7 +154,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         >
           <Input
             size={'lg'}
-            bg={'myGray.50'}
+            {...inputStyles}
             flex={1}
             maxLength={8}
             placeholder={t('user:password.verification_code')}
@@ -145,9 +164,9 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
           <SendCodeBox username={username} />
         </FormControl>
-        <FormControl mt={6} isInvalid={!!errors.password}>
+        <FormControl mt={5} isInvalid={!!errors.password}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             type={'password'}
             placeholder={t('login:password_tip')}
@@ -162,9 +181,9 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             })}
           ></Input>
         </FormControl>
-        <FormControl mt={6} isInvalid={!!errors.password2}>
+        <FormControl mt={5} isInvalid={!!errors.password2}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             type={'password'}
             placeholder={t('user:password.confirm')}
@@ -174,15 +193,19 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             })}
           />
         </FormControl>
+        {/* 鲁港通：蓝色注册按钮 */}
         <Button
           type="submit"
-          mt={12}
+          mt={8}
           w={'100%'}
-          size={['md', 'md']}
-          rounded={['md', 'md']}
-          h={[10, 10]}
-          fontWeight={['medium', 'medium']}
-          colorScheme="blue"
+          size={['md', 'lg']}
+          h={[10, 12]}
+          fontWeight={'semibold'}
+          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
+          color={'white'}
+          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
+          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
+          borderRadius={'lg'}
           isLoading={requesting}
           onClick={handleSubmit(onclickRegister, onSubmitErr)}
         >
@@ -190,12 +213,12 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         </Button>
         <Box
           float={'right'}
-          fontSize="mini"
-          mt={3}
+          fontSize="sm"
+          mt={4}
           fontWeight={'medium'}
-          color={'primary.700'}
+          color={'blue.600'}
           cursor={'pointer'}
-          _hover={{ textDecoration: 'underline' }}
+          _hover={{ textDecoration: 'underline', color: 'blue.700' }}
           onClick={() => setPageType(LoginPageTypeEnum.passwordLogin)}
         >
           {t('user:register.to_login')}

@@ -129,7 +129,8 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   // 鲁港通用户界面配置
   defaultChatAppId: '',
   enableUserChatOnly: true,
-  adminPath: '/admin'
+  adminPath: '/admin',
+  oneApiUrl: process.env.ONE_API_URL || 'https://api.airscend.com'
 };
 
 export async function initSystemConfig() {

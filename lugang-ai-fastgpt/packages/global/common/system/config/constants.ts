@@ -3,7 +3,8 @@ export enum SystemConfigsTypeEnum {
   fastgptPro = 'fastgptPro',
   systemMsgModal = 'systemMsgModal',
   license = 'license',
-  operationalAd = 'operationalAd'
+  operationalAd = 'operationalAd',
+  lugangRegister = 'lugangRegister'  // 鲁港通注册配置
 }
 
 export const SystemConfigsTypeMap = {
@@ -21,5 +22,8 @@ export const SystemConfigsTypeMap = {
   },
   [SystemConfigsTypeEnum.operationalAd]: {
     label: 'operationalAd'
+  },
+  [SystemConfigsTypeEnum.lugangRegister]: {
+    label: 'lugangRegister'
   }
 };

@@ -44,71 +44,95 @@ const Navbar = ({ unread }: { unread: number }) => {
   const { gitStar, feConfigs } = useSystemStore();
   const { lastChatAppId, lastPane } = useChatStore();
 
+  // 鲁港通：判断是否为管理员（团队所有者）
+  const isOwner = userInfo?.permission?.isOwner ?? false;
+  // 是否启用纯聊天模式
+  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
+  // 普通用户在纯聊天模式下隐藏管理功能
+  const showAdminFeatures = isOwner || !enableUserChatOnly;
+
   const navbarList = useMemo(
-    () => [
-      {
-        label: t('common:navbar.Chat'),
-        icon: 'navbar/chatLight',
-        activeIcon: 'navbar/chatFill',
-        link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
-        activeLink: ['/chat']
-      },
-      {
-        label: t('common:navbar.Studio'),
-        icon: 'navbar/dashboardLight',
-        activeIcon: 'navbar/dashboardFill',
-        link: `/dashboard/agent`,
-        activeLink: [
-          '/dashboard/agent',
-          '/dashboard/create',
-          '/app/detail',
-          '/dashboard/tool',
-          '/dashboard/systemTool',
-          '/dashboard/templateMarket',
-          '/dashboard/mcpServer',
-          '/dashboard/evaluation',
-          '/dashboard/evaluation/create'
-        ]
-      },
-      {
-        label: t('common:navbar.Datasets'),
-        icon: 'navbar/datasetLight',
-        activeIcon: 'navbar/datasetFill',
-        link: `/dataset/list`,
-        activeLink: ['/dataset/list', '/dataset/detail']
-      },
-      {
-        label: t('common:navbar.Account'),
-        icon: 'navbar/userLight',
-        activeIcon: 'navbar/userFill',
-        link: '/account/info',
-        activeLink: [
-          '/account/bill',
-          '/account/info',
-          '/account/customDomain',
-          '/account/team',
-          '/account/usage',
-          '/account/thirdParty',
-          '/account/apikey',
-          '/account/setting',
-          '/account/inform',
-          '/account/promotion',
-          '/account/model'
-        ]
-      },
-      ...(userInfo?.username === 'root'
-        ? [
-            {
-              label: t('common:navbar.Config'),
-              icon: 'support/config/configLight',
-              activeIcon: 'support/config/configFill',
-              link: '/config/tool',
-              activeLink: ['/config/tool', '/config/tool/marketplace']
-            }
-          ]
-        : [])
-    ],
-    [lastChatAppId, lastPane, t, userInfo?.username]
+    () => {
+      const baseList = [
+        {
+          label: t('common:navbar.Chat'),
+          icon: 'navbar/chatLight',
+          activeIcon: 'navbar/chatFill',
+          link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
+          activeLink: ['/chat'],
+          showForUser: true // 普通用户可见
+        },
+        {
+          label: t('common:navbar.Studio'),
+          icon: 'navbar/dashboardLight',
+          activeIcon: 'navbar/dashboardFill',
+          link: `/dashboard/agent`,
+          activeLink: [
+            '/dashboard/agent',
+            '/dashboard/create',
+            '/app/detail',
+            '/dashboard/tool',
+            '/dashboard/systemTool',
+            '/dashboard/templateMarket',
+            '/dashboard/mcpServer',
+            '/dashboard/evaluation',
+            '/dashboard/evaluation/create'
+          ],
+          showForUser: false // 仅管理员可见
+        },
+        {
+          label: t('common:navbar.Datasets'),
+          icon: 'navbar/datasetLight',
+          activeIcon: 'navbar/datasetFill',
+          link: `/dataset/list`,
+          activeLink: ['/dataset/list', '/dataset/detail'],
+          showForUser: false // 仅管理员可见
+        },
+        {
+          label: t('common:navbar.Account'),
+          icon: 'navbar/userLight',
+          activeIcon: 'navbar/userFill',
+          link: '/account/info',
+          activeLink: [
+            '/account/bill',
+            '/account/info',
+            '/account/customDomain',
+            '/account/team',
+            '/account/usage',
+            '/account/thirdParty',
+            '/account/apikey',
+            '/account/setting',
+            '/account/inform',
+            '/account/promotion',
+            '/account/model'
+          ],
+          showForUser: true // 普通用户可见
+        }
+      ];
+
+      // 根据用户角色过滤导航项
+      let filteredList = showAdminFeatures 
+        ? baseList 
+        : baseList.filter(item => item.showForUser);
+
+      // root 用户添加配置入口
+      if (userInfo?.username === 'root') {
+        filteredList = [
+          ...filteredList,
+          {
+            label: t('common:navbar.Config'),
+            icon: 'support/config/configLight',
+            activeIcon: 'support/config/configFill',
+            link: '/config/tool',
+            activeLink: ['/config/tool', '/config/tool/marketplace'],
+            showForUser: false
+          }
+        ];
+      }
+
+      return filteredList;
+    },
+    [lastChatAppId, lastPane, t, userInfo?.username, showAdminFeatures]
   );
 
   const isDashboardPage = useMemo(() => {
