@@ -254,6 +254,7 @@ const ActionButton: React.FC<{
 const NavigationSection = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
+  const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
 
   const isEnableHome = useContextSelector(
     ChatSettingContext,
@@ -274,6 +275,48 @@ const NavigationSection = () => {
     (v) => v.pane === ChatSidebarPaneEnum.FAVORITE_APPS
   );
   const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
+
+  // 纯聊天模式下，简化导航（隐藏团队应用、收藏应用等管理入口）
+  if (enableUserChatOnly) {
+    return (
+      <Flex mt={4} flexDirection={'column'} gap={1} px={4}>
+        <AnimatedSection show={isCollapsed}>
+          <ActionButton isCollapsed icon="core/chat/sidebar/expand" onClick={onTriggerCollapse} />
+        </AnimatedSection>
+
+        <AnimatePresence mode="wait">
+          {isCollapsed ? (
+            <AnimatedSection show={true}>
+              <Flex flexDir="column" gap={2}>
+                {feConfigs.isPlus && isEnableHome && (
+                  <ActionButton
+                    icon="core/chat/sidebar/home"
+                    isCollapsed={true}
+                    isActive={isHomeActive}
+                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
+                  />
+                )}
+              </Flex>
+            </AnimatedSection>
+          ) : (
+            <AnimatedSection show={true}>
+              <Flex flexDir="column" gap={2}>
+                {feConfigs.isPlus && isEnableHome && (
+                  <ActionButton
+                    icon="core/chat/sidebar/home"
+                    text={t('chat:sidebar.home')}
+                    isCollapsed={false}
+                    isActive={isHomeActive}
+                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
+                  />
+                )}
+              </Flex>
+            </AnimatedSection>
+          )}
+        </AnimatePresence>
+      </Flex>
+    );
+  }
 
   return (
     <Flex mt={4} flexDirection={'column'} gap={1} px={4}>
@@ -358,6 +401,7 @@ const BottomSection = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
   const isProVersion = !!feConfigs.isPlus;
+  const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
 
   const { userInfo } = useUserStore();
   const isLoggedIn = !!userInfo;
@@ -372,6 +416,9 @@ const BottomSection = () => {
   );
   const onSettingClick = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
 
+  // 在纯聊天模式下，隐藏设置按钮（管理员通过头像菜单进入后台）
+  const showSettingButton = isAdmin && isProVersion && !isShare && !enableUserChatOnly;
+
   return (
     <MotionBox mt={'auto'} px={3} py={4} layout={false}>
       <MotionFlex
@@ -383,7 +430,7 @@ const BottomSection = () => {
         h={isCollapsed ? 'auto' : '40px'}
         minH="40px"
       >
-        {isAdmin && isProVersion && !isShare && (
+        {showSettingButton && (
           <MotionBox
             order={isCollapsed ? 1 : 2}
             layout={false}

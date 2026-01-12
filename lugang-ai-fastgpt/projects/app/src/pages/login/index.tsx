@@ -11,6 +11,7 @@ import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 const Login = () => {
   const router = useRouter();
@@ -18,19 +19,26 @@ const Login = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { setUserInfo } = useUserStore();
+  const { feConfigs } = useSystemStore();
+
+  // 鲁港通：获取默认跳转路径
+  const getDefaultRoute = useCallback(() => {
+    return feConfigs?.enableUserChatOnly ? '/chat' : '/dashboard/agent';
+  }, [feConfigs?.enableUserChatOnly]);
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponse) => {
       setUserInfo(res.user);
 
       const decodeLastRoute = validateRedirectUrl(lastRoute);
+      const defaultRoute = getDefaultRoute();
 
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
           if (decodeLastRoute.includes('/account/team?invitelinkid=')) {
             const id = decodeLastRoute.split('invitelinkid=')[1];
             await postAcceptInvitationLink(id);
-            return '/dashboard/agent';
+            return defaultRoute;
           } else {
             toast({
               status: 'warning',
@@ -39,20 +47,22 @@ const Login = () => {
           }
         }
         if (decodeLastRoute.startsWith(`${subRoute}/config`)) {
-          return '/dashboard/agent';
+          return defaultRoute;
         }
 
-        return decodeLastRoute;
+        // 鲁港通：如果没有指定 lastRoute，使用默认路径
+        return decodeLastRoute || defaultRoute;
       })();
 
       navigateTo && router.replace(navigateTo);
     },
-    [lastRoute, router, setUserInfo, t, toast]
+    [lastRoute, router, setUserInfo, t, toast, getDefaultRoute]
   );
 
   useMount(() => {
     clearToken();
-    router.prefetch('/dashboard/agent');
+    const defaultRoute = getDefaultRoute();
+    router.prefetch(defaultRoute);
   });
 
   return <LoginModal onSuccess={loginSuccess} />;

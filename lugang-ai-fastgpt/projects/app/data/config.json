@@ -1,14 +1,21 @@
 // 已使用 json5 进行解析，会自动去掉注释，无需手动去除
 {
   "feConfigs": {
-    "systemTitle": "鲁港通AI助手", // 系统标题 - 品牌定制
+    "systemTitle": "鲁港通跨境AI智能平台", // 系统标题 - 品牌定制
     "show_git": false, // 隐藏GitHub链接
     "show_appStore": false, // 隐藏应用商店
+    "show_templateMarket": false, // 隐藏模板市场
+    "show_pluginMarket": false, // 隐藏插件市场
     "show_promotion": false, // 隐藏推广功能
-    "docUrl": "https://lugangconnect.com/docs", // 自定义文档链接
-    "concatMd": "技术支持：鲁港通科技 | 联系邮箱：support@lugangconnect.com", // 联系方式
+    "docUrl": "", // 文档链接（暂无）
+    "concatMd": "技术支持：鲁港通科技", // 联系方式
     "lafEnv": "https://laf.dev", // laf环境。 https://laf.run （杭州阿里云） ,或者私有化的laf环境。如果使用 Laf openapi 功能，需要最新版的 laf 。
-    "mcpServerProxyEndpoint": "" // mcp server 代理地址，例如： http://localhost:3005
+    "mcpServerProxyEndpoint": "", // mcp server 代理地址，例如： http://localhost:3005
+    
+    // 鲁港通用户界面配置
+    "defaultChatAppId": "", // 默认聊天应用 ID，留空则使用第一个可用应用
+    "enableUserChatOnly": true, // 启用纯聊天模式，普通用户登录后直接进入聊天界面
+    "adminPath": "/admin" // 管理后台路径
   },
   "systemEnv": {
     "datasetParseMaxProcess": 10, // 知识库文件解析最大线程数量

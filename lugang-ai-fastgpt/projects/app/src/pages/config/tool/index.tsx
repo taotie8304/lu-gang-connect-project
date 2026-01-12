@@ -20,6 +20,7 @@ import { useRouter } from 'next/router';
 import { getAdminSystemTools, putAdminUpdateToolOrder } from '@/web/core/plugin/admin/tool/api';
 import type { GetAdminSystemToolsResponseType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
 import type { AdminSystemToolListItemType } from '@fastgpt/global/core/plugin/admin/tool/type';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 const SystemToolConfigModal = dynamic(
   () => import('@/pageComponents/config/tool/SystemToolConfigModal')
@@ -32,6 +33,7 @@ const ImportPluginModal = dynamic(() => import('@/pageComponents/config/ImportPl
 const ToolProvider = () => {
   const { t } = useSafeTranslation();
   const router = useRouter();
+  const { feConfigs } = useSystemStore();
 
   const [localTools, setLocalTools] = useState<GetAdminSystemToolsResponseType>([]);
   const [editingToolId, setEditingToolId] = useState<string>();
@@ -79,12 +81,16 @@ const ToolProvider = () => {
           menuList={[
             {
               children: [
-                {
-                  label: t('app:toolkit_open_marketplace'),
-                  onClick: () => {
-                    router.push('/config/tool/marketplace');
-                  }
-                },
+                ...(feConfigs?.show_pluginMarket !== false
+                  ? [
+                      {
+                        label: t('app:toolkit_open_marketplace'),
+                        onClick: () => {
+                          router.push('/config/tool/marketplace');
+                        }
+                      }
+                    ]
+                  : []),
                 {
                   label: t('app:toolkit_import_resource'),
                   onClick: () => {

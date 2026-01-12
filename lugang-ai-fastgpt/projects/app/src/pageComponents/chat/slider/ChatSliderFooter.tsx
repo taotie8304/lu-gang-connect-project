@@ -20,6 +20,9 @@ const ChatSliderFooter = () => {
 
   const isAdmin = !!userInfo?.team.permission.hasManagePer;
   const isSettingPane = pane === ChatSidebarPaneEnum.SETTING;
+  // 鲁港通：纯聊天模式下隐藏设置按钮
+  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
+  const showSettingButton = feConfigs.isPlus && isAdmin && !enableUserChatOnly;
 
   return (
     <Flex flexShrink={0} gap={2} alignItems="center" justifyContent="space-between" p={2} mt="auto">
@@ -32,7 +35,7 @@ const ChatSliderFooter = () => {
         </Flex>
       </UserAvatarPopover>
 
-      {feConfigs.isPlus && isAdmin && (
+      {showSettingButton && (
         <Flex
           _hover={{ bg: 'myGray.200' }}
           bg={isSettingPane ? 'myGray.200' : 'transparent'}

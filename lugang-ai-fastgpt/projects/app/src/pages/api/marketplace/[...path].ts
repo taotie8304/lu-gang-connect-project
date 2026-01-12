@@ -17,7 +17,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('url is empty');
     }
 
-    const marketplaceUrl = process.env.MARKETPLACE_URL || 'https://marketplace.fastgpt.cn';
+    const marketplaceUrl = process.env.MARKETPLACE_URL || '';
 
     if (!marketplaceUrl) {
       throw new Error('MARKETPLACE_URL is not configured');

@@ -665,7 +665,7 @@ export async function getServerSideProps(content: any) {
   return {
     props: {
       ...(await serviceSideProps(content, ['app'])),
-      marketplaceUrl: process.env.MARKETPLACE_URL || 'https://marketplace.fastgpt.cn'
+      marketplaceUrl: process.env.MARKETPLACE_URL || ''
     }
   };
 }

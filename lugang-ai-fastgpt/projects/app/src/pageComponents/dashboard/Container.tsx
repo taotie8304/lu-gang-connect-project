@@ -147,40 +147,44 @@ const DashboardContainer = ({
         groupName: t('app:core.module.template.System Tools'),
         children: []
       },
-      {
-        groupId: TabEnum.app_templates,
-        groupAvatar: 'common/templateMarket',
-        groupName: t('common:template_market'),
-        children: [
-          ...templateTags
-            .map((tag) => {
-              const templates = templateList.filter((template) =>
-                template.tags.includes(tag.typeId)
-              );
-              return {
-                ...tag,
-                templates
-              };
-            })
-            .filter((tag) => tag.templates.length > 0)
-            .map((tag, index) => ({
-              typeId: tag.typeId,
-              typeName: t(tag.typeName as any),
-              isActive: index === 0 && !currentType
-            })),
-          ...(feConfigs?.appTemplateCourse
-            ? [
-                {
-                  typeId: AppTemplateTypeEnum.contribute,
-                  typeName: t('common:contribute_app_template'),
-                  onClick: () => {
-                    window.open(feConfigs.appTemplateCourse);
-                  }
-                }
+      ...(feConfigs?.show_templateMarket !== false
+        ? [
+            {
+              groupId: TabEnum.app_templates,
+              groupAvatar: 'common/templateMarket',
+              groupName: t('common:template_market'),
+              children: [
+                ...templateTags
+                  .map((tag) => {
+                    const templates = templateList.filter((template) =>
+                      template.tags.includes(tag.typeId)
+                    );
+                    return {
+                      ...tag,
+                      templates
+                    };
+                  })
+                  .filter((tag) => tag.templates.length > 0)
+                  .map((tag, index) => ({
+                    typeId: tag.typeId,
+                    typeName: t(tag.typeName as any),
+                    isActive: index === 0 && !currentType
+                  })),
+                ...(feConfigs?.appTemplateCourse
+                  ? [
+                      {
+                        typeId: AppTemplateTypeEnum.contribute,
+                        typeName: t('common:contribute_app_template'),
+                        onClick: () => {
+                          window.open(feConfigs.appTemplateCourse);
+                        }
+                      }
+                    ]
+                  : [])
               ]
-            : [])
-        ]
-      },
+            }
+          ]
+        : []),
       {
         groupId: TabEnum.mcp_server,
         groupAvatar: 'mcp',

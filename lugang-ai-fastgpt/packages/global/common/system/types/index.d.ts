@@ -57,6 +57,8 @@ export type FastGPTFeConfigsType = {
 
   show_emptyChat?: boolean;
   show_appStore?: boolean;
+  show_templateMarket?: boolean;
+  show_pluginMarket?: boolean;
   show_git?: boolean;
   show_pay?: boolean;
   show_openai_account?: boolean;
@@ -140,6 +142,11 @@ export type FastGPTFeConfigsType = {
   };
 
   ip_whitelist?: string;
+
+  // 鲁港通用户界面配置
+  defaultChatAppId?: string;      // 默认聊天应用 ID
+  enableUserChatOnly?: boolean;   // 启用纯聊天模式（普通用户直接进入聊天界面）
+  adminPath?: string;             // 管理后台路径，默认 /admin
 };
 
 export type SystemEnvType = {

@@ -109,15 +109,15 @@ export async function getInitConfig() {
 
 const defaultFeConfigs: FastGPTFeConfigsType = {
   show_emptyChat: true,
-  show_git: true,
-  docUrl: 'https://doc.fastgpt.io',
-  openAPIDocUrl: 'https://doc.fastgpt.io/docs/introduction/development/openapi',
-  submitPluginRequestUrl: 'https://github.com/labring/fastgpt-plugin/issues',
-  appTemplateCourse:
-    'https://fael3z0zfze.feishu.cn/wiki/CX9wwMGyEi5TL6koiLYcg7U0nWb?fromScene=spaceOverview',
-  systemTitle: 'FastGPT',
-  concatMd:
-    '项目开源地址: [FastGPT GitHub](https://github.com/labring/FastGPT)\n交流群: ![](https://oss.laf.run/otnvvf-imgs/fastgpt-feishu1.png)',
+  show_git: false,
+  show_templateMarket: false,
+  show_pluginMarket: false,
+  docUrl: '',
+  openAPIDocUrl: '',
+  submitPluginRequestUrl: '',
+  appTemplateCourse: '',
+  systemTitle: '鲁港通跨境AI智能平台',
+  concatMd: '技术支持：鲁港通科技',
   limit: {
     exportDatasetLimitMinutes: 0,
     websiteSyncLimitMinuted: 0
@@ -125,7 +125,11 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   scripts: [],
   favicon: '/favicon.ico',
   uploadFileMaxSize: 500,
-  chineseRedirectUrl: process.env.CHINESE_IP_REDIRECT_URL || ''
+  chineseRedirectUrl: process.env.CHINESE_IP_REDIRECT_URL || '',
+  // 鲁港通用户界面配置
+  defaultChatAppId: '',
+  enableUserChatOnly: true,
+  adminPath: '/admin'
 };
 
 export async function initSystemConfig() {

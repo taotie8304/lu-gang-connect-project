@@ -264,7 +264,7 @@ const ToolCard = ({
           className="author-info"
           color={'myGray.500'}
           mt={3}
-        >{`by ${item.author || systemTitle || 'FastGPT'}`}</Box>
+        >{`by ${item.author || systemTitle || '鲁港通'}`}</Box>
         {/*TODO: when statistics is ready*/}
         {/*<Flex flexDirection={'row'} gap={1} className="download-count" color={'myGray.500'} mt={3}>
           <MyIcon name="common/downloadLine" />

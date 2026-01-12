@@ -126,16 +126,10 @@ export const useSystemStore = create<State>()(
           return null;
         },
 
-        gitStar: 26500,
+        gitStar: 0,
         async loadGitStar() {
-          if (!get().feConfigs?.show_git) return;
-          try {
-            const { data: git } = await axios.get('https://api.github.com/repos/labring/FastGPT');
-
-            set((state) => {
-              state.gitStar = git.stargazers_count;
-            });
-          } catch (error) {}
+          // GitHub star feature disabled for branded version
+          return;
         },
 
         notSufficientModalType: undefined,
