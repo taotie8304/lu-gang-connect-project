@@ -25,7 +25,7 @@ export const sendAuthCode = (data: {
   googleToken: string;
   captcha: string;
   lang: `${LangEnum}`;
-}) => POST(`/api/support/user/inform/sendAuthCode`, data);
+}) => POST(`/support/user/inform/sendAuthCode`, data);
 
 export const getTokenLogin = () =>
   GET<UserType>('/support/user/account/tokenLogin', {}, { maxQuantity: 1 });
@@ -47,7 +47,7 @@ export const postRegister = ({
   fastgpt_sem,
   email
 }: AccountRegisterBody & { email?: string }) =>
-  POST<LoginSuccessResponse>(`/api/support/user/account/register`, {
+  POST<LoginSuccessResponse>(`/support/user/account/register`, {
     username,
     code,
     inviterId,
@@ -114,7 +114,7 @@ export const getWXLoginResult = (params: WxLoginProps) =>
 export const getCaptchaPic = (username: string) =>
   GET<{
     captchaImage: string;
-  }>('/api/support/user/account/captcha/getImgCaptcha', { username });
+  }>('/support/user/account/captcha/getImgCaptcha', { username });
 
 export const getPreLogin = (username: string) =>
   GET<preLoginResponse>('/support/user/account/preLogin', { username });

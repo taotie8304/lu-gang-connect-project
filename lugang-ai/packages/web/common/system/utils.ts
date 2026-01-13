@@ -10,6 +10,8 @@ export const subRoute = process.env.NEXT_PUBLIC_BASE_URL || '';
 
 export const getWebReqUrl = (url: string = '') => {
   if (!url) return '/';
+  // 支持 data: URL（如 base64 图片）和 http/https URL
+  if (url.startsWith('data:') || url.startsWith('http://') || url.startsWith('https://')) return url;
   if (!subRoute) return url;
 
   if (!url.startsWith('/') || url.startsWith(subRoute)) return url;
