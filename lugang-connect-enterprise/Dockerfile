@@ -32,10 +32,10 @@ RUN rm -rf node_modules package-lock.json && \
 RUN DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat /web/VERSION) npm run build || \
     (echo "Berry build failed, creating placeholder" && mkdir -p build)
 
-# 确保build目录存在，并复制默认的index.html作为后备
-RUN mkdir -p /web/build/berry && \
-    (cp -r /web/berry/build/* /web/build/berry/ 2>/dev/null || true) && \
-    if [ ! -f /web/build/berry/index.html ]; then \
+# 确保build目录存在，并复制到 default 目录（与 THEME 默认值匹配）
+RUN mkdir -p /web/build/default && \
+    (cp -r /web/berry/build/* /web/build/default/ 2>/dev/null || true) && \
+    if [ ! -f /web/build/default/index.html ]; then \
         echo "Berry build failed, copying default index.html"; \
         cp /web/index.html /web/build/index.html 2>/dev/null || true; \
     fi
@@ -69,9 +69,9 @@ RUN cp ./web/build/index.html /tmp/default_index.html 2>/dev/null || true
 # 复制构建好的前端文件到正确位置
 COPY --from=web-builder /web/build ./web/build/
 
-# 如果 berry 构建失败，恢复默认的 index.html
-RUN if [ ! -f ./web/build/berry/index.html ]; then \
-        echo "Berry build failed, restoring default index.html"; \
+# 如果构建失败，恢复默认的 index.html
+RUN if [ ! -f ./web/build/default/index.html ]; then \
+        echo "Frontend build failed, restoring default index.html"; \
         cp /tmp/default_index.html ./web/build/index.html; \
     fi
 
