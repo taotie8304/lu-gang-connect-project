@@ -84,7 +84,7 @@ const DatasetSchema = new Schema({
   },
   avatar: {
     type: String,
-    default: '/icon/logo.svg'
+    default: '/icon/logo.png'
   },
   name: {
     type: String,

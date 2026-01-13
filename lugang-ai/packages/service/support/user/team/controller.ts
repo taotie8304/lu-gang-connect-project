@@ -86,7 +86,7 @@ export async function getUserDefaultTeam({ userId }: { userId: string }) {
 export async function createDefaultTeam({
   userId,
   teamName = 'My Team',
-  avatar = '/icon/logo.svg',
+  avatar = '/icon/logo.png',
   session
 }: {
   userId: string;

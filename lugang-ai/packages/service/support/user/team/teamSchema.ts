@@ -15,7 +15,7 @@ const TeamSchema = new Schema({
   },
   avatar: {
     type: String,
-    default: '/icon/logo.svg'
+    default: '/icon/logo.png'
   },
   createTime: {
     type: Date,

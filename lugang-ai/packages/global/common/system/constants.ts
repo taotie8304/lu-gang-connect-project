@@ -1,5 +1,5 @@
 export const HUMAN_ICON = `/icon/human.svg`;
-export const LOGO_ICON = `/icon/logo.svg`;  // 鲁港通AI品牌Logo
+export const LOGO_ICON = `/icon/logo.png`;  // 鲁港通AI品牌Logo
 export const HUGGING_FACE_ICON = `/imgs/model/huggingface.svg`;
 
 export const DEFAULT_TEAM_AVATAR = `/imgs/avatar/defaultTeamAvatar.svg`;

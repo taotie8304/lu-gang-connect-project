@@ -68,7 +68,7 @@ export const ChatSettingSchema = z.object({
         pluginId: '68ad85a7463006c963799a05',
         inputs: {},
         name: '获取当前应用',
-        avatar: '/icon/logo.svg'
+        avatar: '/icon/logo.png'
       }
     ],
     description: '已选工具列表'

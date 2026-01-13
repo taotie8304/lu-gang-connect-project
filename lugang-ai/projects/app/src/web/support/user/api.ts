@@ -18,13 +18,14 @@ import type { preLoginResponse } from '@/pages/api/support/user/account/preLogin
 import type { WxLoginProps } from '@fastgpt/global/support/user/api.d';
 import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 
+// 鲁港通：使用本地验证码发送 API
 export const sendAuthCode = (data: {
   username: string;
   type: `${UserAuthTypeEnum}`;
   googleToken: string;
   captcha: string;
   lang: `${LangEnum}`;
-}) => POST(`/proApi/support/user/inform/sendAuthCode`, data);
+}) => POST(`/api/support/user/inform/sendAuthCode`, data);
 
 export const getTokenLogin = () =>
   GET<UserType>('/support/user/account/tokenLogin', {}, { maxQuantity: 1 });
@@ -35,6 +36,7 @@ export const postFastLogin = (params: FastLoginProps) =>
 export const ssoLogin = (params: any) =>
   GET<LoginSuccessResponse>('/proApi/support/user/account/sso', params);
 
+// 鲁港通：使用本地注册 API
 export const postRegister = ({
   username,
   password,
@@ -44,14 +46,14 @@ export const postRegister = ({
   msclkid,
   fastgpt_sem
 }: AccountRegisterBody) =>
-  POST<LoginSuccessResponse>(`/proApi/support/user/account/register/emailAndPhone`, {
+  POST<LoginSuccessResponse>(`/api/support/user/account/register`, {
     username,
     code,
     inviterId,
     bd_vid,
     msclkid,
     fastgpt_sem,
-    password: hashStr(password)
+    password
   });
 
 export const postFindPassword = ({
@@ -106,10 +108,11 @@ export const getWXLoginQR = () =>
 export const getWXLoginResult = (params: WxLoginProps) =>
   POST<LoginSuccessResponse>(`/proApi/support/user/account/login/wx/getResult`, params);
 
+// 鲁港通：使用本地验证码图片 API
 export const getCaptchaPic = (username: string) =>
   GET<{
     captchaImage: string;
-  }>('/proApi/support/user/account/captcha/getImgCaptcha', { username });
+  }>('/api/support/user/account/captcha/getImgCaptcha', { username });
 
 export const getPreLogin = (username: string) =>
   GET<preLoginResponse>('/support/user/account/preLogin', { username });

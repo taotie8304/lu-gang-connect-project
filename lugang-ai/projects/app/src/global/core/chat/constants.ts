@@ -6,7 +6,7 @@ export const defaultChatData: InitChatResponse = {
   appId: '',
   app: {
     name: 'Loading',
-    avatar: '/icon/logo.svg',
+    avatar: '/icon/logo.png',
     intro: '',
     canUse: false,
     type: AppTypeEnum.simple,
