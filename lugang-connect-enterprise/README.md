@@ -21,16 +21,16 @@
 
 ```bash
 # 拉取最新镜像
-docker pull ghcr.io/taotie8304/lugang-oneapi:latest
+docker pull ghcr.io/taotie8304/lugang-enterprise:latest
 
 # 运行容器
 docker run -d \
-  --name lugang-oneapi \
+  --name lugang-enterprise \
   -p 8080:8080 \
   -v $(pwd)/data:/app/data \
   -e SQL_DSN="your_database_connection_string" \
   -e SESSION_SECRET="your_session_secret" \
-  ghcr.io/taotie8304/lugang-oneapi:latest
+  ghcr.io/taotie8304/lugang-enterprise:latest
 ```
 
 ### 方式二：Docker Compose 部署

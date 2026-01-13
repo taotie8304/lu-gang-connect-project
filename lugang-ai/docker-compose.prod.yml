@@ -78,9 +78,9 @@ services:
   # ===== 鲁港通后端（鲁港通跨境AI智能服务后端）=====
   # 域名: api.airscend.com
   # 端口: 8080
-  lugang-oneapi:
-    image: ${LUGANG_ONEAPI_IMAGE:-ghcr.io/your-username/lugang-oneapi:latest}
-    container_name: lugang-oneapi
+  lugang-enterprise:
+    image: ${LUGANG_ENTERPRISE_IMAGE:-ghcr.io/your-username/lugang-enterprise:latest}
+    container_name: lugang-enterprise
     restart: always
     ports:
       - "8080:3000"

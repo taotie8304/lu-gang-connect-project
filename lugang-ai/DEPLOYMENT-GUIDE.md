@@ -70,7 +70,7 @@ git push origin main
    ghcr.io/<your-github-username>/lugang-ai:latest
    
    # 鲁港通后端镜像
-   ghcr.io/<your-github-username>/lugang-oneapi:latest
+   ghcr.io/<your-github-username>/lugang-enterprise:latest
    ```
 
 ### 第三步：服务器部署
@@ -219,7 +219,7 @@ curl http://localhost:8080/api/status
 docker logs -f lugang-ai-app
 
 # 查看鲁港通后端日志
-docker logs -f lugang-oneapi
+docker logs -f lugang-enterprise
 ```
 
 ---
@@ -325,8 +325,8 @@ docker pull ghcr.io/<your-username>/lugang-ai:latest
 docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-ai
 
 # 方式三：手动更新鲁港通后端
-docker pull ghcr.io/<your-username>/lugang-oneapi:latest
-docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-oneapi
+docker pull ghcr.io/<your-username>/lugang-enterprise:latest
+docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-enterprise
 ```
 
 ---
@@ -343,7 +343,7 @@ docker-compose -f docker-compose.prod.yml ps
 docker logs -f lugang-ai-app
 
 # 查看鲁港通后端日志
-docker logs -f lugang-oneapi
+docker logs -f lugang-enterprise
 
 # 查看最近 100 行日志
 docker logs --tail 100 lugang-ai-app
@@ -359,7 +359,7 @@ docker-compose -f docker-compose.prod.yml restart
 docker-compose -f docker-compose.prod.yml restart lugang-ai
 
 # 只重启鲁港通后端
-docker-compose -f docker-compose.prod.yml restart lugang-oneapi
+docker-compose -f docker-compose.prod.yml restart lugang-enterprise
 ```
 
 ### 停止服务
@@ -402,7 +402,7 @@ docker login ghcr.io
 
 # 检查镜像是否存在
 docker manifest inspect ghcr.io/<your-username>/lugang-ai:latest
-docker manifest inspect ghcr.io/<your-username>/lugang-oneapi:latest
+docker manifest inspect ghcr.io/<your-username>/lugang-enterprise:latest
 
 # 重新登录
 echo "your-token" | docker login ghcr.io -u your-username --password-stdin
@@ -413,7 +413,7 @@ echo "your-token" | docker login ghcr.io -u your-username --password-stdin
 ```bash
 # 查看详细日志
 docker logs lugang-ai-app
-docker logs lugang-oneapi
+docker logs lugang-enterprise
 
 # 检查配置文件
 cat projects/app/.env.local

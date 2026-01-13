@@ -28,8 +28,8 @@ inclusion: always
 - **技术基础**: 基于 One API
 - **域名**: api.airscend.com
 - **端口**: 8080
-- **Docker 容器名**: lugang-oneapi
-- **Docker 镜像名**: lugang-oneapi
+- **Docker 容器名**: lugang-enterprise
+- **Docker 镜像名**: lugang-enterprise
 
 ## 代码注释规范
 

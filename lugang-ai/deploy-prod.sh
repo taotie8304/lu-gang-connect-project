@@ -69,7 +69,7 @@ fi
 # 设置镜像名称
 IMAGE_TAG=${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}
 LUGANG_AI_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-ai:${IMAGE_TAG}"
-LUGANG_ONEAPI_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-oneapi:${IMAGE_TAG}"
+LUGANG_ENTERPRISE_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-enterprise:${IMAGE_TAG}"
 
 echo -e "${BLUE}配置信息:${NC}"
 echo "  GitHub 用户名: $GITHUB_USERNAME"
@@ -106,8 +106,8 @@ export LUGANG_ONEAPI_IMAGE
 export MONGO_PASSWORD
 export PG_PASSWORD
 export SESSION_SECRET
-docker-compose -f docker-compose.prod.yml stop lugang-ai lugang-oneapi 2>/dev/null || true
-docker-compose -f docker-compose.prod.yml rm -f lugang-ai lugang-oneapi 2>/dev/null || true
+docker-compose -f docker-compose.prod.yml stop lugang-ai lugang-enterprise 2>/dev/null || true
+docker-compose -f docker-compose.prod.yml rm -f lugang-ai lugang-enterprise 2>/dev/null || true
 echo -e "${GREEN}✓ 旧容器已停止${NC}"
 
 # 步骤 5: 启动新容器
@@ -162,7 +162,7 @@ docker logs lugang-ai-app --tail 5 2>/dev/null || echo "无日志"
 
 echo ""
 echo -e "${BLUE}鲁港通后端最近日志:${NC}"
-docker logs lugang-oneapi --tail 5 2>/dev/null || echo "无日志"
+docker logs lugang-enterprise --tail 5 2>/dev/null || echo "无日志"
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
@@ -174,4 +174,4 @@ echo -e "鲁港通后端: ${BLUE}https://api.airscend.com${NC} (端口 8080)"
 echo ""
 echo -e "查看日志:"
 echo -e "  鲁港通前端: ${BLUE}docker logs -f lugang-ai-app${NC}"
-echo -e "  鲁港通后端: ${BLUE}docker logs -f lugang-oneapi${NC}"
+echo -e "  鲁港通后端: ${BLUE}docker logs -f lugang-enterprise${NC}"
