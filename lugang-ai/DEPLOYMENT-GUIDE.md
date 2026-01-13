@@ -80,7 +80,7 @@ git push origin main
 ssh root@156.225.30.134
 
 # 进入项目目录
-cd /www/wwwroot/lugang-ai-fastgpt
+cd /www/wwwroot/lugang-ai
 
 # 拉取最新代码
 git pull origin main
@@ -114,8 +114,8 @@ docker-compose --version
 
 ```bash
 # 创建目录
-mkdir -p /www/wwwroot/lugang-ai-fastgpt
-cd /www/wwwroot/lugang-ai-fastgpt
+mkdir -p /www/wwwroot/lugang-ai
+cd /www/wwwroot/lugang-ai
 
 # 克隆代码（首次部署）
 git clone https://github.com/<your-username>/lu-gang-connect-project.git .
@@ -316,7 +316,7 @@ server {
 
 ```bash
 # 方式一：使用部署脚本（推荐）
-cd /www/wwwroot/lugang-ai-fastgpt
+cd /www/wwwroot/lugang-ai
 git pull origin main
 ./deploy-prod.sh
 
@@ -473,7 +473,7 @@ grep ONE_API projects/app/.env.local
    # 添加定时备份任务
    crontab -e
    # 每天凌晨 3 点备份
-   0 3 * * * /www/wwwroot/lugang-ai-fastgpt/backup.sh
+   0 3 * * * /www/wwwroot/lugang-ai/backup.sh
    ```
 
 4. **监控服务状态**

@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'lugang-ai-fastgpt/**'
+      - 'lugang-ai/**'
       - '.github/workflows/docker-build.yml'
   workflow_dispatch:
     inputs:
@@ -63,8 +63,8 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
-          context: ./lugang-ai-fastgpt
-          file: ./lugang-ai-fastgpt/projects/app/Dockerfile
+          context: ./lugang-ai
+          file: ./lugang-ai/projects/app/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -175,7 +175,7 @@ LUGANG_ENTERPRISE_MODE=true
 
 ### 堡塔面板部署
 
-详细的堡塔面板部署指南请参考：[BAOTA_DEPLOYMENT_GUIDE.md](BAOTA_DEPLOYMENT_GUIDE.md)
+详细的部署指南请参考：[lugang-ai/DEPLOYMENT-GUIDE.md](lugang-ai/DEPLOYMENT-GUIDE.md)
 
 ### Docker部署
 
