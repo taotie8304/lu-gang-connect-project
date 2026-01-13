@@ -1,4 +1,4 @@
-name: Build One API Docker Image
+name: 构建鲁港通后端镜像
 
 on:
   push:
@@ -6,12 +6,12 @@ on:
       - main
     paths:
       - 'lugang-connect-enterprise/**'
-      - '.github/workflows/oneapi-build.yml'
+      - '.github/workflows/lugang-enterprise-build.yml'
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: lugang-oneapi
+  IMAGE_NAME: lugang-enterprise
 
 jobs:
   build:
@@ -65,7 +65,7 @@ jobs:
 
       - name: Image digest
         run: |
-          echo "✅ One API Image pushed successfully!"
+          echo "✅ 鲁港通后端镜像推送成功!"
           echo "📦 Tags: ${{ steps.meta.outputs.tags }}"
           echo ""
           echo "🚀 部署命令:"
