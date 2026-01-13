@@ -5,7 +5,7 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { connectToDatabase } from '@/service/mongo';
+// MongoDB 连接已在应用启动时建立
 import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyAuthCode } from '../inform/sendAuthCode';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
@@ -78,8 +78,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (req.method !== 'POST') {
       return jsonRes(res, { code: 405, error: 'Method not allowed' });
     }
-
-    await connectToDatabase();
     
     const { username, password, code, inviterId, email } = req.body as {
       username: string;

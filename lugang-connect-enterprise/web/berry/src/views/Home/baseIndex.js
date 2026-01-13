@@ -5,7 +5,7 @@ const BaseIndex = () => (
   <Box
     sx={{
       minHeight: 'calc(100vh - 136px)',
-      backgroundImage: 'url(https://airscend.com/quehuaqiusetu.jpg)',
+      backgroundImage: 'url(https://www.shuohk.com/quehuaqiusetu.jpg)',
       backgroundSize: 'cover',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',

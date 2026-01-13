@@ -5,12 +5,13 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { connectToDatabase, getMongoModel } from '@/service/mongo';
+import { connectionMongo, getMongoModel } from '@fastgpt/service/common/mongo';
 import { addLog } from '@fastgpt/service/common/system/log';
-import mongoose from 'mongoose';
+
+const { Schema } = connectionMongo;
 
 // 验证码 Schema
-const CaptchaSchema = new mongoose.Schema({
+const CaptchaSchema = new Schema({
   username: { type: String, required: true, index: true },
   code: { type: String, required: true },
   type: { type: String, default: 'image' }, // image 或 auth
@@ -19,13 +20,9 @@ const CaptchaSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// 获取或创建 Model
+// 获取 Model
 const getCaptchaModel = () => {
-  try {
-    return mongoose.model('captcha');
-  } catch {
-    return mongoose.model('captcha', CaptchaSchema);
-  }
+  return getMongoModel('captcha', CaptchaSchema);
 };
 
 // 生成随机验证码
@@ -90,7 +87,6 @@ const generateCaptchaSvg = (code: string): string => {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
-    await connectToDatabase();
     const CaptchaModel = getCaptchaModel();
     
     const { username } = req.query as { username: string };

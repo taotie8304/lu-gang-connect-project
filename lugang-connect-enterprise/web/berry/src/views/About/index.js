@@ -19,7 +19,7 @@ import SchoolIcon from '@mui/icons-material/School';
 import FavoriteIcon from '@mui/icons-material/Favorite';
 
 // 可配置的背景图片 - 可以通过环境变量或配置文件修改
-const HERO_BACKGROUND_IMAGE = process.env.REACT_APP_HERO_BG_IMAGE || 'https://airscend.com/lvdijinrongzhongxin.jpg';
+const HERO_BACKGROUND_IMAGE = process.env.REACT_APP_HERO_BG_IMAGE || 'https://www.shuohk.com/quehuaqiusetu.jpg';
 
 const About = () => {
   return (

@@ -5,15 +5,16 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { connectToDatabase } from '@/service/mongo';
+import { connectionMongo, getMongoModel } from '@fastgpt/service/common/mongo';
 import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyCaptcha } from '../account/captcha/getImgCaptcha';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import nodemailer from 'nodemailer';
-import mongoose from 'mongoose';
+
+const { Schema } = connectionMongo;
 
 // 验证码 Schema（复用 captcha collection）
-const CaptchaSchema = new mongoose.Schema({
+const CaptchaSchema = new Schema({
   username: { type: String, required: true, index: true },
   code: { type: String, required: true },
   type: { type: String, default: 'auth' },
@@ -22,13 +23,9 @@ const CaptchaSchema = new mongoose.Schema({
   timestamps: true
 });
 
-// 获取或创建 Model
+// 获取 Model
 const getCaptchaModel = () => {
-  try {
-    return mongoose.model('captcha');
-  } catch {
-    return mongoose.model('captcha', CaptchaSchema);
-  }
+  return getMongoModel('captcha', CaptchaSchema);
 };
 
 // 生成6位数字验证码
@@ -106,7 +103,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return jsonRes(res, { code: 405, error: 'Method not allowed' });
     }
 
-    await connectToDatabase();
     const CaptchaModel = getCaptchaModel();
     
     const { username, type, captcha } = req.body as {
