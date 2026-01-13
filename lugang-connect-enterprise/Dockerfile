@@ -32,9 +32,13 @@ RUN rm -rf node_modules package-lock.json && \
 RUN DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat /web/VERSION) npm run build || \
     (echo "Berry build failed, creating placeholder" && mkdir -p build)
 
-# 确保build目录存在
+# 确保build目录存在，并复制默认的index.html作为后备
 RUN mkdir -p /web/build/berry && \
-    (cp -r /web/berry/build/* /web/build/berry/ 2>/dev/null || true)
+    (cp -r /web/berry/build/* /web/build/berry/ 2>/dev/null || true) && \
+    if [ ! -f /web/build/berry/index.html ]; then \
+        echo "Berry build failed, copying default index.html"; \
+        cp /web/index.html /web/build/index.html 2>/dev/null || true; \
+    fi
 
 # 第二阶段：构建Go后端
 FROM golang:1.21-alpine AS go-builder
