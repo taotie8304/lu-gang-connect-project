@@ -1,5 +1,5 @@
 /**
- * 鲁港通 - One API 额度查询接口
+ * 鲁港通 - 鲁港通后端额度查询接口
  * GET /api/integration/oneapi/quota
  */
 
@@ -45,11 +45,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 通过用户名查询 One API 用户
+    // 通过用户名查询鲁港通后端用户
     const oneApiUserResult = await getOneApiUserByUsername(user.username);
 
     if (!oneApiUserResult.success || !oneApiUserResult.data) {
-      // 如果 One API 中没有该用户，返回默认值
+      // 如果鲁港通后端中没有该用户，返回默认值
       return jsonRes(res, {
         data: {
           quota: 0,

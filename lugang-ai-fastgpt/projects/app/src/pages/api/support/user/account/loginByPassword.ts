@@ -65,12 +65,12 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     language
   });
 
-  // 鲁港通：同步用户到 One API（首次登录时自动创建）
+  // 鲁港通：同步用户到鲁港通后端（首次登录时自动创建）
   try {
     await syncUserToOneApi(user.username, userDetail.team.memberName || user.username);
   } catch (error) {
     // 同步失败不影响登录流程，仅记录日志
-    console.error('Failed to sync user to One API:', error);
+    console.error('鲁港通后端用户同步失败:', error);
   }
 
   const token = await createUserSession({

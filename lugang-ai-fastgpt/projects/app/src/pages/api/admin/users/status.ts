@@ -3,7 +3,7 @@
  * 
  * POST /api/admin/users/status
  * 
- * 禁用/启用用户，同步到 One API
+ * 禁用/启用用户，同步到鲁港通后端
  */
 
 import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
@@ -65,17 +65,17 @@ async function handler(
     { status: fastgptStatus }
   );
 
-  // 同步到 One API
+  // 同步到鲁港通后端
   try {
     const oneApiUser = await getOneApiUserByUsername(user.username);
     if (oneApiUser.success && oneApiUser.data) {
-      const oneApiStatus = status === 'active' ? 1 : 2; // One API: 1=启用, 2=禁用
+      const oneApiStatus = status === 'active' ? 1 : 2; // 鲁港通后端: 1=启用, 2=禁用
       await updateOneApiUserStatus(oneApiUser.data.id, oneApiStatus);
-      addLog.info('User status synced to One API', { userId, username: user.username, status });
+      addLog.info('鲁港通后端用户状态同步成功', { userId, username: user.username, status });
     }
   } catch (error) {
-    // One API 同步失败不影响主流程，仅记录日志
-    addLog.warn('Failed to sync user status to One API', { userId, error });
+    // 鲁港通后端同步失败不影响主流程，仅记录日志
+    addLog.warn('鲁港通后端用户状态同步失败', { userId, error });
   }
 
   return {
