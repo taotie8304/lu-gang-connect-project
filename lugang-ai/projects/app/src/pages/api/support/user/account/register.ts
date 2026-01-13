@@ -1,6 +1,7 @@
 /**
  * 鲁港通 - 用户注册 API
  * 用户注册后自动在鲁港通后端创建对应账户
+ * 支持邮箱注册和手机号注册（手机号注册需要绑定邮箱接收验证码）
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
@@ -16,6 +17,16 @@ import { checkPasswordRule } from '@fastgpt/global/common/string/password';
 import { createJWT, setCookie } from '@fastgpt/service/support/permission/controller';
 import { getTmbInfoByTmbId } from '@fastgpt/service/support/user/team/controller';
 import axios from 'axios';
+
+// 判断是否为邮箱
+const isEmail = (str: string): boolean => {
+  return /^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$/.test(str);
+};
+
+// 判断是否为手机号
+const isPhone = (str: string): boolean => {
+  return /^1[3456789]\d{9}$/.test(str);
+};
 
 // 在鲁港通后端创建用户
 const createUserInBackend = async (username: string, password: string): Promise<void> => {
@@ -70,11 +81,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     await connectToDatabase();
     
-    const { username, password, code, inviterId } = req.body as {
+    const { username, password, code, inviterId, email } = req.body as {
       username: string;
       password: string;
       code: string;
       inviterId?: string;
+      email?: string; // 手机号注册时需要提供邮箱
     };
 
     // 参数验证
@@ -90,8 +102,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
+    // 确定验证码对应的邮箱
+    let verifyEmail = username;
+    let displayName = '';
+    
+    if (isPhone(username)) {
+      // 手机号注册：需要提供邮箱来验证
+      if (!email || !isEmail(email)) {
+        return jsonRes(res, { code: 400, error: '手机号注册需要提供有效的邮箱地址' });
+      }
+      verifyEmail = email;
+      displayName = username.slice(-4) + '用户'; // 使用手机号后4位
+    } else if (isEmail(username)) {
+      displayName = username.split('@')[0];
+    } else {
+      return jsonRes(res, { code: 400, error: '请输入正确的邮箱或手机号' });
+    }
+
     // 验证邮箱验证码（现在是异步函数）
-    const codeValid = await verifyAuthCode(username, code, UserAuthTypeEnum.register);
+    const codeValid = await verifyAuthCode(verifyEmail, code, UserAuthTypeEnum.register);
     if (!codeValid) {
       return jsonRes(res, { code: 400, error: '验证码错误或已过期' });
     }
@@ -99,7 +128,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 检查用户是否已存在
     const existingUser = await MongoUser.findOne({ username });
     if (existingUser) {
-      return jsonRes(res, { code: 400, error: '该邮箱已被注册' });
+      const accountType = isPhone(username) ? '手机号' : '邮箱';
+      return jsonRes(res, { code: 400, error: `该${accountType}已被注册` });
+    }
+
+    // 如果是手机号注册，也检查邮箱是否已被使用
+    if (isPhone(username) && email) {
+      const existingEmail = await MongoUser.findOne({ username: email });
+      if (existingEmail) {
+        return jsonRes(res, { code: 400, error: '该邮箱已被其他账号使用' });
+      }
     }
 
     // 创建用户
@@ -113,6 +151,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timezone: 'Asia/Shanghai',
           status: 'active',
           createTime: new Date(),
+          // 如果是手机号注册，保存关联的邮箱
+          ...(isPhone(username) && email ? { email } : {}),
           ...(inviterId ? { inviterId } : {})
         }],
         { session }
@@ -121,7 +161,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // 创建默认团队
       const tmb = await createDefaultTeam({
         userId: user._id.toString(),
-        teamName: username.split('@')[0] + '的团队',
+        teamName: displayName + '的团队',
         avatar: '/icon/logo.png',
         session
       });
@@ -148,7 +188,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const token = createJWT(tmbInfo);
     setCookie(res, token);
 
-    addLog.info('鲁港通用户注册成功', { username });
+    addLog.info('鲁港通用户注册成功', { username, isPhone: isPhone(username) });
 
     return jsonRes(res, {
       data: {

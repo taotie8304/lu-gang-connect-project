@@ -44,8 +44,9 @@ export const postRegister = ({
   inviterId,
   bd_vid,
   msclkid,
-  fastgpt_sem
-}: AccountRegisterBody) =>
+  fastgpt_sem,
+  email
+}: AccountRegisterBody & { email?: string }) =>
   POST<LoginSuccessResponse>(`/api/support/user/account/register`, {
     username,
     code,
@@ -53,7 +54,8 @@ export const postRegister = ({
     bd_vid,
     msclkid,
     fastgpt_sem,
-    password
+    password,
+    email
   });
 
 export const postFindPassword = ({

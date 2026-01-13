@@ -29,7 +29,13 @@ interface RegisterType {
   password: string;
   password2: string;
   code: string;
+  email?: string; // 手机号注册时需要提供邮箱
 }
+
+// 判断是否为手机号
+const isPhone = (str: string): boolean => {
+  return /^1[3456789]\d{9}$/.test(str);
+};
 
 const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   const { toast } = useToast();
@@ -49,8 +55,15 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
 
   const { SendCodeBox, openCodeAuthModal } = useSendCode({ type: 'register' });
 
+  // 判断当前输入是否为手机号
+  const isPhoneInput = isPhone(username || '');
+  
+  // 手机号注册时，验证码发送到邮箱
+  const email = watch('email');
+  const codeTargetUsername = isPhoneInput ? (email || '') : (username || '');
+
   const { runAsync: onclickRegister, loading: requesting } = useRequest2(
-    async ({ username, password, code }: RegisterType) => {
+    async ({ username, password, code, email }: RegisterType) => {
       loginSuccess(
         await postRegister({
           username,
@@ -60,7 +73,9 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           bd_vid: getBdVId(),
           msclkid: getMsclkid(),
           fastgpt_sem: getFastGPTSem(),
-          sourceDomain: getSourceDomain()
+          sourceDomain: getSourceDomain(),
+          // 手机号注册时传递邮箱
+          ...(isPhone(username) && email ? { email } : {})
         })
       );
       removeFastGPTSem();
@@ -145,6 +160,23 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             })}
           ></Input>
         </FormControl>
+        {/* 鲁港通：手机号注册时显示邮箱输入框 */}
+        {isPhoneInput && (
+          <FormControl mt={5} isInvalid={!!errors.email}>
+            <Input
+              {...inputStyles}
+              size={'lg'}
+              placeholder="请输入邮箱（用于接收验证码）"
+              {...register('email', {
+                required: isPhoneInput ? '手机号注册需要提供邮箱' : false,
+                pattern: {
+                  value: /^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$/,
+                  message: '请输入正确的邮箱地址'
+                }
+              })}
+            ></Input>
+          </FormControl>
+        )}
         <FormControl
           mt={5}
           isInvalid={!!errors.code}
@@ -162,7 +194,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
               required: t('user:password.code_required')
             })}
           ></Input>
-          <SendCodeBox username={username} />
+          <SendCodeBox username={codeTargetUsername} />
         </FormControl>
         <FormControl mt={5} isInvalid={!!errors.password}>
           <Input
