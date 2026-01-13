@@ -17,6 +17,14 @@ on:
         options:
           - 'true'
           - 'false'
+      no_cache:
+        description: '禁用构建缓存'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
 
 env:
   REGISTRY: ghcr.io
@@ -68,9 +76,10 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: ${{ github.event.inputs.no_cache == 'true' && '' || 'type=gha' }}
           cache-to: type=gha,mode=max
           platforms: linux/amd64
+          no-cache: ${{ github.event.inputs.no_cache == 'true' }}
           build-args: |
             proxy=${{ github.event.inputs.use_proxy == 'true' && 'true' || '' }}
             base_url=
