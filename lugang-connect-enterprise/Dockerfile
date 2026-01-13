@@ -60,11 +60,20 @@ WORKDIR /build
 COPY go.mod go.sum ./
 RUN go mod download
 
-# 复制所有源代码
+# 复制所有源代码（包含默认的 web/build/index.html）
 COPY . .
+
+# 备份默认的 index.html
+RUN cp ./web/build/index.html /tmp/default_index.html 2>/dev/null || true
 
 # 复制构建好的前端文件到正确位置
 COPY --from=web-builder /web/build ./web/build/
+
+# 如果 berry 构建失败，恢复默认的 index.html
+RUN if [ ! -f ./web/build/berry/index.html ]; then \
+        echo "Berry build failed, restoring default index.html"; \
+        cp /tmp/default_index.html ./web/build/index.html; \
+    fi
 
 # 构建鲁港通企业版
 RUN go build -trimpath -ldflags "-s -w -X 'github.com/lugang-connect/enterprise/common.Version=v1.0.0-lugang'" -o lugang-enterprise
