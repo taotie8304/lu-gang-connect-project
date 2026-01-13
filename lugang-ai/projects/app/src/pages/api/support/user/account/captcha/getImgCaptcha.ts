@@ -1,29 +1,36 @@
 /**
  * 鲁港通 - 图片验证码生成 API
  * 用于用户注册时的图片验证码验证
+ * 使用 MongoDB 存储验证码，确保多实例环境下的可靠性
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-import { connectToDatabase } from '@/service/mongo';
+import { connectToDatabase, getMongoModel } from '@/service/mongo';
 import { addLog } from '@fastgpt/service/common/system/log';
-import crypto from 'crypto';
+import mongoose from 'mongoose';
 
-// 验证码存储（生产环境应使用 Redis）
-const captchaStore = new Map<string, { code: string; expireAt: number }>();
+// 验证码 Schema
+const CaptchaSchema = new mongoose.Schema({
+  username: { type: String, required: true, index: true },
+  code: { type: String, required: true },
+  type: { type: String, default: 'image' }, // image 或 auth
+  expireAt: { type: Date, required: true, index: { expires: 0 } } // TTL 索引自动删除
+}, {
+  timestamps: true
+});
 
-// 清理过期验证码
-const cleanExpiredCaptcha = () => {
-  const now = Date.now();
-  for (const [key, value] of captchaStore.entries()) {
-    if (value.expireAt < now) {
-      captchaStore.delete(key);
-    }
+// 获取或创建 Model
+const getCaptchaModel = () => {
+  try {
+    return mongoose.model('captcha');
+  } catch {
+    return mongoose.model('captcha', CaptchaSchema);
   }
 };
 
 // 生成随机验证码
 const generateCaptchaCode = (length: number = 4): string => {
-  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const chars = '0123456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // 去掉容易混淆的 I O
   let code = '';
   for (let i = 0; i < length; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -84,6 +91,7 @@ const generateCaptchaSvg = (code: string): string => {
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     await connectToDatabase();
+    const CaptchaModel = getCaptchaModel();
     
     const { username } = req.query as { username: string };
     
@@ -94,16 +102,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 清理过期验证码
-    cleanExpiredCaptcha();
-
     // 生成验证码
     const code = generateCaptchaCode(4);
-    const captchaKey = `captcha:${username}:${Date.now()}`;
+    
+    // 删除旧的验证码
+    await CaptchaModel.deleteMany({ username, type: 'image' });
     
     // 存储验证码（5分钟有效）
-    const expireAt = Date.now() + 5 * 60 * 1000;
-    captchaStore.set(username, { code: code.toUpperCase(), expireAt });
+    const expireAt = new Date(Date.now() + 5 * 60 * 1000);
+    await CaptchaModel.create({
+      username,
+      code: code.toUpperCase(),
+      type: 'image',
+      expireAt
+    });
 
     // 生成 SVG 图片
     const svg = generateCaptchaSvg(code);
@@ -127,21 +139,30 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 // 导出验证码验证函数供其他 API 使用
-export const verifyCaptcha = (username: string, code: string): boolean => {
-  const stored = captchaStore.get(username);
-  if (!stored) {
+export const verifyCaptcha = async (username: string, code: string): Promise<boolean> => {
+  try {
+    const CaptchaModel = getCaptchaModel();
+    
+    const captcha = await CaptchaModel.findOne({
+      username,
+      type: 'image',
+      expireAt: { $gt: new Date() }
+    });
+    
+    if (!captcha) {
+      return false;
+    }
+    
+    const isValid = captcha.code === code.toUpperCase();
+    
+    if (isValid) {
+      // 验证成功后删除
+      await CaptchaModel.deleteOne({ _id: captcha._id });
+    }
+    
+    return isValid;
+  } catch (error) {
+    addLog.error('鲁港通验证码验证失败', error);
     return false;
   }
-  
-  if (stored.expireAt < Date.now()) {
-    captchaStore.delete(username);
-    return false;
-  }
-  
-  const isValid = stored.code === code.toUpperCase();
-  if (isValid) {
-    captchaStore.delete(username); // 验证成功后删除
-  }
-  
-  return isValid;
 };

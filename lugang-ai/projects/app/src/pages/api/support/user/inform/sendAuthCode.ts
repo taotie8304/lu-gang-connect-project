@@ -1,6 +1,7 @@
 /**
  * 鲁港通 - 发送验证码 API
  * 用于用户注册、找回密码等场景的邮箱/短信验证码发送
+ * 使用 MongoDB 存储验证码，确保多实例环境下的可靠性
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
@@ -9,18 +10,24 @@ import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyCaptcha } from '../account/captcha/getImgCaptcha';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import nodemailer from 'nodemailer';
-import crypto from 'crypto';
+import mongoose from 'mongoose';
 
-// 验证码存储（生产环境应使用 Redis）
-const authCodeStore = new Map<string, { code: string; expireAt: number; type: string }>();
+// 验证码 Schema（复用 captcha collection）
+const CaptchaSchema = new mongoose.Schema({
+  username: { type: String, required: true, index: true },
+  code: { type: String, required: true },
+  type: { type: String, default: 'auth' },
+  expireAt: { type: Date, required: true, index: { expires: 0 } }
+}, {
+  timestamps: true
+});
 
-// 清理过期验证码
-const cleanExpiredAuthCode = () => {
-  const now = Date.now();
-  for (const [key, value] of authCodeStore.entries()) {
-    if (value.expireAt < now) {
-      authCodeStore.delete(key);
-    }
+// 获取或创建 Model
+const getCaptchaModel = () => {
+  try {
+    return mongoose.model('captcha');
+  } catch {
+    return mongoose.model('captcha', CaptchaSchema);
   }
 };
 
@@ -100,6 +107,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await connectToDatabase();
+    const CaptchaModel = getCaptchaModel();
     
     const { username, type, captcha } = req.body as {
       username: string;
@@ -116,36 +124,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return jsonRes(res, { code: 400, error: '请输入图片验证码' });
     }
 
-    // 验证图片验证码
-    if (!verifyCaptcha(username, captcha)) {
+    // 验证图片验证码（现在是异步函数）
+    const captchaValid = await verifyCaptcha(username, captcha);
+    if (!captchaValid) {
       return jsonRes(res, { code: 400, error: '图片验证码错误或已过期' });
     }
 
-    // 清理过期验证码
-    cleanExpiredAuthCode();
-
     // 检查是否频繁发送（1分钟内只能发送一次）
-    const existingCode = authCodeStore.get(`${type}:${username}`);
-    if (existingCode && existingCode.expireAt > Date.now() + 9 * 60 * 1000) {
+    const authType = `auth:${type}`;
+    const existingCode = await CaptchaModel.findOne({
+      username,
+      type: authType,
+      expireAt: { $gt: new Date(Date.now() + 9 * 60 * 1000) } // 还剩9分钟以上说明刚发送
+    });
+    
+    if (existingCode) {
       return jsonRes(res, { code: 400, error: '验证码发送过于频繁，请稍后再试' });
     }
 
     // 生成验证码
     const code = generateAuthCode();
-    const expireAt = Date.now() + 10 * 60 * 1000; // 10分钟有效
+    const expireAt = new Date(Date.now() + 10 * 60 * 1000); // 10分钟有效
 
     // 发送验证码
     if (isEmail(username)) {
       await sendEmail(username, code, type);
     } else if (isPhone(username)) {
-      // TODO: 实现短信发送
       return jsonRes(res, { code: 400, error: '暂不支持手机号注册，请使用邮箱' });
     } else {
       return jsonRes(res, { code: 400, error: '请输入正确的邮箱或手机号' });
     }
 
+    // 删除旧的验证码
+    await CaptchaModel.deleteMany({ username, type: authType });
+    
     // 存储验证码
-    authCodeStore.set(`${type}:${username}`, { code, expireAt, type });
+    await CaptchaModel.create({
+      username,
+      code,
+      type: authType,
+      expireAt
+    });
 
     addLog.info('鲁港通验证码发送成功', { username, type });
 
@@ -162,23 +181,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 }
 
 // 导出验证码验证函数供注册 API 使用
-export const verifyAuthCode = (username: string, code: string, type: string): boolean => {
-  const key = `${type}:${username}`;
-  const stored = authCodeStore.get(key);
-  
-  if (!stored) {
+export const verifyAuthCode = async (username: string, code: string, type: string): Promise<boolean> => {
+  try {
+    const CaptchaModel = getCaptchaModel();
+    const authType = `auth:${type}`;
+    
+    const captcha = await CaptchaModel.findOne({
+      username,
+      type: authType,
+      expireAt: { $gt: new Date() }
+    });
+    
+    if (!captcha) {
+      return false;
+    }
+    
+    const isValid = captcha.code === code;
+    
+    if (isValid) {
+      // 验证成功后删除
+      await CaptchaModel.deleteOne({ _id: captcha._id });
+    }
+    
+    return isValid;
+  } catch (error) {
+    addLog.error('鲁港通邮箱验证码验证失败', error);
     return false;
   }
-  
-  if (stored.expireAt < Date.now()) {
-    authCodeStore.delete(key);
-    return false;
-  }
-  
-  const isValid = stored.code === code;
-  if (isValid) {
-    authCodeStore.delete(key); // 验证成功后删除
-  }
-  
-  return isValid;
 };

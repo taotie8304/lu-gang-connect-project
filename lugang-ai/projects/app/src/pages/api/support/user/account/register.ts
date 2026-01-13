@@ -90,8 +90,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 验证邮箱验证码
-    if (!verifyAuthCode(username, code, UserAuthTypeEnum.register)) {
+    // 验证邮箱验证码（现在是异步函数）
+    const codeValid = await verifyAuthCode(username, code, UserAuthTypeEnum.register);
+    if (!codeValid) {
       return jsonRes(res, { code: 400, error: '验证码错误或已过期' });
     }
 
