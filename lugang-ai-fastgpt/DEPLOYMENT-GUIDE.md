@@ -2,7 +2,9 @@
 
 ## 📋 部署概览
 
-本指南将帮助您在服务器上部署鲁港通跨境AI智能平台（基于 FastGPT 4.14.4 定制）。
+本指南将帮助您在服务器上部署鲁港通跨境AI智能平台，包含两个核心服务：
+- **鲁港通前端**（鲁港通跨境AI智能服务助手）- 基于 FastGPT 4.14.4 定制
+- **鲁港通后端**（鲁港通跨境AI智能服务后端）- 基于 One API 定制
 
 ### 系统架构
 
@@ -11,13 +13,12 @@
 │                    用户访问                                  │
 │                       │                                      │
 │                       ▼                                      │
-│              www.airscend.com:443                           │
-│                    (Nginx)                                   │
+│                   Nginx 反向代理                             │
 │                       │                                      │
 │         ┌────────────┴────────────┐                         │
 │         ▼                         ▼                          │
-│   FastGPT (3210)           One API (8080)                   │
-│   鲁港通AI主应用            api.airscend.com                 │
+│   www.airscend.com          api.airscend.com                │
+│   鲁港通前端 (3210)          鲁港通后端 (8080)               │
 │         │                         │                          │
 │         └────────────┬────────────┘                         │
 │                      │                                       │
@@ -33,10 +34,10 @@
 | 项目 | 值 |
 |------|-----|
 | 服务器 IP | 156.225.30.134 |
-| FastGPT 域名 | www.airscend.com |
-| One API 域名 | api.airscend.com |
-| FastGPT 端口 | 3210 |
-| One API 端口 | 8080 |
+| 鲁港通前端域名 | www.airscend.com |
+| 鲁港通后端域名 | api.airscend.com |
+| 鲁港通前端端口 | 3210 |
+| 鲁港通后端端口 | 8080 |
 
 ---
 
@@ -59,11 +60,17 @@ git push origin main
 ### 第二步：等待 GitHub Actions 构建完成
 
 1. 访问 GitHub 仓库的 Actions 页面
-2. 查看 "Build and Push Docker Image" 工作流
+2. 查看构建工作流：
+   - **鲁港通前端**: "Build and Push Docker Image" 
+   - **鲁港通后端**: "Build One API Docker Image"
 3. 等待构建完成（约 5-10 分钟）
 4. 构建成功后，镜像会推送到：
    ```
+   # 鲁港通前端镜像
    ghcr.io/<your-github-username>/lugang-ai:latest
+   
+   # 鲁港通后端镜像
+   ghcr.io/<your-github-username>/lugang-oneapi:latest
    ```
 
 ### 第三步：服务器部署
@@ -136,7 +143,7 @@ PG_PASSWORD=LuGang@PG2025
 EOF
 ```
 
-#### 2.2 配置应用环境变量
+#### 2.2 配置鲁港通前端环境变量
 
 ```bash
 # 编辑环境变量文件
@@ -159,13 +166,13 @@ FILE_TOKEN_KEY=<随机32位字符串>
 AES256_SECRET_KEY=<随机32位字符串>
 ROOT_KEY=<随机32位字符串>
 
-# One API 配置
-AIPROXY_API_ENDPOINT=http://156.225.30.134:8080
-AIPROXY_API_TOKEN=sk-your-oneapi-admin-token
+# 鲁港通后端配置
+AIPROXY_API_ENDPOINT=https://api.airscend.com
+AIPROXY_API_TOKEN=sk-your-token
 
-# One API 集成（用于用户同步和额度查询）
-ONE_API_URL=http://156.225.30.134:8080
-ONE_API_TOKEN=sk-your-oneapi-admin-token
+# 鲁港通后端管理接口（用于用户同步和额度查询）
+ONE_API_URL=https://api.airscend.com
+ONE_API_TOKEN=sk-your-token
 
 # 域名配置
 FE_DOMAIN=https://www.airscend.com
@@ -202,18 +209,24 @@ chmod +x deploy-prod.sh
 # 检查容器状态
 docker-compose -f docker-compose.prod.yml ps
 
-# 检查应用健康状态
+# 检查鲁港通前端健康状态
 curl http://localhost:3210/api/health
 
-# 查看应用日志
+# 检查鲁港通后端健康状态
+curl http://localhost:8080/api/status
+
+# 查看鲁港通前端日志
 docker logs -f lugang-ai-app
+
+# 查看鲁港通后端日志
+docker logs -f lugang-oneapi
 ```
 
 ---
 
 ## 🔧 Nginx 反向代理配置
 
-### FastGPT (www.airscend.com)
+### 鲁港通前端 (www.airscend.com)
 
 ```nginx
 server {
@@ -260,7 +273,7 @@ server {
 }
 ```
 
-### One API (api.airscend.com)
+### 鲁港通后端 (api.airscend.com)
 
 ```nginx
 server {
@@ -307,9 +320,13 @@ cd /www/wwwroot/lugang-ai-fastgpt
 git pull origin main
 ./deploy-prod.sh
 
-# 方式二：手动更新
+# 方式二：手动更新鲁港通前端
 docker pull ghcr.io/<your-username>/lugang-ai:latest
 docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-ai
+
+# 方式三：手动更新鲁港通后端
+docker pull ghcr.io/<your-username>/lugang-oneapi:latest
+docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-oneapi
 ```
 
 ---
@@ -322,8 +339,11 @@ docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-ai
 # 查看所有容器状态
 docker-compose -f docker-compose.prod.yml ps
 
-# 查看应用日志
+# 查看鲁港通前端日志
 docker logs -f lugang-ai-app
+
+# 查看鲁港通后端日志
+docker logs -f lugang-oneapi
 
 # 查看最近 100 行日志
 docker logs --tail 100 lugang-ai-app
@@ -335,8 +355,11 @@ docker logs --tail 100 lugang-ai-app
 # 重启所有服务
 docker-compose -f docker-compose.prod.yml restart
 
-# 只重启应用
+# 只重启鲁港通前端
 docker-compose -f docker-compose.prod.yml restart lugang-ai
+
+# 只重启鲁港通后端
+docker-compose -f docker-compose.prod.yml restart lugang-oneapi
 ```
 
 ### 停止服务
@@ -379,6 +402,7 @@ docker login ghcr.io
 
 # 检查镜像是否存在
 docker manifest inspect ghcr.io/<your-username>/lugang-ai:latest
+docker manifest inspect ghcr.io/<your-username>/lugang-oneapi:latest
 
 # 重新登录
 echo "your-token" | docker login ghcr.io -u your-username --password-stdin
@@ -389,12 +413,14 @@ echo "your-token" | docker login ghcr.io -u your-username --password-stdin
 ```bash
 # 查看详细日志
 docker logs lugang-ai-app
+docker logs lugang-oneapi
 
 # 检查配置文件
 cat projects/app/.env.local
 
 # 检查端口占用
 netstat -tlnp | grep 3210
+netstat -tlnp | grep 8080
 ```
 
 ### 3. 数据库连接失败
@@ -413,11 +439,11 @@ docker exec -it lugang-ai-mongo mongosh \
 docker exec -it lugang-ai-pg psql -U postgres
 ```
 
-### 4. One API 连接失败
+### 4. 鲁港通后端连接失败
 
 ```bash
-# 检查 One API 服务状态
-curl http://156.225.30.134:8080/api/status
+# 检查鲁港通后端服务状态
+curl http://localhost:8080/api/status
 
 # 检查环境变量配置
 grep ONE_API projects/app/.env.local
@@ -459,3 +485,12 @@ grep ONE_API projects/app/.env.local
 ## 📞 技术支持
 
 如有问题，请联系技术支持或提交 GitHub Issue。
+
+---
+
+## 📝 术语说明
+
+| 简称 | 全称 | 说明 |
+|------|------|------|
+| 鲁港通前端 | 鲁港通跨境AI智能服务助手 | 基于 FastGPT 二开的用户界面 |
+| 鲁港通后端 | 鲁港通跨境AI智能服务后端 | 基于 One API 的 AI 模型网关 |

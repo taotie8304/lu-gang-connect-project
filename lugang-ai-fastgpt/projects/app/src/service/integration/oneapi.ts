@@ -1,15 +1,15 @@
 /**
- * 鲁港通 - One API 集成服务
- * 用于与 One API 系统进行用户同步、额度查询等操作
+ * 鲁港通 - 鲁港通后端集成服务
+ * 用于与鲁港通后端（鲁港通跨境AI智能服务后端）进行用户同步、额度查询等操作
  */
 
 import { addLog } from '@fastgpt/service/common/system/log';
 
-// One API 配置
-const ONE_API_BASE_URL = process.env.ONE_API_URL || 'http://localhost:8080';
-const ONE_API_TOKEN = process.env.ONE_API_TOKEN || '';
+// 鲁港通后端配置
+const LUGANG_BACKEND_URL = process.env.ONE_API_URL || 'http://localhost:8080';
+const LUGANG_BACKEND_TOKEN = process.env.ONE_API_TOKEN || '';
 
-// One API 用户类型
+// 鲁港通后端用户类型
 export interface OneApiUser {
   id: number;
   username: string;
@@ -26,7 +26,7 @@ export interface OneApiUser {
   inviter_id: number;
 }
 
-// One API 响应类型
+// 鲁港通后端响应类型
 interface OneApiResponse<T = any> {
   success: boolean;
   message: string;
@@ -34,20 +34,20 @@ interface OneApiResponse<T = any> {
 }
 
 /**
- * One API 请求封装
+ * 鲁港通后端请求封装
  */
-async function oneApiRequest<T = any>(
+async function lugangBackendRequest<T = any>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<OneApiResponse<T>> {
-  const url = `${ONE_API_BASE_URL}${endpoint}`;
+  const url = `${LUGANG_BACKEND_URL}${endpoint}`;
   
   try {
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${ONE_API_TOKEN}`,
+        'Authorization': `Bearer ${LUGANG_BACKEND_TOKEN}`,
         ...options.headers,
       },
     });
@@ -55,7 +55,7 @@ async function oneApiRequest<T = any>(
     const data = await response.json();
     
     if (!response.ok) {
-      addLog.warn('One API request failed', { url, status: response.status, data });
+      addLog.warn('鲁港通后端请求失败', { url, status: response.status, data });
       return {
         success: false,
         message: data.message || `HTTP ${response.status}`,
@@ -68,7 +68,7 @@ async function oneApiRequest<T = any>(
       data,
     };
   } catch (error: any) {
-    addLog.error('One API request error', { url, error: error.message });
+    addLog.error('鲁港通后端请求错误', { url, error: error.message });
     return {
       success: false,
       message: error.message || 'Network error',
@@ -77,7 +77,7 @@ async function oneApiRequest<T = any>(
 }
 
 /**
- * 创建 One API 用户
+ * 创建鲁港通后端用户
  * @param username 用户名（通常使用邮箱）
  * @param password 密码
  * @param displayName 显示名称
@@ -89,7 +89,7 @@ export async function createOneApiUser(
   displayName: string,
   initialQuota: number = 10000
 ): Promise<OneApiResponse<OneApiUser>> {
-  const result = await oneApiRequest<OneApiUser>('/api/user', {
+  const result = await lugangBackendRequest<OneApiUser>('/api/user', {
     method: 'POST',
     body: JSON.stringify({
       username,
@@ -102,7 +102,7 @@ export async function createOneApiUser(
   });
 
   if (result.success) {
-    addLog.info('One API user created', { username, displayName });
+    addLog.info('鲁港通后端用户创建成功', { username, displayName });
   }
 
   return result;
@@ -110,10 +110,10 @@ export async function createOneApiUser(
 
 /**
  * 查询用户额度
- * @param userId One API 用户 ID
+ * @param userId 鲁港通后端用户 ID
  */
 export async function getOneApiUserQuota(userId: number): Promise<OneApiResponse<{ quota: number; used_quota: number }>> {
-  const result = await oneApiRequest<OneApiUser>(`/api/user/${userId}`);
+  const result = await lugangBackendRequest<OneApiUser>(`/api/user/${userId}`);
   
   if (result.success && result.data) {
     return {
@@ -137,8 +137,8 @@ export async function getOneApiUserQuota(userId: number): Promise<OneApiResponse
  * @param username 用户名
  */
 export async function getOneApiUserByUsername(username: string): Promise<OneApiResponse<OneApiUser>> {
-  // One API 没有直接通过用户名查询的接口，需要通过搜索
-  const result = await oneApiRequest<{ data: OneApiUser[] }>(`/api/user/search?keyword=${encodeURIComponent(username)}`);
+  // 鲁港通后端没有直接通过用户名查询的接口，需要通过搜索
+  const result = await lugangBackendRequest<{ data: OneApiUser[] }>(`/api/user/search?keyword=${encodeURIComponent(username)}`);
   
   if (result.success && result.data?.data) {
     const user = result.data.data.find(u => u.username === username || u.email === username);
@@ -159,11 +159,11 @@ export async function getOneApiUserByUsername(username: string): Promise<OneApiR
 
 /**
  * 更新用户额度
- * @param userId One API 用户 ID
+ * @param userId 鲁港通后端用户 ID
  * @param quota 新的额度值
  */
 export async function updateOneApiUserQuota(userId: number, quota: number): Promise<OneApiResponse> {
-  const result = await oneApiRequest(`/api/user`, {
+  const result = await lugangBackendRequest(`/api/user`, {
     method: 'PUT',
     body: JSON.stringify({
       id: userId,
@@ -172,7 +172,7 @@ export async function updateOneApiUserQuota(userId: number, quota: number): Prom
   });
 
   if (result.success) {
-    addLog.info('One API user quota updated', { userId, quota });
+    addLog.info('鲁港通后端用户额度更新成功', { userId, quota });
   }
 
   return result;
@@ -180,11 +180,11 @@ export async function updateOneApiUserQuota(userId: number, quota: number): Prom
 
 /**
  * 禁用/启用用户
- * @param userId One API 用户 ID
+ * @param userId 鲁港通后端用户 ID
  * @param status 状态：1=启用，2=禁用
  */
 export async function updateOneApiUserStatus(userId: number, status: 1 | 2): Promise<OneApiResponse> {
-  const result = await oneApiRequest(`/api/user`, {
+  const result = await lugangBackendRequest(`/api/user`, {
     method: 'PUT',
     body: JSON.stringify({
       id: userId,
@@ -193,7 +193,7 @@ export async function updateOneApiUserStatus(userId: number, status: 1 | 2): Pro
   });
 
   if (result.success) {
-    addLog.info('One API user status updated', { userId, status });
+    addLog.info('鲁港通后端用户状态更新成功', { userId, status });
   }
 
   return result;
@@ -201,26 +201,26 @@ export async function updateOneApiUserStatus(userId: number, status: 1 | 2): Pro
 
 /**
  * 删除用户
- * @param userId One API 用户 ID
+ * @param userId 鲁港通后端用户 ID
  */
 export async function deleteOneApiUser(userId: number): Promise<OneApiResponse> {
-  const result = await oneApiRequest(`/api/user/${userId}`, {
+  const result = await lugangBackendRequest(`/api/user/${userId}`, {
     method: 'DELETE',
   });
 
   if (result.success) {
-    addLog.info('One API user deleted', { userId });
+    addLog.info('鲁港通后端用户删除成功', { userId });
   }
 
   return result;
 }
 
 /**
- * 检查 One API 服务是否可用
+ * 检查鲁港通后端服务是否可用
  */
 export async function checkOneApiHealth(): Promise<boolean> {
   try {
-    const response = await fetch(`${ONE_API_BASE_URL}/api/status`);
+    const response = await fetch(`${LUGANG_BACKEND_URL}/api/status`);
     return response.ok;
   } catch {
     return false;
@@ -228,8 +228,8 @@ export async function checkOneApiHealth(): Promise<boolean> {
 }
 
 /**
- * 同步用户到 One API（如果用户不存在则创建）
- * 用于用户首次登录时自动创建 One API 账户
+ * 同步用户到鲁港通后端（如果用户不存在则创建）
+ * 用于用户首次登录时自动创建鲁港通后端账户
  * @param username 用户名（通常是邮箱）
  * @param displayName 显示名称
  * @param initialQuota 初始额度（默认 10000）
@@ -243,20 +243,20 @@ export async function syncUserToOneApi(
   const existingUser = await getOneApiUserByUsername(username);
   
   if (existingUser.success && existingUser.data) {
-    addLog.info('One API user already exists', { username });
+    addLog.info('鲁港通后端用户已存在', { username });
     return existingUser;
   }
   
   // 用户不存在，创建新用户
-  // 生成随机密码（用户通过 FastGPT 登录，不需要知道 One API 密码）
+  // 生成随机密码（用户通过鲁港通前端登录，不需要知道鲁港通后端密码）
   const randomPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12);
   
   const result = await createOneApiUser(username, randomPassword, displayName, initialQuota);
   
   if (result.success) {
-    addLog.info('One API user synced successfully', { username, displayName });
+    addLog.info('鲁港通后端用户同步成功', { username, displayName });
   } else {
-    addLog.warn('Failed to sync user to One API', { username, error: result.message });
+    addLog.warn('鲁港通后端用户同步失败', { username, error: result.message });
   }
   
   return result;

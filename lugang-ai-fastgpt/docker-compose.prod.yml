@@ -1,11 +1,15 @@
 version: '3.8'
 
-# 鲁港通AI - FastGPT定制版生产环境部署配置
-# 使用GitHub Container Registry镜像
-# 基于FastGPT 4.14.4
+# ===== 鲁港通跨境AI智能平台 - 生产环境部署配置 =====
+# 
+# 包含两个核心服务：
+# - 鲁港通前端（鲁港通跨境AI智能服务助手）- 基于 FastGPT 4.14.4 定制
+# - 鲁港通后端（鲁港通跨境AI智能服务后端）- 基于 One API 定制
+#
+# 使用 GitHub Container Registry 镜像
 
 services:
-  # ===== MongoDB数据库 =====
+  # ===== MongoDB 数据库 =====
   mongo:
     image: mongo:5.0.18
     container_name: lugang-ai-mongo
@@ -20,7 +24,7 @@ services:
     networks:
       - lugang-ai-network
 
-  # ===== PostgreSQL向量数据库 =====
+  # ===== PostgreSQL 向量数据库 =====
   pg:
     image: pgvector/pgvector:pg15
     container_name: lugang-ai-pg
@@ -36,7 +40,7 @@ services:
     networks:
       - lugang-ai-network
 
-  # ===== Redis缓存 =====
+  # ===== Redis 缓存 =====
   redis:
     image: redis:7.2-alpine
     container_name: lugang-ai-redis
@@ -48,10 +52,10 @@ services:
     networks:
       - lugang-ai-network
 
-  # ===== 鲁港通AI主应用 =====
+  # ===== 鲁港通前端（鲁港通跨境AI智能服务助手）=====
+  # 域名: www.airscend.com
+  # 端口: 3210
   lugang-ai:
-    # GitHub Container Registry镜像
-    # 格式: ghcr.io/<github-username>/lugang-ai:latest
     image: ${LUGANG_AI_IMAGE:-ghcr.io/your-username/lugang-ai:latest}
     container_name: lugang-ai-app
     restart: always
@@ -71,6 +75,33 @@ services:
       timeout: 10s
       retries: 3
 
+  # ===== 鲁港通后端（鲁港通跨境AI智能服务后端）=====
+  # 域名: api.airscend.com
+  # 端口: 8080
+  lugang-oneapi:
+    image: ${LUGANG_ONEAPI_IMAGE:-ghcr.io/your-username/lugang-oneapi:latest}
+    container_name: lugang-oneapi
+    restart: always
+    ports:
+      - "8080:3000"
+    depends_on:
+      - pg
+      - redis
+    environment:
+      - SQL_DSN=postgres://${PG_USER:-postgres}:${PG_PASSWORD:-password}@pg:5432/oneapi?sslmode=disable
+      - REDIS_CONN_STRING=redis://redis:6379
+      - SESSION_SECRET=${SESSION_SECRET:-lugang-session-secret-2025}
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./data/oneapi:/data
+    networks:
+      - lugang-ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
 networks:
   lugang-ai-network:
     driver: bridge
@@ -79,3 +110,4 @@ volumes:
   mongo-data:
   pg-data:
   redis-data:
+  oneapi-data:
