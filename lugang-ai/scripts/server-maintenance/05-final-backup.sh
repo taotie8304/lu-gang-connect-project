@@ -22,17 +22,67 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 FINAL_BACKUP_DIR="${BACKUP_ROOT}/lugang-final-${TIMESTAMP}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
-# 数据库配置
-MONGO_USER="root"
-MONGO_PASSWORD="LuGang2024Secure"
-PG_USER="postgres"
-PG_PASSWORD="LuGang2024Secure"
+# 数据库配置 - 与 docker-compose.yml 保持一致
+# 默认密码来自 docker-compose.yml: MONGO_INITDB_ROOT_PASSWORD=password, POSTGRES_PASSWORD=password
+MONGO_USER="${MONGO_USER:-root}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+PG_USER="${PG_USER:-postgres}"
+PG_PASSWORD="${PG_PASSWORD:-password}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║        鲁港通 - 最终备份脚本 v1.0                     ║${NC}"
+echo -e "${GREEN}║        鲁港通 - 最终备份脚本 v1.1                     ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}此脚本将创建一个干净的、可用于回滚的最终备份${NC}"
+echo ""
+
+# ===== 前置检查 =====
+echo -e "${YELLOW}[0/5] 前置检查...${NC}"
+
+# 检查项目目录
+if [ ! -d "${PROJECT_DIR}" ]; then
+    echo -e "${RED}错误: 项目目录不存在: ${PROJECT_DIR}${NC}"
+    exit 1
+fi
+
+# 检查 .env.local 文件
+if [ ! -f "${PROJECT_DIR}/projects/app/.env.local" ]; then
+    echo -e "${RED}错误: 配置文件不存在: ${PROJECT_DIR}/projects/app/.env.local${NC}"
+    exit 1
+fi
+
+# 检查必要的容器是否运行
+echo "检查容器状态..."
+CONTAINERS_OK=true
+for container in lugang-ai-app lugang-ai-mongo lugang-ai-pg; do
+    if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
+        echo -e "  ${GREEN}✓${NC} ${container} 运行中"
+    else
+        echo -e "  ${RED}✗${NC} ${container} 未运行"
+        CONTAINERS_OK=false
+    fi
+done
+
+if [ "$CONTAINERS_OK" = false ]; then
+    echo -e "${RED}错误: 部分容器未运行，无法完成备份${NC}"
+    exit 1
+fi
+
+# 验证数据库连接
+echo ""
+echo "验证数据库连接..."
+if ! docker exec lugang-ai-mongo mongosh --username="${MONGO_USER}" --password="${MONGO_PASSWORD}" --authenticationDatabase=admin --eval "db.adminCommand('ping')" --quiet 2>/dev/null; then
+    if ! docker exec lugang-ai-mongo mongo --username="${MONGO_USER}" --password="${MONGO_PASSWORD}" --authenticationDatabase=admin --eval "db.adminCommand('ping')" --quiet 2>/dev/null; then
+        echo -e "${RED}警告: MongoDB 连接验证失败，密码可能不正确${NC}"
+        echo "当前使用的密码: ${MONGO_PASSWORD}"
+        read -p "是否继续? (y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+fi
+echo -e "${GREEN}✓ 前置检查完成${NC}"
 echo ""
 
 # 确认
@@ -158,7 +208,7 @@ BACKUP_DIR="${SCRIPT_DIR}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
 MONGO_USER="root"
-MONGO_PASSWORD="LuGang2024Secure"
+MONGO_PASSWORD="password"
 PG_USER="postgres"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
@@ -231,6 +281,14 @@ if [ -f "${BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" ]; then
         echo "重启容器使用恢复的镜像..."
         docker stop lugang-ai-app 2>/dev/null || true
         docker rm lugang-ai-app 2>/dev/null || true
+        
+        # 检查网络是否存在
+        NETWORK_NAME="lugang-ai-network"
+        if ! docker network ls --format "{{.Name}}" | grep -q "^${NETWORK_NAME}$"; then
+            echo "创建网络: ${NETWORK_NAME}"
+            docker network create ${NETWORK_NAME}
+        fi
+        
         docker run -d \
             --name lugang-ai-app \
             --restart always \

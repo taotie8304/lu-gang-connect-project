@@ -22,19 +22,84 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 BACKUP_DIR="${BACKUP_ROOT}/lugang-backup-${TIMESTAMP}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
-# 数据库配置（请确认这些密码正确）
-MONGO_USER="root"
-MONGO_PASSWORD="LuGang2024Secure"
-PG_USER="postgres"
-PG_PASSWORD="LuGang2024Secure"
+# 数据库配置 - 从环境变量或默认值获取
+# 注意：这些密码需要与 docker-compose.yml 中的配置一致！
+# 默认密码来自 docker-compose.yml: MONGO_INITDB_ROOT_PASSWORD=password, POSTGRES_PASSWORD=password
+MONGO_USER="${MONGO_USER:-root}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+PG_USER="${PG_USER:-postgres}"
+PG_PASSWORD="${PG_PASSWORD:-password}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║        鲁港通 - 完整备份脚本 v1.0                     ║${NC}"
+echo -e "${GREEN}║        鲁港通 - 完整备份脚本 v1.1                     ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}备份时间: ${TIMESTAMP}${NC}"
 echo -e "${BLUE}备份目录: ${BACKUP_DIR}${NC}"
 echo ""
+
+# ===== 前置检查 =====
+echo -e "${YELLOW}[0/8] 前置检查...${NC}"
+
+# 检查是否为 root 用户
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${YELLOW}警告: 建议使用 root 用户运行此脚本${NC}"
+fi
+
+# 检查备份目录是否可写
+if [ ! -d "${BACKUP_ROOT}" ]; then
+    echo "创建备份根目录: ${BACKUP_ROOT}"
+    mkdir -p "${BACKUP_ROOT}" || {
+        echo -e "${RED}错误: 无法创建备份目录 ${BACKUP_ROOT}${NC}"
+        exit 1
+    }
+fi
+
+# 检查项目目录
+if [ ! -d "${PROJECT_DIR}" ]; then
+    echo -e "${RED}错误: 项目目录不存在: ${PROJECT_DIR}${NC}"
+    exit 1
+fi
+
+# 检查 .env.local 文件
+if [ ! -f "${PROJECT_DIR}/projects/app/.env.local" ]; then
+    echo -e "${RED}错误: 配置文件不存在: ${PROJECT_DIR}/projects/app/.env.local${NC}"
+    exit 1
+fi
+
+# 检查必要的容器是否运行
+echo "检查容器状态..."
+CONTAINERS_OK=true
+for container in lugang-ai-app lugang-ai-mongo lugang-ai-pg; do
+    if docker ps --format "{{.Names}}" | grep -q "^${container}$"; then
+        echo -e "  ${GREEN}✓${NC} ${container} 运行中"
+    else
+        echo -e "  ${RED}✗${NC} ${container} 未运行"
+        CONTAINERS_OK=false
+    fi
+done
+
+if [ "$CONTAINERS_OK" = false ]; then
+    echo -e "${RED}错误: 部分容器未运行，无法完成备份${NC}"
+    exit 1
+fi
+
+# 尝试验证数据库密码
+echo ""
+echo "验证数据库连接..."
+if ! docker exec lugang-ai-mongo mongosh --username="${MONGO_USER}" --password="${MONGO_PASSWORD}" --authenticationDatabase=admin --eval "db.adminCommand('ping')" --quiet 2>/dev/null; then
+    # 尝试旧版 mongo 命令
+    if ! docker exec lugang-ai-mongo mongo --username="${MONGO_USER}" --password="${MONGO_PASSWORD}" --authenticationDatabase=admin --eval "db.adminCommand('ping')" --quiet 2>/dev/null; then
+        echo -e "${RED}警告: MongoDB 连接验证失败，密码可能不正确${NC}"
+        echo "当前使用的密码: ${MONGO_PASSWORD}"
+        read -p "是否继续? (y/n): " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+fi
+echo -e "${GREEN}✓ 前置检查完成${NC}"
 
 # 检查磁盘空间
 echo -e "${YELLOW}[0/7] 检查磁盘空间...${NC}"
@@ -172,7 +237,7 @@ IP: $(hostname -I | awk '{print $1}')
 
 ===== 恢复命令 =====
 # 恢复 MongoDB
-docker exec -i lugang-ai-mongo mongorestore --username=root --password=LuGang2024Secure --authenticationDatabase=admin /dump
+docker exec -i lugang-ai-mongo mongorestore --username=root --password=password --authenticationDatabase=admin /dump
 
 # 恢复 PostgreSQL
 cat ${BACKUP_DIR}/postgresql/all_databases.sql | docker exec -i lugang-ai-pg psql -U postgres

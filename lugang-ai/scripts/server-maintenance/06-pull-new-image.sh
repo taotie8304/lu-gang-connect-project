@@ -132,6 +132,13 @@ docker rm lugang-ai-app
 echo -e "${GREEN}✓ 旧容器已停止${NC}"
 echo ""
 
+# 检查网络是否存在
+NETWORK_NAME="lugang-ai-network"
+if ! docker network ls --format "{{.Name}}" | grep -q "^${NETWORK_NAME}$"; then
+    echo -e "${YELLOW}创建网络: ${NETWORK_NAME}${NC}"
+    docker network create ${NETWORK_NAME}
+fi
+
 # 启动新容器
 echo -e "${YELLOW}[6/6] 启动新容器...${NC}"
 
@@ -223,6 +230,8 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+PROJECT_DIR="/www/wwwroot/lugang-ai"
+
 echo -e "\${GREEN}╔═══════════════════════════════════════════════════════╗\${NC}"
 echo -e "\${GREEN}║        鲁港通 - 回滚脚本                              ║\${NC}"
 echo -e "\${GREEN}╚═══════════════════════════════════════════════════════╝\${NC}"
@@ -230,16 +239,25 @@ echo ""
 
 # 读取回滚信息
 if [ -f /tmp/lugang-rollback-image.txt ]; then
-    ROLLBACK_IMAGE=\$(head -1 /tmp/lugang-rollback-image.txt)
-    echo "回滚到镜像: \${ROLLBACK_IMAGE}"
+    # 优先使用备份标签（第三行）
+    BACKUP_TAG=\$(sed -n '3p' /tmp/lugang-rollback-image.txt 2>/dev/null || echo "")
+    ORIGINAL_IMAGE=\$(head -1 /tmp/lugang-rollback-image.txt 2>/dev/null || echo "")
+    
+    if [ -n "\$BACKUP_TAG" ] && docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^\${BACKUP_TAG}\$"; then
+        ROLLBACK_IMAGE="\$BACKUP_TAG"
+        echo -e "\${GREEN}使用备份标签: \${ROLLBACK_IMAGE}\${NC}"
+    elif [ -n "\$ORIGINAL_IMAGE" ]; then
+        ROLLBACK_IMAGE="\$ORIGINAL_IMAGE"
+        echo -e "\${YELLOW}使用原始镜像: \${ROLLBACK_IMAGE}\${NC}"
+    fi
 else
-    echo -e "\${RED}未找到回滚信息${NC}"
+    echo -e "\${RED}未找到回滚信息\${NC}"
     echo "请手动指定镜像:"
     read -p "镜像名称: " ROLLBACK_IMAGE
 fi
 
 if [ -z "\$ROLLBACK_IMAGE" ]; then
-    echo -e "\${RED}未指定镜像，退出${NC}"
+    echo -e "\${RED}未指定镜像，退出\${NC}"
     exit 1
 fi
 
@@ -250,20 +268,42 @@ if [[ ! \$REPLY =~ ^[Yy]\$ ]]; then
 fi
 
 echo "停止当前容器..."
-docker stop lugang-ai-app
-docker rm lugang-ai-app
+docker stop lugang-ai-app 2>/dev/null || true
+docker rm lugang-ai-app 2>/dev/null || true
+
+# 检查网络是否存在
+NETWORK_NAME="lugang-ai-network"
+if ! docker network ls --format "{{.Name}}" | grep -q "^\${NETWORK_NAME}\$"; then
+    echo -e "\${YELLOW}创建网络: \${NETWORK_NAME}\${NC}"
+    docker network create \${NETWORK_NAME}
+fi
 
 echo "启动回滚容器..."
 docker run -d \\
     --name lugang-ai-app \\
     --restart always \\
     -p 3210:3000 \\
-    --env-file ${PROJECT_DIR}/projects/app/.env.local \\
+    --env-file \${PROJECT_DIR}/projects/app/.env.local \\
     --network lugang-ai-network \\
     "\${ROLLBACK_IMAGE}"
 
+# 等待启动
+echo "等待服务启动..."
+for i in {1..30}; do
+    if curl -s -f http://localhost:3210/api/health > /dev/null 2>&1; then
+        echo -e "\${GREEN}✓ 服务启动成功!\${NC}"
+        break
+    fi
+    if [ \$i -eq 30 ]; then
+        echo -e "\${RED}✗ 服务启动超时\${NC}"
+        docker logs lugang-ai-app --tail 50
+    fi
+    echo "  等待中... (\$i/30)"
+    sleep 2
+done
+
 echo ""
-echo -e "\${GREEN}✓ 回滚完成${NC}"
+echo -e "\${GREEN}✓ 回滚完成\${NC}"
 echo ""
 echo "验证: curl http://localhost:3210/api/health"
 ROLLBACK_SCRIPT

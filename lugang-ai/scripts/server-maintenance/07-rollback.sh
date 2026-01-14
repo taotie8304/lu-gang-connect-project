@@ -20,9 +20,10 @@ NC='\033[0m'
 # 配置
 BACKUP_ROOT="/www/wwwroot/backups"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
-MONGO_USER="root"
-MONGO_PASSWORD="LuGang2024Secure"
-PG_USER="postgres"
+# 数据库配置 - 与 docker-compose.yml 保持一致
+MONGO_USER="${MONGO_USER:-root}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+PG_USER="${PG_USER:-postgres}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        鲁港通 - 回滚脚本 v1.0                         ║${NC}"
@@ -118,6 +119,13 @@ case $CHOICE in
         echo "停止当前容器..."
         docker stop lugang-ai-app 2>/dev/null || true
         docker rm lugang-ai-app 2>/dev/null || true
+        
+        # 检查网络是否存在
+        NETWORK_NAME="lugang-ai-network"
+        if ! docker network ls --format "{{.Name}}" | grep -q "^${NETWORK_NAME}$"; then
+            echo -e "${YELLOW}创建网络: ${NETWORK_NAME}${NC}"
+            docker network create ${NETWORK_NAME}
+        fi
         
         echo "启动回滚容器..."
         docker run -d \
@@ -256,10 +264,25 @@ case $CHOICE in
                 gunzip -c "${BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" | docker load
                 
                 # 获取镜像名称并重启
-                RESTORED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep lugang-ai | head -1)
+                RESTORED_IMAGE=""
+                if [ -f "${BACKUP_DIR}/docker-images/image-info.txt" ]; then
+                    RESTORED_IMAGE=$(head -1 "${BACKUP_DIR}/docker-images/image-info.txt")
+                fi
+                if [ -z "$RESTORED_IMAGE" ]; then
+                    RESTORED_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep lugang-ai | head -1)
+                fi
+                
                 if [ -n "$RESTORED_IMAGE" ]; then
                     docker stop lugang-ai-app 2>/dev/null || true
                     docker rm lugang-ai-app 2>/dev/null || true
+                    
+                    # 检查网络是否存在
+                    NETWORK_NAME="lugang-ai-network"
+                    if ! docker network ls --format "{{.Name}}" | grep -q "^${NETWORK_NAME}$"; then
+                        echo -e "${YELLOW}创建网络: ${NETWORK_NAME}${NC}"
+                        docker network create ${NETWORK_NAME}
+                    fi
+                    
                     docker run -d \
                         --name lugang-ai-app \
                         --restart always \
