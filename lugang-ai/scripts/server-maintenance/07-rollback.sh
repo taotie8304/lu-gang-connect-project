@@ -46,16 +46,32 @@ case $CHOICE in
         echo ""
         echo -e "${YELLOW}=== 回滚 Docker 镜像 ===${NC}"
         
+        # 显示所有可用的 lugang 相关镜像
+        echo "可用的镜像:"
+        docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.CreatedSince}}" | grep -E "lugang|REPOSITORY" || echo "无"
+        echo ""
+        
         # 检查回滚信息
         if [ -f /tmp/lugang-rollback-image.txt ]; then
-            ROLLBACK_IMAGE=$(head -1 /tmp/lugang-rollback-image.txt)
-            echo "找到回滚信息: ${ROLLBACK_IMAGE}"
-        else
+            echo "找到回滚信息文件:"
+            cat /tmp/lugang-rollback-image.txt
+            echo ""
+            
+            # 优先使用备份标签（第三行）
+            BACKUP_TAG=$(sed -n '3p' /tmp/lugang-rollback-image.txt 2>/dev/null || echo "")
+            ORIGINAL_IMAGE=$(head -1 /tmp/lugang-rollback-image.txt 2>/dev/null || echo "")
+            
+            if [ -n "$BACKUP_TAG" ] && docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${BACKUP_TAG}$"; then
+                ROLLBACK_IMAGE="$BACKUP_TAG"
+                echo -e "${GREEN}使用备份标签: ${ROLLBACK_IMAGE}${NC}"
+            elif [ -n "$ORIGINAL_IMAGE" ]; then
+                ROLLBACK_IMAGE="$ORIGINAL_IMAGE"
+                echo -e "${YELLOW}使用原始镜像: ${ROLLBACK_IMAGE}${NC}"
+            fi
+        fi
+        
+        if [ -z "$ROLLBACK_IMAGE" ]; then
             echo "未找到自动回滚信息"
-            echo ""
-            echo "可用的镜像:"
-            docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "lugang|fastgpt" || echo "无"
-            echo ""
             read -p "请输入要回滚的镜像名称: " ROLLBACK_IMAGE
         fi
         
@@ -67,15 +83,33 @@ case $CHOICE in
         # 检查镜像是否存在
         if ! docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${ROLLBACK_IMAGE}$"; then
             echo -e "${RED}镜像不存在: ${ROLLBACK_IMAGE}${NC}"
-            echo "尝试拉取..."
-            docker pull "${ROLLBACK_IMAGE}" || {
-                echo -e "${RED}拉取失败${NC}"
+            
+            # 检查是否有备份文件
+            echo ""
+            echo "检查备份文件..."
+            LATEST_BACKUP=$(ls -td ${BACKUP_ROOT}/lugang-final-* 2>/dev/null | head -1)
+            if [ -n "$LATEST_BACKUP" ] && [ -f "${LATEST_BACKUP}/docker-images/lugang-ai-app.tar.gz" ]; then
+                echo "找到备份镜像文件: ${LATEST_BACKUP}/docker-images/lugang-ai-app.tar.gz"
+                read -p "是否从备份文件恢复镜像? (y/n): " -n 1 -r
+                echo
+                if [[ $REPLY =~ ^[Yy]$ ]]; then
+                    echo "加载镜像..."
+                    LOADED=$(gunzip -c "${LATEST_BACKUP}/docker-images/lugang-ai-app.tar.gz" | docker load)
+                    echo "$LOADED"
+                    ROLLBACK_IMAGE=$(echo "$LOADED" | grep "Loaded image" | awk '{print $NF}')
+                    if [ -z "$ROLLBACK_IMAGE" ] && [ -f "${LATEST_BACKUP}/docker-images/image-info.txt" ]; then
+                        ROLLBACK_IMAGE=$(head -1 "${LATEST_BACKUP}/docker-images/image-info.txt")
+                    fi
+                fi
+            else
+                echo -e "${RED}未找到备份镜像文件${NC}"
                 exit 1
-            }
+            fi
         fi
         
         echo ""
-        read -p "确认回滚到 ${ROLLBACK_IMAGE}? (y/n): " -n 1 -r
+        echo -e "${CYAN}将回滚到: ${ROLLBACK_IMAGE}${NC}"
+        read -p "确认回滚? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
             exit 0
@@ -93,6 +127,21 @@ case $CHOICE in
             --env-file "${PROJECT_DIR}/projects/app/.env.local" \
             --network lugang-ai-network \
             "${ROLLBACK_IMAGE}"
+        
+        # 等待启动
+        echo "等待服务启动..."
+        for i in {1..30}; do
+            if curl -s -f http://localhost:3210/api/health > /dev/null 2>&1; then
+                echo -e "${GREEN}✓ 服务启动成功!${NC}"
+                break
+            fi
+            if [ $i -eq 30 ]; then
+                echo -e "${RED}✗ 服务启动超时，请检查日志${NC}"
+                docker logs lugang-ai-app --tail 50
+            fi
+            echo "  等待中... ($i/30)"
+            sleep 2
+        done
         
         echo ""
         echo -e "${GREEN}✓ 镜像回滚完成${NC}"

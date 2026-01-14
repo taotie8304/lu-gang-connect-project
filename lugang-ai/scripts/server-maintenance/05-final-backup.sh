@@ -58,13 +58,29 @@ docker exec lugang-ai-mongo mongodump \
 
 docker cp lugang-ai-mongo:/dump "${FINAL_BACKUP_DIR}/mongodb/"
 docker exec lugang-ai-mongo rm -rf /dump
-echo -e "${GREEN}✓ MongoDB 备份完成${NC}"
+
+# 验证备份
+if [ -d "${FINAL_BACKUP_DIR}/mongodb/dump" ] && [ "$(ls -A ${FINAL_BACKUP_DIR}/mongodb/dump 2>/dev/null)" ]; then
+    MONGO_SIZE=$(du -sh "${FINAL_BACKUP_DIR}/mongodb" | cut -f1)
+    echo -e "${GREEN}✓ MongoDB 备份完成 (${MONGO_SIZE})${NC}"
+else
+    echo -e "${RED}✗ MongoDB 备份失败！${NC}"
+    exit 1
+fi
 
 # 备份 PostgreSQL
 echo ""
 echo -e "${YELLOW}[3/5] 备份 PostgreSQL...${NC}"
 docker exec lugang-ai-pg pg_dumpall -U "${PG_USER}" > "${FINAL_BACKUP_DIR}/postgresql/all_databases.sql"
-echo -e "${GREEN}✓ PostgreSQL 备份完成${NC}"
+
+# 验证备份
+if [ -f "${FINAL_BACKUP_DIR}/postgresql/all_databases.sql" ] && [ -s "${FINAL_BACKUP_DIR}/postgresql/all_databases.sql" ]; then
+    PG_SIZE=$(du -sh "${FINAL_BACKUP_DIR}/postgresql" | cut -f1)
+    echo -e "${GREEN}✓ PostgreSQL 备份完成 (${PG_SIZE})${NC}"
+else
+    echo -e "${RED}✗ PostgreSQL 备份失败！${NC}"
+    exit 1
+fi
 
 # 备份配置文件
 echo ""
@@ -118,6 +134,11 @@ fi
 # 创建恢复脚本
 echo ""
 echo -e "${BLUE}创建恢复脚本...${NC}"
+
+# 保存当前镜像信息到备份目录（用于恢复时参考）
+CURRENT_IMAGE_FOR_RESTORE=$(docker inspect lugang-ai-app --format='{{.Config.Image}}' 2>/dev/null || echo "")
+echo "${CURRENT_IMAGE_FOR_RESTORE}" > "${FINAL_BACKUP_DIR}/docker-images/original-image.txt"
+
 cat > "${FINAL_BACKUP_DIR}/restore.sh" << 'RESTORE_SCRIPT'
 #!/bin/bash
 
@@ -126,15 +147,54 @@ cat > "${FINAL_BACKUP_DIR}/restore.sh" << 'RESTORE_SCRIPT'
 
 set -e
 
-BACKUP_DIR="$(dirname "$0")"
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# 获取脚本所在目录（备份目录）
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BACKUP_DIR="${SCRIPT_DIR}"
+PROJECT_DIR="/www/wwwroot/lugang-ai"
+
 MONGO_USER="root"
 MONGO_PASSWORD="LuGang2024Secure"
 PG_USER="postgres"
 
+echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║        鲁港通 - 恢复脚本                              ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo "备份目录: ${BACKUP_DIR}"
+echo ""
+
+# 检查备份文件是否存在
+echo "检查备份文件..."
+if [ ! -d "${BACKUP_DIR}/mongodb/dump" ]; then
+    echo -e "${RED}错误: MongoDB 备份不存在${NC}"
+    exit 1
+fi
+if [ ! -f "${BACKUP_DIR}/postgresql/all_databases.sql" ]; then
+    echo -e "${RED}错误: PostgreSQL 备份不存在${NC}"
+    exit 1
+fi
+echo -e "${GREEN}✓ 备份文件检查通过${NC}"
+echo ""
+
+# 确认恢复
+echo -e "${RED}⚠️  警告: 这将覆盖当前所有数据！${NC}"
+read -p "确认恢复? (输入 'RESTORE' 确认): " CONFIRM
+if [[ "$CONFIRM" != "RESTORE" ]]; then
+    echo "取消恢复"
+    exit 0
+fi
+
+echo ""
 echo "开始恢复..."
 
 # 恢复 MongoDB
-echo "恢复 MongoDB..."
+echo ""
+echo -e "${YELLOW}[1/3] 恢复 MongoDB...${NC}"
 docker cp "${BACKUP_DIR}/mongodb/dump" lugang-ai-mongo:/
 docker exec lugang-ai-mongo mongorestore \
     --username="${MONGO_USER}" \
@@ -143,26 +203,60 @@ docker exec lugang-ai-mongo mongorestore \
     --drop \
     /dump
 docker exec lugang-ai-mongo rm -rf /dump
-echo "✓ MongoDB 恢复完成"
+echo -e "${GREEN}✓ MongoDB 恢复完成${NC}"
 
 # 恢复 PostgreSQL
-echo "恢复 PostgreSQL..."
+echo ""
+echo -e "${YELLOW}[2/3] 恢复 PostgreSQL...${NC}"
 cat "${BACKUP_DIR}/postgresql/all_databases.sql" | docker exec -i lugang-ai-pg psql -U "${PG_USER}"
-echo "✓ PostgreSQL 恢复完成"
+echo -e "${GREEN}✓ PostgreSQL 恢复完成${NC}"
 
 # 恢复 Docker 镜像（如果存在）
+echo ""
+echo -e "${YELLOW}[3/3] 恢复 Docker 镜像...${NC}"
 if [ -f "${BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" ]; then
-    echo "恢复 Docker 镜像..."
-    gunzip -c "${BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" | docker load
-    echo "✓ Docker 镜像恢复完成"
+    echo "加载镜像文件..."
+    LOADED_IMAGE=$(gunzip -c "${BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" | docker load | grep "Loaded image" | awk '{print $NF}')
+    
+    if [ -z "$LOADED_IMAGE" ]; then
+        # 尝试从 image-info.txt 获取镜像名
+        if [ -f "${BACKUP_DIR}/docker-images/image-info.txt" ]; then
+            LOADED_IMAGE=$(head -1 "${BACKUP_DIR}/docker-images/image-info.txt")
+        fi
+    fi
+    
+    echo "加载的镜像: ${LOADED_IMAGE}"
+    
+    if [ -n "$LOADED_IMAGE" ]; then
+        echo "重启容器使用恢复的镜像..."
+        docker stop lugang-ai-app 2>/dev/null || true
+        docker rm lugang-ai-app 2>/dev/null || true
+        docker run -d \
+            --name lugang-ai-app \
+            --restart always \
+            -p 3210:3000 \
+            --env-file "${PROJECT_DIR}/projects/app/.env.local" \
+            --network lugang-ai-network \
+            "${LOADED_IMAGE}"
+        echo -e "${GREEN}✓ Docker 镜像恢复完成${NC}"
+    else
+        echo -e "${YELLOW}⚠ 无法确定镜像名称，请手动重启容器${NC}"
+    fi
+else
+    echo -e "${YELLOW}⚠ 未找到镜像备份文件，跳过镜像恢复${NC}"
+    echo "建议重启应用: docker restart lugang-ai-app"
 fi
 
 echo ""
-echo "恢复完成！请重启容器:"
-echo "  docker restart lugang-ai-app"
+echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║              恢复完成!                                ║${NC}"
+echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo "验证服务: curl http://localhost:3210/api/health"
 RESTORE_SCRIPT
 
 chmod +x "${FINAL_BACKUP_DIR}/restore.sh"
+echo -e "${GREEN}✓ 恢复脚本已创建${NC}"
 
 # 创建备份信息文件
 cat > "${FINAL_BACKUP_DIR}/BACKUP_INFO.txt" << EOF

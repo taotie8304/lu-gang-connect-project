@@ -67,9 +67,14 @@ if docker ps | grep -q lugang-ai-mongo; then
     docker cp lugang-ai-mongo:/dump "${BACKUP_DIR}/mongodb/"
     docker exec lugang-ai-mongo rm -rf /dump
     
-    # 计算备份大小
-    MONGO_SIZE=$(du -sh "${BACKUP_DIR}/mongodb" | cut -f1)
-    echo -e "${GREEN}✓ MongoDB 备份完成 (${MONGO_SIZE})${NC}"
+    # 验证备份是否成功
+    if [ -d "${BACKUP_DIR}/mongodb/dump" ] && [ "$(ls -A ${BACKUP_DIR}/mongodb/dump 2>/dev/null)" ]; then
+        MONGO_SIZE=$(du -sh "${BACKUP_DIR}/mongodb" | cut -f1)
+        echo -e "${GREEN}✓ MongoDB 备份完成 (${MONGO_SIZE})${NC}"
+    else
+        echo -e "${RED}✗ MongoDB 备份失败！备份目录为空${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}✗ MongoDB 容器未运行，跳过${NC}"
 fi
@@ -82,8 +87,14 @@ if docker ps | grep -q lugang-ai-pg; then
         -U "${PG_USER}" \
         > "${BACKUP_DIR}/postgresql/all_databases.sql"
     
-    PG_SIZE=$(du -sh "${BACKUP_DIR}/postgresql" | cut -f1)
-    echo -e "${GREEN}✓ PostgreSQL 备份完成 (${PG_SIZE})${NC}"
+    # 验证备份是否成功
+    if [ -f "${BACKUP_DIR}/postgresql/all_databases.sql" ] && [ -s "${BACKUP_DIR}/postgresql/all_databases.sql" ]; then
+        PG_SIZE=$(du -sh "${BACKUP_DIR}/postgresql" | cut -f1)
+        echo -e "${GREEN}✓ PostgreSQL 备份完成 (${PG_SIZE})${NC}"
+    else
+        echo -e "${RED}✗ PostgreSQL 备份失败！备份文件为空${NC}"
+        exit 1
+    fi
 else
     echo -e "${RED}✗ PostgreSQL 容器未运行，跳过${NC}"
 fi
