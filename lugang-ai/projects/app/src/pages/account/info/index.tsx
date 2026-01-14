@@ -210,27 +210,25 @@ const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
           <Box {...labelStyles}>{t('account_info:user_account')}&nbsp;</Box>
           <Box flex={1}>{userInfo?.username}</Box>
         </Flex>
-        {feConfigs?.isPlus && (
-          <Flex mt={4} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:password')}&nbsp;</Box>
-            <Box flex={1}>*****</Box>
-            <Button size={'sm'} variant={'whitePrimary'} onClick={onOpenUpdatePsw}>
-              {t('account_info:change')}
-            </Button>
-          </Flex>
-        )}
-        {feConfigs?.isPlus && (
-          <Flex mt={4} alignItems={'center'}>
-            <Box {...labelStyles}>{t('common:contact_way')}&nbsp;</Box>
-            <Box flex={1} {...(!userInfo?.contact ? { color: 'red.600' } : {})}>
-              {userInfo?.contact ? userInfo?.contact : t('account_info:please_bind_contact')}
-            </Box>
+        {/* 鲁港通：移除 isPlus 限制，允许所有用户修改密码 */}
+        <Flex mt={4} alignItems={'center'}>
+          <Box {...labelStyles}>{t('account_info:password')}&nbsp;</Box>
+          <Box flex={1}>*****</Box>
+          <Button size={'sm'} variant={'whitePrimary'} onClick={onOpenUpdatePsw}>
+            {t('account_info:change')}
+          </Button>
+        </Flex>
+        {/* 鲁港通：移除 isPlus 限制，允许所有用户修改联系方式 */}
+        <Flex mt={4} alignItems={'center'}>
+          <Box {...labelStyles}>{t('common:contact_way')}&nbsp;</Box>
+          <Box flex={1} {...(!userInfo?.contact ? { color: 'red.600' } : {})}>
+            {userInfo?.contact ? userInfo?.contact : t('account_info:please_bind_contact')}
+          </Box>
 
-            <Button size={'sm'} variant={'whitePrimary'} onClick={onOpenUpdateContact}>
-              {t('account_info:change')}
-            </Button>
-          </Flex>
-        )}
+          <Button size={'sm'} variant={'whitePrimary'} onClick={onOpenUpdateContact}>
+            {t('account_info:change')}
+          </Button>
+        </Flex>
 
         <MyDivider my={6} />
 
@@ -241,14 +239,13 @@ const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
           </Flex>
         )}
 
-        {feConfigs.isPlus && (
-          <Flex mt={6} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:user_team_team_name')}&nbsp;</Box>
-            <Flex flex={'1 0 0'} w={0} align={'center'}>
-              <TeamSelector height={'28px'} w={'100%'} showManage />
-            </Flex>
+        {/* 鲁港通：移除 isPlus 限制，允许所有用户查看团队名称 */}
+        <Flex mt={6} alignItems={'center'}>
+          <Box {...labelStyles}>{t('account_info:user_team_team_name')}&nbsp;</Box>
+          <Flex flex={'1 0 0'} w={0} align={'center'}>
+            <TeamSelector height={'28px'} w={'100%'} showManage />
           </Flex>
-        )}
+        </Flex>
 
         <AvatarUploader />
         {isPc ? (
@@ -298,29 +295,29 @@ const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
           </Flex>
         )}
 
-        {feConfigs?.isPlus && (
-          <Flex mt={[0, 4]} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:member_name')}&nbsp;</Box>
-            <Input
-              flex={'1 0 0'}
-              disabled={isSyncMember}
-              defaultValue={userInfo?.team?.memberName || 'Member'}
-              title={t('account_info:click_modify_nickname')}
-              borderColor={'transparent'}
-              transform={'translateX(-11px)'}
-              maxLength={100}
-              onBlur={async (e) => {
-                const val = e.target.value;
-                if (val === userInfo?.team?.memberName) return;
-                try {
-                  await putUpdateMemberName(val);
-                  initUserInfo();
-                } catch (error) {}
-              }}
-            />
-          </Flex>
-        )}
-        {feConfigs?.isPlus && (userInfo?.team?.balance ?? 0) > 0 && (
+        {/* 鲁港通：移除 isPlus 限制，允许所有用户修改成员名称 */}
+        <Flex mt={[0, 4]} alignItems={'center'}>
+          <Box {...labelStyles}>{t('account_info:member_name')}&nbsp;</Box>
+          <Input
+            flex={'1 0 0'}
+            disabled={isSyncMember}
+            defaultValue={userInfo?.team?.memberName || 'Member'}
+            title={t('account_info:click_modify_nickname')}
+            borderColor={'transparent'}
+            transform={'translateX(-11px)'}
+            maxLength={100}
+            onBlur={async (e) => {
+              const val = e.target.value;
+              if (val === userInfo?.team?.memberName) return;
+              try {
+                await putUpdateMemberName(val);
+                initUserInfo();
+              } catch (error) {}
+            }}
+          />
+        </Flex>
+        {/* 鲁港通：移除 isPlus 限制，显示团队余额（如果有） */}
+        {(userInfo?.team?.balance ?? 0) > 0 && (
           <Box mt={4} whiteSpace={'nowrap'}>
             <Flex alignItems={'center'}>
               <Box {...labelStyles}>{t('account_info:team_balance')}&nbsp;</Box>

@@ -26,11 +26,12 @@ async function handler(
 
   const code = getNanoid(6);
 
+  // 鲁港通：延长验证码有效期到 60 秒，避免网络延迟导致验证码过期
   await addAuthCode({
     type: UserAuthTypeEnum.login,
     key: username,
     code,
-    expiredTime: addSeconds(new Date(), 30)
+    expiredTime: addSeconds(new Date(), 60)
   });
 
   return {
