@@ -142,22 +142,15 @@ fi
 # 启动新容器
 echo -e "${YELLOW}[6/6] 启动新容器...${NC}"
 
-# 检查是否使用 docker-compose
-if [ -f "${PROJECT_DIR}/docker-compose.yml" ]; then
-    echo "使用 docker-compose 启动..."
-    cd "${PROJECT_DIR}"
-    export LUGANG_AI_IMAGE="${NEW_IMAGE}"
-    docker-compose up -d lugang-ai
-else
-    echo "使用 docker run 启动..."
-    docker run -d \
-        --name lugang-ai-app \
-        --restart always \
-        -p 3210:3000 \
-        --env-file "${PROJECT_DIR}/projects/app/.env.local" \
-        --network lugang-ai-network \
-        "${NEW_IMAGE}"
-fi
+# 使用 docker run 启动（不使用 docker-compose，因为镜像名是硬编码的）
+echo "使用 docker run 启动..."
+docker run -d \
+    --name lugang-ai-app \
+    --restart always \
+    -p 3210:3000 \
+    --env-file "${PROJECT_DIR}/projects/app/.env.local" \
+    --network lugang-ai-network \
+    "${NEW_IMAGE}"
 
 echo -e "${GREEN}✓ 新容器已启动${NC}"
 echo ""
