@@ -39,17 +39,43 @@ if [[ "$CONFIRM" != "yes" ]]; then
     exit 1
 fi
 
-# 保存当前镜像信息
-echo -e "${YELLOW}[1/6] 保存当前镜像信息...${NC}"
+# 保存当前镜像信息并创建备份标签
+echo -e "${YELLOW}[1/6] 保存当前镜像并创建备份标签...${NC}"
 CURRENT_IMAGE=$(docker inspect lugang-ai-app --format='{{.Config.Image}}' 2>/dev/null || echo "unknown")
 CURRENT_IMAGE_ID=$(docker inspect lugang-ai-app --format='{{.Image}}' 2>/dev/null || echo "unknown")
 echo "当前镜像: ${CURRENT_IMAGE}"
 echo "当前镜像ID: ${CURRENT_IMAGE_ID}"
 
+# 给当前镜像打备份标签（关键步骤！）
+BACKUP_TAG="lugang-ai:backup-$(date +%Y%m%d_%H%M%S)"
+echo ""
+echo -e "${CYAN}为当前镜像创建备份标签: ${BACKUP_TAG}${NC}"
+docker tag "${CURRENT_IMAGE_ID}" "${BACKUP_TAG}" 2>/dev/null || docker tag "${CURRENT_IMAGE}" "${BACKUP_TAG}" 2>/dev/null || {
+    echo -e "${RED}警告: 无法创建备份标签${NC}"
+}
+
+# 验证备份标签
+if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${BACKUP_TAG}$"; then
+    echo -e "${GREEN}✓ 备份标签创建成功: ${BACKUP_TAG}${NC}"
+else
+    echo -e "${RED}⚠️  备份标签创建失败！${NC}"
+    read -p "是否继续? (y/n): " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        exit 1
+    fi
+fi
+
 # 保存到文件
 echo "${CURRENT_IMAGE}" > /tmp/lugang-rollback-image.txt
 echo "${CURRENT_IMAGE_ID}" >> /tmp/lugang-rollback-image.txt
+echo "${BACKUP_TAG}" >> /tmp/lugang-rollback-image.txt
 echo -e "${GREEN}✓ 回滚信息已保存到 /tmp/lugang-rollback-image.txt${NC}"
+echo ""
+
+# 显示当前所有 lugang 相关镜像
+echo -e "${BLUE}当前所有 lugang 相关镜像:${NC}"
+docker images | grep -E "lugang|REPOSITORY" | head -10
 echo ""
 
 # 登录 GitHub Container Registry
@@ -162,6 +188,25 @@ echo "  2. 使用 root / LuGang@2025 登录"
 echo "  3. 测试知识库、应用等功能"
 echo ""
 echo -e "${YELLOW}如果发现问题，运行回滚脚本: ./07-rollback.sh${NC}"
+echo ""
+
+# 显示回滚信息
+echo ""
+echo -e "${CYAN}=== 回滚信息 ===${NC}"
+echo "如果新版本有问题，可以使用以下命令回滚:"
+echo ""
+echo -e "${YELLOW}方法1: 使用备份标签回滚${NC}"
+BACKUP_TAG_SAVED=$(tail -1 /tmp/lugang-rollback-image.txt 2>/dev/null || echo "")
+if [ -n "$BACKUP_TAG_SAVED" ]; then
+    echo "  docker stop lugang-ai-app"
+    echo "  docker rm lugang-ai-app"
+    echo "  docker run -d --name lugang-ai-app --restart always -p 3210:3000 \\"
+    echo "    --env-file ${PROJECT_DIR}/projects/app/.env.local \\"
+    echo "    --network lugang-ai-network ${BACKUP_TAG_SAVED}"
+fi
+echo ""
+echo -e "${YELLOW}方法2: 运行回滚脚本${NC}"
+echo "  ./07-rollback.sh"
 echo ""
 
 # 创建回滚脚本

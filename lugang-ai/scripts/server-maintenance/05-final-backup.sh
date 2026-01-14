@@ -77,21 +77,42 @@ cp -r "${PROJECT_DIR}/projects/app/data" "${FINAL_BACKUP_DIR}/configs/" 2>/dev/n
 docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "lugang|fastgpt" > "${FINAL_BACKUP_DIR}/docker-images/current-images.txt" 2>/dev/null || true
 echo -e "${GREEN}✓ 配置文件备份完成${NC}"
 
-# 保存当前镜像（可选，占用空间大）
+# 保存当前镜像（强烈建议）
 echo ""
 echo -e "${YELLOW}[5/5] 保存 Docker 镜像...${NC}"
-read -p "是否保存当前 Docker 镜像? (会占用较大空间) (y/n): " -n 1 -r
+echo ""
+echo -e "${RED}⚠️  强烈建议保存当前镜像，这是回滚的最后保障！${NC}"
+read -p "是否保存当前 Docker 镜像? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     # 获取当前鲁港通前端镜像
     CURRENT_IMAGE=$(docker inspect lugang-ai-app --format='{{.Config.Image}}' 2>/dev/null || echo "")
+    CURRENT_IMAGE_ID=$(docker inspect lugang-ai-app --format='{{.Image}}' 2>/dev/null || echo "")
+    
     if [ -n "$CURRENT_IMAGE" ]; then
         echo "保存镜像: $CURRENT_IMAGE"
+        echo "镜像ID: $CURRENT_IMAGE_ID"
+        
+        # 先给镜像打备份标签
+        BACKUP_TAG="lugang-ai:backup-final-${TIMESTAMP}"
+        docker tag "$CURRENT_IMAGE_ID" "$BACKUP_TAG" 2>/dev/null || docker tag "$CURRENT_IMAGE" "$BACKUP_TAG" 2>/dev/null
+        echo "备份标签: $BACKUP_TAG"
+        
+        # 保存镜像到文件
         docker save "$CURRENT_IMAGE" | gzip > "${FINAL_BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz"
-        echo -e "${GREEN}✓ 镜像保存完成${NC}"
+        
+        # 保存镜像信息
+        echo "$CURRENT_IMAGE" > "${FINAL_BACKUP_DIR}/docker-images/image-info.txt"
+        echo "$CURRENT_IMAGE_ID" >> "${FINAL_BACKUP_DIR}/docker-images/image-info.txt"
+        echo "$BACKUP_TAG" >> "${FINAL_BACKUP_DIR}/docker-images/image-info.txt"
+        
+        IMAGE_SIZE=$(du -sh "${FINAL_BACKUP_DIR}/docker-images/lugang-ai-app.tar.gz" | cut -f1)
+        echo -e "${GREEN}✓ 镜像保存完成 (${IMAGE_SIZE})${NC}"
+        echo -e "${GREEN}✓ 备份标签: ${BACKUP_TAG}${NC}"
     fi
 else
     echo -e "${YELLOW}跳过镜像保存${NC}"
+    echo -e "${RED}警告: 如果不保存镜像，回滚时可能需要重新构建！${NC}"
 fi
 
 # 创建恢复脚本
