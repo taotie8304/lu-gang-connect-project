@@ -153,12 +153,7 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
               <Th>{t('common:Name')}</Th>
               <Th>Api Key</Th>
               <Th>{t('common:support.outlink.Usage points')}</Th>
-              {feConfigs?.isPlus && (
-                <>
-                  <Th>{t('common:expired_time')}</Th>
-                </>
-              )}
-
+              <Th>{t('common:expired_time')}</Th>
               <Th>{t('common:create_time')}</Th>
               <Th>{t('common:last_use_time')}</Th>
               <Th />
@@ -171,19 +166,15 @@ const ApiKeyTable = ({ tips, appId }: { tips: string; appId?: string }) => {
                 <Td>{apiKey}</Td>
                 <Td>
                   {Math.round(usagePoints)}/
-                  {feConfigs?.isPlus && limit?.maxUsagePoints && limit?.maxUsagePoints > -1
+                  {limit?.maxUsagePoints && limit?.maxUsagePoints > -1
                     ? `${limit?.maxUsagePoints}`
                     : t('common:Unlimited')}
                 </Td>
-                {feConfigs?.isPlus && (
-                  <>
-                    <Td whiteSpace={'pre-wrap'}>
-                      {limit?.expiredTime
-                        ? dayjs(limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
-                        : '-'}
-                    </Td>
-                  </>
-                )}
+                <Td whiteSpace={'pre-wrap'}>
+                  {limit?.expiredTime
+                    ? dayjs(limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
+                    : '-'}
+                </Td>
                 <Td whiteSpace={'pre-wrap'}>{dayjs(createTime).format('YYYY/MM/DD\nHH:mm:ss')}</Td>
                 <Td whiteSpace={'pre-wrap'}>
                   {lastUsedTime
@@ -346,41 +337,37 @@ function EditKeyModal({
             })}
           />
         </Flex>
-        {feConfigs?.isPlus && (
-          <>
-            <Flex alignItems={'center'} mt={4}>
-              <FormLabel display={'flex'} flex={'0 0 90px'} alignItems={'center'}>
-                {t('common:support.outlink.Max usage points')}
-                <QuestionTip
-                  ml={1}
-                  label={t('common:support.outlink.Max usage points tip')}
-                ></QuestionTip>
-              </FormLabel>
-              <Input
-                {...register('limit.maxUsagePoints', {
-                  min: -1,
-                  max: 10000000,
-                  valueAsNumber: true,
-                  required: true
-                })}
-              />
-            </Flex>
-            <Flex alignItems={'center'} mt={4}>
-              <FormLabel flex={'0 0 90px'}>{t('common:expired_time')}</FormLabel>
-              <Input
-                type="datetime-local"
-                defaultValue={
-                  defaultData.limit?.expiredTime
-                    ? dayjs(defaultData.limit?.expiredTime).format('YYYY-MM-DDTHH:mm')
-                    : ''
-                }
-                onChange={(e) => {
-                  setValue('limit.expiredTime', new Date(e.target.value));
-                }}
-              />
-            </Flex>
-          </>
-        )}
+        <Flex alignItems={'center'} mt={4}>
+          <FormLabel display={'flex'} flex={'0 0 90px'} alignItems={'center'}>
+            {t('common:support.outlink.Max usage points')}
+            <QuestionTip
+              ml={1}
+              label={t('common:support.outlink.Max usage points tip')}
+            ></QuestionTip>
+          </FormLabel>
+          <Input
+            {...register('limit.maxUsagePoints', {
+              min: -1,
+              max: 10000000,
+              valueAsNumber: true,
+              required: true
+            })}
+          />
+        </Flex>
+        <Flex alignItems={'center'} mt={4}>
+          <FormLabel flex={'0 0 90px'}>{t('common:expired_time')}</FormLabel>
+          <Input
+            type="datetime-local"
+            defaultValue={
+              defaultData.limit?.expiredTime
+                ? dayjs(defaultData.limit?.expiredTime).format('YYYY-MM-DDTHH:mm')
+                : ''
+            }
+            onChange={(e) => {
+              setValue('limit.expiredTime', new Date(e.target.value));
+            }}
+          />
+        </Flex>
       </ModalBody>
 
       <ModalFooter>

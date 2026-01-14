@@ -151,7 +151,8 @@ const DataCard = () => {
                 />
               )}
             </Box>
-            {feConfigs?.isPlus && !!collection?.tags?.length && (
+            {/* 鲁港通 - 启用标签功能 */}
+            {!!collection?.tags?.length && (
               <TagsPopOver currentCollection={collection} />
             )}
           </Box>

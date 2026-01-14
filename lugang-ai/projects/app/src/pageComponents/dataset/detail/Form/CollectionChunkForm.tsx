@@ -297,30 +297,27 @@ const CollectionChunkForm = ({ form }: { form: UseFormReturn<CollectionChunkForm
           {trainingType === DatasetCollectionDataProcessModeEnum.chunk &&
             feConfigs?.show_dataset_enhance !== false && (
               <>
+                {/* 鲁港通 - 启用自动索引功能 */}
                 <HStack flex={'1'} spacing={1}>
-                  <MyTooltip label={!feConfigs?.isPlus ? t('common:commercial_function_tip') : ''}>
-                    <Checkbox
-                      isDisabled={!feConfigs?.isPlus}
-                      isChecked={autoIndexes}
-                      {...register('autoIndexes')}
-                    >
-                      <FormLabel>{t('dataset:auto_indexes')}</FormLabel>
-                    </Checkbox>
-                  </MyTooltip>
+                  <Checkbox
+                    isChecked={autoIndexes}
+                    {...register('autoIndexes')}
+                  >
+                    <FormLabel>{t('dataset:auto_indexes')}</FormLabel>
+                  </Checkbox>
                   <QuestionTip label={t('dataset:auto_indexes_tips')} />
                 </HStack>
+                {/* 鲁港通 - 启用图片索引功能 */}
                 <HStack flex={'1'} spacing={1}>
                   <MyTooltip
                     label={
-                      !feConfigs?.isPlus
-                        ? t('common:commercial_function_tip')
-                        : !datasetDetail?.vlmModel
-                          ? t('common:error_vlm_not_config')
-                          : ''
+                      !datasetDetail?.vlmModel
+                        ? t('common:error_vlm_not_config')
+                        : ''
                     }
                   >
                     <Checkbox
-                      isDisabled={!feConfigs?.isPlus || !datasetDetail?.vlmModel}
+                      isDisabled={!datasetDetail?.vlmModel}
                       isChecked={imageIndex}
                       {...register('imageIndex')}
                     >

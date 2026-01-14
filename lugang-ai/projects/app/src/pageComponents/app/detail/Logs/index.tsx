@@ -17,7 +17,8 @@ import { AppContext } from '@/pageComponents/app/detail/context';
 const Logs = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
-  const [viewMode, setViewMode] = useState<'chart' | 'table'>(feConfigs.isPlus ? 'chart' : 'table');
+  // 鲁港通 - 默认显示图表视图
+  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
   const appId = useContextSelector(AppContext, (v) => v.appId);
 
   const [dateRange, setDateRange] = useState<DateRangeType>({
@@ -52,6 +53,7 @@ const Logs = () => {
           alignItems={'center'}
         >
           <Flex flex={'1 0 0'} gap={2}>
+            {/* 鲁港通 - 移除 ProTag */}
             <Flex
               px={2}
               py={2}
@@ -66,7 +68,6 @@ const Logs = () => {
               <Box ml={2} mr={0.5}>
                 {t('app:logs_app_data')}
               </Box>
-              <ProTag />
             </Flex>
             <Flex
               px={2}
@@ -83,16 +84,7 @@ const Logs = () => {
               {t('app:log_detail')}
             </Flex>
           </Flex>
-          {viewMode === 'chart' && !feConfigs.isPlus && (
-            <ProText signKey={'app_log'}>
-              <Flex alignItems={'center'} cursor={'pointer'}>
-                <Box color={'primary.600'} fontSize="sm" fontWeight={'medium'} mr={1}>
-                  {t('common:upgrade')}
-                </Box>
-                <ProTag />
-              </Flex>
-            </ProText>
-          )}
+          {/* 鲁港通 - 移除升级提示 */}
         </Flex>
       </Flex>
       {viewMode === 'table' ? (

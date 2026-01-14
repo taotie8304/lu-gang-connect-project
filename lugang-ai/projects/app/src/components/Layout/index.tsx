@@ -86,7 +86,7 @@ const Layout = ({ children }: { children: JSX.Element }) => {
 
   // System hook
   const { data, refetch: refetchUnRead } = useQuery(['getUnreadCount'], getUnreadCount, {
-    enabled: !!userInfo && !!feConfigs.isPlus,
+    enabled: !!userInfo,
     refetchInterval: 30000
   });
   const unread = data?.unReadCount || 0;
@@ -171,20 +171,19 @@ const Layout = ({ children }: { children: JSX.Element }) => {
           </>
         )}
       </Box>
-      {feConfigs?.isPlus && (
-        <>
-          <NotSufficientModal />
-          <SystemMsgModal />
-          {showUpdateNotification && (
-            <UpdateContact onClose={() => setIsUpdateNotification(false)} mode="contact" />
-          )}
-          {!!userInfo && importantInforms.length > 0 && (
-            <ImportantInform informs={importantInforms} refetch={refetchUnRead} />
-          )}
-          <ResetExpiredPswModal />
-          <HelperBot />
-        </>
-      )}
+      {/* 鲁港通 - 启用所有功能 */}
+      <>
+        <NotSufficientModal />
+        <SystemMsgModal />
+        {showUpdateNotification && (
+          <UpdateContact onClose={() => setIsUpdateNotification(false)} mode="contact" />
+        )}
+        {!!userInfo && importantInforms.length > 0 && (
+          <ImportantInform informs={importantInforms} refetch={refetchUnRead} />
+        )}
+        <ResetExpiredPswModal />
+        <HelperBot />
+      </>
 
       <ManualCopyModal />
       <Loading loading={loading} zIndex={999999} />

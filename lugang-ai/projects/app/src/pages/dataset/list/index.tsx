@@ -64,17 +64,12 @@ const Dataset = () => {
   const [editFolderData, setEditFolderData] = useState<EditFolderFormType>();
   const [createDatasetType, setCreateDatasetType] = useState<CreateDatasetType>();
 
+  // 鲁港通：移除 isPlus 限制，允许所有用户创建 Web 站点同步知识库
   const onSelectDatasetType = useCallback(
     (e: CreateDatasetType) => {
-      if (!feConfigs?.isPlus && [DatasetTypeEnum.websiteDataset].includes(e)) {
-        return toast({
-          status: 'warning',
-          title: t('common:commercial_function_tip')
-        });
-      }
       setCreateDatasetType(e);
     },
-    [t, toast, feConfigs]
+    []
   );
 
   const RenderSearchInput = useMemo(

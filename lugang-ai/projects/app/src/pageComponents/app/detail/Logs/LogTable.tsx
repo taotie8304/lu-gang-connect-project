@@ -89,8 +89,7 @@ const LogTable = ({
   const [tmbInputValue, setTmbInputValue] = useState('');
   const { data: members, ScrollData: TmbScrollData } = useScrollPagination(getTeamMembers, {
     params: { searchKey: tmbInputValue },
-    refreshDeps: [tmbInputValue],
-    disabled: !feConfigs?.isPlus
+    refreshDeps: [tmbInputValue]
   });
   const tmbList = useMemo(
     () =>
@@ -413,33 +412,32 @@ const LogTable = ({
             }}
           />
         </Flex>
-        {feConfigs?.isPlus && (
-          <Flex>
-            <MultipleSelect<string>
-              list={tmbList}
-              value={selectTmbIds}
-              onSelect={(val) => {
-                setSelectTmbIds(val as string[]);
-              }}
-              ScrollData={TmbScrollData}
-              isSelectAll={isSelectAllTmb}
-              setIsSelectAll={setIsSelectAllTmb}
-              h={10}
-              w={' 226px'}
-              rounded={'8px'}
-              formLabelFontSize={'sm'}
-              formLabel={t('common:member')}
-              tagStyle={{
-                px: 1,
-                borderRadius: 'sm',
-                bg: 'myGray.100',
-                w: '76px'
-              }}
-              inputValue={tmbInputValue}
-              setInputValue={setTmbInputValue}
-            />
-          </Flex>
-        )}
+        {/* 鲁港通 - 启用成员筛选 */}
+        <Flex>
+          <MultipleSelect<string>
+            list={tmbList}
+            value={selectTmbIds}
+            onSelect={(val) => {
+              setSelectTmbIds(val as string[]);
+            }}
+            ScrollData={TmbScrollData}
+            isSelectAll={isSelectAllTmb}
+            setIsSelectAll={setIsSelectAllTmb}
+            h={10}
+            w={' 226px'}
+            rounded={'8px'}
+            formLabelFontSize={'sm'}
+            formLabel={t('common:member')}
+            tagStyle={{
+              px: 1,
+              borderRadius: 'sm',
+              bg: 'myGray.100',
+              w: '76px'
+            }}
+            inputValue={tmbInputValue}
+            setInputValue={setTmbInputValue}
+          />
+        </Flex>
         <Flex
           flex={'0 1 230px'}
           h={10}

@@ -119,58 +119,57 @@ const FolderSlideCard = ({
         </>
       )}
 
-      {feConfigs?.isPlus && (
-        <>
-          <MyDivider my={6} />
+      {/* 鲁港通 - 启用协作者功能 */}
+      <>
+        <MyDivider my={6} />
 
-          <Box>
-            {!isInheritPermission && (
-              <Box mt={2}>
-                <ResumeInherit onResume={() => resumeInheritPermission?.().then(refetchResource)} />
-              </Box>
-            )}
-            <Box mt={6}>
-              <CollaboratorContextProvider
-                {...managePer}
-                refreshDeps={refreshDeps}
-                refetchResource={refetchResource}
-                isInheritPermission={isInheritPermission}
-                hasParent={hasParent}
-              >
-                {({ MemberListCard, onOpenManageModal }) => {
-                  return (
-                    <>
-                      <Flex alignItems="center" justifyContent="space-between">
-                        <Box fontSize={'sm'} color={'myGray.500'}>
-                          {t('common:permission.Collaborator')}
-                        </Box>
-                        {managePer.permission.hasManagePer && (
-                          <MyTooltip label={t('common:permission.Manage')}>
-                            <MyIcon
-                              w="1rem"
-                              name="common/settingLight"
-                              cursor={'pointer'}
-                              _hover={{ color: 'primary.600' }}
-                              onClick={onOpenManageModal}
-                            />
-                          </MyTooltip>
-                        )}
-                      </Flex>
-                      <MemberListCard
-                        mt={2}
-                        tagStyle={{
-                          type: 'fill',
-                          colorSchema: 'white'
-                        }}
-                      />
-                    </>
-                  );
-                }}
-              </CollaboratorContextProvider>
+        <Box>
+          {!isInheritPermission && (
+            <Box mt={2}>
+              <ResumeInherit onResume={() => resumeInheritPermission?.().then(refetchResource)} />
             </Box>
+          )}
+          <Box mt={6}>
+            <CollaboratorContextProvider
+              {...managePer}
+              refreshDeps={refreshDeps}
+              refetchResource={refetchResource}
+              isInheritPermission={isInheritPermission}
+              hasParent={hasParent}
+            >
+              {({ MemberListCard, onOpenManageModal }) => {
+                return (
+                  <>
+                    <Flex alignItems="center" justifyContent="space-between">
+                      <Box fontSize={'sm'} color={'myGray.500'}>
+                        {t('common:permission.Collaborator')}
+                      </Box>
+                      {managePer.permission.hasManagePer && (
+                        <MyTooltip label={t('common:permission.Manage')}>
+                          <MyIcon
+                            w="1rem"
+                            name="common/settingLight"
+                            cursor={'pointer'}
+                            _hover={{ color: 'primary.600' }}
+                            onClick={onOpenManageModal}
+                          />
+                        </MyTooltip>
+                      )}
+                    </Flex>
+                    <MemberListCard
+                      mt={2}
+                      tagStyle={{
+                        type: 'fill',
+                        colorSchema: 'white'
+                      }}
+                    />
+                  </>
+                );
+              }}
+            </CollaboratorContextProvider>
           </Box>
-        </>
-      )}
+        </Box>
+      </>
     </Box>
   );
 };

@@ -252,33 +252,32 @@ const Info = ({ datasetId }: { datasetId: string }) => {
           </Box>
         </Box>
 
-        {feConfigs?.isPlus && (
-          <Flex alignItems={'center'} pt={5}>
-            <FormLabel fontSize={'mini'} fontWeight={'500'}>
-              {t('dataset:sync_schedule')}
-            </FormLabel>
-            <QuestionTip ml={1} label={t('dataset:sync_schedule_tip')} />
-            <Box flex={1} />
-            <Switch
-              isChecked={!!datasetDetail.autoSync}
-              onChange={(e) => {
-                e.preventDefault();
-                const autoSync = e.target.checked;
-                const text = autoSync ? t('dataset:open_auto_sync') : t('dataset:close_auto_sync');
+        {/* 鲁港通 - 启用定时同步功能 */}
+        <Flex alignItems={'center'} pt={5}>
+          <FormLabel fontSize={'mini'} fontWeight={'500'}>
+            {t('dataset:sync_schedule')}
+          </FormLabel>
+          <QuestionTip ml={1} label={t('dataset:sync_schedule_tip')} />
+          <Box flex={1} />
+          <Switch
+            isChecked={!!datasetDetail.autoSync}
+            onChange={(e) => {
+              e.preventDefault();
+              const autoSync = e.target.checked;
+              const text = autoSync ? t('dataset:open_auto_sync') : t('dataset:close_auto_sync');
 
-                onOpenConfirmSyncSchedule({
-                  onConfirm: async () => {
-                    return updateDataset({
-                      id: datasetId,
-                      autoSync
-                    });
-                  },
-                  customContent: text
-                })();
-              }}
-            />
-          </Flex>
-        )}
+              onOpenConfirmSyncSchedule({
+                onConfirm: async () => {
+                  return updateDataset({
+                    id: datasetId,
+                    autoSync
+                  });
+                },
+                customContent: text
+              })();
+            }}
+          />
+        </Flex>
 
         {datasetDetail.type === DatasetTypeEnum.externalFile && (
           <>

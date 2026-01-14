@@ -187,9 +187,9 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
         )}
 
         {/* Tag */}
+        {/* 鲁港通 - 启用标签功能 */}
         {datasetDetail.type !== DatasetTypeEnum.websiteDataset &&
-          datasetDetail.permission.hasWritePer &&
-          feConfigs?.isPlus && <HeaderTagPopOver />}
+          datasetDetail.permission.hasWritePer && <HeaderTagPopOver />}
       </HStack>
 
       {/* diff collection button */}
@@ -250,8 +250,7 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       ),
                       onClick: onOpenFileSourceSelector
                     },
-                    ...(feConfigs?.isPlus
-                      ? [
+                    ...[
                           {
                             label: (
                               <Flex>
@@ -268,8 +267,7 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                                 }
                               })
                           }
-                        ]
-                      : []),
+                        ],
 
                     {
                       label: (
@@ -325,7 +323,8 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       >
                         {t('dataset:params_config')}
                       </Button>
-                      {!hasTrainingData && feConfigs?.isPlus && (
+                      {/* 鲁港通 - 启用立即同步功能 */}
+                      {!hasTrainingData && (
                         <Button
                           variant={'whitePrimary'}
                           onClick={openDatasetSyncConfirm}
@@ -488,7 +487,8 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       {t('dataset:add_file')}
                     </Box>
                   </Flex>
-                  {!hasTrainingData && feConfigs?.isPlus && (
+                  {/* 鲁港通 - 启用立即同步功能 */}
+                  {!hasTrainingData && (
                     <Button
                       variant={'whitePrimary'}
                       onClick={openDatasetSyncConfirm}

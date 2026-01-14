@@ -166,7 +166,7 @@ const LogChart = ({
       });
     },
     {
-      manual: !feConfigs?.isPlus,
+      manual: false,
       refreshDeps: [
         appId,
         dateRange.from,
@@ -181,8 +181,7 @@ const LogChart = ({
   );
 
   const formatChartData = useMemo(() => {
-    if (!feConfigs?.isPlus) return fakeChartData;
-
+    // 鲁港通 - 直接使用真实数据
     const formatTimestamp = (timestamp: number, timespan: AppLogTimespanEnum) => {
       return timespan === AppLogTimespanEnum.week
         ? formatWeekDate(new Date(timestamp))
@@ -405,7 +404,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.userCount}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -450,7 +449,7 @@ const LogChart = ({
                         }}
                       />
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -479,7 +478,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.points.toFixed(2)}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -498,7 +497,7 @@ const LogChart = ({
                       color: value.color,
                       customValue: (data) => data.sourceCountMap[key as ChatSourceEnum]
                     }))}
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
               </Grid>
@@ -559,7 +558,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.chatItemCount}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -588,7 +587,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.chatCount}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -619,7 +618,7 @@ const LogChart = ({
                         })}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -646,7 +645,7 @@ const LogChart = ({
                         {`${t('app:logs_total_avg_points')}: ${formatChartData.cumulative.pointsPerChat.toFixed(2)}`}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
               </Grid>
@@ -720,7 +719,7 @@ const LogChart = ({
                         })}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -747,7 +746,7 @@ const LogChart = ({
                         {`${t('app:logs_total_avg_duration')}: ${formatChartData.cumulative.avgDuration.toFixed(2)}s`}
                       </Flex>
                     }
-                    blur={!feConfigs?.isPlus}
+                    blur={false}
                   />
                 </Box>
               </Grid>
@@ -832,7 +831,6 @@ const HeaderControl = ({
 
 const TotalData = ({ appId }: { appId: string }) => {
   const { t } = useTranslation();
-  const { feConfigs } = useSystemStore();
 
   const {
     data: totalData = {
@@ -842,18 +840,12 @@ const TotalData = ({ appId }: { appId: string }) => {
     }
   } = useRequest2(
     async () => {
-      if (feConfigs?.isPlus) {
-        return await getAppTotalData({ appId });
-      }
-      return {
-        totalUsers: 455,
-        totalChats: 22112,
-        totalPoints: 112233
-      };
+      // 鲁港通 - 直接获取真实数据
+      return await getAppTotalData({ appId });
     },
     {
       manual: false,
-      refreshDeps: [appId, feConfigs?.isPlus]
+      refreshDeps: [appId]
     }
   );
 
@@ -915,7 +907,7 @@ const TotalData = ({ appId }: { appId: string }) => {
                 fontSize={'28px'}
                 fontWeight={'medium'}
                 color={'myGray.900'}
-                filter={feConfigs?.isPlus ? 'none' : 'blur(7.5px)'}
+                filter={'none'}
               >
                 {item.value.toLocaleString()}
               </Box>
