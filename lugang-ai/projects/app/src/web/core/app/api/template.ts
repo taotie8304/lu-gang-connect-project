@@ -10,8 +10,9 @@ export const getTemplateMarketItemList = (data: ListParams) =>
 export const getTemplateMarketItemDetail = (templateId: string) =>
   GET<AppTemplateSchemaType>(`/core/app/template/detail?templateId=${templateId}`);
 
+// 鲁港通 - 启用模板标签列表功能
 export const getTemplateTagList = () => {
-  return useSystemStore.getState()?.feConfigs?.isPlus
-    ? GET<TemplateTypeSchemaType[]>('/proApi/core/app/template/getTemplateTypes')
-    : Promise.resolve(defaultTemplateTypes);
+  return GET<TemplateTypeSchemaType[]>('/proApi/core/app/template/getTemplateTypes').catch(() =>
+    Promise.resolve(defaultTemplateTypes)
+  );
 };

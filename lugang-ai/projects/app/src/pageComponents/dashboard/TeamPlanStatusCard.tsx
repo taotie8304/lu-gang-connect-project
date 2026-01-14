@@ -18,9 +18,9 @@ const TeamPlanStatusCard = () => {
   const { operationalAd, loadOperationalAd, feConfigs, subPlans } = useSystemStore();
   const router = useRouter();
 
-  // Load data
+  // 鲁港通 - 启用运营广告加载
   useEffect(() => {
-    if (!operationalAd && feConfigs?.isPlus) {
+    if (!operationalAd) {
       loadOperationalAd();
     }
     if (operationalAd?.id) {

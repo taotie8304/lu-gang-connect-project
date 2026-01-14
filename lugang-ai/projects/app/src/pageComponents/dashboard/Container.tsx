@@ -191,18 +191,15 @@ const DashboardContainer = ({
         groupName: t('common:mcp_server'),
         children: []
       },
-      ...(feConfigs?.isPlus
-        ? [
-            {
-              groupId: TabEnum.evaluation,
-              groupAvatar: 'kbTest',
-              groupName: t('common:app_evaluation'),
-              children: []
-            }
-          ]
-        : [])
+      // 鲁港通 - 启用应用评估功能
+      {
+        groupId: TabEnum.evaluation,
+        groupAvatar: 'kbTest',
+        groupName: t('common:app_evaluation'),
+        children: []
+      }
     ];
-  }, [currentType, feConfigs.appTemplateCourse, feConfigs?.isPlus, t, templateList, templateTags]);
+  }, [currentType, feConfigs.appTemplateCourse, t, templateList, templateTags]);
 
   const MenuIcon = useMemo(
     () => (

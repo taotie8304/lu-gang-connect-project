@@ -10,8 +10,8 @@ import { type ShortUrlParams } from '@fastgpt/global/support/marketing/type';
 import { getRedisCache, setRedisCache } from '../../redis/cache';
 import { differenceInDays } from 'date-fns';
 
+// 鲁港通 - 启用数据追踪功能
 const createTrack = ({ event, data }: { event: TrackEnum; data: Record<string, any> }) => {
-  if (!global.feConfigs?.isPlus) return;
   addLog.debug('Push tracks', {
     event,
     ...data
@@ -28,7 +28,7 @@ const createTrack = ({ event, data }: { event: TrackEnum; data: Record<string, a
   });
 };
 
-// Run times
+// 鲁港通 - 启用计数追踪功能
 const pushCountTrack = ({
   event,
   key,
@@ -38,7 +38,6 @@ const pushCountTrack = ({
   key: string;
   data: Record<string, any>;
 }) => {
-  if (!global.feConfigs?.isPlus) return;
   addLog.debug('Push tracks', {
     event,
     key

@@ -34,6 +34,7 @@ import { MongoImage } from '@fastgpt/service/common/file/image/schema';
 import { UsageItemTypeEnum } from '@fastgpt/global/support/wallet/usage/constants';
 import { getS3DatasetSource } from '@fastgpt/service/common/s3/sources/dataset';
 
+// 鲁港通 - 启用LLM段落处理功能（注意：需要商业版API支持，无API时返回原文）
 const requestLLMPargraph = async ({
   rawText,
   model,
@@ -46,7 +47,6 @@ const requestLLMPargraph = async ({
   paragraphChunkAIMode?: ParagraphChunkAIModeEnum;
 }) => {
   if (
-    !global.feConfigs?.isPlus ||
     !paragraphChunkAIMode ||
     paragraphChunkAIMode === ParagraphChunkAIModeEnum.forbid
   ) {

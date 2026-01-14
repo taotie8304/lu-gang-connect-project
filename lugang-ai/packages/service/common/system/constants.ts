@@ -3,8 +3,9 @@ export const FastGPTPluginUrl = process.env.PLUGIN_BASE_URL ? `${process.env.PLU
 // @ts-ignore
 export const isFastGPTProService = () => !!global.systemConfig;
 
+// 鲁港通 - 启用完整功能
 export const isProVersion = () => {
-  return !!global.feConfigs?.isPlus;
+  return true;
 };
 
 export const serviceRequestMaxContentLength =

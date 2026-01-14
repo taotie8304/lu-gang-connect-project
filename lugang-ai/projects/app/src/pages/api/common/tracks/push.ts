@@ -15,12 +15,11 @@ export type pushBody = {
 
 export type pushResponse = {};
 
+// 鲁港通 - 启用数据追踪API
 async function handler(
   req: ApiRequestProps<pushBody, pushQuery>,
   res: ApiResponseType<any>
 ): Promise<pushResponse> {
-  if (!global.feConfigs?.isPlus) return {};
-
   const { teamId, tmbId, userId } = await authCert({
     req,
     authToken: true

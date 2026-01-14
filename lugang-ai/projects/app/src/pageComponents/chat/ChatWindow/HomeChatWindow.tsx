@@ -132,7 +132,8 @@ const HomeChatWindow = ({ myApps }: Props) => {
   // 初始化聊天数据
   const { loading } = useRequest2(
     async () => {
-      if (!appId || forbidLoadChat.current || !feConfigs?.isPlus) return;
+      // 鲁港通 - 启用首页聊天功能
+      if (!appId || forbidLoadChat.current) return;
 
       const modelData = getWebLLMModel(selectedModel);
       const res = await getInitChatInfo({ appId, chatId });
@@ -174,11 +175,8 @@ const HomeChatWindow = ({ myApps }: Props) => {
         forbidLoadChat.current = false;
       },
       onError() {
-        if (feConfigs.isPlus) {
-          handlePaneChange(ChatSidebarPaneEnum.HOME);
-        } else {
-          handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
-        }
+        // 鲁港通 - 调整错误处理逻辑
+        handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
       }
     }
   );
@@ -192,9 +190,8 @@ const HomeChatWindow = ({ myApps }: Props) => {
   };
 
   useMount(() => {
-    if (!feConfigs?.isPlus) {
-      handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
-    }
+    // 鲁港通 - 默认显示团队应用
+    handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
   });
 
   // 使用类似 AppChatWindow 的对话逻辑

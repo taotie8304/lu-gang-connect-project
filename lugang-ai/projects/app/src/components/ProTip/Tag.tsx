@@ -8,11 +8,9 @@ const LangMap: Record<string, string> = {
   en: '/imgs/proTagEng.svg'
 };
 
+// 鲁港通 - 隐藏 Pro 标签
 const ProTag = () => {
-  const { i18n } = useTranslation();
-  const { feConfigs } = useSystemStore();
-
-  return feConfigs?.isPlus ? null : <MyImage src={LangMap[i18n.language]} />;
+  return null;
 };
 
 export default ProTag;

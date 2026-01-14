@@ -213,6 +213,7 @@ export const syncCollection = async (collection: CollectionWithDatasetType) => {
   QA: 独立进程
   Chunk: Image Index -> Auto index -> chunk index
 */
+// 鲁港通 - 启用图片解析/图片索引/自动索引功能
 export const getTrainingModeByCollection = ({
   trainingType,
   autoIndexes,
@@ -222,28 +223,20 @@ export const getTrainingModeByCollection = ({
   autoIndexes?: boolean;
   imageIndex?: boolean;
 }) => {
-  if (
-    trainingType === DatasetCollectionDataProcessModeEnum.imageParse &&
-    global.feConfigs?.isPlus
-  ) {
+  // 鲁港通 - 启用图片解析模式
+  if (trainingType === DatasetCollectionDataProcessModeEnum.imageParse) {
     return TrainingModeEnum.imageParse;
   }
 
   if (trainingType === DatasetCollectionDataProcessModeEnum.qa) {
     return TrainingModeEnum.qa;
   }
-  if (
-    trainingType === DatasetCollectionDataProcessModeEnum.chunk &&
-    imageIndex &&
-    global.feConfigs?.isPlus
-  ) {
+  // 鲁港通 - 启用图片索引模式
+  if (trainingType === DatasetCollectionDataProcessModeEnum.chunk && imageIndex) {
     return TrainingModeEnum.image;
   }
-  if (
-    trainingType === DatasetCollectionDataProcessModeEnum.chunk &&
-    autoIndexes &&
-    global.feConfigs?.isPlus
-  ) {
+  // 鲁港通 - 启用自动索引模式
+  if (trainingType === DatasetCollectionDataProcessModeEnum.chunk && autoIndexes) {
     return TrainingModeEnum.auto;
   }
   return TrainingModeEnum.chunk;

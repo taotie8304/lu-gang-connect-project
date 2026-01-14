@@ -74,25 +74,19 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
     }
   );
 
-  const isCommunityVersion = !!(feConfigs?.register_method && !feConfigs?.isPlus);
-
-  const placeholder = (() => {
-    if (isCommunityVersion) {
-      return t('login:use_root_login');
-    }
-    return [t('common:support.user.login.Username')]
-      .concat(
-        feConfigs?.login_method?.map((item) => {
-          switch (item) {
-            case 'email':
-              return t('common:support.user.login.Email');
-            case 'phone':
-              return t('common:support.user.login.Phone number');
-          }
-        }) ?? []
-      )
-      .join('/');
-  })();
+  // 鲁港通 - 移除社区版判断，统一使用完整登录提示
+  const placeholder = [t('common:support.user.login.Username')]
+    .concat(
+      feConfigs?.login_method?.map((item) => {
+        switch (item) {
+          case 'email':
+            return t('common:support.user.login.Email');
+          case 'phone':
+            return t('common:support.user.login.Phone number');
+        }
+      }) ?? []
+    )
+    .join('/');
 
   useMount(() => {
     const username = query.get('u');
@@ -138,11 +132,7 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
             borderColor={'blue.200'}
             _hover={{ borderColor: 'blue.300' }}
             _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }}
-            placeholder={
-              isCommunityVersion
-                ? t('login:root_password_placeholder')
-                : t('common:support.user.login.Password')
-            }
+            placeholder={t('common:support.user.login.Password')}
             {...register('password', {
               required: true,
               maxLength: {

@@ -258,15 +258,14 @@ const DataTableComponent = ({
               >
                 {t('account_model:volunme_of_failed_calls')} {getSortIcon('errorCalls')}
               </Th>
-              {feConfigs?.isPlus && (
-                <Th
-                  cursor="pointer"
-                  onClick={() => handleSort('totalCost')}
-                  _hover={{ color: 'primary.600' }}
-                >
-                  {t('account_model:aipoint_usage')} {getSortIcon('totalCost')}
-                </Th>
-              )}
+              {/* 鲁港通 - 显示积分消耗列 */}
+              <Th
+                cursor="pointer"
+                onClick={() => handleSort('totalCost')}
+                _hover={{ color: 'primary.600' }}
+              >
+                {t('account_model:aipoint_usage')} {getSortIcon('totalCost')}
+              </Th>
               <Th>{t('account_model:avg_response_time')}</Th>
               <Th>{t('account_model:avg_ttfb')}</Th>
               <Th></Th>
@@ -279,7 +278,8 @@ const DataTableComponent = ({
                 {showChannelColumn && <Td>{item.channelName}</Td>}
                 <Td color={'primary.700'}>{formatNumber(item.totalCalls).toLocaleString()}</Td>
                 <Td color={'red.700'}>{formatNumber(item.errorCalls)}</Td>
-                {feConfigs?.isPlus && <Td>{formatNumber(item.totalCost).toLocaleString()}</Td>}
+                {/* 鲁港通 - 显示积分消耗数据 */}
+                <Td>{formatNumber(item.totalCost).toLocaleString()}</Td>
                 <Td color={item.avgResponseTime > 10 ? 'yellow.700' : ''}>
                   {item.avgResponseTime > 0 ? `${item.avgResponseTime.toFixed(2)}` : '-'}
                 </Td>

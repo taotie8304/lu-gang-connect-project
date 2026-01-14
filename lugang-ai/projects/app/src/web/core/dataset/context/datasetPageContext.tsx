@@ -115,7 +115,8 @@ export const DatasetPageContextProvider = ({
 
   const { runAsync: loadAllDatasetTags, data: allDatasetTags = [] } = useRequest2(
     async () => {
-      if (!feConfigs?.isPlus || !datasetDetail._id) return [];
+      // 鲁港通 - 启用标签加载功能
+      if (!datasetDetail._id) return [];
 
       const { list } = await getAllTags(datasetDetail._id);
       return list;

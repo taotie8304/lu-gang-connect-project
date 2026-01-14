@@ -63,7 +63,8 @@ const ChatSetting = () => {
   );
 
   useMount(() => {
-    if (!feConfigs?.isPlus || !userInfo?.team.permission.hasManagePer) {
+    // 鲁港通 - 检查管理权限
+    if (!userInfo?.team.permission.hasManagePer) {
       handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
     }
   });

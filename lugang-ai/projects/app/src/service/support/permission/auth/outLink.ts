@@ -11,13 +11,16 @@ import { AuthUserTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { OutLinkErrEnum } from '@fastgpt/global/common/error/code/outLink';
 import { type OutLinkSchema } from '@fastgpt/global/support/outLink/type';
 
+// 鲁港通 - 启用外链认证功能
 export function authOutLinkInit(data: AuthOutLinkInitProps): Promise<AuthOutLinkResponse> {
-  if (!global.feConfigs?.isPlus) return Promise.resolve({ uid: data.outLinkUid });
-  return POST<AuthOutLinkResponse>('/support/outLink/authInit', data);
+  return POST<AuthOutLinkResponse>('/support/outLink/authInit', data).catch(() =>
+    Promise.resolve({ uid: data.outLinkUid })
+  );
 }
 export function authOutLinkChatLimit(data: AuthOutLinkLimitProps): Promise<AuthOutLinkResponse> {
-  if (!global.feConfigs?.isPlus) return Promise.resolve({ uid: data.outLinkUid });
-  return POST<AuthOutLinkResponse>('/support/outLink/authChatStart', data);
+  return POST<AuthOutLinkResponse>('/support/outLink/authChatStart', data).catch(() =>
+    Promise.resolve({ uid: data.outLinkUid })
+  );
 }
 
 export const authOutLink = async ({

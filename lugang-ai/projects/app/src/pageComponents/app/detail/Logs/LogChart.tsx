@@ -322,7 +322,6 @@ const LogChart = ({
 
     return { user, chat, app, cumulative };
   }, [
-    feConfigs?.isPlus,
     chartData?.userData,
     chartData?.chatData,
     chartData?.appData,

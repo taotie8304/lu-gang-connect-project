@@ -277,7 +277,8 @@ const CollectionCard = () => {
                             </Box>
                           </MyTooltip>
                         </Flex>
-                        {feConfigs?.isPlus && !!collection.tags?.length && (
+                        {/* 鲁港通 - 显示集合标签 */}
+                        {!!collection.tags?.length && (
                           <TagsPopOver currentCollection={collection} hoverBg={'white'} />
                         )}
                       </Box>

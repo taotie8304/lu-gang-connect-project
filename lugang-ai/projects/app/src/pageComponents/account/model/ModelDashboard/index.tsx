@@ -553,29 +553,28 @@ const ModelDashboard = ({ Tab }: { Tab: React.ReactNode }) => {
                 />
               </Box>
 
-              {feConfigs?.isPlus && (
-                <Box mt={5} {...ChartsBoxStyles}>
-                  <AreaChartComponent
-                    data={chartData}
-                    title={t('account_model:aipoint_usage')}
-                    enableCumulative={true}
-                    lines={[
-                      {
-                        dataKey: 'totalCost',
-                        name: t('account_model:aipoint_usage'),
-                        color: '#8774EE'
-                      }
-                    ]}
-                    tooltipItems={[
-                      {
-                        label: t('account_model:aipoint_usage'),
-                        dataKey: 'totalCost',
-                        color: '#8774EE'
-                      }
-                    ]}
-                  />
-                </Box>
-              )}
+              {/* 鲁港通 - 显示成本统计图表 */}
+              <Box mt={5} {...ChartsBoxStyles}>
+                <AreaChartComponent
+                  data={chartData}
+                  title={t('account_model:aipoint_usage')}
+                  enableCumulative={true}
+                  lines={[
+                    {
+                      dataKey: 'totalCost',
+                      name: t('account_model:aipoint_usage'),
+                      color: '#8774EE'
+                    }
+                  ]}
+                  tooltipItems={[
+                    {
+                      label: t('account_model:aipoint_usage'),
+                      dataKey: 'totalCost',
+                      color: '#8774EE'
+                    }
+                  ]}
+                />
+              </Box>
 
               <Grid mt={5} gridTemplateColumns={['1fr', '1fr 1fr']} gap={5}>
                 <Box {...ChartsBoxStyles}>

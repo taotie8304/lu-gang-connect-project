@@ -50,20 +50,17 @@ const AccountContainer = ({
       label: t('account:personal_information'),
       value: TabEnum.info
     },
-    ...(feConfigs?.isPlus
-      ? [
-          {
-            icon: 'support/user/usersLight',
-            label: t('account:team'),
-            value: TabEnum.team
-          },
-          {
-            icon: 'support/usage/usageRecordLight',
-            label: t('account:usage_records'),
-            value: TabEnum.usage
-          }
-        ]
-      : []),
+    // 鲁港通 - 启用团队和使用记录功能
+    {
+      icon: 'support/user/usersLight',
+      label: t('account:team'),
+      value: TabEnum.team
+    },
+    {
+      icon: 'support/usage/usageRecordLight',
+      label: t('account:usage_records'),
+      value: TabEnum.usage
+    },
     ...(feConfigs?.show_pay && userInfo?.team?.permission.hasManagePer
       ? [
           {
@@ -78,7 +75,8 @@ const AccountContainer = ({
       label: t('account:third_party'),
       value: TabEnum.thirdParty
     },
-    ...(feConfigs.isPlus && feConfigs.customDomain?.enable
+    // 鲁港通 - 启用自定义域名功能
+    ...(feConfigs.customDomain?.enable
       ? [
           {
             icon: 'common/globalLine',
@@ -110,16 +108,12 @@ const AccountContainer = ({
           }
         ]
       : []),
-
-    ...(feConfigs.isPlus
-      ? [
-          {
-            icon: 'support/user/informLight',
-            label: t('account:notifications'),
-            value: TabEnum.inform
-          }
-        ]
-      : []),
+    // 鲁港通 - 启用通知功能
+    {
+      icon: 'support/user/informLight',
+      label: t('account:notifications'),
+      value: TabEnum.inform
+    },
     {
       icon: 'support/usage/usageRecordLight',
       label: t('account:language'),

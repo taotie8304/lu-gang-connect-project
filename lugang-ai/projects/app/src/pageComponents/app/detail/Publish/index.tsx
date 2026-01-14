@@ -112,14 +112,8 @@ const OutLink = () => {
           value={linkType}
           onChange={(e) => {
             const config = publishList.current.find((v) => v.value === e)!;
-            if (!feConfigs.isPlus && config.isProFn) {
-              toast({
-                status: 'warning',
-                title: t('common:commercial_function_tip')
-              });
-            } else {
-              setLinkType(e as PublishChannelEnum);
-            }
+            // 鲁港通 - 启用所有发布渠道
+            setLinkType(e as PublishChannelEnum);
           }}
         />
       </Box>

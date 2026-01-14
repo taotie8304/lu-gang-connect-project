@@ -20,9 +20,9 @@ const ChatSliderFooter = () => {
 
   const isAdmin = !!userInfo?.team.permission.hasManagePer;
   const isSettingPane = pane === ChatSidebarPaneEnum.SETTING;
-  // 鲁港通：纯聊天模式下隐藏设置按钮
+  // 鲁港通 - 纯聊天模式下隐藏设置按钮，启用管理员设置功能
   const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
-  const showSettingButton = feConfigs.isPlus && isAdmin && !enableUserChatOnly;
+  const showSettingButton = isAdmin && !enableUserChatOnly;
 
   return (
     <Flex flexShrink={0} gap={2} alignItems="center" justifyContent="space-between" p={2} mt="auto">

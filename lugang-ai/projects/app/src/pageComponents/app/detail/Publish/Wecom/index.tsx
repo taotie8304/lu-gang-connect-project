@@ -126,12 +126,9 @@ const Wecom = ({ appId }: { appId: string }) => {
             <Tr>
               <Th>{t('common:Name')} </Th>
               <Th> {t('common:support.outlink.Usage points')} </Th>
-              {feConfigs?.isPlus && (
-                <>
-                  <Th>{t('common:core.app.share.Ip limit title')} </Th>
-                  <Th> {t('common:expired_time')} </Th>
-                </>
-              )}
+              {/* 鲁港通 - 显示高级发布配置 */}
+              <Th>{t('common:core.app.share.Ip limit title')} </Th>
+              <Th> {t('common:expired_time')} </Th>
               <Th>{t('common:last_use_time')} </Th>
               <Th> </Th>
             </Tr>
@@ -142,24 +139,20 @@ const Wecom = ({ appId }: { appId: string }) => {
                 <Td>{item.name} </Td>
                 <Td>
                   {Math.round(item.usagePoints)}
-                  {feConfigs?.isPlus
-                    ? `${
-                        item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
-                          ? ` / ${item.limit.maxUsagePoints}`
-                          : ` / ${t('common:Unlimited')}`
-                      }`
-                    : ''}
+                  {/* 鲁港通 - 显示使用点数限制 */}
+                  {`${
+                    item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
+                      ? ` / ${item.limit.maxUsagePoints}`
+                      : ` / ${t('common:Unlimited')}`
+                  }`}
                 </Td>
-                {feConfigs?.isPlus && (
-                  <>
-                    <Td>{item?.limit?.QPM || '-'} </Td>
-                    <Td>
-                      {item?.limit?.expiredTime
-                        ? dayjs(item.limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
-                        : '-'}
-                    </Td>
-                  </>
-                )}
+                {/* 鲁港通 - 显示高级配置 */}
+                <Td>{item?.limit?.QPM || '-'} </Td>
+                <Td>
+                  {item?.limit?.expiredTime
+                    ? dayjs(item.limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
+                    : '-'}
+                </Td>
                 <Td>
                   {item.lastTime
                     ? t(formatTimeToChatTime(item.lastTime) as any).replace('#', ':')

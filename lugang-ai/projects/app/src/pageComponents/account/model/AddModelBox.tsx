@@ -254,7 +254,8 @@ export const ModelEditModal = ({
                     <Input {...register('name', { required: true })} {...InputStyles} />
                   </Td>
                 </Tr>
-                {priceUnit && feConfigs?.isPlus && (
+                {/* 鲁港通 - 启用价格配置 */}
+                {priceUnit && (
                   <>
                     <Tr>
                       <Td>
@@ -630,21 +631,20 @@ export const ModelEditModal = ({
                       </Flex>
                     </Td>
                   </Tr>
-                  {feConfigs?.isPlus && (
-                    <Tr>
-                      <Td>
-                        <HStack spacing={1}>
-                          <Box>{t('account:model.censor')}</Box>
-                          <QuestionTip label={t('account:model.censor_tip')} />
-                        </HStack>
-                      </Td>
-                      <Td textAlign={'right'}>
-                        <Flex justifyContent={'flex-end'}>
-                          <Switch {...register('censor')} />
-                        </Flex>
-                      </Td>
-                    </Tr>
-                  )}
+                  {/* 鲁港通 - 启用内容审核配置（注意：需要商业版API支持） */}
+                  <Tr>
+                    <Td>
+                      <HStack spacing={1}>
+                        <Box>{t('account:model.censor')}</Box>
+                        <QuestionTip label={t('account:model.censor_tip')} />
+                      </HStack>
+                    </Td>
+                    <Td textAlign={'right'}>
+                      <Flex justifyContent={'flex-end'}>
+                        <Switch {...register('censor')} />
+                      </Flex>
+                    </Td>
+                  </Tr>
                   <Tr>
                     <Td>{t('account:model.dataset_process')}</Td>
                     <Td textAlign={'right'}>
@@ -677,16 +677,15 @@ export const ModelEditModal = ({
                       </Flex>
                     </Td>
                   </Tr>
-                  {feConfigs?.isPlus && (
-                    <Tr>
-                      <Td>{t('account_model:use_in_eval')}</Td>
-                      <Td textAlign={'right'}>
-                        <Flex justifyContent={'flex-end'}>
-                          <Switch {...register('useInEvaluation')} />
-                        </Flex>
-                      </Td>
-                    </Tr>
-                  )}
+                  {/* 鲁港通 - 启用评估功能配置 */}
+                  <Tr>
+                    <Td>{t('account_model:use_in_eval')}</Td>
+                    <Td textAlign={'right'}>
+                      <Flex justifyContent={'flex-end'}>
+                        <Switch {...register('useInEvaluation')} />
+                      </Flex>
+                    </Td>
+                  </Tr>
                   <Tr>
                     <Td>
                       <HStack spacing={1}>

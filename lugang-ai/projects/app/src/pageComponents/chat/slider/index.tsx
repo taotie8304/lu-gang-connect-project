@@ -288,7 +288,8 @@ const NavigationSection = () => {
           {isCollapsed ? (
             <AnimatedSection show={true}>
               <Flex flexDir="column" gap={2}>
-                {feConfigs.isPlus && isEnableHome && (
+                {/* 鲁港通 - 启用首页导航 */}
+                {isEnableHome && (
                   <ActionButton
                     icon="core/chat/sidebar/home"
                     isCollapsed={true}
@@ -301,7 +302,8 @@ const NavigationSection = () => {
           ) : (
             <AnimatedSection show={true}>
               <Flex flexDir="column" gap={2}>
-                {feConfigs.isPlus && isEnableHome && (
+                {/* 鲁港通 - 启用首页导航 */}
+                {isEnableHome && (
                   <ActionButton
                     icon="core/chat/sidebar/home"
                     text={t('chat:sidebar.home')}
@@ -328,25 +330,22 @@ const NavigationSection = () => {
         {isCollapsed ? (
           <AnimatedSection show={true}>
             <Flex flexDir="column" gap={2}>
-              {feConfigs.isPlus && (
-                <>
-                  {isEnableHome && (
-                    <ActionButton
-                      icon="core/chat/sidebar/home"
-                      isCollapsed={true}
-                      isActive={isHomeActive}
-                      onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
-                    />
-                  )}
-
-                  <ActionButton
-                    icon="core/chat/sidebar/star"
-                    isCollapsed={true}
-                    isActive={isFavouriteAppsActive}
-                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
-                  />
-                </>
+              {/* 鲁港通 - 启用完整导航功能 */}
+              {isEnableHome && (
+                <ActionButton
+                  icon="core/chat/sidebar/home"
+                  isCollapsed={true}
+                  isActive={isHomeActive}
+                  onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
+                />
               )}
+
+              <ActionButton
+                icon="core/chat/sidebar/star"
+                isCollapsed={true}
+                isActive={isFavouriteAppsActive}
+                onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
+              />
 
               <ActionButton
                 icon="common/app"
@@ -359,27 +358,24 @@ const NavigationSection = () => {
         ) : (
           <AnimatedSection show={true}>
             <Flex flexDir="column" gap={2}>
-              {feConfigs.isPlus && (
-                <>
-                  {isEnableHome && (
-                    <ActionButton
-                      icon="core/chat/sidebar/home"
-                      text={t('chat:sidebar.home')}
-                      isCollapsed={false}
-                      isActive={isHomeActive}
-                      onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
-                    />
-                  )}
-
-                  <ActionButton
-                    icon="core/chat/sidebar/star"
-                    text={t('chat:sidebar.favourite_apps')}
-                    isCollapsed={false}
-                    isActive={isFavouriteAppsActive}
-                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
-                  />
-                </>
+              {/* 鲁港通 - 启用完整导航功能 */}
+              {isEnableHome && (
+                <ActionButton
+                  icon="core/chat/sidebar/home"
+                  text={t('chat:sidebar.home')}
+                  isCollapsed={false}
+                  isActive={isHomeActive}
+                  onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
+                />
               )}
+
+              <ActionButton
+                icon="core/chat/sidebar/star"
+                text={t('chat:sidebar.favourite_apps')}
+                isCollapsed={false}
+                isActive={isFavouriteAppsActive}
+                onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
+              />
 
               <ActionButton
                 icon="common/app"
@@ -400,7 +396,6 @@ const BottomSection = () => {
   const pathname = usePathname();
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
-  const isProVersion = !!feConfigs.isPlus;
   const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
 
   const { userInfo } = useUserStore();
@@ -416,8 +411,8 @@ const BottomSection = () => {
   );
   const onSettingClick = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
 
-  // 在纯聊天模式下，隐藏设置按钮（管理员通过头像菜单进入后台）
-  const showSettingButton = isAdmin && isProVersion && !isShare && !enableUserChatOnly;
+  // 鲁港通 - 启用管理员设置功能，纯聊天模式下隐藏设置按钮
+  const showSettingButton = isAdmin && !isShare && !enableUserChatOnly;
 
   return (
     <MotionBox mt={'auto'} px={3} py={4} layout={false}>

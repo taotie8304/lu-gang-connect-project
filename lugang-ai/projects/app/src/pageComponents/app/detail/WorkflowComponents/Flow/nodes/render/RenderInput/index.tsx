@@ -101,12 +101,10 @@ type Props = {
 const RenderInput = ({ flowInputList, nodeId, CustomComponent, mb = 5 }: Props) => {
   const { feConfigs } = useSystemStore();
 
+  // 鲁港通 - 显示所有节点输入选项
   const filterProInputs = useMemoEnhance(() => {
-    return flowInputList.filter((input) => {
-      if (input.isPro && !feConfigs?.isPlus) return false;
-      return true;
-    });
-  }, [feConfigs?.isPlus, flowInputList]);
+    return flowInputList;
+  }, [flowInputList]);
 
   const filterInputs = useMemoEnhance(() => {
     return filterProInputs.filter((input) => {

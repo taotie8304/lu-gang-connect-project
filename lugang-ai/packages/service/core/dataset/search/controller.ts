@@ -298,8 +298,9 @@ export async function searchDatasetData(
       return Array.from(resultIds);
     };
 
-    if (!collectionFilterMatch || !global.feConfigs.isPlus) return;
+    if (!collectionFilterMatch) return;
 
+    // 鲁港通 - 启用标签过滤功能
     let tagCollectionIdList: string[] | undefined = undefined;
     let createTimeCollectionIdList: string[] | undefined = undefined;
 

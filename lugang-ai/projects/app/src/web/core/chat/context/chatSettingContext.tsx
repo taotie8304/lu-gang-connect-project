@@ -51,14 +51,14 @@ export const ChatSettingContextProvider = ({ children }: { children: React.React
 
   const [collapse, setCollapse] = useState<CollapseStatusType>(defaultCollapseStatus);
 
+  // 鲁港通 - 启用聊天设置功能
   const { data: chatSettings, runAsync: refreshChatSetting } = useRequest2(
     async () => {
-      if (!feConfigs.isPlus) return;
       return await getChatSetting();
     },
     {
       manual: false,
-      refreshDeps: [feConfigs.isPlus],
+      refreshDeps: [],
       onSuccess: (data) => {
         if (!data) return;
 

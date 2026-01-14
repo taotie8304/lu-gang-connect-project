@@ -384,7 +384,8 @@ const ModelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                     </HStack>
                   </Th>
                   <Th fontSize={'xs'}>{t('common:model.model_type')}</Th>
-                  {feConfigs?.isPlus && <Th fontSize={'xs'}>{t('common:model.billing')}</Th>}
+                  {/* 鲁港通 - 显示模型计费信息 */}
+                  <Th fontSize={'xs'}>{t('common:model.billing')}</Th>
                   <Th fontSize={'xs'}>
                     <Box
                       cursor={'pointer'}
@@ -432,7 +433,8 @@ const ModelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                     <Td>
                       <MyTag colorSchema={item.tagColor as any}>{item.typeLabel}</MyTag>
                     </Td>
-                    {feConfigs?.isPlus && <Td fontSize={'sm'}>{item.priceLabel}</Td>}
+                    {/* 鲁港通 - 显示模型计费信息 */}
+                    <Td fontSize={'sm'}>{item.priceLabel}</Td>
                     <Td fontSize={'sm'}>
                       <Switch
                         size={'sm'}
