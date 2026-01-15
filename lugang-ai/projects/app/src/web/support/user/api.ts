@@ -100,6 +100,13 @@ export const postLogin = ({ password, ...props }: PostLoginProps) =>
     password: hashStr(password)
   });
 
+// 鲁港通 - 简化登录 API，不需要验证码
+export const postLoginSimple = ({ password, ...props }: Omit<PostLoginProps, 'code'>) =>
+  POST<LoginSuccessResponse>('/support/user/account/loginSimple', {
+    ...props,
+    password: hashStr(password)
+  });
+
 export const loginOut = () => GET('/support/user/account/loginout');
 
 export const putUserInfo = (data: UserUpdateParams) => PUT('/support/user/account/update', data);

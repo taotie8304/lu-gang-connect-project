@@ -23,12 +23,12 @@ BACKUP_DIR="${BACKUP_ROOT}/lugang-backup-${TIMESTAMP}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
 # 数据库配置 - 从环境变量或默认值获取
-# 注意：这些密码需要与 docker-compose.yml 中的配置一致！
-# 默认密码来自 docker-compose.yml: MONGO_INITDB_ROOT_PASSWORD=password, POSTGRES_PASSWORD=password
+# 注意：这些密码需要与服务器 docker-compose.yml 中的配置一致！
+# 服务器实际密码: MONGO_INITDB_ROOT_PASSWORD=LuGang2024Secure, POSTGRES_PASSWORD=LuGang2024Secure
 MONGO_USER="${MONGO_USER:-root}"
-MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-LuGang2024Secure}"
 PG_USER="${PG_USER:-postgres}"
-PG_PASSWORD="${PG_PASSWORD:-password}"
+PG_PASSWORD="${PG_PASSWORD:-LuGang2024Secure}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        鲁港通 - 完整备份脚本 v1.1                     ║${NC}"
@@ -237,7 +237,7 @@ IP: $(hostname -I | awk '{print $1}')
 
 ===== 恢复命令 =====
 # 恢复 MongoDB
-docker exec -i lugang-ai-mongo mongorestore --username=root --password=password --authenticationDatabase=admin /dump
+docker exec -i lugang-ai-mongo mongorestore --username=root --password=LuGang2024Secure --authenticationDatabase=admin /dump
 
 # 恢复 PostgreSQL
 cat ${BACKUP_DIR}/postgresql/all_databases.sql | docker exec -i lugang-ai-pg psql -U postgres

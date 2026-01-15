@@ -20,9 +20,9 @@ NC='\033[0m'
 # 配置
 BACKUP_ROOT="/www/wwwroot/backups"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
-# 数据库配置 - 与 docker-compose.yml 保持一致
+# 数据库配置 - 与服务器 docker-compose.yml 保持一致
 MONGO_USER="${MONGO_USER:-root}"
-MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-LuGang2024Secure}"
 PG_USER="${PG_USER:-postgres}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"

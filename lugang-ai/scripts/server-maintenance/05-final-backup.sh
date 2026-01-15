@@ -22,12 +22,12 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 FINAL_BACKUP_DIR="${BACKUP_ROOT}/lugang-final-${TIMESTAMP}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
-# 数据库配置 - 与 docker-compose.yml 保持一致
-# 默认密码来自 docker-compose.yml: MONGO_INITDB_ROOT_PASSWORD=password, POSTGRES_PASSWORD=password
+# 数据库配置 - 与服务器 docker-compose.yml 保持一致
+# 服务器实际密码: MONGO_INITDB_ROOT_PASSWORD=LuGang2024Secure, POSTGRES_PASSWORD=LuGang2024Secure
 MONGO_USER="${MONGO_USER:-root}"
-MONGO_PASSWORD="${MONGO_PASSWORD:-password}"
+MONGO_PASSWORD="${MONGO_PASSWORD:-LuGang2024Secure}"
 PG_USER="${PG_USER:-postgres}"
-PG_PASSWORD="${PG_PASSWORD:-password}"
+PG_PASSWORD="${PG_PASSWORD:-LuGang2024Secure}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        鲁港通 - 最终备份脚本 v1.1                     ║${NC}"
@@ -208,7 +208,7 @@ BACKUP_DIR="${SCRIPT_DIR}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
 MONGO_USER="root"
-MONGO_PASSWORD="password"
+MONGO_PASSWORD="LuGang2024Secure"
 PG_USER="postgres"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
