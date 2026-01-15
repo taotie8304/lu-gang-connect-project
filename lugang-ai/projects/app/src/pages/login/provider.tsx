@@ -26,7 +26,7 @@ import { validateRedirectUrl } from '@/web/common/utils/uri';
 
 let isOauthLogging = false;
 
-const provider = () => {
+const provider = ({ defaultShareId }: { defaultShareId: string }) => {
   const { t, i18n } = useTranslation();
   const { initd, loginStore, setLoginStore } = useSystemStore();
   const { setUserInfo } = useUserStore();
@@ -51,7 +51,6 @@ const provider = () => {
           return '/dashboard/agent';
         }
         // 普通用户跳转到默认分享链接
-        const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
         if (defaultShareId) {
           return `/chat/share?shareId=${defaultShareId}`;
         }
@@ -173,6 +172,8 @@ export default provider;
 export async function getServerSideProps(context: any) {
   return {
     props: {
+      // 鲁港通：从服务端环境变量获取默认分享链接 ID
+      defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(context))
     }
   };

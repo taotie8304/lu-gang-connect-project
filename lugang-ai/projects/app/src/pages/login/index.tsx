@@ -12,7 +12,7 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
 
-const Login = () => {
+const Login = ({ defaultShareId }: { defaultShareId: string }) => {
   const router = useRouter();
   const { lastRoute = '' } = router.query as { lastRoute: string };
   const { t } = useTranslation();
@@ -28,13 +28,12 @@ const Login = () => {
       return '/dashboard/agent';
     }
     // 普通用户跳转到默认分享链接
-    const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
     if (defaultShareId) {
       return `/chat/share?shareId=${defaultShareId}`;
     }
     // 如果没有配置分享链接，回退到首页让首页处理
     return '/';
-  }, []);
+  }, [defaultShareId]);
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponse) => {
@@ -89,6 +88,8 @@ const Login = () => {
 export async function getServerSideProps(context: any) {
   return {
     props: {
+      // 鲁港通：从服务端环境变量获取默认分享链接 ID
+      defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(context, ['app', 'user', 'login']))
     }
   };

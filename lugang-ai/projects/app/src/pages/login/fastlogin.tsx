@@ -12,10 +12,12 @@ import { useTranslation } from 'next-i18next';
 
 const FastLogin = ({
   code,
-  token
+  token,
+  defaultShareId
 }: {
   code: string;
   token: string;
+  defaultShareId: string;
 }) => {
   const { setUserInfo } = useUserStore();
   const router = useRouter();
@@ -29,12 +31,11 @@ const FastLogin = ({
       return '/dashboard/agent';
     }
     // 普通用户跳转到默认分享链接
-    const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
     if (defaultShareId) {
       return `/chat/share?shareId=${defaultShareId}`;
     }
     return '/';
-  }, []);
+  }, [defaultShareId]);
 
   const loginSuccess = useCallback(
     (res: LoginSuccessResponse) => {
@@ -98,6 +99,8 @@ export async function getServerSideProps(content: any) {
     props: {
       code: content?.query?.code || '',
       token: content?.query?.token || '',
+      // 鲁港通：从服务端环境变量获取默认分享链接 ID
+      defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(content))
     }
   };
