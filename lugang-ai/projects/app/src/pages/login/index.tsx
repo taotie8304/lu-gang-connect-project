@@ -11,7 +11,6 @@ import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 const Login = () => {
   const router = useRouter();
@@ -19,27 +18,32 @@ const Login = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { setUserInfo } = useUserStore();
-  const { feConfigs } = useSystemStore();
 
   // 鲁港通：根据用户角色获取跳转路径
-  // 管理员（团队所有者）直接跳转到管理后台，普通用户跳转到聊天界面
-  const getDefaultRoute = useCallback((isOwner: boolean) => {
-    // 管理员始终跳转到管理后台
-    if (isOwner) {
+  // 管理员 (username === 'root') 跳转到管理后台，普通用户跳转到聊天界面
+  const getDefaultRoute = useCallback((username: string) => {
+    // 只有 root 用户才是管理员
+    const isAdmin = username === 'root';
+    if (isAdmin) {
       return '/dashboard/agent';
     }
-    // 普通用户根据配置决定跳转路径
-    return feConfigs?.enableUserChatOnly ? '/chat' : '/dashboard/agent';
-  }, [feConfigs?.enableUserChatOnly]);
+    // 普通用户跳转到默认分享链接
+    const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
+    if (defaultShareId) {
+      return `/chat/share?shareId=${defaultShareId}`;
+    }
+    // 如果没有配置分享链接，回退到首页让首页处理
+    return '/';
+  }, []);
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponse) => {
       setUserInfo(res.user);
 
       const decodeLastRoute = validateRedirectUrl(lastRoute);
-      // 鲁港通：判断是否为管理员（团队所有者）
-      const isOwner = res.user.permission?.isOwner ?? false;
-      const defaultRoute = getDefaultRoute(isOwner);
+      // 鲁港通：使用 username 判断是否为管理员
+      const isAdmin = res.user.username === 'root';
+      const defaultRoute = getDefaultRoute(res.user.username);
 
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
@@ -59,12 +63,12 @@ const Login = () => {
         }
 
         // 鲁港通：管理员始终跳转到管理后台，忽略 lastRoute
-        if (isOwner) {
+        if (isAdmin) {
           return defaultRoute;
         }
 
-        // 普通用户：如果没有指定 lastRoute，使用默认路径
-        return decodeLastRoute || defaultRoute;
+        // 普通用户：直接使用默认路径（分享链接）
+        return defaultRoute;
       })();
 
       navigateTo && router.replace(navigateTo);

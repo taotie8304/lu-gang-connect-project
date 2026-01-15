@@ -3,6 +3,7 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'next-i18next';
 import { useToast } from '@fastgpt/web/hooks/useToast';
+import { useEffect } from 'react';
 
 const unAuthPage: { [key: string]: boolean } = {
   '/': true,
@@ -23,7 +24,7 @@ const Auth = ({ children }: { children: JSX.Element | React.ReactNode }) => {
   const { toast } = useToast();
   const { userInfo, initUserInfo } = useUserStore();
 
-  useQuery(
+  const { isFetched } = useQuery(
     [router.pathname],
     () => {
       if (unAuthPage[router.pathname] === true) {
@@ -34,14 +35,31 @@ const Auth = ({ children }: { children: JSX.Element | React.ReactNode }) => {
     },
     {
       refetchInterval: 10 * 60 * 1000,
-      onError(error) {
-        toast({
-          status: 'warning',
-          title: t('common:support.user.Need to login')
-        });
-      }
+      retry: false
     }
   );
+
+  // 鲁港通：用户未登录时重定向到登录页
+  useEffect(() => {
+    if (unAuthPage[router.pathname]) {
+      return;
+    }
+    
+    // 等待查询完成
+    if (!isFetched) {
+      return;
+    }
+
+    // 如果用户信息为空，重定向到登录页
+    if (!userInfo) {
+      toast({
+        status: 'warning',
+        title: t('common:support.user.Need to login')
+      });
+      const currentPath = router.asPath;
+      router.replace(`/login?lastRoute=${encodeURIComponent(currentPath)}`);
+    }
+  }, [router, userInfo, isFetched, toast, t]);
 
   return !!userInfo || unAuthPage[router.pathname] === true ? children : null;
 };

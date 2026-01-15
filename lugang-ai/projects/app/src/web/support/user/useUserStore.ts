@@ -63,6 +63,9 @@ export const useUserStore = create<State>()(
             return res;
           } catch (error) {
             console.log('[Init user] error', error);
+            // 用户未登录时，确保 userInfo 为 null
+            get().setUserInfo(null);
+            return null;
           }
         },
         setUserInfo(user: UserType | null) {

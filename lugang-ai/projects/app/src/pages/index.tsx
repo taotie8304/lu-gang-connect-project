@@ -1,11 +1,9 @@
 import { serviceSideProps } from '@/web/common/i18n/utils';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Loading from '@fastgpt/web/components/common/MyLoading';
 import { useRouter } from 'next/router';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { Box, Text, Button, VStack } from '@chakra-ui/react';
-import { useQuery } from '@tanstack/react-query';
 
 /**
  * 鲁港通 - 首页路由组件
@@ -15,22 +13,28 @@ import { useQuery } from '@tanstack/react-query';
  */
 const Index = () => {
   const router = useRouter();
-  const { feConfigs } = useSystemStore();
   const { userInfo, initUserInfo } = useUserStore();
   const [error, setError] = useState<string | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
+  const [isReady, setIsReady] = useState(false);
+  const hasInitialized = useRef(false);
 
-  // 首先尝试获取用户信息
-  const { isLoading } = useQuery(['initUserForRouting'], initUserInfo, {
-    retry: false,
-    onSettled: () => {
-      setIsChecking(false);
-    }
-  });
-
+  // 初始化用户信息
   useEffect(() => {
-    // 等待用户信息加载完成
-    if (isLoading || isChecking) {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
+    const init = async () => {
+      await initUserInfo();
+      setIsReady(true);
+    };
+
+    init();
+  }, [initUserInfo]);
+
+  // 路由跳转逻辑
+  useEffect(() => {
+    // 等待初始化完成
+    if (!isReady) {
       return;
     }
 
@@ -59,7 +63,7 @@ const Index = () => {
       // 如果没有配置默认分享链接，显示错误提示
       setError('系统尚未配置默认 AI 助手，请联系管理员。');
     }
-  }, [router, userInfo, isLoading, isChecking]);
+  }, [router, userInfo, isReady]);
 
   // 显示错误提示
   if (error) {

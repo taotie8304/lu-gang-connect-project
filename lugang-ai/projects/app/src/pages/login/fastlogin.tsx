@@ -9,30 +9,48 @@ import Loading from '@fastgpt/web/components/common/MyLoading';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { useTranslation } from 'next-i18next';
-import { validateRedirectUrl } from '@/web/common/utils/uri';
 
 const FastLogin = ({
   code,
-  token,
-  callbackUrl
+  token
 }: {
   code: string;
   token: string;
-  callbackUrl: string;
 }) => {
   const { setUserInfo } = useUserStore();
   const router = useRouter();
   const { toast } = useToast();
   const { t } = useTranslation();
+
+  // 鲁港通：根据用户角色获取默认跳转路径
+  const getDefaultRoute = useCallback((username: string) => {
+    const isAdmin = username === 'root';
+    if (isAdmin) {
+      return '/dashboard/agent';
+    }
+    // 普通用户跳转到默认分享链接
+    const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
+    if (defaultShareId) {
+      return `/chat/share?shareId=${defaultShareId}`;
+    }
+    return '/';
+  }, []);
+
   const loginSuccess = useCallback(
     (res: LoginSuccessResponse) => {
       setUserInfo(res.user);
 
+      // 鲁港通：根据用户角色决定跳转路径
+      const isAdmin = res.user.username === 'root';
+      const targetUrl = isAdmin 
+        ? '/dashboard/agent' 
+        : getDefaultRoute(res.user.username);
+
       setTimeout(() => {
-        router.push(validateRedirectUrl(callbackUrl));
+        router.push(targetUrl);
       }, 100);
     },
-    [setUserInfo, router, callbackUrl]
+    [setUserInfo, router, getDefaultRoute]
   );
 
   const authCode = useCallback(
@@ -67,10 +85,10 @@ const FastLogin = ({
 
   useEffect(() => {
     clearToken();
-    const safeCallbackUrl = validateRedirectUrl(callbackUrl);
-    router.prefetch(safeCallbackUrl);
+    router.prefetch('/dashboard/agent');
+    router.prefetch('/chat');
     authCode(code, token);
-  }, [authCode, callbackUrl, code, router, token]);
+  }, [authCode, code, router, token]);
 
   return <Loading />;
 };
@@ -80,7 +98,6 @@ export async function getServerSideProps(content: any) {
     props: {
       code: content?.query?.code || '',
       token: content?.query?.token || '',
-      callbackUrl: content?.query?.callbackUrl || '/dashboard/agent',
       ...(await serviceSideProps(content))
     }
   };

@@ -44,12 +44,29 @@ const provider = () => {
       const decodeLastRoute = validateRedirectUrl(lastRoute);
       setUserInfo(res.user);
 
+      // 鲁港通：根据用户角色获取默认跳转路径
+      const getDefaultRoute = () => {
+        const isAdmin = res.user.username === 'root';
+        if (isAdmin) {
+          return '/dashboard/agent';
+        }
+        // 普通用户跳转到默认分享链接
+        const defaultShareId = process.env.NEXT_PUBLIC_DEFAULT_SHARE_ID;
+        if (defaultShareId) {
+          return `/chat/share?shareId=${defaultShareId}`;
+        }
+        return '/';
+      };
+
+      const defaultRoute = getDefaultRoute();
+      const isAdmin = res.user.username === 'root';
+
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
           if (decodeLastRoute.includes('/account/team?invitelinkid=')) {
             const id = decodeLastRoute.split('invitelinkid=')[1];
             await postAcceptInvitationLink(id);
-            return '/dashboard/agent';
+            return defaultRoute;
           } else {
             toast({
               status: 'warning',
@@ -58,7 +75,13 @@ const provider = () => {
           }
         }
 
-        return decodeLastRoute;
+        // 鲁港通：管理员始终跳转到管理后台
+        if (isAdmin) {
+          return defaultRoute;
+        }
+
+        // 普通用户：使用默认路径（分享链接）
+        return defaultRoute;
       })();
 
       navigateTo && router.replace(navigateTo);
