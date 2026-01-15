@@ -1,4 +1,3 @@
-import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { createDefaultTeam } from '@fastgpt/service/support/user/team/controller';
 import { exit } from 'process';
@@ -8,12 +7,13 @@ import { connectionMongo } from '@fastgpt/service/common/mongo';
 /**
  * 鲁港通 - 初始化 root 用户
  * 只在 root 用户不存在时创建，不会重置已存在用户的密码
+ * 使用原生 MongoDB 操作，避免 Mongoose Schema 的 set/get 函数干扰
  */
 export async function initRootUser(retry = 3): Promise<any> {
   try {
-    const rootUser = await MongoUser.findOne({
-      username: 'root'
-    });
+    // 鲁港通：使用原生 MongoDB 查询，避免 Mongoose Schema 干扰
+    const usersCollection = connectionMongo.connection.db.collection('users');
+    const rootUser = await usersCollection.findOne({ username: 'root' });
 
     // 鲁港通：如果 root 用户已存在，不重置密码
     if (rootUser) {
@@ -33,17 +33,15 @@ export async function initRootUser(retry = 3): Promise<any> {
       // 前端发送一次哈希，后端再哈希一次，所以这里需要哈希两次
       const passwordHash = hashStr(hashStr(psw));
       
-      const result = await connectionMongo.connection.db
-        .collection('users')
-        .insertOne({
-          username: 'root',
-          password: passwordHash,
-          status: 'active',
-          createTime: new Date(),
-          timezone: 'Asia/Shanghai',
-          language: 'zh-CN',
-          promotionRate: 0
-        });
+      const result = await usersCollection.insertOne({
+        username: 'root',
+        password: passwordHash,
+        status: 'active',
+        createTime: new Date(),
+        timezone: 'Asia/Shanghai',
+        language: 'zh-CN',
+        promotionRate: 0
+      });
       
       const rootId = result.insertedId;
       
