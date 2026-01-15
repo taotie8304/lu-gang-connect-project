@@ -27,9 +27,15 @@
     - **Property 1: User Role Routing**
     - **Validates: Requirements 1.1, 1.2, 1.3**
 
+  - [x] 2.3 修改 `src/components/Layout/auth.tsx` 添加管理员页面访问限制
+    - 定义 `adminOnlyPathPrefixes` 列表
+    - 普通用户访问管理页面时重定向到首页
+    - _Requirements: 1.2, 1.3_
+
 - [x] 3. Checkpoint - 确保角色路由正常工作
   - 测试 root 用户登录跳转到管理后台
   - 测试普通用户登录跳转到聊天界面
+  - 测试普通用户无法访问管理后台页面
 
 ### 第二阶段：用户设置面板
 
