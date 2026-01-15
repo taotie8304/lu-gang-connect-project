@@ -330,7 +330,7 @@ const AdminRegisterConfigPage = () => {
                 <InputRightElement>
                   <IconButton
                     aria-label={showPassword ? '隐藏密码' : '显示密码'}
-                    icon={<MyIcon name={showPassword ? 'core/chat/eyeClose' : 'core/chat/eyeOpen'} w={4} />}
+                    icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w={4} />}
                     variant="ghost"
                     size="sm"
                     onClick={() => setShowPassword(!showPassword)}

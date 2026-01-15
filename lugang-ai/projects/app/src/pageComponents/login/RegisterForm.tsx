@@ -1,5 +1,5 @@
-import React, { type Dispatch } from 'react';
-import { FormControl, Box, Input, Button } from '@chakra-ui/react';
+import React, { useState, type Dispatch } from 'react';
+import { FormControl, Box, Input, Button, InputGroup, InputRightElement, IconButton } from '@chakra-ui/react';
 import { useForm } from 'react-hook-form';
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
 import { postRegister } from '@/web/support/user/api';
@@ -18,6 +18,7 @@ import {
   removeFastGPTSem
 } from '@/web/support/marketing/utils';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
+import MyIcon from '@fastgpt/web/components/common/Icon';
 
 interface Props {
   loginSuccess: (e: LoginSuccessResponse) => void;
@@ -40,6 +41,10 @@ const isPhone = (str: string): boolean => {
 const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   const { toast } = useToast();
   const { t } = useTranslation();
+  
+  // 鲁港通：密码显示/隐藏状态
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
 
   const { feConfigs } = useSystemStore();
   const {
@@ -197,33 +202,57 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           <SendCodeBox username={codeTargetUsername} />
         </FormControl>
         <FormControl mt={5} isInvalid={!!errors.password}>
-          <Input
-            {...inputStyles}
-            size={'lg'}
-            type={'password'}
-            placeholder={t('login:password_tip')}
-            {...register('password', {
-              required: true,
-              validate: (val) => {
-                if (!checkPasswordRule(val)) {
-                  return t('login:password_tip');
+          {/* 鲁港通：密码输入框，带眼睛图标 */}
+          <InputGroup size={'lg'}>
+            <Input
+              {...inputStyles}
+              type={showPassword ? 'text' : 'password'}
+              placeholder={t('login:password_tip')}
+              {...register('password', {
+                required: true,
+                validate: (val) => {
+                  if (!checkPasswordRule(val)) {
+                    return t('login:password_tip');
+                  }
+                  return true;
                 }
-                return true;
-              }
-            })}
-          ></Input>
+              })}
+            />
+            <InputRightElement>
+              <IconButton
+                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                variant="ghost"
+                size="sm"
+                icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w="18px" />}
+                onClick={() => setShowPassword(!showPassword)}
+                _hover={{ bg: 'transparent' }}
+              />
+            </InputRightElement>
+          </InputGroup>
         </FormControl>
         <FormControl mt={5} isInvalid={!!errors.password2}>
-          <Input
-            {...inputStyles}
-            size={'lg'}
-            type={'password'}
-            placeholder={t('user:password.confirm')}
-            {...register('password2', {
-              validate: (val) =>
-                getValues('password') === val ? true : t('user:password.not_match')
-            })}
-          />
+          {/* 鲁港通：确认密码输入框，带眼睛图标 */}
+          <InputGroup size={'lg'}>
+            <Input
+              {...inputStyles}
+              type={showPassword2 ? 'text' : 'password'}
+              placeholder={t('user:password.confirm')}
+              {...register('password2', {
+                validate: (val) =>
+                  getValues('password') === val ? true : t('user:password.not_match')
+              })}
+            />
+            <InputRightElement>
+              <IconButton
+                aria-label={showPassword2 ? '隐藏密码' : '显示密码'}
+                variant="ghost"
+                size="sm"
+                icon={<MyIcon name={showPassword2 ? 'visible' : 'invisible'} w="18px" />}
+                onClick={() => setShowPassword2(!showPassword2)}
+                _hover={{ bg: 'transparent' }}
+              />
+            </InputRightElement>
+          </InputGroup>
         </FormControl>
         {/* 鲁港通：蓝色注册按钮 */}
         <Button

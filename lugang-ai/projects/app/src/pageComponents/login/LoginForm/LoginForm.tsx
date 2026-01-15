@@ -146,7 +146,7 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
                 aria-label={showPassword ? '隐藏密码' : '显示密码'}
                 variant="ghost"
                 size="sm"
-                icon={<MyIcon name={showPassword ? 'core/chat/eyeShow' : 'core/chat/eyeHide'} w="18px" />}
+                icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w="18px" />}
                 onClick={() => setShowPassword(!showPassword)}
                 _hover={{ bg: 'transparent' }}
               />
