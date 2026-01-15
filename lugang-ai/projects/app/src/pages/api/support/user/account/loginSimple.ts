@@ -14,6 +14,7 @@ import { UserErrEnum } from '@fastgpt/global/common/error/code/user';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { createUserSession } from '@fastgpt/service/support/user/session';
+import { hashStr } from '@fastgpt/global/common/string/tools';
 import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { syncUserToOneApi } from '@/service/integration/oneapi';
@@ -42,9 +43,13 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     return Promise.reject('Invalid account!');
   }
 
-  // 直接验证用户名和密码
-  const user = await MongoUser.findOne({ username, password });
-  if (!user) {
+  // 鲁港通：验证密码
+  // 前端发送的 password 已经是哈希过一次的值
+  // 数据库存储的是二次哈希值，所以需要对 password 再哈希一次进行比较
+  const passwordHash = hashStr(password);
+  const user = await MongoUser.findOne({ username }).select('+password');
+  
+  if (!user || user.password !== passwordHash) {
     return Promise.reject(UserErrEnum.account_psw_error);
   }
 
