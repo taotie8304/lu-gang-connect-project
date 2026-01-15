@@ -1,6 +1,11 @@
 /**
  * 鲁港通 - 简化登录 API
  * 移除验证码机制，直接用用户名密码登录
+ * 
+ * 密码哈希流程：
+ * 1. 用户输入明文密码
+ * 2. 前端 hashStr() 哈希一次后发送
+ * 3. 后端 hashStr() 再哈希一次后与数据库比较
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
@@ -15,6 +20,7 @@ import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { createUserSession } from '@fastgpt/service/support/user/session';
 import { hashStr } from '@fastgpt/global/common/string/tools';
+import { connectionMongo } from '@fastgpt/service/common/mongo';
 import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { syncUserToOneApi } from '@/service/integration/oneapi';
@@ -47,9 +53,19 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   // 前端发送的 password 已经是哈希过一次的值
   // 数据库存储的是二次哈希值，所以需要对 password 再哈希一次进行比较
   const passwordHash = hashStr(password);
-  const user = await MongoUser.findOne({ username }).select('+password');
   
-  if (!user || user.password !== passwordHash) {
+  // 直接从数据库读取，绕过 Schema 的 get 函数
+  const userDoc = await connectionMongo.connection.db
+    .collection('users')
+    .findOne({ username });
+  
+  if (!userDoc || userDoc.password !== passwordHash) {
+    return Promise.reject(UserErrEnum.account_psw_error);
+  }
+
+  // 使用 Mongoose 获取完整用户对象
+  const user = await MongoUser.findOne({ username });
+  if (!user) {
     return Promise.reject(UserErrEnum.account_psw_error);
   }
 
