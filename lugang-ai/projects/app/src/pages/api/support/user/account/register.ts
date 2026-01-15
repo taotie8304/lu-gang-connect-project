@@ -5,7 +5,6 @@
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-// MongoDB 连接已在应用启动时建立
 import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyAuthCode } from '../inform/sendAuthCode';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
@@ -14,8 +13,10 @@ import { createDefaultTeam } from '@fastgpt/service/support/user/team/controller
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
-import { createJWT, setCookie } from '@fastgpt/service/support/permission/controller';
-import { getTmbInfoByTmbId } from '@fastgpt/service/support/user/team/controller';
+import { createUserSession } from '@fastgpt/service/support/user/session';
+import { setCookie } from '@fastgpt/service/support/permission/auth/common';
+import { getUserDetail } from '@fastgpt/service/support/user/controller';
+import requestIp from 'request-ip';
 import axios from 'axios';
 
 // 判断是否为邮箱
@@ -165,7 +166,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
 
       return {
-        odId: user._id.toString(),
+        userId: user._id.toString(),
         tmbId: tmb?._id.toString()
       };
     });
@@ -179,33 +180,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       addLog.error('鲁港通后端用户创建异步失败', err);
     });
 
-    // 获取用户信息
-    const tmbInfo = await getTmbInfoByTmbId({ tmbId: userData.tmbId });
+    // 获取用户详情
+    const userDetail = await getUserDetail({
+      tmbId: userData.tmbId,
+      userId: userData.userId
+    });
 
-    // 生成 JWT token
-    const token = createJWT(tmbInfo);
+    // 生成 session token（与登录 API 保持一致）
+    const token = await createUserSession({
+      userId: userData.userId,
+      teamId: userDetail.team.teamId,
+      tmbId: userData.tmbId,
+      isRoot: false,
+      ip: requestIp.getClientIp(req)
+    });
     setCookie(res, token);
 
     addLog.info('鲁港通用户注册成功', { username, isPhone: isPhone(username) });
 
     return jsonRes(res, {
       data: {
-        user: {
-          odId: tmbInfo.userId,
-          tmbId: tmbInfo.tmbId,
-          teamId: tmbInfo.teamId,
-          teamName: tmbInfo.teamName,
-          avatar: tmbInfo.avatar,
-          balance: tmbInfo.balance,
-          permission: tmbInfo.permission,
-          team: {
-            teamId: tmbInfo.teamId,
-            teamName: tmbInfo.teamName,
-            avatar: tmbInfo.teamAvatar,
-            balance: tmbInfo.balance,
-            status: 'active'
-          }
-        },
+        user: userDetail,
         token
       }
     });
