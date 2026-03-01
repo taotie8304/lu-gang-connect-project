@@ -8,8 +8,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { addLog } from '@fastgpt/service/common/system/log';
 import { getPaymentOrder } from '@fastgpt/service/support/payment/payment';
-import { authUserPer } from '@fastgpt/service/support/permission/auth/user';
+import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
 import { PaymentStatus } from '@fastgpt/service/support/payment/types';
+import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 
 /**
  * 查询支付订单状态
@@ -22,10 +23,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 验证用户身份
-    const { tmbId, userInfo } = await authUserPer({
+    const { tmbId, tmb } = await authUserPer({
       req,
       authToken: true,
-      per: 'r'
+      per: ReadPermissionVal
     });
 
     const { order_id } = req.query;
@@ -42,7 +43,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!order) {
       addLog.warn('鲁港通支付订单查询失败', {
-        username: userInfo.username,
+        username: tmb.username,
         order_id
       });
       return jsonRes(res, {
@@ -52,9 +53,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 验证订单所属用户
-    if (order.username !== userInfo.username) {
+    if (order.username !== tmb.username) {
       addLog.warn('鲁港通支付订单用户不匹配', {
-        username: userInfo.username,
+        username: tmb.username,
         order_username: order.username,
         order_id
       });
@@ -65,7 +66,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     addLog.info('鲁港通支付订单状态查询成功', {
-      username: userInfo.username,
+      username: tmb.username,
       order_id,
       status: order.status
     });

@@ -8,7 +8,8 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { addLog } from '@fastgpt/service/common/system/log';
 import { getRechargePackages } from '@fastgpt/service/support/user/integration/recharge';
-import { authUserPer } from '@fastgpt/service/support/permission/auth/user';
+import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
+import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -20,7 +21,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await authUserPer({
       req,
       authToken: true,
-      per: 'r'
+      per: ReadPermissionVal
     });
 
     // Requirement 10.1: 从鲁港通后端获取充值套餐列表

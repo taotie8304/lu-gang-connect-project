@@ -1,6 +1,35 @@
 # Git 提交说明
 
-## 推荐的提交命令
+## 最新修复（2026-03-01 - 第二次）
+
+### 修复 GitHub Actions 构建错误
+
+**问题**: 推送后 GitHub Actions 构建失败，报告模块导入错误
+
+**修复内容**:
+- ✅ 修正支付 API 的 `authUserPer` 导入路径
+- ✅ 使用标准权限常量（`ReadPermissionVal`, `WritePermissionVal`）
+- ✅ 修正 `tmb` 对象使用方式
+- ✅ 所有文件通过 TypeScript 诊断
+
+**提交命令**:
+```bash
+git add .
+git commit -m "fix: 修复支付 API 权限认证导入路径
+
+- 修正 authUserPer 导入路径为正确的模块
+- 使用标准权限常量替代字符串值
+- 修正 tmb 对象使用方式
+
+修复 GitHub Actions 构建失败问题"
+git push origin main
+```
+
+---
+
+## 之前的提交（2026-03-01 - 第一次）
+
+### 推荐的提交命令
 
 ```bash
 # 1. 查看变更
@@ -110,7 +139,7 @@ git commit -m "feat: 鲁港通平台集成完成 - 商业版功能恢复与安�
 git push origin main
 ```
 
-## 简短版本（如果上面太长）
+### 简短版本（如果上面太长）
 
 ```bash
 git commit -m "feat: 鲁港通平台集成完成
@@ -125,6 +154,8 @@ git commit -m "feat: 鲁港通平台集成完成
 详见: lugang-ai/projects/app/test/REPORTS.md"
 ```
 
+---
+
 ## 提交后
 
 ```bash
@@ -136,3 +167,9 @@ cd /www/wwwroot/lugang-ai
 git pull origin main
 ./deploy-prod.sh
 ```
+
+---
+
+**最后更新**: 2026-03-01  
+**版本**: 4.14.4  
+**状态**: ✅ 修复完成，可部署

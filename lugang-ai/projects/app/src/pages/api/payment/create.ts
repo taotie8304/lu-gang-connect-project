@@ -8,8 +8,9 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { addLog } from '@fastgpt/service/common/system/log';
 import { createPaymentOrder } from '@fastgpt/service/support/payment/payment';
-import { authUserPer } from '@fastgpt/service/support/permission/auth/user';
+import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
 import type { PaymentRequest } from '@fastgpt/service/support/payment/types';
+import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -18,10 +19,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 验证用户身份
-    const { tmbId, userInfo } = await authUserPer({
+    const { tmbId, tmb } = await authUserPer({
       req,
       authToken: true,
-      per: 'w'
+      per: WritePermissionVal
     });
 
     const { package_id, payment_method, return_url, notify_url } = req.body as PaymentRequest & {
@@ -38,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Requirement 10.2: 创建支付订单
-    const paymentResponse = await createPaymentOrder(userInfo.username, {
+    const paymentResponse = await createPaymentOrder(tmb.username, {
       package_id,
       payment_method,
       return_url,
@@ -47,7 +48,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     if (!paymentResponse) {
       addLog.warn('鲁港通支付订单创建失败', {
-        username: userInfo.username,
+        username: tmb.username,
         package_id
       });
       return jsonRes(res, {
@@ -57,7 +58,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     addLog.info('鲁港通支付订单创建成功', {
-      username: userInfo.username,
+      username: tmb.username,
       package_id,
       payment_method,
       order_id: paymentResponse.order_id
