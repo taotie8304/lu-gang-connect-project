@@ -16,7 +16,7 @@
   - 在 `.env.local` 添加 `NEXT_PUBLIC_DEFAULT_SHARE_ID`
   - _Requirements: 1.1, 1.4_
 
-- [-] 2. 实现用户角色路由逻辑
+- [x] 2. 实现用户角色路由逻辑
   - [x] 2.1 修改 `src/pages/index.tsx` 实现角色判断
     - 判断 username === 'root' 为管理员
     - 管理员跳转 `/dashboard/agent`
@@ -39,13 +39,13 @@
 
 ### 第二阶段：用户设置面板
 
-- [ ] 4. 创建用户设置面板组件
-  - [ ] 4.1 创建 `src/components/UserSettingsPanel/index.tsx`
+- [x] 4. 创建用户设置面板组件
+  - [x] 4.1 创建 `src/components/UserSettingsPanel/index.tsx`
     - 实现面板 UI 和菜单列表
     - 包含所有 9 个菜单项
     - _Requirements: 3.1, 3.2, 3.3_
   
-  - [ ] 4.2 集成到聊天界面
+  - [x] 4.2 集成到聊天界面
     - 在左下角用户头像添加点击事件
     - 打开设置面板
     - _Requirements: 3.1_
