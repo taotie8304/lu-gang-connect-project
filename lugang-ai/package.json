@@ -54,6 +54,12 @@
   "resolutions": {
     "mdast-util-gfm-autolink-literal": "2.0.0"
   },
+  "pnpm": {
+    "overrides": {
+      "react": "18.3.1",
+      "react-dom": "18.3.1"
+    }
+  },
   "engines": {
     "node": ">=20"
   },

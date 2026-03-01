@@ -2,7 +2,7 @@
  * 鲁港通 - 用户设置面板
  * 普通用户点击头像后显示的设置菜单
  */
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -22,6 +22,13 @@ import type { IconName } from '@fastgpt/web/components/common/Icon/type';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import LanguageSelector from '@/components/LanguageSelector';
+import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
+import AccessibilityModal from '@/components/AccessibilityModal';
+import SystemContentModal from '@/components/SystemContentModal';
+import ActivityListModal from '@/components/ActivityListModal';
+import AccountInfoModal from '@/components/AccountInfoModal';
+import { SystemContentKeyEnum } from '@fastgpt/global/support/systemContent/constant';
 
 interface SettingsMenuItem {
   key: string;
@@ -41,6 +48,32 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
   const { setUserInfo } = useUserStore();
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
 
+  // 鲁港通：语言选择器状态
+  const [isLanguageSelectorOpen, setIsLanguageSelectorOpen] = useState(false);
+  
+  // 鲁港通：密码修改弹窗状态
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  
+  // 鲁港通：辅助使用设计弹窗状态
+  const [isAccessibilityModalOpen, setIsAccessibilityModalOpen] = useState(false);
+
+  // 鲁港通：活动中心弹窗状态
+  const [isActivityListModalOpen, setIsActivityListModalOpen] = useState(false);
+
+  // 鲁港通：账户信息弹窗状态
+  const [isAccountInfoModalOpen, setIsAccountInfoModalOpen] = useState(false);
+
+  // 鲁港通：系统内容弹窗状态
+  const [systemContentModal, setSystemContentModal] = useState<{
+    isOpen: boolean;
+    contentKey: `${SystemContentKeyEnum}` | null;
+    title: string;
+  }>({
+    isOpen: false,
+    contentKey: null,
+    title: ''
+  });
+
   // 鲁港通：处理登出
   const handleLogout = useCallback(() => {
     setUserInfo(null);
@@ -55,8 +88,15 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'core/chat/sidebar/home',
       label: '活動中心',
       onClick: () => {
-        console.log('活動中心');
-        // TODO: 实现活动中心功能
+        setIsActivityListModalOpen(true);
+      }
+    },
+    {
+      key: 'accountInfo',
+      icon: 'support/pay/payRecordLight',
+      label: '账户信息',
+      onClick: () => {
+        setIsAccountInfoModalOpen(true);
       }
     },
     {
@@ -64,8 +104,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'common/language/zh',
       label: '語言',
       onClick: () => {
-        console.log('語言');
-        // TODO: 实现语言切换功能
+        setIsLanguageSelectorOpen(true);
       }
     },
     {
@@ -73,8 +112,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'support/user/key',
       label: '修改密碼',
       onClick: () => {
-        console.log('修改密碼');
-        // TODO: 实现修改密码功能
+        setIsPasswordModalOpen(true);
       }
     },
     {
@@ -92,8 +130,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'common/info',
       label: '輔助使用設計',
       onClick: () => {
-        console.log('輔助使用設計');
-        // TODO: 实现辅助使用设计弹窗
+        setIsAccessibilityModalOpen(true);
       }
     },
     {
@@ -101,8 +138,11 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'book',
       label: '使用條款',
       onClick: () => {
-        console.log('使用條款');
-        // TODO: 实现使用条款显示
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.termsOfUse,
+          title: '使用條款'
+        });
       }
     },
     {
@@ -110,8 +150,11 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'book',
       label: '隱私政策',
       onClick: () => {
-        console.log('隱私政策');
-        // TODO: 实现隐私政策显示
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.privacyPolicy,
+          title: '隱私政策'
+        });
       }
     },
     {
@@ -119,8 +162,11 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       icon: 'book',
       label: '個人資料收集聲明',
       onClick: () => {
-        console.log('個人資料收集聲明');
-        // TODO: 实现个人资料收集声明显示
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.dataCollection,
+          title: '個人資料收集聲明'
+        });
       }
     },
     {
@@ -174,6 +220,45 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
         </ModalContent>
       </Modal>
       <ConfirmModal />
+      {/* 鲁港通：语言选择器 */}
+      <LanguageSelector
+        isOpen={isLanguageSelectorOpen}
+        onClose={() => setIsLanguageSelectorOpen(false)}
+      />
+      {/* 鲁港通：密码修改弹窗 */}
+      {isPasswordModalOpen && (
+        <UpdatePswModal onClose={() => setIsPasswordModalOpen(false)} />
+      )}
+      {/* 鲁港通：辅助使用设计弹窗 */}
+      <AccessibilityModal
+        isOpen={isAccessibilityModalOpen}
+        onClose={() => setIsAccessibilityModalOpen(false)}
+      />
+      {/* 鲁港通：活动中心弹窗 */}
+      <ActivityListModal
+        isOpen={isActivityListModalOpen}
+        onClose={() => setIsActivityListModalOpen(false)}
+      />
+      {/* 鲁港通：系统内容弹窗 */}
+      {systemContentModal.isOpen && systemContentModal.contentKey && (
+        <SystemContentModal
+          isOpen={systemContentModal.isOpen}
+          onClose={() =>
+            setSystemContentModal({ isOpen: false, contentKey: null, title: '' })
+          }
+          contentKey={systemContentModal.contentKey}
+          title={systemContentModal.title}
+        />
+      )}
+      {/* 鲁港通：账户信息弹窗 */}
+      <AccountInfoModal
+        isOpen={isAccountInfoModalOpen}
+        onClose={() => setIsAccountInfoModalOpen(false)}
+        onRecharge={() => {
+          // TODO: 实现充值功能（Task 17）
+          console.log('充值功能待实现');
+        }}
+      />
     </>
   );
 };

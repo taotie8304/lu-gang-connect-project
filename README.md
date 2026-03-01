@@ -161,7 +161,29 @@ THEME=lugang
 # 鲁港通专用配置
 LUGANG_KNOWLEDGE_BASE_ENABLED=true
 LUGANG_ENTERPRISE_MODE=true
+
+# 鲁港通前端 - 商业版配置（可选）
+# FastGPT 商业版服务地址，提供系统通知、数据导出等高级功能
+# 格式：https://pro.fastgpt.com
+# 未配置时，商业版功能将被禁用，应用仍可正常运行
+# PRO_URL=
 ```
+
+### 商业版功能说明
+
+鲁港通前端支持可选的 FastGPT 商业版功能：
+
+**商业版功能包括**：
+- 系统消息弹窗
+- 数据导出（使用记录、团队成员、评估结果等）
+- 用户通知管理
+- 发票管理
+- 高级统计分析
+
+**配置方式**：
+1. 如果已购买 FastGPT 商业版服务，在 `lugang-ai/projects/app/.env.local` 中配置 `PRO_URL`
+2. 如果不需要商业版功能，无需配置，应用将正常运行
+3. 详细配置说明请参考：[lugang-ai/DEPLOYMENT-GUIDE.md](lugang-ai/DEPLOYMENT-GUIDE.md)
 
 ### 数据库初始化
 

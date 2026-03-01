@@ -200,6 +200,29 @@ export async function updateOneApiUserStatus(userId: number, status: 1 | 2): Pro
 }
 
 /**
+ * 更新用户密码
+ * @param userId 鲁港通后端用户 ID
+ * @param newPassword 新密码
+ */
+export async function updateOneApiUserPassword(userId: number, newPassword: string): Promise<OneApiResponse> {
+  const result = await lugangBackendRequest(`/api/user`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      id: userId,
+      password: newPassword,
+    }),
+  });
+
+  if (result.success) {
+    addLog.info('鲁港通后端用户密码更新成功', { userId });
+  } else {
+    addLog.warn('鲁港通后端用户密码更新失败', { userId, error: result.message });
+  }
+
+  return result;
+}
+
+/**
  * 删除用户
  * @param userId 鲁港通后端用户 ID
  */

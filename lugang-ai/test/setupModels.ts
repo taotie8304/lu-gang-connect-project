@@ -1,4 +1,4 @@
-import { ModelTypeEnum } from 'packages/global/core/ai/model';
+import { ModelTypeEnum } from '@fastgpt/global/core/ai/model';
 
 export default async function setupModels() {
   global.llmModelMap = new Map<string, any>();

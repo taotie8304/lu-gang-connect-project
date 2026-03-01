@@ -7,6 +7,8 @@ import { getCollectionIcon } from '@fastgpt/global/core/dataset/utils';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { readCollectionSourceBody } from '@/pages/api/core/dataset/collection/read';
 import type { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import { canUserViewCitationSource, isCitationUrl } from '@fastgpt/global/support/permission/citation';
 
 type Props = BoxProps &
   readCollectionSourceBody & {
@@ -34,8 +36,31 @@ const RawSourceBox = ({
   ...props
 }: Props) => {
   const { t } = useTranslation();
+  // 鲁港通：获取当前用户信息
+  const { userInfo } = useUserStore();
 
-  const canPreview = !!sourceId && canView;
+  // 鲁港通：检查用户是否有权限查看引用来源
+  const hasPermission = useMemo(() => {
+    return canUserViewCitationSource(userInfo?.username, collectionType, sourceId);
+  }, [userInfo?.username, collectionType, sourceId]);
+
+  // 鲁港通：只有有权限的用户才能预览
+  const canPreview = !!sourceId && canView && hasPermission;
+
+  // 鲁港通：如果是普通用户且不是 URL 类型，不显示此组件
+  const shouldDisplay = useMemo(() => {
+    // 管理员可以看到所有引用
+    if (userInfo?.username === 'root') {
+      return true;
+    }
+    // 普通用户只能看到 URL 类型的引用
+    return isCitationUrl(collectionType, sourceId);
+  }, [userInfo?.username, collectionType, sourceId]);
+
+  // 鲁港通：如果不应该显示，返回 null
+  if (!shouldDisplay) {
+    return null;
+  }
 
   const icon = useMemo(
     () => getCollectionIcon({ type: collectionType, sourceId, name: sourceName }),

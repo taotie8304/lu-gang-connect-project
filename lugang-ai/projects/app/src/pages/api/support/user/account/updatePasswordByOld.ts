@@ -20,6 +20,8 @@ import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { delUserAllSession } from '@fastgpt/service/support/user/session';
 import { connectionMongo } from '@fastgpt/service/common/mongo';
+import { getOneApiUserByUsername, updateOneApiUserPassword } from '@/service/integration/oneapi';
+import { addLog } from '@fastgpt/service/common/system/log';
 
 async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
   const { oldPsw, newPsw } = req.body as { oldPsw: string; newPsw: string };
@@ -72,6 +74,45 @@ async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
     );
 
   await delUserAllSession(userId, [sessionId]);
+
+  // 鲁港通：同步密码到后端
+  // 异步执行，不阻塞主流程
+  (async () => {
+    try {
+      // 获取用户信息
+      const user = await MongoUser.findById(userId);
+      if (!user) {
+        addLog.warn('鲁港通后端密码同步失败：用户不存在', { userId });
+        return;
+      }
+
+      // 查询鲁港通后端用户
+      const backendUser = await getOneApiUserByUsername(user.username);
+      
+      if (backendUser.success && backendUser.data) {
+        // 更新鲁港通后端密码
+        // 注意：鲁港通后端期望接收的是前端哈希后的密码（与注册时一致）
+        // 前端发送的 newPsw 已经是哈希过一次的值，直接传递给后端
+        const result = await updateOneApiUserPassword(backendUser.data.id, newPsw);
+        
+        if (result.success) {
+          addLog.info('鲁港通后端密码同步成功', { username: user.username });
+        } else {
+          addLog.warn('鲁港通后端密码同步失败', { 
+            username: user.username, 
+            error: result.message 
+          });
+        }
+      } else {
+        addLog.warn('鲁港通后端用户不存在，跳过密码同步', { username: user.username });
+      }
+    } catch (error: any) {
+      addLog.error('鲁港通后端密码同步异常', { 
+        userId, 
+        error: error.message 
+      });
+    }
+  })();
 
   (async () => {
     addAuditLog({

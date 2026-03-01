@@ -66,6 +66,28 @@ const UserSchema = new Schema({
   phonePrefix: Number,
   contact: String,
 
+  // 鲁港通：用户信息扩展字段 (Requirement 6.1)
+  email: {
+    type: String,
+    required: false // 邮箱注册时自动填充，手机号注册时必填
+  },
+  phone: {
+    type: String,
+    required: false // 手机号注册时自动填充，邮箱注册时必填
+  },
+  birth_date: {
+    type: Date,
+    required: false
+  },
+  address: {
+    type: String,
+    required: false
+  },
+  google_account: {
+    type: String,
+    required: false
+  },
+
   /** @deprecated */
   avatar: String
 });

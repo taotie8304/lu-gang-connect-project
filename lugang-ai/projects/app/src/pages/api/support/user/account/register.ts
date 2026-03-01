@@ -17,62 +17,8 @@ import { createUserSession } from '@fastgpt/service/support/user/session';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { getUserDetail } from '@fastgpt/service/support/user/controller';
 import requestIp from 'request-ip';
-import axios from 'axios';
-
-// 判断是否为邮箱
-const isEmail = (str: string): boolean => {
-  return /^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$/.test(str);
-};
-
-// 判断是否为手机号
-const isPhone = (str: string): boolean => {
-  return /^1[3456789]\d{9}$/.test(str);
-};
-
-// 在鲁港通后端创建用户
-const createUserInBackend = async (username: string, password: string): Promise<void> => {
-  const oneApiUrl = process.env.ONE_API_URL;
-  const oneApiToken = process.env.ONE_API_TOKEN;
-
-  if (!oneApiUrl || !oneApiToken) {
-    addLog.warn('鲁港通后端配置不完整，跳过后端用户创建');
-    return;
-  }
-
-  try {
-    // 调用鲁港通后端 API 创建用户
-    const response = await axios.post(
-      `${oneApiUrl}/api/user/register`,
-      {
-        username,
-        password,
-        display_name: username.split('@')[0] // 使用邮箱前缀作为显示名
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${oneApiToken}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 10000
-      }
-    );
-
-    if (response.data?.success) {
-      addLog.info('鲁港通后端用户创建成功', { username });
-    } else {
-      addLog.warn('鲁港通后端用户创建返回异常', { username, response: response.data });
-    }
-  } catch (error: any) {
-    // 如果是用户已存在的错误，忽略
-    if (error.response?.data?.message?.includes('already exists') || 
-        error.response?.data?.message?.includes('已存在')) {
-      addLog.info('鲁港通后端用户已存在', { username });
-      return;
-    }
-    addLog.error('鲁港通后端用户创建失败', { username, error: error.message });
-    // 不抛出错误，允许前端注册继续
-  }
-};
+import { createUserInBackend } from '@fastgpt/service/support/user/integration/userSync';
+import { isEmail, isPhone, validateUserRegistration } from '@fastgpt/global/support/user/validation';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -80,12 +26,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return jsonRes(res, { code: 405, error: 'Method not allowed' });
     }
     
-    const { username, password, code, inviterId, email } = req.body as {
+    const { username, password, code, inviterId, email, phone } = req.body as {
       username: string;
       password: string;
       code: string;
       inviterId?: string;
       email?: string; // 手机号注册时需要提供邮箱
+      phone?: string; // 邮箱注册时需要提供手机号
     };
 
     // 参数验证
@@ -101,21 +48,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 确定验证码对应的邮箱
+    // Requirement 6.2, 6.3, 6.4: 验证用户注册信息（email 和 phone 必填）
+    const validation = validateUserRegistration(username, email, phone);
+    if (!validation.valid) {
+      return jsonRes(res, { code: 400, error: validation.error });
+    }
+
+    // 确定验证码对应的邮箱和显示名称
     let verifyEmail = username;
     let displayName = '';
+    let userEmail = email;
+    let userPhone = phone;
     
     if (isPhone(username)) {
-      // 手机号注册：需要提供邮箱来验证
-      if (!email || !isEmail(email)) {
-        return jsonRes(res, { code: 400, error: '手机号注册需要提供有效的邮箱地址' });
-      }
-      verifyEmail = email;
+      // 手机号注册：使用提供的邮箱验证
+      verifyEmail = email!;
+      userPhone = username;
       displayName = username.slice(-4) + '用户'; // 使用手机号后4位
     } else if (isEmail(username)) {
+      // 邮箱注册：使用邮箱验证
+      verifyEmail = username;
+      userEmail = username;
       displayName = username.split('@')[0];
-    } else {
-      return jsonRes(res, { code: 400, error: '请输入正确的邮箱或手机号' });
     }
 
     // 验证邮箱验证码（现在是异步函数）
@@ -131,17 +85,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return jsonRes(res, { code: 400, error: `该${accountType}已被注册` });
     }
 
-    // 如果是手机号注册，也检查邮箱是否已被使用
-    if (isPhone(username) && email) {
-      const existingEmail = await MongoUser.findOne({ username: email });
-      if (existingEmail) {
+    // 检查邮箱是否已被使用（无论是作为 username 还是 email 字段）
+    if (userEmail) {
+      const existingEmail = await MongoUser.findOne({
+        $or: [
+          { username: userEmail },
+          { email: userEmail }
+        ]
+      });
+      if (existingEmail && existingEmail.username !== username) {
         return jsonRes(res, { code: 400, error: '该邮箱已被其他账号使用' });
+      }
+    }
+
+    // 检查手机号是否已被使用（无论是作为 username 还是 phone 字段）
+    if (userPhone) {
+      const existingPhone = await MongoUser.findOne({
+        $or: [
+          { username: userPhone },
+          { phone: userPhone }
+        ]
+      });
+      if (existingPhone && existingPhone.username !== username) {
+        return jsonRes(res, { code: 400, error: '该手机号已被其他账号使用' });
       }
     }
 
     // 创建用户
     const userData = await mongoSessionRun(async (session) => {
-      // 创建用户
+      // Requirement 6.1, 6.2: 创建用户时保存 email 和 phone 字段
       const [user] = await MongoUser.create(
         [{
           username,
@@ -150,8 +122,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           timezone: 'Asia/Shanghai',
           status: 'active',
           createTime: new Date(),
-          // 如果是手机号注册，保存关联的邮箱
-          ...(isPhone(username) && email ? { email } : {}),
+          email: userEmail,
+          phone: userPhone,
           ...(inviterId ? { inviterId } : {})
         }],
         { session }
@@ -176,7 +148,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // 在鲁港通后端创建对应用户（异步，不阻塞注册流程）
-    createUserInBackend(username, password).catch((err) => {
+    // Requirement 5.1, 5.2, 5.4: 注册成功后同步到后端，同步失败不阻塞注册
+    createUserInBackend({
+      username,
+      password,
+      display_name: displayName,
+      email: userEmail,
+      phone: userPhone
+    }).catch((err) => {
       addLog.error('鲁港通后端用户创建异步失败', err);
     });
 

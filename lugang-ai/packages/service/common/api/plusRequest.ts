@@ -1,4 +1,5 @@
-import axios, {
+// 鲁港通 - 商业版 API 请求模块
+import {
   type Method,
   type InternalAxiosRequestConfig,
   type AxiosResponse,
@@ -6,6 +7,10 @@ import axios, {
 } from 'axios';
 import { FastGPTProUrl } from '../system/constants';
 import { UserError } from '@fastgpt/global/common/error/utils';
+import { createProxyAxios } from './axios';
+import { getLogger, LogCategories } from '../logger';
+
+const logger = getLogger(LogCategories.HTTP.ERROR);
 
 interface ConfigType {
   headers?: { [key: string]: string };
@@ -35,11 +40,11 @@ function responseSuccess(response: AxiosResponse<ResponseDataType>) {
   return response;
 }
 /**
- * 响应数据检查
+ * 鲁港通 - 响应数据检查
  */
 function checkRes(data: ResponseDataType) {
   if (data === undefined) {
-    console.log('error->', data, 'data is empty');
+    logger.error('Plus request response is empty', { data });
     return Promise.reject('服务器异常');
   } else if (data?.code && (data.code < 200 || data.code >= 400)) {
     return Promise.reject(data);
@@ -64,9 +69,9 @@ function responseError(err: any) {
   return Promise.reject(err);
 }
 
-/* 创建请求实例 */
-const instance = axios.create({
-  timeout: 60000, // 超时时间
+/* 鲁港通 - 创建请求实例 */
+const instance = createProxyAxios({
+  timeout: 60000,
   headers: {
     'content-type': 'application/json',
     'Cache-Control': 'no-cache',
@@ -79,9 +84,11 @@ instance.interceptors.request.use(requestStart, (err) => Promise.reject(err));
 /* 响应拦截 */
 instance.interceptors.response.use(responseSuccess, (err) => Promise.reject(err));
 
+// 鲁港通 - 核心请求函数
 export function request(url: string, data: any, config: ConfigType, method: Method): any {
+  // 鲁港通 - 未配置商业版时记录警告并拒绝请求
   if (!FastGPTProUrl) {
-    console.log('未部署商业版接口', url);
+    logger.warn('鲁港通商业版 API 未配置', { url });
     return Promise.reject(new UserError('The request was denied...'));
   }
 

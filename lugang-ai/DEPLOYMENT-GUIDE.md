@@ -174,6 +174,12 @@ AIPROXY_API_TOKEN=sk-your-token
 ONE_API_URL=https://api.airscend.com
 ONE_API_TOKEN=sk-your-token
 
+# 鲁港通 - 商业版服务配置（可选）
+# 如果需要使用 FastGPT 商业版功能（系统通知、数据导出等），请配置以下选项
+# 格式：https://pro.example.com
+# 未配置时，商业版功能将被禁用，应用仍可正常运行
+# PRO_URL=https://pro.fastgpt.com
+
 # 域名配置
 FE_DOMAIN=https://www.airscend.com
 FILE_DOMAIN=https://www.airscend.com
@@ -328,6 +334,66 @@ docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-ai
 docker pull ghcr.io/<your-username>/lugang-enterprise:latest
 docker-compose -f docker-compose.prod.yml up -d --force-recreate lugang-enterprise
 ```
+
+---
+
+## 🔌 商业版功能配置（可选）
+
+### 什么是商业版功能？
+
+FastGPT 商业版提供以下高级功能：
+- **系统消息弹窗**：向用户推送系统公告和通知
+- **数据导出**：导出使用记录、团队成员、评估结果等
+- **用户通知**：管理员向用户发送通知消息
+- **发票管理**：下载和管理发票
+- **高级统计**：更详细的使用统计和分析
+
+### 是否需要配置商业版？
+
+**不需要配置商业版的情况**：
+- 使用纯开源版本
+- 不需要上述高级功能
+- 应用可以正常运行，只是商业版功能被禁用
+
+**需要配置商业版的情况**：
+- 需要使用系统通知功能
+- 需要导出数据功能
+- 已购买 FastGPT 商业版服务
+
+### 如何配置商业版？
+
+1. **获取商业版服务地址**
+   - 如果已购买 FastGPT 商业版，联系服务商获取 PRO_URL
+   - 格式：`https://pro.fastgpt.com` 或自部署的商业版地址
+
+2. **配置环境变量**
+   ```bash
+   # 编辑 .env.local 文件
+   nano projects/app/.env.local
+   
+   # 添加或取消注释以下配置
+   PRO_URL=https://pro.fastgpt.com
+   ```
+
+3. **重启服务**
+   ```bash
+   docker-compose -f docker-compose.prod.yml restart lugang-ai
+   ```
+
+4. **验证配置**
+   - 登录鲁港通前端
+   - 检查系统消息弹窗是否显示
+   - 检查数据导出功能是否可用
+
+### 未配置商业版时的行为
+
+当 `PRO_URL` 未配置时：
+- ✅ 应用正常启动和运行
+- ✅ 所有核心功能（聊天、知识库、工作流等）正常工作
+- ❌ 系统消息弹窗不显示
+- ❌ 数据导出功能被禁用
+- ❌ 用户通知功能被跳过
+- ℹ️ 不会显示错误提示给用户
 
 ---
 

@@ -40,3 +40,9 @@ coverage
 document/.source
 
 projects/app/worker/
+
+# 测试报告文件（除了汇总报告）
+projects/app/test/**/*-report.md
+projects/app/test/**/task*.md
+!projects/app/test/REPORTS.md
+!projects/app/test/README.md

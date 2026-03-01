@@ -10,6 +10,7 @@ export default defineConfig({
     }
   },
   test: {
+    environment: 'jsdom',
     coverage: {
       enabled: true,
       reporter: ['html', 'json-summary', 'json'],
@@ -28,7 +29,8 @@ export default defineConfig({
       'test/cases/**/*.test.ts',
       'projects/app/test/**/*.test.ts',
       'projects/sandbox/test/**/*.test.ts',
-      'projects/marketplace/test/**/*.test.ts'
+      'projects/marketplace/test/**/*.test.ts',
+      'packages/**/*.test.ts'
     ],
     testTimeout: 20000,
     reporters: ['github-actions', 'default']

@@ -22,6 +22,12 @@ export type UserModelSchema = {
     keyword: string;
   };
   contact?: string;
+  // 鲁港通：用户信息扩展字段 (Requirement 6.1)
+  email?: string;
+  phone?: string;
+  birth_date?: Date;
+  address?: string;
+  google_account?: string;
 };
 
 export type UserType = {
