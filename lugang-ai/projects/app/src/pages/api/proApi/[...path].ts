@@ -4,6 +4,76 @@ import { jsonRes } from '@fastgpt/service/common/response';
 import { FastGPTProUrl } from '@fastgpt/service/common/system/constants';
 import { Readable } from 'stream';
 
+// 鲁港通 - 根据 API 路径返回合适的空数据
+function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
+  // 通知相关
+  if (apiPath.includes('inform/countUnread')) {
+    return { unReadCount: 0, importantInforms: [] };
+  }
+  if (apiPath.includes('inform/getSystemMsgModal')) {
+    return null;
+  }
+  if (apiPath.includes('inform/getOperationalAd')) {
+    return null;
+  }
+  if (apiPath.includes('inform/list')) {
+    return { total: 0, list: [] };
+  }
+  
+  // 团队相关
+  if (apiPath.includes('team/list')) {
+    return [];
+  }
+  if (apiPath.includes('team/member/count')) {
+    return { count: 0 };
+  }
+  if (apiPath.includes('team/member/list')) {
+    return { total: 0, list: [] };
+  }
+  if (apiPath.includes('team/org/list')) {
+    return [];
+  }
+  if (apiPath.includes('team/group/list')) {
+    return [];
+  }
+  if (apiPath.includes('team/collaborator/list')) {
+    return { members: [], groups: [] };
+  }
+  if (apiPath.includes('team/tag/list')) {
+    return [];
+  }
+  if (apiPath.includes('team/invitationLink/list')) {
+    return [];
+  }
+  
+  // 应用评估
+  if (apiPath.includes('app/evaluation/list')) {
+    return { total: 0, list: [] };
+  }
+  
+  // 使用记录
+  if (apiPath.includes('wallet/usage')) {
+    return { total: 0, list: [] };
+  }
+  
+  // 自定义域名
+  if (apiPath.includes('customDomain/list')) {
+    return [];
+  }
+  
+  // 审计日志
+  if (apiPath.includes('audit/list')) {
+    return { total: 0, list: [] };
+  }
+  
+  // 默认返回空对象或空数组
+  if (method === 'GET') {
+    return apiPath.includes('list') ? [] : null;
+  }
+  
+  return { success: true };
+}
+
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { path = [], ...query } = req.query as any;
@@ -12,9 +82,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!requestPath) {
       throw new Error('url is empty');
     }
-    // 鲁港通 - 未配置商业版时抛出明确错误
+    
+    // 鲁港通 - 未配置商业版时返回空数据（优雅降级）
     if (!FastGPTProUrl) {
-      throw new Error(`未配置商业版链接: ${path}`);
+      // 根据不同的 API 路径返回合适的空数据
+      const apiPath = path?.join('/') || '';
+      
+      // 返回空的成功响应
+      return jsonRes(res, {
+        code: 200,
+        data: getEmptyResponse(apiPath, req.method)
+      });
     }
 
     const targetUrl = new URL(requestPath, FastGPTProUrl);
