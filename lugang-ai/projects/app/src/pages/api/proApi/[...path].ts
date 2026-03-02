@@ -30,6 +30,9 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   if (apiPath.includes('team/member/list')) {
     return { total: 0, list: [] };
   }
+  if (apiPath.includes('team/member/export')) {
+    return { csv: '' };
+  }
   if (apiPath.includes('team/org/list')) {
     return [];
   }
@@ -45,15 +48,85 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   if (apiPath.includes('team/invitationLink/list')) {
     return [];
   }
+  if (apiPath.includes('team/plan/getTeamPlans')) {
+    return [];
+  }
+  if (apiPath.includes('team/invoiceAccount/getTeamInvoiceHeader')) {
+    return null;
+  }
   
-  // 应用评估
+  // 应用相关
   if (apiPath.includes('app/evaluation/list')) {
     return { total: 0, list: [] };
   }
+  if (apiPath.includes('app/evaluation/listItems')) {
+    return { total: 0, list: [] };
+  }
+  if (apiPath.includes('app/collaborator/list')) {
+    return { members: [], groups: [] };
+  }
+  if (apiPath.includes('app/template/getTemplateTypes')) {
+    return [];
+  }
+  if (apiPath.includes('app/logs/getTotalData')) {
+    return { totalUsers: 0, totalChats: 0, totalPoints: 0 };
+  }
+  if (apiPath.includes('app/logs/getChartData')) {
+    return { userData: [], chatData: [], appData: [] };
+  }
+  
+  // 聊天相关
+  if (apiPath.includes('chat/setting/detail')) {
+    return { welcomeText: '', defaultChatModels: [], defaultChatModel: null };
+  }
+  if (apiPath.includes('chat/setting/favourite/list')) {
+    return [];
+  }
+  if (apiPath.includes('chat/team/getApps')) {
+    return [];
+  }
+  if (apiPath.includes('chat/initTeamChat')) {
+    return null;
+  }
+  
+  // 知识库相关
+  if (apiPath.includes('dataset/collaborator/list')) {
+    return { members: [], groups: [] };
+  }
+  if (apiPath.includes('dataset/tag/list')) {
+    return { total: 0, list: [] };
+  }
+  if (apiPath.includes('dataset/tag/getAllTags')) {
+    return { list: [] };
+  }
+  if (apiPath.includes('dataset/tag/tagUsage')) {
+    return [];
+  }
   
   // 使用记录
-  if (apiPath.includes('wallet/usage')) {
+  if (apiPath.includes('wallet/usage/getUsage')) {
     return { total: 0, list: [] };
+  }
+  if (apiPath.includes('wallet/usage/getDashboardData')) {
+    return [];
+  }
+  if (apiPath.includes('wallet/discountCoupon/list')) {
+    return [];
+  }
+  
+  // 系统相关
+  if (apiPath.includes('system/model/collaborator/list')) {
+    return { members: [], groups: [] };
+  }
+  
+  // 用户搜索
+  if (apiPath.includes('user/search')) {
+    return { members: [], groups: [], orgs: [] };
+  }
+  
+  // 工单
+  if (apiPath.includes('workorder/create')) {
+    return { redirectUrl: '' };
   }
   
   // 自定义域名
