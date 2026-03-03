@@ -19,8 +19,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const marketplaceUrl = process.env.MARKETPLACE_URL || '';
 
+    // 鲁港通 - 未配置市场地址时返回空数据（优雅降级）
     if (!marketplaceUrl) {
-      throw new Error('MARKETPLACE_URL is not configured');
+      return jsonRes(res, {
+        code: 200,
+        data: []
+      });
     }
 
     const parsedUrl = new URL(marketplaceUrl);
