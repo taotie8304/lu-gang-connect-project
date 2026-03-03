@@ -59,6 +59,14 @@ const nextConfig = {
   },
 
   webpack(config, { isServer, nextRuntime }) {
+    // 鲁港通 - 在客户端构建时,将服务器端模块指向 false,防止打包
+    const serverOnlyModules = !isServer ? {
+      'mongoose': false,
+      '@fastgpt/service/common/mongo': false,
+      '@fastgpt/service/support/outLink/schema': false,
+      '@fastgpt/service/common/system/log': false
+    } : {};
+
     Object.assign(config.resolve.alias, {
       '@mongodb-js/zstd': false,
       '@aws-sdk/credential-providers': false,
@@ -68,8 +76,10 @@ const nextConfig = {
       kerberos: false,
       'supports-color': false,
       'bson-ext': false,
-      'pg-native': false
+      'pg-native': false,
+      ...serverOnlyModules
     });
+    
     config.module = {
       ...config.module,
       rules: config.module.rules.concat([
@@ -94,12 +104,6 @@ const nextConfig = {
 
       }
     } else {
-      // 鲁港通 - 在客户端构建时排除所有服务器端依赖
-      config.externals.push({
-        mongoose: 'mongoose',
-        '@fastgpt/service': '@fastgpt/service'
-      });
-      
       config.resolve = {
         ...config.resolve,
         fallback: {
