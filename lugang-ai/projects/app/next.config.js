@@ -94,6 +94,12 @@ const nextConfig = {
 
       }
     } else {
+      // 鲁港通 - 在客户端构建时排除所有服务器端依赖
+      config.externals.push({
+        mongoose: 'mongoose',
+        '@fastgpt/service': '@fastgpt/service'
+      });
+      
       config.resolve = {
         ...config.resolve,
         fallback: {
