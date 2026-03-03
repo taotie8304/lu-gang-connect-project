@@ -14,8 +14,6 @@ import { serviceSideProps } from '@/web/common/i18n/utils';
 import { useTranslation } from 'next-i18next';
 import { getInitOutLinkChatInfo } from '@/web/core/chat/api';
 import { getChatTitleFromChatMessage } from '@fastgpt/global/core/chat/utils';
-import { MongoOutLink } from '@fastgpt/service/support/outLink/schema';
-import { addLog } from '@fastgpt/service/common/system/log';
 
 import NextHead from '@/components/common/NextHead';
 import { useContextSelector } from 'use-context-selector';
@@ -406,6 +404,10 @@ const Render = (props: Props) => {
 export default React.memo(Render);
 
 export async function getServerSideProps(context: any) {
+  // 鲁港通 - 在服务器端函数内部导入 Mongoose，避免打包到前端
+  const { MongoOutLink } = await import('@fastgpt/service/support/outLink/schema');
+  const { addLog } = await import('@fastgpt/service/common/system/log');
+  
   const shareId = context?.query?.shareId || '';
   const authToken = context?.query?.authToken || '';
   const customUid = context?.query?.customUid || '';
