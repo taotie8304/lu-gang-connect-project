@@ -30,18 +30,19 @@ interface RegisterType {
   password: string;
   password2: string;
   code: string;
-  email?: string; // 手机号注册时需要提供邮箱
+  phone?: string; // 邮箱注册时必填手机号（不发验证码）
+  email?: string; // 手机号注册时必填邮箱（用于接收验证码）
 }
 
 // 判断是否为手机号
 const isPhone = (str: string): boolean => {
-  return /^1[3456789]\d{9}$/.test(str);
+  return /^1[3-9]\d{9}$/.test(str);
 };
 
 const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   const { toast } = useToast();
   const { t } = useTranslation();
-  
+
   // 鲁港通：密码显示/隐藏状态
   const [showPassword, setShowPassword] = useState(false);
   const [showPassword2, setShowPassword2] = useState(false);
@@ -57,18 +58,18 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     mode: 'onBlur'
   });
   const username = watch('username');
+  const email = watch('email');
 
   const { SendCodeBox, openCodeAuthModal } = useSendCode({ type: 'register' });
 
   // 判断当前输入是否为手机号
   const isPhoneInput = isPhone(username || '');
-  
-  // 手机号注册时，验证码发送到邮箱
-  const email = watch('email');
+
+  // 验证码发送目标：手机号注册时发到邮箱，邮箱注册时发到邮箱本身
   const codeTargetUsername = isPhoneInput ? (email || '') : (username || '');
 
   const { runAsync: onclickRegister, loading: requesting } = useRequest2(
-    async ({ username, password, code, email }: RegisterType) => {
+    async ({ username, password, code, email, phone }: RegisterType) => {
       loginSuccess(
         await postRegister({
           username,
@@ -80,7 +81,9 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           fastgpt_sem: getFastGPTSem(),
           sourceDomain: getSourceDomain(),
           // 手机号注册时传递邮箱
-          ...(isPhone(username) && email ? { email } : {})
+          ...(isPhone(username) && email ? { email } : {}),
+          // 邮箱注册时传递手机号（同步到鲁港通后端）
+          ...(!isPhone(username) && phone ? { phone } : {})
         })
       );
       removeFastGPTSem();
@@ -94,6 +97,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
       refreshDeps: [loginSuccess, t, toast]
     }
   );
+
   const onSubmitErr = (err: Record<string, any>) => {
     const val = Object.values(err)[0];
     if (!val) return;
@@ -129,10 +133,10 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   return (
     <>
       {/* 鲁港通：淡蓝色渐变标题 */}
-      <Box 
-        fontWeight={'semibold'} 
-        fontSize={'xl'} 
-        textAlign={'center'} 
+      <Box
+        fontWeight={'semibold'}
+        fontSize={'xl'}
+        textAlign={'center'}
         background="linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)"
         backgroundClip="text"
         sx={{
@@ -150,6 +154,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           }
         }}
       >
+        {/* 邮箱 / 手机号输入框 */}
         <FormControl isInvalid={!!errors.username}>
           <Input
             {...inputStyles}
@@ -159,13 +164,14 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
               required: t('user:password.email_phone_void'),
               pattern: {
                 value:
-                  /(^1[3456789]\d{9}$)|(^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$)/,
+                  /(^1[3-9]\d{9}$)|(^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$)/,
                 message: t('user:password.email_phone_error')
               }
             })}
-          ></Input>
+          />
         </FormControl>
-        {/* 鲁港通：手机号注册时显示邮箱输入框 */}
+
+        {/* 鲁港通：手机号注册时显示邮箱输入框（用于接收验证码） */}
         {isPhoneInput && (
           <FormControl mt={5} isInvalid={!!errors.email}>
             <Input
@@ -173,15 +179,35 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
               size={'lg'}
               placeholder="请输入邮箱（用于接收验证码）"
               {...register('email', {
-                required: isPhoneInput ? '手机号注册需要提供邮箱' : false,
+                required: '手机号注册需要提供邮箱',
                 pattern: {
                   value: /^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$/,
                   message: '请输入正确的邮箱地址'
                 }
               })}
-            ></Input>
+            />
           </FormControl>
         )}
+
+        {/* 鲁港通：邮箱注册时显示手机号输入框（必填，同步到鲁港通后端，不发验证码） */}
+        {!isPhoneInput && (
+          <FormControl mt={5} isInvalid={!!errors.phone}>
+            <Input
+              {...inputStyles}
+              size={'lg'}
+              placeholder="请输入手机号"
+              {...register('phone', {
+                required: '手机号为必填项',
+                pattern: {
+                  value: /^1[3-9]\d{9}$/,
+                  message: '请输入正确的手机号'
+                }
+              })}
+            />
+          </FormControl>
+        )}
+
+        {/* 验证码输入框 */}
         <FormControl
           mt={5}
           isInvalid={!!errors.code}
@@ -198,11 +224,12 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             {...register('code', {
               required: t('user:password.code_required')
             })}
-          ></Input>
+          />
           <SendCodeBox username={codeTargetUsername} />
         </FormControl>
+
+        {/* 鲁港通：密码输入框，带眼睛图标 */}
         <FormControl mt={5} isInvalid={!!errors.password}>
-          {/* 鲁港通：密码输入框，带眼睛图标 */}
           <InputGroup size={'lg'}>
             <Input
               {...inputStyles}
@@ -230,8 +257,9 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             </InputRightElement>
           </InputGroup>
         </FormControl>
+
+        {/* 鲁港通：确认密码输入框，带眼睛图标 */}
         <FormControl mt={5} isInvalid={!!errors.password2}>
-          {/* 鲁港通：确认密码输入框，带眼睛图标 */}
           <InputGroup size={'lg'}>
             <Input
               {...inputStyles}
@@ -254,6 +282,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             </InputRightElement>
           </InputGroup>
         </FormControl>
+
         {/* 鲁港通：蓝色注册按钮 */}
         <Button
           type="submit"
