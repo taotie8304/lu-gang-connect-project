@@ -115,13 +115,26 @@ export const createUserInBackend = async (userData: UserSyncData): Promise<boole
   }
 
   try {
+    // 鲁港通后端 username 字段最大12位，不接受完整邮箱
+    // 邮箱注册：取 @ 前面部分，超过10位则截断，加2位数字后缀保证唯一性
+    // 手机号注册：直接用手机号（11位，超过12位限制，取后10位）
+    let backendUsername: string;
+    if (userData.username.includes('@')) {
+      const prefix = userData.username.split('@')[0].slice(0, 10);
+      const suffix = userData.username.charCodeAt(userData.username.length - 1) % 100;
+      backendUsername = `${prefix}${suffix}`.slice(0, 12);
+    } else {
+      // 手机号取后10位
+      backendUsername = userData.username.slice(-10);
+    }
+
     const response = await axios.post<LugangBackendResponse<LugangBackendUser>>(
       `${config.url}/api/user/register`,
       {
-        username: userData.username,
+        username: backendUsername,
         password: userData.password,
-        display_name: userData.display_name || userData.username.split('@')[0],
-        email: userData.email,
+        display_name: userData.display_name || backendUsername,
+        email: userData.email || (userData.username.includes('@') ? userData.username : undefined),
         phone: userData.phone
       },
       createRequestConfig(config.token)
