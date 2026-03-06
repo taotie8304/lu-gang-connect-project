@@ -11,7 +11,7 @@ import { Box, Text, Button, VStack } from '@chakra-ui/react';
  * - 管理员 (root): 跳转到管理后台
  * - 普通用户: 跳转到默认 AI 助手聊天界面
  */
-const Index = ({ defaultShareId }: { defaultShareId: string }) => {
+const Index = ({ defaultShareId, defaultAppId }: { defaultShareId: string; defaultAppId: string }) => {
   const router = useRouter();
   const { userInfo, initUserInfo } = useUserStore();
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +54,13 @@ const Index = ({ defaultShareId }: { defaultShareId: string }) => {
       return;
     }
 
-    // 普通用户：跳转到默认的 AI 助手分享链接
-    if (defaultShareId) {
+    // 普通用户：优先跳转到默认 App，其次是分享链接
+    if (defaultAppId) {
+      router.replace(`/chat?appId=${defaultAppId}`);
+    } else if (defaultShareId) {
       router.replace(`/chat/share?shareId=${defaultShareId}`);
     } else {
-      // 如果没有配置默认分享链接，显示错误提示
+      // 如果没有配置默认 AI 助手，显示错误提示
       setError('系统尚未配置默认 AI 助手，请联系管理员。');
     }
   }, [router, userInfo, isReady, defaultShareId]);
@@ -98,7 +100,8 @@ const Index = ({ defaultShareId }: { defaultShareId: string }) => {
 export async function getServerSideProps(content: any) {
   return {
     props: {
-      // 鲁港通：从服务端环境变量获取默认分享链接 ID
+      // 鲁港通：从服务端环境变量获取默认应用 ID 或分享链接 ID
+      defaultAppId: process.env.DEFAULT_APP_ID || '',
       defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(content))
     }
