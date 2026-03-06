@@ -10,9 +10,8 @@ import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyAuthCode } from '../inform/sendAuthCode';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
-import { MongoTeam } from '@fastgpt/service/support/user/team/teamSchema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
-import { TeamMemberRoleEnum, TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
+import { TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
@@ -22,6 +21,10 @@ import { getUserDetail } from '@fastgpt/service/support/user/controller';
 import requestIp from 'request-ip';
 import { createUserInBackend } from '@fastgpt/service/support/user/integration/userSync';
 import { isEmail, isPhone, validateUserRegistration } from '@fastgpt/global/support/user/validation';
+import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
+import { PerResourceTypeEnum, ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
+import { TeamDefaultRoleVal } from '@fastgpt/global/support/permission/user/constant';
+import { Types } from 'mongoose';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -148,13 +151,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         throw new Error('管理员团队不存在，请联系管理员');
       }
 
-      // 将新用户加入 root 管理员的团队（作为普通成员）
+      // 将新用户加入 root 管理员的团队
+      // role 使用 'member'（非 owner），确保 isOwner=false，普通用户无管理权限
+      // 实际资源权限通过 MongoResourcePermission 表控制
       const [tmb] = await MongoTeamMember.create(
         [{
           teamId: rootTeamMember.teamId,
           userId: user._id,
           name: displayName || username.split('@')[0],
-          role: TeamMemberRoleEnum.visitor, // 普通成员角色
+          role: 'member',
           status: TeamMemberStatusEnum.active,
           createTime: new Date()
         }],
@@ -165,6 +170,37 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         userId: user._id.toString(), 
         teamId: rootTeamMember.teamId.toString() 
       });
+
+      // 为新用户添加团队读取权限（让用户能正常访问团队）
+      await MongoResourcePermission.create(
+        [{
+          resourceType: PerResourceTypeEnum.team,
+          teamId: rootTeamMember.teamId,
+          resourceId: null,
+          tmbId: tmb._id,
+          permission: TeamDefaultRoleVal
+        }],
+        { session }
+      );
+
+      // 为新用户添加默认应用的读取权限
+      const defaultAppId = process.env.DEFAULT_APP_ID;
+      if (defaultAppId) {
+        await MongoResourcePermission.create(
+          [{
+            resourceType: PerResourceTypeEnum.app,
+            teamId: rootTeamMember.teamId,
+            resourceId: new Types.ObjectId(defaultAppId),
+            tmbId: tmb._id,
+            permission: ReadPermissionVal
+          }],
+          { session }
+        );
+        addLog.info('鲁港通用户应用权限已分配', { 
+          tmbId: tmb._id.toString(), 
+          appId: defaultAppId 
+        });
+      }
 
       return {
         userId: user._id.toString(),
