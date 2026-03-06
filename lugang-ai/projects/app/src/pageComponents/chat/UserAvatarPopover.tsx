@@ -40,17 +40,15 @@ const UserAvatarPopover = ({
   const { isOpen: isSettingsPanelOpen, onOpen: onOpenSettingsPanel, onClose: onCloseSettingsPanel } = useDisclosure();
 
   // 检查是否为管理员
-  const isAdmin = userInfo?.username === 'root';
-  // 检查是否在分享聊天页面
-  const isShareChatPage = router.pathname === '/chat/share';
-  // 鲁港通：普通用户在分享聊天页面显示设置面板
-  const showSettingsPanel = !isAdmin && isShareChatPage;
+  const isAdmin = !!userInfo?.team?.permission?.hasManagePer;
+  // 鲁港通：所有非管理员用户点击头像都显示设置面板
+  const showSettingsPanel = !!userInfo && !isAdmin;
 
   // 鲁港通：额度状态
   const [quotaData, setQuotaData] = useState<QuotaResponse | null>(null);
   const [quotaLoading, setQuotaLoading] = useState(false);
 
-  // 获取用户额度
+  // 鲁港通：获取用户额度（非管理员用户）
   useEffect(() => {
     if (showSettingsPanel && userInfo) {
       setQuotaLoading(true);
