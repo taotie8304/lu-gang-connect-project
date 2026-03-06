@@ -1,6 +1,7 @@
 /**
  * 鲁港通 - 用户注册 API
  * 用户注册后自动在鲁港通后端创建对应账户
+ * 新用户自动加入 root 管理员的团队，而不是创建独立团队
  * 支持邮箱注册和手机号注册（手机号注册需要绑定邮箱接收验证码）
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
@@ -9,7 +10,9 @@ import { addLog } from '@fastgpt/service/common/system/log';
 import { verifyAuthCode } from '../inform/sendAuthCode';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
-import { createDefaultTeam } from '@fastgpt/service/support/user/team/controller';
+import { MongoTeam } from '@fastgpt/service/support/user/team/teamSchema';
+import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
+import { TeamMemberRoleEnum, TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
@@ -129,17 +132,43 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         { session }
       );
 
-      // 创建默认团队
-      const tmb = await createDefaultTeam({
-        userId: user._id.toString(),
-        teamName: displayName + '的团队',
-        avatar: '/icon/logo.png',
-        session
+      // 鲁港通：查找 root 管理员的团队
+      const rootUser = await MongoUser.findOne({ username: 'root' }).lean();
+      if (!rootUser) {
+        throw new Error('系统未初始化，请联系管理员');
+      }
+
+      // 查找 root 用户所属的团队
+      const rootTeamMember = await MongoTeamMember.findOne({ 
+        userId: rootUser._id,
+        role: TeamMemberRoleEnum.owner 
+      }).lean();
+      
+      if (!rootTeamMember) {
+        throw new Error('管理员团队不存在，请联系管理员');
+      }
+
+      // 将新用户加入 root 管理员的团队（作为普通成员）
+      const [tmb] = await MongoTeamMember.create(
+        [{
+          teamId: rootTeamMember.teamId,
+          userId: user._id,
+          name: displayName || username.split('@')[0],
+          role: TeamMemberRoleEnum.visitor, // 普通成员角色
+          status: TeamMemberStatusEnum.active,
+          createTime: new Date()
+        }],
+        { session }
+      );
+
+      addLog.info('鲁港通用户加入管理员团队', { 
+        userId: user._id.toString(), 
+        teamId: rootTeamMember.teamId.toString() 
       });
 
       return {
         userId: user._id.toString(),
-        tmbId: tmb?._id.toString()
+        tmbId: tmb._id.toString()
       };
     });
 
