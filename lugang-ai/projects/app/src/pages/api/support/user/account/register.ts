@@ -98,18 +98,18 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // 检查手机号是否已被使用（无论是作为 username 还是 phone 字段）
-    if (userPhone) {
-      const existingPhone = await MongoUser.findOne({
-        $or: [
-          { username: userPhone },
-          { phone: userPhone }
-        ]
-      });
-      if (existingPhone && existingPhone.username !== username) {
-        return jsonRes(res, { code: 400, error: '该手机号已被其他账号使用' });
-      }
-    }
+    // 鲁港通：手机号暂时允许重复使用，后续开启短信验证码后再启用唯一性校验
+    // if (userPhone) {
+    //   const existingPhone = await MongoUser.findOne({
+    //     $or: [
+    //       { username: userPhone },
+    //       { phone: userPhone }
+    //     ]
+    //   });
+    //   if (existingPhone && existingPhone.username !== username) {
+    //     return jsonRes(res, { code: 400, error: '该手机号已被其他账号使用' });
+    //   }
+    // }
 
     // 创建用户
     const userData = await mongoSessionRun(async (session) => {
