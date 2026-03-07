@@ -78,10 +78,12 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   // 聊天相关
   if (apiPath.includes('chat/setting/detail')) {
     // 鲁港通 - 返回完整的 ChatSettingType 结构，避免前端字段缺失导致崩溃
+    // appId 必须有值，否则 /api/v2/chat/completions 会报 'appId is empty'
+    const defaultAppId = process.env.DEFAULT_APP_ID || '';
     return {
-      welcomeText: '',
-      defaultChatModels: [],
-      defaultChatModel: null,
+      _id: defaultAppId,
+      appId: defaultAppId,
+      teamId: '',
       quickAppList: [],
       selectedTools: [],
       favouriteTags: [],
