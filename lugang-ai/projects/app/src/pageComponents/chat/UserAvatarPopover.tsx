@@ -52,7 +52,7 @@ const UserAvatarPopover = ({
   useEffect(() => {
     if (showSettingsPanel && userInfo) {
       setQuotaLoading(true);
-      GET<QuotaResponse>('/api/integration/oneapi/quota')
+      GET<QuotaResponse>('/integration/oneapi/quota')
         .then((data) => {
           setQuotaData(data);
         })
