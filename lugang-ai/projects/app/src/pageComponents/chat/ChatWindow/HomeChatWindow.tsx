@@ -229,41 +229,18 @@ const HomeChatWindow = ({ myApps }: Props) => {
         return { responseText, isNewChat: forbidLoadChat.current };
       }
 
-      // not quick app, using model and tools selected on home page
-      if (!selectedModel) {
-        return Promise.reject('No model selected');
-      }
-
-      const tools: FlowNodeTemplateType[] = await Promise.all(
-        selectedToolIds.map(async (toolId) => {
-          const node = await getToolPreviewNode({ appId: toolId });
-          node.inputs = node.inputs.map((input) => {
-            const tool = availableTools.find((tool) => tool.pluginId === toolId);
-            const value = tool?.inputs?.[input.key];
-            return { ...input, value };
-          });
-          return node;
-        })
-      );
-
-      const formData = getDefaultAppForm();
-      formData.aiSettings.model = selectedModel;
-      formData.selectedTools = tools;
-      formData.chatConfig = chatBoxData.app.chatConfig || {};
-
+      // 鲁港通 - 非 Quick App 模式下，使用标准聊天 API（与 AppChatWindow 一致）
+      // proApi/core/chat/chatHome 需要商业版支持，鲁港通未配置商业版
       const { responseText } = await streamFetch({
-        url: '/api/proApi/core/chat/chatHome',
         data: {
           messages: histories,
           variables,
           responseChatItemId,
           appId,
-          appName: t('chat:home.chat_app'),
-          chatId,
-          ...form2AppWorkflow(formData, t)
+          chatId
         },
-        onMessage: generatingMessage,
-        abortCtrl: controller
+        abortCtrl: controller,
+        onMessage: generatingMessage
       });
 
       const newTitle = getChatTitleFromChatMessage(GPTMessages2Chats({ messages: histories })[0]);
