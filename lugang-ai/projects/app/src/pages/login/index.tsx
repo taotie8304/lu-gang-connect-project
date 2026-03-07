@@ -12,7 +12,7 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
 
-const Login = ({ defaultShareId }: { defaultShareId: string }) => {
+const Login = ({ defaultShareId, defaultAppId }: { defaultShareId: string; defaultAppId: string }) => {
   const router = useRouter();
   const { lastRoute = '' } = router.query as { lastRoute: string };
   const { t } = useTranslation();
@@ -27,13 +27,17 @@ const Login = ({ defaultShareId }: { defaultShareId: string }) => {
     if (isAdmin) {
       return '/dashboard/agent';
     }
-    // 普通用户跳转到默认分享链接
+    // 普通用户优先跳转到默认 App
+    if (defaultAppId) {
+      return `/chat?appId=${defaultAppId}`;
+    }
+    // 其次跳转到默认分享链接
     if (defaultShareId) {
       return `/chat/share?shareId=${defaultShareId}`;
     }
-    // 如果没有配置分享链接，回退到首页让首页处理
+    // 如果都没有配置，回退到首页让首页处理
     return '/';
-  }, [defaultShareId]);
+  }, [defaultShareId, defaultAppId]);
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponse) => {
@@ -88,7 +92,8 @@ const Login = ({ defaultShareId }: { defaultShareId: string }) => {
 export async function getServerSideProps(context: any) {
   return {
     props: {
-      // 鲁港通：从服务端环境变量获取默认分享链接 ID
+      // 鲁港通：从服务端环境变量获取默认应用 ID 和分享链接 ID
+      defaultAppId: process.env.DEFAULT_APP_ID || '',
       defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(context, ['app', 'user', 'login']))
     }

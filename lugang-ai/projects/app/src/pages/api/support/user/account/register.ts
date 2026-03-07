@@ -11,7 +11,7 @@ import { verifyAuthCode } from '../inform/sendAuthCode';
 import { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
-import { TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
+import { TeamMemberRoleEnum, TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
