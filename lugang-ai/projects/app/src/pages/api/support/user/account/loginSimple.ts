@@ -25,8 +25,12 @@ import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { syncUserToOneApi } from '@/service/integration/oneapi';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
-import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
+import { TeamMemberRoleEnum, TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 import { addLog } from '@fastgpt/service/common/system/log';
+import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
+import { PerResourceTypeEnum, ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
+import { TeamDefaultRoleVal } from '@fastgpt/global/support/permission/user/constant';
+import { Types } from 'mongoose';
 import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 
 interface LoginSimpleProps {
@@ -73,36 +77,64 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 
   // 鲁港通：确保普通用户使用管理员团队的 tmbId
+  // 如果用户不在管理员团队中，自动修复（加入管理员团队）
   const correctTmbId = await (async () => {
     if (username === 'root') {
       return user.lastLoginTmbId;
     }
 
     const rootUser = await MongoUser.findOne({ username: 'root' }).lean();
-    if (rootUser) {
-      const rootTmb = await MongoTeamMember.findOne({
-        userId: rootUser._id,
-        role: TeamMemberRoleEnum.owner
-      }).lean();
+    if (!rootUser) return user.lastLoginTmbId;
 
-      if (rootTmb) {
-        const userTmbInAdminTeam = await MongoTeamMember.findOne({
-          userId: user._id,
-          teamId: rootTmb.teamId
-        }).lean();
+    const rootTmb = await MongoTeamMember.findOne({
+      userId: rootUser._id,
+      role: TeamMemberRoleEnum.owner
+    }).lean();
+    if (!rootTmb) return user.lastLoginTmbId;
 
-        if (userTmbInAdminTeam) {
-          addLog.info('鲁港通用户登录使用管理员团队', {
-            username,
-            tmbId: userTmbInAdminTeam._id.toString(),
-            teamId: rootTmb.teamId.toString()
-          });
-          return userTmbInAdminTeam._id.toString();
-        }
+    let userTmbInAdminTeam = await MongoTeamMember.findOne({
+      userId: user._id,
+      teamId: rootTmb.teamId
+    }).lean();
+
+    // 鲁港通：自动修复 - 如果用户不在管理员团队，自动加入并分配权限
+    if (!userTmbInAdminTeam) {
+      addLog.warn('鲁港通用户不在管理员团队，自动修复', { username });
+      const newTmb = await MongoTeamMember.create({
+        teamId: rootTmb.teamId,
+        userId: user._id,
+        name: username.split('@')[0] || username,
+        role: 'member',
+        status: TeamMemberStatusEnum.active,
+        createTime: new Date()
+      });
+      userTmbInAdminTeam = newTmb.toObject();
+
+      // 添加团队读取权限
+      await MongoResourcePermission.updateOne(
+        { resourceType: PerResourceTypeEnum.team, teamId: rootTmb.teamId, tmbId: newTmb._id, resourceId: null },
+        { $setOnInsert: { permission: TeamDefaultRoleVal } },
+        { upsert: true }
+      );
+
+      // 添加默认应用读取权限
+      const defaultAppId = process.env.DEFAULT_APP_ID;
+      if (defaultAppId) {
+        await MongoResourcePermission.updateOne(
+          { resourceType: PerResourceTypeEnum.app, teamId: rootTmb.teamId, tmbId: newTmb._id, resourceId: new Types.ObjectId(defaultAppId) },
+          { $setOnInsert: { permission: ReadPermissionVal } },
+          { upsert: true }
+        );
       }
+
+      addLog.info('鲁港通用户已自动加入管理员团队并分配权限', {
+        username,
+        tmbId: newTmb._id.toString(),
+        teamId: rootTmb.teamId.toString()
+      });
     }
 
-    return user.lastLoginTmbId;
+    return userTmbInAdminTeam._id.toString();
   })();
 
   const userDetail = await getUserDetail({
