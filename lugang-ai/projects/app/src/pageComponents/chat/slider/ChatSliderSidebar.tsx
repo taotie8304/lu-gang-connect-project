@@ -4,7 +4,6 @@ import MyBox from '@fastgpt/web/components/common/MyBox';
 import ChatSliderHeader from '@/pageComponents/chat/slider/ChatSliderHeader';
 import ChatSliderMenu from '@/pageComponents/chat/slider/ChatSliderMenu';
 import ChatSliderList from '@/pageComponents/chat/slider/ChatSliderList';
-import ChatSliderFooter from '@/pageComponents/chat/slider/ChatSliderFooter';
 
 type Props = {
   title?: string;
@@ -28,8 +27,6 @@ const ChatHistorySidebar = ({ title, banner, menuConfirmButtonText }: Props) => 
       <ChatSliderHeader title={title} banner={banner} />
       <ChatSliderMenu menuConfirmButtonText={menuConfirmButtonText} />
       <ChatSliderList />
-      {/* 鲁港通：添加用户信息底部栏 */}
-      <ChatSliderFooter />
     </MyBox>
   );
 };
