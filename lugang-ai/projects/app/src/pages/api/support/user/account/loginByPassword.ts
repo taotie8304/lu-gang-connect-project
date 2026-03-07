@@ -16,6 +16,9 @@ import { createUserSession } from '@fastgpt/service/support/user/session';
 import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { syncUserToOneApi } from '@/service/integration/oneapi';
+import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
+import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
+import { addLog } from '@fastgpt/service/common/system/log';
 
 async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { username, password, code, language = 'zh-CN' } = req.body as PostLoginProps;
@@ -55,8 +58,45 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     return Promise.reject(UserErrEnum.account_psw_error);
   }
 
+  // 鲁港通：确保普通用户使用管理员团队的 tmbId
+  // 如果用户有多个 team_members 记录（旧独立团队 + 管理员团队），优先选择管理员团队的
+  const correctTmbId = await (async () => {
+    if (username === 'root') {
+      return user.lastLoginTmbId; // root 用户使用默认逻辑
+    }
+
+    // 查找 root 管理员的团队 ID
+    const rootUser = await MongoUser.findOne({ username: 'root' }).lean();
+    if (rootUser) {
+      const rootTmb = await MongoTeamMember.findOne({
+        userId: rootUser._id,
+        role: TeamMemberRoleEnum.owner
+      }).lean();
+
+      if (rootTmb) {
+        // 查找该用户在管理员团队中的成员记录
+        const userTmbInAdminTeam = await MongoTeamMember.findOne({
+          userId: user._id,
+          teamId: rootTmb.teamId
+        }).lean();
+
+        if (userTmbInAdminTeam) {
+          addLog.info('鲁港通用户登录使用管理员团队', {
+            username,
+            tmbId: userTmbInAdminTeam._id.toString(),
+            teamId: rootTmb.teamId.toString()
+          });
+          return userTmbInAdminTeam._id.toString();
+        }
+      }
+    }
+
+    // 回退到默认逻辑
+    return user.lastLoginTmbId;
+  })();
+
   const userDetail = await getUserDetail({
-    tmbId: user?.lastLoginTmbId,
+    tmbId: correctTmbId,
     userId: user._id
   });
 

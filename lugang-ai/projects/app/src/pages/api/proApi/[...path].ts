@@ -77,7 +77,19 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   
   // 聊天相关
   if (apiPath.includes('chat/setting/detail')) {
-    return { welcomeText: '', defaultChatModels: [], defaultChatModel: null };
+    // 鲁港通 - 返回完整的 ChatSettingType 结构，避免前端字段缺失导致崩溃
+    return {
+      welcomeText: '',
+      defaultChatModels: [],
+      defaultChatModel: null,
+      quickAppList: [],
+      selectedTools: [],
+      favouriteTags: [],
+      enableHome: true,
+      homeTabTitle: '鲁港通',
+      slogan: '',
+      dialogTips: ''
+    };
   }
   if (apiPath.includes('chat/setting/favourite/list')) {
     return [];

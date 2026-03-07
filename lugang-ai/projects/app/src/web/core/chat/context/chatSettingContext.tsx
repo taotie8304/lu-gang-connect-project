@@ -62,7 +62,8 @@ export const ChatSettingContextProvider = ({ children }: { children: React.React
       onSuccess: (data) => {
         if (!data) return;
 
-        if (!data.enableHome && pane === ChatSidebarPaneEnum.HOME) {
+        // 鲁港通 - 只有明确设置 enableHome=false 时才跳转，undefined 视为启用
+        if (data.enableHome === false && pane === ChatSidebarPaneEnum.HOME) {
           handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
           return;
         }
@@ -70,7 +71,7 @@ export const ChatSettingContextProvider = ({ children }: { children: React.React
         if (
           pane === ChatSidebarPaneEnum.HOME &&
           appId !== data.appId &&
-          data.quickAppList.every((q) => q._id !== appId)
+          data.quickAppList?.every((q) => q._id !== appId)
         ) {
           handlePaneChange(ChatSidebarPaneEnum.HOME, data.appId);
         }

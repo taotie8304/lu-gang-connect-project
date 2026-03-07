@@ -94,7 +94,7 @@ const HomeChatWindow = ({ myApps }: Props) => {
   const totalRecordsCount = useContextSelector(ChatRecordContext, (v) => v.totalRecordsCount);
 
   const isQuickApp = useMemo(
-    () => chatSettings?.quickAppList.some((app) => app._id === appId),
+    () => chatSettings?.quickAppList?.some((app) => app._id === appId) ?? false,
     [chatSettings?.quickAppList, appId]
   );
 
@@ -174,9 +174,9 @@ const HomeChatWindow = ({ myApps }: Props) => {
       onFinally() {
         forbidLoadChat.current = false;
       },
-      onError() {
-        // 鲁港通 - 调整错误处理逻辑
-        handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
+      onError(err) {
+        // 鲁港通 - 聊天初始化失败时仅记录日志，不跳转页面
+        console.error('鲁港通聊天初始化失败:', err);
       }
     }
   );
@@ -190,8 +190,7 @@ const HomeChatWindow = ({ myApps }: Props) => {
   };
 
   useMount(() => {
-    // 鲁港通 - 默认显示团队应用
-    handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
+    // 鲁港通 - 不再强制跳转，让 chatSettingContext 根据配置决定显示哪个面板
   });
 
   // 使用类似 AppChatWindow 的对话逻辑

@@ -24,6 +24,9 @@ import { connectionMongo } from '@fastgpt/service/common/mongo';
 import requestIp from 'request-ip';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { syncUserToOneApi } from '@/service/integration/oneapi';
+import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
+import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
+import { addLog } from '@fastgpt/service/common/system/log';
 import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 
 interface LoginSimpleProps {
@@ -69,8 +72,41 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
     return Promise.reject(UserErrEnum.account_psw_error);
   }
 
+  // 鲁港通：确保普通用户使用管理员团队的 tmbId
+  const correctTmbId = await (async () => {
+    if (username === 'root') {
+      return user.lastLoginTmbId;
+    }
+
+    const rootUser = await MongoUser.findOne({ username: 'root' }).lean();
+    if (rootUser) {
+      const rootTmb = await MongoTeamMember.findOne({
+        userId: rootUser._id,
+        role: TeamMemberRoleEnum.owner
+      }).lean();
+
+      if (rootTmb) {
+        const userTmbInAdminTeam = await MongoTeamMember.findOne({
+          userId: user._id,
+          teamId: rootTmb.teamId
+        }).lean();
+
+        if (userTmbInAdminTeam) {
+          addLog.info('鲁港通用户登录使用管理员团队', {
+            username,
+            tmbId: userTmbInAdminTeam._id.toString(),
+            teamId: rootTmb.teamId.toString()
+          });
+          return userTmbInAdminTeam._id.toString();
+        }
+      }
+    }
+
+    return user.lastLoginTmbId;
+  })();
+
   const userDetail = await getUserDetail({
-    tmbId: user?.lastLoginTmbId,
+    tmbId: correctTmbId,
     userId: user._id
   });
 
