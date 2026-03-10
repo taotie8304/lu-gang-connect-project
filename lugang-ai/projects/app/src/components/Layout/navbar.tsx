@@ -115,10 +115,18 @@ const Navbar = ({ unread }: { unread: number }) => {
         ? baseList 
         : baseList.filter(item => item.showForUser);
 
-      // root 用户添加配置入口
+      // root 用户添加配置入口和用户管理入口
       if (userInfo?.username === 'root') {
         filteredList = [
           ...filteredList,
+          {
+            label: '用户管理',
+            icon: 'support/team/memberLight',
+            activeIcon: 'support/team/memberFill',
+            link: '/admin/users',
+            activeLink: ['/admin/users'],
+            showForUser: false
+          },
           {
             label: t('common:navbar.Config'),
             icon: 'support/config/configLight',

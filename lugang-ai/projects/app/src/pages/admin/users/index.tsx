@@ -61,6 +61,7 @@ const AdminUsersPage = () => {
   const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
 
   const { isOpen: isStatusModalOpen, onOpen: onStatusModalOpen, onClose: onStatusModalClose } = useDisclosure();
+  const { isOpen: isDeleteModalOpen, onOpen: onDeleteModalOpen, onClose: onDeleteModalClose } = useDisclosure();
 
   // 鲁港通：用户详情弹窗状态
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
@@ -135,7 +136,37 @@ const AdminUsersPage = () => {
     }
   );
 
-  // 初始加载
+  // 删除用户
+  const { runAsync: deleteUser, loading: deletingUser } = useRequest2(
+    async (userId: string) => {
+      const response = await fetch('/api/admin/users/delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to delete user');
+      }
+      return response.json();
+    },
+    {
+      onSuccess: () => {
+        toast({ status: 'success', title: '用户已删除' });
+        onDeleteModalClose();
+        fetchUsers(currentPage, searchText);
+      },
+      onError: (error: any) => {
+        toast({ status: 'error', title: error.message || '删除用户失败' });
+      }
+    }
+  );
+
+  // 打开删除确认框
+  const handleDeleteClick = useCallback((user: AdminUserItem) => {
+    setSelectedUser(user);
+    onDeleteModalOpen();
+  }, [onDeleteModalOpen]);
   useEffect(() => {
     if (userInfo?.username === 'root' || userInfo?.team?.permission?.hasManagePer) {
       fetchUsers(1, '');
@@ -257,6 +288,7 @@ const AdminUsersPage = () => {
                   {formatDate(user.createTime)}
                 </Td>
                 <Td>
+                  <HStack spacing={2}>
                   <Button
                     size="xs"
                     variant={user.status === 'active' ? 'outline' : 'solid'}
@@ -266,6 +298,16 @@ const AdminUsersPage = () => {
                   >
                     {user.status === 'active' ? '禁用' : '启用'}
                   </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    colorScheme="red"
+                    onClick={(e) => { e.stopPropagation(); handleDeleteClick(user); }}
+                    isDisabled={user.username === 'root'}
+                  >
+                    删除
+                  </Button>
+                  </HStack>
                 </Td>
               </Tr>
             ))}
@@ -366,8 +408,40 @@ const AdminUsersPage = () => {
         </ModalContent>
       </Modal>
 
-      {/* 鲁港通：用户详情弹窗 */}
-      {detailUserId && (
+      {/* 删除确认框 */}
+      <Modal isOpen={isDeleteModalOpen} onClose={onDeleteModalClose} isCentered>
+        <ModalOverlay />
+        <ModalContent>
+          <ModalHeader>删除用户</ModalHeader>
+          <ModalCloseButton />
+          <ModalBody>
+            <Text>
+              确定要永久删除用户{' '}
+              <Text as="span" fontWeight="bold">
+                {selectedUser?.memberName || selectedUser?.username}
+              </Text>{' '}
+              吗？
+            </Text>
+            <Text fontSize="sm" color="red.500" mt={2}>
+              此操作不可恢复，用户的所有数据将被删除。
+            </Text>
+          </ModalBody>
+          <ModalFooter>
+            <Button variant="ghost" mr={3} onClick={onDeleteModalClose}>
+              取消
+            </Button>
+            <Button
+              colorScheme="red"
+              onClick={() => selectedUser && deleteUser(selectedUser._id)}
+              isLoading={deletingUser}
+            >
+              确认删除
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
+
+      {/* 鲁港通：用户详情弹窗 */}      {detailUserId && (
         <AdminUserDetailModal
           isOpen={!!detailUserId}
           onClose={() => setDetailUserId(null)}
