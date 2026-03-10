@@ -227,7 +227,23 @@ export class S3BaseBucket {
         ...params.metadata
       });
 
-      const { formData, postURL } = await this.externalClient.presignedPostPolicy(policy);
+      // 用内部 client 生成预签名（避免容器内无法访问外网），再把 URL host 替换为外网地址供浏览器使用
+      const { formData, postURL } = await this.client.presignedPostPolicy(policy);
+
+      // 将内网 URL 替换为外网可访问的地址
+      let externalPostURL = postURL;
+      if (this.options.externalBaseURL) {
+        try {
+          const internalUrl = new URL(postURL);
+          const externalBase = new URL(this.options.externalBaseURL);
+          internalUrl.protocol = externalBase.protocol;
+          internalUrl.hostname = externalBase.hostname;
+          internalUrl.port = externalBase.port || '';
+          externalPostURL = internalUrl.toString();
+        } catch {
+          // URL 替换失败时保留原始 URL
+        }
+      }
 
       if (expiredHours) {
         await MongoS3TTL.create({
@@ -238,7 +254,7 @@ export class S3BaseBucket {
       }
 
       return {
-        url: postURL,
+        url: externalPostURL,
         fields: formData,
         maxSize: formatMaxFileSize
       };
@@ -254,7 +270,23 @@ export class S3BaseBucket {
     const { key, expiredHours } = parsed;
     const expires = expiredHours ? expiredHours * 60 * 60 : 30 * 60; // expires 的单位是秒 默认 30 分钟
 
-    return await this.externalClient.presignedGetObject(this.bucketName, key, expires);
+    // 用内部 client 生成预签名，再替换为外网地址
+    const internalUrl = await this.client.presignedGetObject(this.bucketName, key, expires);
+
+    if (this.options.externalBaseURL) {
+      try {
+        const parsed = new URL(internalUrl);
+        const externalBase = new URL(this.options.externalBaseURL);
+        parsed.protocol = externalBase.protocol;
+        parsed.hostname = externalBase.hostname;
+        parsed.port = externalBase.port || '';
+        return parsed.toString();
+      } catch {
+        // URL 替换失败时返回原始 URL
+      }
+    }
+
+    return internalUrl;
   }
 
   async createPreviewUrl(params: createPreviewUrlParams) {
