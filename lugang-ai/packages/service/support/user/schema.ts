@@ -67,6 +67,10 @@ const UserSchema = new Schema({
   contact: String,
 
   // 鲁港通：用户信息扩展字段 (Requirement 6.1)
+  nickname: {
+    type: String,
+    required: false
+  },
   email: {
     type: String,
     required: false // 邮箱注册时自动填充，手机号注册时必填

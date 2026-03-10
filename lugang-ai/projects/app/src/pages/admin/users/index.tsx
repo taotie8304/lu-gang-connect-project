@@ -44,6 +44,7 @@ import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { AdminUserItem, AdminUsersListResponse } from '@/pages/api/admin/users/list';
+import AdminUserDetailModal from '@/components/AdminUserDetailModal';
 
 const PAGE_SIZE = 20;
 
@@ -60,6 +61,9 @@ const AdminUsersPage = () => {
   const [selectedUser, setSelectedUser] = useState<AdminUserItem | null>(null);
 
   const { isOpen: isStatusModalOpen, onOpen: onStatusModalOpen, onClose: onStatusModalClose } = useDisclosure();
+
+  // 鲁港通：用户详情弹窗状态
+  const [detailUserId, setDetailUserId] = useState<string | null>(null);
 
   // 检查管理员权限
   useEffect(() => {
@@ -220,7 +224,7 @@ const AdminUsersPage = () => {
           </Thead>
           <Tbody>
             {userList.map((user) => (
-              <Tr key={user._id} _hover={{ bg: 'myGray.25' }}>
+              <Tr key={user._id} _hover={{ bg: 'myGray.25' }} cursor="pointer" onClick={() => setDetailUserId(user._id)}>
                 <Td>
                   <Flex align="center" gap={3}>
                     <Avatar
@@ -254,7 +258,7 @@ const AdminUsersPage = () => {
                     size="xs"
                     variant={user.status === 'active' ? 'outline' : 'solid'}
                     colorScheme={user.status === 'active' ? 'red' : 'green'}
-                    onClick={() => handleStatusClick(user)}
+                    onClick={(e) => { e.stopPropagation(); handleStatusClick(user); }}
                     isDisabled={user.username === 'root'}
                   >
                     {user.status === 'active' ? '禁用' : '启用'}
@@ -358,6 +362,16 @@ const AdminUsersPage = () => {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      {/* 鲁港通：用户详情弹窗 */}
+      {detailUserId && (
+        <AdminUserDetailModal
+          isOpen={!!detailUserId}
+          onClose={() => setDetailUserId(null)}
+          userId={detailUserId}
+          onSaved={() => fetchUsers(currentPage, searchText)}
+        />
+      )}
     </MyBox>
   );
 };

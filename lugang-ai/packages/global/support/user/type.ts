@@ -23,6 +23,7 @@ export type UserModelSchema = {
   };
   contact?: string;
   // 鲁港通：用户信息扩展字段 (Requirement 6.1)
+  nickname?: string;
   email?: string;
   phone?: string;
   birth_date?: Date;

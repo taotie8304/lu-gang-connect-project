@@ -1,10 +1,11 @@
 /**
  * 鲁港通 - 账户信息弹窗
- * 显示用户订阅和余额信息
- * Requirements: 9.2, 9.3, 9.4
+ * Tab 1: 个人资料（查看/编辑 name/nickname/phone/email/address）
+ * Tab 2: 账户额度（quota/usedQuota/remainingQuota + 充值按钮）
+ * Requirements: 1.1, 1.2, 1.3, 1.4, 2.1, 2.6, 3.1, 3.2, 3.3, 3.4
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Modal,
   ModalOverlay,
@@ -17,135 +18,144 @@ import {
   Box,
   Text,
   Flex,
-  Badge,
-  Divider,
-  Alert,
-  AlertIcon,
-  AlertDescription,
   Spinner,
-  Button
+  Button,
+  Input,
+  FormControl,
+  FormLabel,
+  FormErrorMessage,
+  Progress
 } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
-import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useUserStore } from '@/web/support/user/useUserStore';
 import { useToast } from '@fastgpt/web/hooks/useToast';
-import type {
-  SubscriptionInfo,
-  BalanceInfo,
-  UserAccountInfo
-} from '@fastgpt/service/support/user/integration/subscription';
-import { SubscriptionStatus } from '@fastgpt/service/support/user/integration/subscription';
+import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
+import { GET, PUT } from '@/web/common/api/request';
+import type { UserProfile } from '@/pages/api/user/profile';
+import type { QuotaResponse } from '@/pages/api/integration/oneapi/quota';
+
+type TabType = 'profile' | 'quota';
 
 interface AccountInfoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRecharge?: () => void; // 充值按钮回调
+  onRecharge?: () => void;
 }
 
-const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ isOpen, onClose, onRecharge }) => {
+const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
-  const { userInfo } = useUserStore();
   const { toast } = useToast();
 
-  const [loading, setLoading] = useState(true);
-  const [accountInfo, setAccountInfo] = useState<UserAccountInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<TabType>('profile');
 
-  // 获取账户信息
-  const fetchAccountInfo = async () => {
-    if (!userInfo?.username) {
-      return;
-    }
+  // 个人资料状态
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileForm, setProfileForm] = useState({
+    name: '',
+    nickname: '',
+    phone: '',
+    email: '',
+    address: ''
+  });
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
 
-    setLoading(true);
-    setError(null);
+  // 额度状态
+  const [quota, setQuota] = useState<QuotaResponse>({ quota: 0, usedQuota: 0, remainingQuota: 0 });
+  const [quotaLoading, setQuotaLoading] = useState(false);
 
+  // 加载个人资料
+  const fetchProfile = useCallback(async () => {
+    setProfileLoading(true);
     try {
-      // 调用 API 获取账户信息
-      const response = await fetch(`/api/user/account-info?username=${userInfo.username}`);
-      
-      if (!response.ok) {
-        throw new Error('获取账户信息失败');
-      }
-
-      const data = await response.json();
-      
-      if (data.code === 200 && data.data) {
-        setAccountInfo(data.data);
-      } else {
-        throw new Error(data.message || '获取账户信息失败');
-      }
-    } catch (err: any) {
-      setError(err.message || '获取账户信息失败');
-      toast({
-        status: 'error',
-        title: '获取账户信息失败',
-        description: err.message
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 打开弹窗时获取账户信息
-  useEffect(() => {
-    if (isOpen) {
-      fetchAccountInfo();
-    }
-  }, [isOpen, userInfo?.username]);
-
-  // 获取订阅状态的显示样式
-  const getSubscriptionStatusBadge = (status: SubscriptionStatus) => {
-    const statusConfig = {
-      [SubscriptionStatus.Active]: { colorScheme: 'green', label: '有效' },
-      [SubscriptionStatus.Expired]: { colorScheme: 'red', label: '已过期' },
-      [SubscriptionStatus.Cancelled]: { colorScheme: 'gray', label: '已取消' },
-      [SubscriptionStatus.Trial]: { colorScheme: 'blue', label: '试用中' }
-    };
-
-    const config = statusConfig[status] || { colorScheme: 'gray', label: '未知' };
-
-    return (
-      <Badge colorScheme={config.colorScheme} fontSize="12px">
-        {config.label}
-      </Badge>
-    );
-  };
-
-  // 格式化日期
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('zh-CN', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit'
+      const data = await GET<UserProfile>('/user/profile');
+      setProfile(data);
+      setProfileForm({
+        name: data.name || '',
+        nickname: data.nickname || '',
+        phone: data.phone || '',
+        email: data.email || '',
+        address: data.address || ''
       });
     } catch {
-      return dateString;
+      // 静默处理
+    } finally {
+      setProfileLoading(false);
+    }
+  }, []);
+
+  // Requirement 1.1: 通过 /api/integration/oneapi/quota 获取额度
+  const fetchQuota = useCallback(async () => {
+    setQuotaLoading(true);
+    try {
+      const data = await GET<QuotaResponse>('/integration/oneapi/quota');
+      setQuota(data);
+    } catch {
+      // Requirement 1.2: 失败时显示默认值 0，不显示错误 Toast
+      setQuota({ quota: 0, usedQuota: 0, remainingQuota: 0 });
+    } finally {
+      setQuotaLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isOpen) {
+      fetchProfile();
+      fetchQuota();
+    }
+  }, [isOpen, fetchProfile, fetchQuota]);
+
+  // 表单校验
+  const validateForm = (): boolean => {
+    const errors: Record<string, string> = {};
+
+    // Requirement 2.4: 邮箱格式校验
+    if (profileForm.email) {
+      const parts = profileForm.email.split('@');
+      if (parts.length !== 2 || !parts[0] || !parts[1] || !parts[1].includes('.')) {
+        errors.email = '邮箱格式不合法';
+      }
+    }
+
+    // Requirement 2.5: 手机号格式校验
+    if (profileForm.phone && !/^\d{7,15}$/.test(profileForm.phone)) {
+      errors.phone = '手机号格式不合法（需7-15位数字）';
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // 保存个人资料
+  const handleSave = async () => {
+    if (!validateForm()) return;
+
+    setSaving(true);
+    try {
+      await PUT('/user/profile', {
+        name: profileForm.name,
+        nickname: profileForm.nickname,
+        phone: profileForm.phone,
+        email: profileForm.email,
+        address: profileForm.address
+      });
+      // Requirement 2.6: 保存成功显示 Toast
+      toast({ status: 'success', title: '个人资料保存成功' });
+      await fetchProfile();
+    } catch (err: any) {
+      toast({ status: 'error', title: err?.message || '保存失败' });
+    } finally {
+      setSaving(false);
     }
   };
 
-  // 检查余额是否不足
-  const isBalanceLow = (balance: BalanceInfo) => {
-    if (balance.usage_quota === 0) return false;
-    const usagePercentage = (balance.usage_quota - balance.remaining_quota) / balance.usage_quota;
-    return usagePercentage >= 0.9; // 使用超过 90%
+  // Requirement 3.4: 充值按钮跳转
+  const handleRecharge = () => {
+    window.open('https://api.airscend.com/topup', '_blank');
   };
 
-  // 获取余额警告信息
-  const getBalanceWarning = (balance: BalanceInfo): string | null => {
-    if (balance.remaining_quota <= 0) {
-      return '您的配额已用尽，请充值后继续使用。';
-    }
-
-    if (isBalanceLow(balance)) {
-      const percentage = Math.round((balance.remaining_quota / balance.usage_quota) * 100);
-      return `您的配额即将用尽，剩余 ${percentage}%（${balance.remaining_quota} ${balance.quota_unit}），请及时充值。`;
-    }
-
-    return null;
-  };
+  const usagePercent =
+    quota.quota > 0 ? Math.round((quota.usedQuota / quota.quota) * 100) : 0;
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="lg" isCentered>
@@ -154,185 +164,162 @@ const AccountInfoModal: React.FC<AccountInfoModalProps> = ({ isOpen, onClose, on
         <ModalHeader>账户信息</ModalHeader>
         <ModalCloseButton />
         <ModalBody pb={6}>
-          {loading ? (
-            <Flex justify="center" align="center" py={10}>
-              <Spinner size="lg" />
-            </Flex>
-          ) : error ? (
-            <Alert status="error" borderRadius="md">
-              <AlertIcon />
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          ) : accountInfo ? (
-            <VStack spacing={6} align="stretch">
-              {/* Requirement 9.4: 余额不足警告 */}
-              {accountInfo.balance && getBalanceWarning(accountInfo.balance) && (
-                <Alert status="warning" borderRadius="md">
-                  <AlertIcon />
-                  <AlertDescription fontSize="14px">
-                    {getBalanceWarning(accountInfo.balance)}
-                  </AlertDescription>
-                </Alert>
-              )}
+          <Box mb={4}>
+            <LightRowTabs<TabType>
+              list={[
+                { label: '个人资料', value: 'profile' },
+                { label: '账户额度', value: 'quota' }
+              ]}
+              value={activeTab}
+              onChange={setActiveTab}
+            />
+          </Box>
 
-              {/* Requirement 9.2: 订阅信息 */}
-              <Box>
-                <HStack mb={3}>
-                  <MyIcon name="core/chat/sidebar/home" w="18px" h="18px" />
-                  <Text fontSize="16px" fontWeight="600">
-                    订阅信息
-                  </Text>
-                </HStack>
-                <VStack spacing={3} align="stretch" pl={6}>
-                  <HStack justify="space-between">
-                    <Text fontSize="14px" color="myGray.600">
-                      计划名称
-                    </Text>
-                    <Text fontSize="14px" fontWeight="500">
-                      {accountInfo.subscription.plan_name}
-                    </Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontSize="14px" color="myGray.600">
-                      计划状态
-                    </Text>
-                    {getSubscriptionStatusBadge(accountInfo.subscription.plan_status)}
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontSize="14px" color="myGray.600">
-                      到期日期
-                    </Text>
-                    <Text fontSize="14px" fontWeight="500">
-                      {formatDate(accountInfo.subscription.expiration_date)}
-                    </Text>
-                  </HStack>
-                  {accountInfo.subscription.features && accountInfo.subscription.features.length > 0 && (
-                    <Box>
-                      <Text fontSize="14px" color="myGray.600" mb={2}>
-                        计划功能
-                      </Text>
-                      <VStack spacing={1} align="stretch" pl={2}>
-                        {accountInfo.subscription.features.map((feature, index) => (
-                          <HStack key={index} spacing={2}>
-                            <MyIcon name="common/check" w="14px" h="14px" color="green.500" />
-                            <Text fontSize="13px">{feature}</Text>
-                          </HStack>
-                        ))}
-                      </VStack>
-                    </Box>
-                  )}
+          {activeTab === 'profile' && (
+            <>
+              {profileLoading ? (
+                <Flex justify="center" py={10}>
+                  <Spinner size="lg" />
+                </Flex>
+              ) : (
+                <VStack spacing={4} align="stretch">
+                  <FormControl>
+                    <FormLabel fontSize="14px">姓名</FormLabel>
+                    <Input
+                      value={profileForm.name}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                      placeholder="请输入姓名"
+                    />
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel fontSize="14px">昵称</FormLabel>
+                    <Input
+                      value={profileForm.nickname}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({ ...prev, nickname: e.target.value }))
+                      }
+                      placeholder="请输入昵称"
+                    />
+                  </FormControl>
+
+                  <FormControl isInvalid={!!formErrors.phone}>
+                    <FormLabel fontSize="14px">手机号</FormLabel>
+                    <Input
+                      value={profileForm.phone}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({ ...prev, phone: e.target.value }))
+                      }
+                      placeholder="请输入手机号"
+                    />
+                    {formErrors.phone && (
+                      <FormErrorMessage>{formErrors.phone}</FormErrorMessage>
+                    )}
+                  </FormControl>
+
+                  <FormControl isInvalid={!!formErrors.email}>
+                    <FormLabel fontSize="14px">邮箱</FormLabel>
+                    <Input
+                      value={profileForm.email}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({ ...prev, email: e.target.value }))
+                      }
+                      placeholder="请输入邮箱"
+                    />
+                    {formErrors.email && (
+                      <FormErrorMessage>{formErrors.email}</FormErrorMessage>
+                    )}
+                  </FormControl>
+
+                  <FormControl>
+                    <FormLabel fontSize="14px">通讯地址</FormLabel>
+                    <Input
+                      value={profileForm.address}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({ ...prev, address: e.target.value }))
+                      }
+                      placeholder="请输入通讯地址"
+                    />
+                  </FormControl>
+
+                  <Button
+                    colorScheme="blue"
+                    onClick={handleSave}
+                    isLoading={saving}
+                    mt={2}
+                  >
+                    保存
+                  </Button>
                 </VStack>
-              </Box>
+              )}
+            </>
+          )}
 
-              <Divider />
-
-              {/* Requirement 9.3: 余额信息 */}
-              <Box>
-                <HStack mb={3}>
-                  <MyIcon name="support/pay/payRecordLight" w="18px" h="18px" />
-                  <Text fontSize="16px" fontWeight="600">
-                    余额信息
-                  </Text>
-                </HStack>
-                <VStack spacing={3} align="stretch" pl={6}>
+          {activeTab === 'quota' && (
+            <>
+              {quotaLoading ? (
+                <Flex justify="center" py={10}>
+                  <Spinner size="lg" />
+                </Flex>
+              ) : (
+                <VStack spacing={4} align="stretch">
+                  {/* Requirement 3.1, 3.2: 显示额度信息 */}
                   <HStack justify="space-between">
                     <Text fontSize="14px" color="myGray.600">
-                      当前余额
+                      总额度
                     </Text>
-                    <Text fontSize="14px" fontWeight="500" color="green.600">
-                      ¥ {accountInfo.balance.current_balance.toFixed(2)}
+                    <Text fontSize="14px" fontWeight="500" data-testid="quota-total">
+                      {quota.quota}
                     </Text>
                   </HStack>
+
                   <HStack justify="space-between">
                     <Text fontSize="14px" color="myGray.600">
-                      使用配额
+                      已用额度
                     </Text>
-                    <Text fontSize="14px" fontWeight="500">
-                      {accountInfo.balance.usage_quota === 0
-                        ? '无限'
-                        : `${accountInfo.balance.usage_quota} ${accountInfo.balance.quota_unit}`}
+                    <Text fontSize="14px" fontWeight="500" data-testid="quota-used">
+                      {quota.usedQuota}
                     </Text>
                   </HStack>
+
                   <HStack justify="space-between">
                     <Text fontSize="14px" color="myGray.600">
-                      剩余配额
+                      剩余额度
                     </Text>
                     <Text
                       fontSize="14px"
                       fontWeight="500"
-                      color={isBalanceLow(accountInfo.balance) ? 'red.500' : 'inherit'}
+                      color={usagePercent >= 90 ? 'red.500' : 'green.600'}
+                      data-testid="quota-remaining"
                     >
-                      {accountInfo.balance.remaining_quota} {accountInfo.balance.quota_unit}
+                      {quota.remainingQuota}
                     </Text>
                   </HStack>
-                  {accountInfo.balance.usage_quota > 0 && (
+
+                  {/* 使用进度条 */}
+                  {quota.quota > 0 && (
                     <Box>
-                      <Text fontSize="14px" color="myGray.600" mb={2}>
-                        使用进度
+                      <Text fontSize="12px" color="myGray.500" mb={1}>
+                        使用进度 {usagePercent}%
                       </Text>
-                      <Box position="relative" h="8px" bg="myGray.100" borderRadius="full">
-                        <Box
-                          position="absolute"
-                          top={0}
-                          left={0}
-                          h="100%"
-                          bg={isBalanceLow(accountInfo.balance) ? 'red.400' : 'green.400'}
-                          borderRadius="full"
-                          width={`${
-                            ((accountInfo.balance.usage_quota - accountInfo.balance.remaining_quota) /
-                              accountInfo.balance.usage_quota) *
-                            100
-                          }%`}
-                          transition="width 0.3s"
-                        />
-                      </Box>
-                      <Text fontSize="12px" color="myGray.500" mt={1} textAlign="right">
-                        已使用{' '}
-                        {Math.round(
-                          ((accountInfo.balance.usage_quota - accountInfo.balance.remaining_quota) /
-                            accountInfo.balance.usage_quota) *
-                            100
-                        )}
-                        %
-                      </Text>
+                      <Progress
+                        value={usagePercent}
+                        size="sm"
+                        borderRadius="full"
+                        colorScheme={usagePercent >= 90 ? 'red' : 'green'}
+                      />
                     </Box>
                   )}
-                </VStack>
-              </Box>
 
-              {/* 充值按钮 */}
-              {onRecharge && (
-                <>
-                  <Divider />
-                  <Button
-                    colorScheme="blue"
-                    size="md"
-                    onClick={() => {
-                      onClose();
-                      onRecharge();
-                    }}
-                    leftIcon={<MyIcon name="support/pay/payRecordLight" w="16px" h="16px" />}
-                  >
-                    立即充值
+                  {/* Requirement 3.3, 3.4: 充值按钮 */}
+                  <Button colorScheme="blue" onClick={handleRecharge} mt={2}>
+                    充值
                   </Button>
-                </>
+                </VStack>
               )}
-
-              {/* 刷新按钮 */}
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={fetchAccountInfo}
-                leftIcon={<MyIcon name="common/refresh" w="14px" h="14px" />}
-              >
-                刷新信息
-              </Button>
-            </VStack>
-          ) : (
-            <Alert status="info" borderRadius="md">
-              <AlertIcon />
-              <AlertDescription>暂无账户信息</AlertDescription>
-            </Alert>
+            </>
           )}
         </ModalBody>
       </ModalContent>

@@ -254,10 +254,6 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       <AccountInfoModal
         isOpen={isAccountInfoModalOpen}
         onClose={() => setIsAccountInfoModalOpen(false)}
-        onRecharge={() => {
-          // TODO: 实现充值功能（Task 17）
-          console.log('充值功能待实现');
-        }}
       />
     </>
   );
