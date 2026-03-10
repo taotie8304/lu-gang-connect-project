@@ -65,14 +65,15 @@ const AdminUsersPage = () => {
   // 鲁港通：用户详情弹窗状态
   const [detailUserId, setDetailUserId] = useState<string | null>(null);
 
-  // 检查管理员权限
+  // 检查管理员权限（root 用户或团队管理员均可访问）
   useEffect(() => {
     if (!userInfo) {
       router.replace('/login?lastRoute=/admin/users');
       return;
     }
+    const isRoot = userInfo?.username === 'root';
     const isAdmin = userInfo?.team?.permission?.hasManagePer;
-    if (!isAdmin) {
+    if (!isRoot && !isAdmin) {
       toast({ status: 'warning', title: '您没有管理员权限' });
       router.replace('/chat');
     }
@@ -91,14 +92,16 @@ const AdminUsersPage = () => {
       if (!response.ok) {
         throw new Error('Failed to fetch users');
       }
-      const data: AdminUsersListResponse = await response.json();
+      const json = await response.json();
+      // NextAPI 包装格式：{ code, data: { list, total, page } }
+      const data: AdminUsersListResponse = json.data ?? json;
       return data;
     },
     {
       onSuccess: (data) => {
-        setUserList(data.list);
-        setTotal(data.total);
-        setCurrentPage(data.page);
+        setUserList(data.list ?? []);
+        setTotal(data.total ?? 0);
+        setCurrentPage(data.page ?? 1);
       },
       onError: (error) => {
         toast({ status: 'error', title: '获取用户列表失败' });
@@ -134,7 +137,7 @@ const AdminUsersPage = () => {
 
   // 初始加载
   useEffect(() => {
-    if (userInfo?.team?.permission?.hasManagePer) {
+    if (userInfo?.username === 'root' || userInfo?.team?.permission?.hasManagePer) {
       fetchUsers(1, '');
     }
   }, [userInfo]);
