@@ -129,6 +129,26 @@ var ModelRatio = map[string]float64{
 	"chatglm_lite":  0.1429, // ¥0.002 / 1k tokens
 	"cogview-3":     0.25 * RMB,
 	// https://help.aliyun.com/zh/dashscope/developer-reference/tongyi-thousand-questions-metering-and-billing
+	// Qwen3.5 系列（最新）
+	"qwen3.5-flash":              0.5 * RMB / 1000,  // ¥0.007 / 1k tokens
+	"qwen3.5-plus":               2.857 * RMB / 1000, // ¥0.04 / 1k tokens
+	"qwen3.5-flash-2026-02-23":   0.5 * RMB / 1000,
+	"qwen3.5-plus-2026-02-15":    2.857 * RMB / 1000,
+	"qwen3.5-35b-a3b":            0.5 * RMB / 1000,
+	"qwen3.5-27b":                2.857 * RMB / 1000,
+	"qwen3.5-122b-a10b":          2.857 * RMB / 1000,
+	"qwen3.5-397b-a17b":          2.857 * RMB / 1000,
+	// Qwen3 系列
+	"qwen3-235b-a22b":            2.857 * RMB / 1000,
+	"qwen3-32b":                  2.857 * RMB / 1000,
+	"qwen3-30b-a3b":              0.5 * RMB / 1000,
+	"qwen3-14b":                  0.5 * RMB / 1000,
+	"qwen3-8b":                   0.5 * RMB / 1000,
+	"qwen3-4b":                   0.5 * RMB / 1000,
+	"qwen3-1.7b":                 0.5 * RMB / 1000,
+	"qwen3-0.6b":                 0.5 * RMB / 1000,
+	// QwQ 深度思考系列
+	"qwq-32b":                    2.857 * RMB / 1000,
 	"qwen-turbo":                  1.4286, // ¥0.02 / 1k tokens
 	"qwen-turbo-latest":           1.4286,
 	"qwen-plus":                   1.4286,
