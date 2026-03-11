@@ -14,6 +14,8 @@ import { addStatisticalDataToHistoryItem } from '@/global/core/chat/utils';
 import { useSize } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../Provider';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import { isCitationUrl } from '@fastgpt/global/support/permission/citation';
 
 export type CitationRenderItem = {
   type: 'dataset' | 'link';
@@ -45,6 +47,9 @@ const ResponseTags = ({
   const { t } = useTranslation();
   const quoteListRef = React.useRef<HTMLDivElement>(null);
   const dataId = historyItem.dataId;
+  // 鲁港通：获取当前用户，普通用户不显示文件类型引用
+  const { userInfo } = useUserStore();
+  const isRoot = userInfo?.username === 'root';
 
   const chatTime = historyItem.time || new Date();
   const durationSeconds = historyItem.durationSeconds || 0;
@@ -78,7 +83,7 @@ const ResponseTags = ({
     : true;
 
   const citationRenderList: CitationRenderItem[] = useMemo(() => {
-    // Dataset citations
+    // Dataset citations — 普通用户过滤掉文件类型，只保留 URL 类型
     const datasetItems = Object.values(
       quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
         if (!acc[cur.collectionId]) {
@@ -88,6 +93,12 @@ const ResponseTags = ({
       }, {})
     )
       .flat()
+      .filter((item) => {
+        // 管理员显示所有引用
+        if (isRoot) return true;
+        // 普通用户只显示 URL 类型引用
+        return isCitationUrl(undefined, item.sourceId);
+      })
       .map((item) => ({
         type: 'dataset' as const,
         key: item.collectionId,
@@ -116,7 +127,7 @@ const ResponseTags = ({
     }));
 
     return [...datasetItems, ...linkItems];
-  }, [quoteList, toolCiteLinks, onOpenCiteModal]);
+  }, [quoteList, toolCiteLinks, onOpenCiteModal, isRoot]);
 
   const notEmptyTags = notSharePage || quoteList.length > 0 || (isPc && durationSeconds > 0);
 

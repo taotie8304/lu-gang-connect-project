@@ -8,7 +8,7 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { readCollectionSourceBody } from '@/pages/api/core/dataset/collection/read';
 import type { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import { canUserViewCitationSource } from '@fastgpt/global/support/permission/citation';
+import { canUserViewCitationSource, isCitationUrl } from '@fastgpt/global/support/permission/citation';
 
 type Props = BoxProps &
   readCollectionSourceBody & {
@@ -47,8 +47,10 @@ const RawSourceBox = ({
   // 鲁港通：只有有权限的用户才能预览（点击访问/下载）
   const canPreview = !!sourceId && canView && hasPermission;
 
-  // 鲁港通：文件类型引用对普通用户显示名称但不可点击，URL 类型可点击
-  // 管理员可以看到并点击所有引用
+  // 鲁港通：普通用户不显示文件类型引用，只显示 URL 类型
+  if (!hasPermission && !isCitationUrl(collectionType, sourceId)) {
+    return null;
+  }
 
   const icon = useMemo(
     () => getCollectionIcon({ type: collectionType, sourceId, name: sourceName }),
