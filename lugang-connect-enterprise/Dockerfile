@@ -70,7 +70,7 @@ RUN cp ./web/build/index.html /tmp/default_index.html 2>/dev/null || true
 COPY --from=web-builder /web/build ./web/build/
 
 # 如果构建失败，恢复默认的 index.html
-RUN if [ ! -f ./web/build/default/index.html ]; then \
+RUN if [ ! -f ./web/build/index.html ]; then \
         echo "Frontend build failed, restoring default index.html"; \
         cp /tmp/default_index.html ./web/build/index.html; \
     fi
