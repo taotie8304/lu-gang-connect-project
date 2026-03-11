@@ -32,10 +32,10 @@ RUN rm -rf node_modules package-lock.json && \
 RUN DISABLE_ESLINT_PLUGIN='true' REACT_APP_VERSION=$(cat /web/VERSION) npm run build || \
     (echo "Berry build failed, creating placeholder" && mkdir -p build)
 
-# 确保build目录存在，并复制到 default 目录（与 THEME 默认值匹配）
-RUN mkdir -p /web/build/default && \
-    (cp -r /web/berry/build/* /web/build/default/ 2>/dev/null || true) && \
-    if [ ! -f /web/build/default/index.html ]; then \
+# 确保build目录存在，直接复制到 build 根目录
+RUN mkdir -p /web/build && \
+    (cp -r /web/berry/build/* /web/build/ 2>/dev/null || true) && \
+    if [ ! -f /web/build/index.html ]; then \
         echo "Berry build failed, copying default index.html"; \
         cp /web/index.html /web/build/index.html 2>/dev/null || true; \
     fi
