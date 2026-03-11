@@ -8,7 +8,7 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { readCollectionSourceBody } from '@/pages/api/core/dataset/collection/read';
 import type { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import { canUserViewCitationSource, isCitationUrl } from '@fastgpt/global/support/permission/citation';
+import { canUserViewCitationSource } from '@fastgpt/global/support/permission/citation';
 
 type Props = BoxProps &
   readCollectionSourceBody & {
@@ -44,23 +44,11 @@ const RawSourceBox = ({
     return canUserViewCitationSource(userInfo?.username, collectionType, sourceId);
   }, [userInfo?.username, collectionType, sourceId]);
 
-  // 鲁港通：只有有权限的用户才能预览
+  // 鲁港通：只有有权限的用户才能预览（点击访问/下载）
   const canPreview = !!sourceId && canView && hasPermission;
 
-  // 鲁港通：如果是普通用户且不是 URL 类型，不显示此组件
-  const shouldDisplay = useMemo(() => {
-    // 管理员可以看到所有引用
-    if (userInfo?.username === 'root') {
-      return true;
-    }
-    // 普通用户只能看到 URL 类型的引用
-    return isCitationUrl(collectionType, sourceId);
-  }, [userInfo?.username, collectionType, sourceId]);
-
-  // 鲁港通：如果不应该显示，返回 null
-  if (!shouldDisplay) {
-    return null;
-  }
+  // 鲁港通：文件类型引用对普通用户显示名称但不可点击，URL 类型可点击
+  // 管理员可以看到并点击所有引用
 
   const icon = useMemo(
     () => getCollectionIcon({ type: collectionType, sourceId, name: sourceName }),
