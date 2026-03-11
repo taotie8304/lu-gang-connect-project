@@ -165,6 +165,8 @@ export async function dispatchWorkFlow({
   // Get default variables
   const cloneVariables = clone(data.variables);
   const defaultVariables = {
+    // 鲁港通 - 保留原始请求变量（含深度思考开关等），再用系统变量覆盖
+    ...data.variables,
     ...externalProvider.externalWorkflowVariables,
     ...(await getSystemVariables({
       ...data,

@@ -486,6 +486,9 @@ type LLMRequestBodyType<T> = Omit<T, 'model' | 'stop' | 'response_format' | 'mes
   toolCallMode?: 'toolChoice' | 'prompt';
   useVision?: boolean;
   requestOrigin?: string;
+  // 鲁港通 - 深度思考开关，透传给阿里百炼等支持 thinking 的模型
+  enable_thinking?: boolean;
+  thinking_budget?: number;
 };
 const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
   retainDatasetCite,

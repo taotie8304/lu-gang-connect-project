@@ -29,6 +29,8 @@ export type ChatBoxInputType = {
   files?: UserInputFileItemType[];
   isInteractivePrompt?: boolean;
   hideInUI?: boolean;
+  // 鲁港通 - 深度思考开关
+  enableThinking?: boolean;
 };
 
 export type SendPromptFnType = (

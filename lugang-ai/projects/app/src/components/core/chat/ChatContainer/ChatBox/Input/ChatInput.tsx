@@ -1,6 +1,6 @@
 import type { FlexProps } from '@chakra-ui/react';
-import { Box, Flex, Textarea, useBoolean } from '@chakra-ui/react';
-import React, { useRef, useCallback, useMemo, useState } from 'react';
+import { Box, Flex, Textarea, useBoolean, Switch, Text } from '@chakra-ui/react';
+import React, { useRef, useCallback, useMemo, useState, useEffect } from 'react';
 import { useTranslation } from 'next-i18next';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import MyIcon from '@fastgpt/web/components/common/Icon';
@@ -19,6 +19,9 @@ import { useFileUpload } from '../hooks/useFileUpload';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
+
+// 鲁港通 - 深度思考开关 localStorage key
+const DEEP_THINKING_KEY = 'lugang_enable_thinking';
 
 const InputGuideBox = dynamic(() => import('./InputGuideBox'));
 
@@ -54,6 +57,19 @@ const ChatInput = ({
 
   // Check voice input state
   const [mobilePreSpeak, setMobilePreSpeak] = useState(false);
+
+  // 鲁港通 - 深度思考开关状态，持久化到 localStorage
+  const [enableThinking, setEnableThinking] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem(DEEP_THINKING_KEY) === 'true';
+  });
+  const toggleThinking = useCallback(() => {
+    setEnableThinking((prev) => {
+      const next = !prev;
+      localStorage.setItem(DEEP_THINKING_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   const InputLeftComponent = useContextSelector(ChatBoxContext, (v) => v.InputLeftComponent);
 
@@ -118,11 +134,13 @@ const ChatInput = ({
 
       onSendMessage({
         text: textareaValue.trim(),
-        files: fileList
+        files: fileList,
+        // 鲁港通 - 深度思考开关：注入 enableThinking 标志
+        enableThinking
       });
       replaceFiles([]);
     },
-    [TextareaDom, canSendMessage, fileList, onSendMessage, replaceFiles]
+    [TextareaDom, canSendMessage, fileList, onSendMessage, replaceFiles, enableThinking]
   );
 
   const RenderTextarea = useMemo(
@@ -268,6 +286,36 @@ const ChatInput = ({
         {/* 左侧自定义按钮组 */}
         <Flex alignItems={'center'} gap={2} flex={'1 0 0'} w={0}>
           {InputLeftComponent}
+          {/* 鲁港通 - 深度思考开关 */}
+          <Flex
+            alignItems={'center'}
+            gap={1}
+            cursor={'pointer'}
+            onClick={toggleThinking}
+            px={2}
+            py={1}
+            borderRadius={'md'}
+            bg={enableThinking ? 'purple.50' : 'transparent'}
+            border={'1px solid'}
+            borderColor={enableThinking ? 'purple.300' : 'transparent'}
+            _hover={{ bg: enableThinking ? 'purple.100' : 'rgba(0,0,0,0.04)' }}
+            flexShrink={0}
+          >
+            <MyIcon
+              name={'core/app/aiLight'}
+              w={'14px'}
+              h={'14px'}
+              color={enableThinking ? 'purple.500' : '#707070'}
+            />
+            <Text
+              fontSize={'xs'}
+              color={enableThinking ? 'purple.600' : 'myGray.500'}
+              whiteSpace={'nowrap'}
+              display={['none', 'block']}
+            >
+              深度思考
+            </Text>
+          </Flex>
         </Flex>
 
         {/* 右侧原有按钮组 */}
@@ -375,7 +423,9 @@ const ChatInput = ({
     onOpenSelectFile,
     onSelectFile,
     handleSend,
-    onStop
+    onStop,
+    enableThinking,
+    toggleThinking
   ]);
 
   const activeStyles: FlexProps = {

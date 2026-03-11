@@ -448,7 +448,8 @@ const ChatBox = ({
       history = chatRecords,
       autoTTSResponse = false,
       isInteractivePrompt = false,
-      hideInUI = false
+      hideInUI = false,
+      enableThinking = false
     }) => {
       variablesForm.handleSubmit(
         async ({ variables = {} }) => {
@@ -596,7 +597,11 @@ const ChatBox = ({
               responseChatItemId: responseChatId,
               controller: abortSignal,
               generatingMessage: (e) => generatingMessage({ ...e, autoTTSResponse }),
-              variables: requestVariables
+              variables: {
+                ...requestVariables,
+                // 鲁港通 - 深度思考开关：传递给后端 AI 调用
+                ...(enableThinking ? { __enableThinking__: true } : {})
+              }
             });
 
             // Set last chat finish status

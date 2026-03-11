@@ -75,6 +75,8 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
     workflowStreamResponse,
     chatConfig,
     usageId,
+    // 鲁港通 - 读取全局变量，用于深度思考开关
+    variables: globalVariables,
     params: {
       model,
       temperature,
@@ -198,7 +200,9 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         },
         retainDatasetCite,
         useVision: aiChatVision,
-        requestOrigin
+        requestOrigin,
+        // 鲁港通 - 深度思考开关：用户通过前端开关控制
+        ...(globalVariables?.__enableThinking__ ? { enable_thinking: true, thinking_budget: 8000 } : {})
       },
       userKey: externalProvider.openaiAccount,
       isAborted: () => res?.closed,
