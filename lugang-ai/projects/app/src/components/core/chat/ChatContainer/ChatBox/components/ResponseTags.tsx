@@ -243,7 +243,7 @@ const ResponseTags = ({
 
       {notEmptyTags && (
         <Flex alignItems={'center'} mt={3} flexWrap={'wrap'} gap={2}>
-          {quoteList.length > 0 && (
+          {quoteList.length > 0 && isRoot && (
             <MyTooltip label={t('chat:view_citations')}>
               <MyTag
                 colorSchema="blue"
@@ -287,7 +287,7 @@ const ResponseTags = ({
             </MyTooltip>
           )}
 
-          {notSharePage && (
+          {notSharePage && isRoot && (
             <MyTooltip label={t('common:core.chat.response.Read complete response tips')}>
               <MyTag
                 colorSchema="gray"
