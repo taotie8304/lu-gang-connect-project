@@ -5,6 +5,21 @@ import (
 	"github.com/lugang-connect/enterprise/relay/model"
 )
 
+// CompatChatRequest 鲁港通 - OpenAI 兼容格式请求（Qwen3.5/QwQ/Qwen3 系列）
+// 支持 enable_search 网络搜索和 reasoning_content 思考过程
+type CompatChatRequest struct {
+	Model         string              `json:"model"`
+	Messages      []model.Message     `json:"messages"`
+	Stream        bool                `json:"stream,omitempty"`
+	Temperature   *float64            `json:"temperature,omitempty"`
+	TopP          *float64            `json:"top_p,omitempty"`
+	MaxTokens     int                 `json:"max_tokens,omitempty"`
+	Tools         []model.Tool        `json:"tools,omitempty"`
+	Stop          any                 `json:"stop,omitempty"`
+	EnableSearch  bool                `json:"enable_search,omitempty"`
+	StreamOptions *model.StreamOptions `json:"stream_options,omitempty"`
+}
+
 type Message struct {
 	Content string `json:"content"`
 	Role    string `json:"role"`

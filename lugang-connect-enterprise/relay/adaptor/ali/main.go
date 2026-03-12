@@ -21,6 +21,39 @@ import (
 
 const EnableSearchModelSuffix = "-internet"
 
+// ConvertCompatRequest 鲁港通 - 将请求转换为 OpenAI 兼容格式（Qwen3.5/QwQ/Qwen3 系列）
+// 支持 enable_search 和 stream_options
+func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest {
+	enableSearch := false
+	aliModel := request.Model
+	if strings.HasSuffix(aliModel, EnableSearchModelSuffix) {
+		enableSearch = true
+		aliModel = strings.TrimSuffix(aliModel, EnableSearchModelSuffix)
+	}
+
+	compatReq := &CompatChatRequest{
+		Model:       aliModel,
+		Messages:    request.Messages,
+		Stream:      request.Stream,
+		Temperature: request.Temperature,
+		TopP:        request.TopP,
+		MaxTokens:   request.MaxTokens,
+		Tools:       request.Tools,
+		Stop:        request.Stop,
+	}
+
+	if enableSearch {
+		compatReq.EnableSearch = true
+	}
+
+	// 流式模式下请求返回 usage 信息
+	if request.Stream {
+		compatReq.StreamOptions = &model.StreamOptions{IncludeUsage: true}
+	}
+
+	return compatReq
+}
+
 func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 	messages := make([]Message, 0, len(request.Messages))
 	for i := 0; i < len(request.Messages); i++ {

@@ -5,45 +5,66 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/lugang-connect/enterprise/relay/adaptor"
+	"github.com/lugang-connect/enterprise/relay/adaptor/openai"
 	"github.com/lugang-connect/enterprise/relay/meta"
 	"github.com/lugang-connect/enterprise/relay/model"
 	"github.com/lugang-connect/enterprise/relay/relaymode"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // https://help.aliyun.com/zh/dashscope/developer-reference/api-details
 
 type Adaptor struct {
-	meta *meta.Meta
+	meta          *meta.Meta
+	useCompatMode bool // 鲁港通 - Qwen3.5/QwQ/Qwen3 使用 OpenAI 兼容接口
+}
+
+// isCompatibleModel 判断是否使用 OpenAI 兼容接口
+// Qwen3.5、Qwen3、QwQ 系列需要兼容接口以支持 reasoning_content 和 enable_search
+func isCompatibleModel(modelName string) bool {
+	name := strings.TrimSuffix(strings.ToLower(modelName), "-internet")
+	return strings.HasPrefix(name, "qwen3.5") ||
+		strings.HasPrefix(name, "qwq") ||
+		strings.HasPrefix(name, "qwen3-")
 }
 
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
+	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
-	fullRequestURL := ""
 	switch meta.Mode {
 	case relaymode.Embeddings:
-		fullRequestURL = fmt.Sprintf("%s/api/v1/services/embeddings/text-embedding/text-embedding", meta.BaseURL)
+		return fmt.Sprintf("%s/api/v1/services/embeddings/text-embedding/text-embedding", meta.BaseURL), nil
 	case relaymode.ImagesGenerations:
-		fullRequestURL = fmt.Sprintf("%s/api/v1/services/aigc/text2image/image-synthesis", meta.BaseURL)
+		return fmt.Sprintf("%s/api/v1/services/aigc/text2image/image-synthesis", meta.BaseURL), nil
 	default:
-		fullRequestURL = fmt.Sprintf("%s/api/v1/services/aigc/text-generation/generation", meta.BaseURL)
+		if a.useCompatMode {
+			// 鲁港通 - 兼容接口，支持 thinking + search
+			return fmt.Sprintf("%s/compatible-mode/v1/chat/completions", meta.BaseURL), nil
+		}
+		return fmt.Sprintf("%s/api/v1/services/aigc/text-generation/generation", meta.BaseURL), nil
 	}
-
-	return fullRequestURL, nil
 }
 
 func (a *Adaptor) SetupRequestHeader(c *gin.Context, req *http.Request, meta *meta.Meta) error {
 	adaptor.SetupCommonRequestHeader(c, req, meta)
+	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
+
+	if a.useCompatMode {
+		// 鲁港通 - 兼容模式用标准 Content-Type 即可
+		req.Header.Set("Content-Type", "application/json")
+		return nil
+	}
+
+	// 旧 DashScope 接口的特殊请求头
 	if meta.IsStream {
 		req.Header.Set("Accept", "text/event-stream")
 		req.Header.Set("X-DashScope-SSE", "enable")
 	}
-	req.Header.Set("Authorization", "Bearer "+meta.APIKey)
-
 	if meta.Mode == relaymode.ImagesGenerations {
 		req.Header.Set("X-DashScope-Async", "enable")
 	}
@@ -59,11 +80,13 @@ func (a *Adaptor) ConvertRequest(c *gin.Context, relayMode int, request *model.G
 	}
 	switch relayMode {
 	case relaymode.Embeddings:
-		aliEmbeddingRequest := ConvertEmbeddingRequest(*request)
-		return aliEmbeddingRequest, nil
+		return ConvertEmbeddingRequest(*request), nil
 	default:
-		aliRequest := ConvertRequest(*request)
-		return aliRequest, nil
+		if a.useCompatMode {
+			// 鲁港通 - 兼容模式直接用 OpenAI 格式请求
+			return ConvertCompatRequest(*request), nil
+		}
+		return ConvertRequest(*request), nil
 	}
 }
 
@@ -71,9 +94,7 @@ func (a *Adaptor) ConvertImageRequest(request *model.ImageRequest) (any, error) 
 	if request == nil {
 		return nil, errors.New("request is nil")
 	}
-
-	aliRequest := ConvertImageRequest(*request)
-	return aliRequest, nil
+	return ConvertImageRequest(*request), nil
 }
 
 func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Reader) (*http.Response, error) {
@@ -81,6 +102,17 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
+	if a.useCompatMode {
+		// 鲁港通 - 兼容模式返回标准 OpenAI 格式，直接用 OpenAI handler 处理
+		if meta.IsStream {
+			err, _, usage = openai.StreamHandler(c, resp, relaymode.ChatCompletions)
+		} else {
+			err, usage = openai.Handler(c, resp, meta.PromptTokens, meta.ActualModelName)
+		}
+		return
+	}
+
+	// 旧 DashScope 格式处理
 	if meta.IsStream {
 		err, usage = StreamHandler(c, resp)
 	} else {
