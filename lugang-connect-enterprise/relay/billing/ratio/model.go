@@ -215,8 +215,9 @@ var ModelRatio = map[string]float64{
 	"qwen2.5-coder-1.5b-instruct": 1.4286,
 	"qwen2.5-coder-0.5b-instruct": 1.4286,
 	"text-embedding-v1":           0.05, // ¥0.0007 / 1k tokens
-	"text-embedding-v3":           0.05,
 	"text-embedding-v2":           0.05,
+	"text-embedding-v3":           0.05,
+	"text-embedding-v4":           0.05, // 鲁港通 - 阿里最新 embedding 模型
 	"text-embedding-async-v2":     0.05,
 	"text-embedding-async-v1":     0.05,
 	"ali-stable-diffusion-xl":     8.00,
@@ -409,10 +410,8 @@ func UpdateModelRatioByJSONString(jsonStr string) error {
 }
 
 func GetModelRatio(name string, channelType int) float64 {
-	if strings.HasPrefix(name, "qwen-") && strings.HasSuffix(name, "-internet") {
-		name = strings.TrimSuffix(name, "-internet")
-	}
-	if strings.HasPrefix(name, "command-") && strings.HasSuffix(name, "-internet") {
+	// 鲁港通 - 去掉 -internet 后缀再查计费比例
+	if strings.HasSuffix(name, "-internet") {
 		name = strings.TrimSuffix(name, "-internet")
 	}
 	model := fmt.Sprintf("%s(%d)", name, channelType)
@@ -446,7 +445,8 @@ func UpdateCompletionRatioByJSONString(jsonStr string) error {
 }
 
 func GetCompletionRatio(name string, channelType int) float64 {
-	if strings.HasPrefix(name, "qwen-") && strings.HasSuffix(name, "-internet") {
+	// 鲁港通 - 去掉 -internet 后缀再查计费比例
+	if strings.HasSuffix(name, "-internet") {
 		name = strings.TrimSuffix(name, "-internet")
 	}
 	model := fmt.Sprintf("%s(%d)", name, channelType)
