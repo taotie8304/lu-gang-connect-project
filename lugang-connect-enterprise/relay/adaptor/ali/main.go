@@ -44,6 +44,11 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 
 	if enableSearch {
 		compatReq.EnableSearch = true
+		// 鲁港通 - 强制联网搜索，使用高质量搜索策略
+		compatReq.SearchOptions = &AliSearchOptions{
+			ForcedSearch:   true,
+			SearchStrategy: "turbo",
+		}
 	}
 
 	// 流式模式下请求返回 usage 信息
