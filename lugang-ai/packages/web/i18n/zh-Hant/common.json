@@ -103,6 +103,7 @@
   "add_success": "新增成功",
   "aipoint_desc": "每次呼叫 AI 模型時，都會消耗一定的 AI 點數（類似於 Token）。點選可檢視詳細計算規則。",
   "all_quotes": "全部引用",
+  "open_link": "打開連結",
   "all_result": "完整結果",
   "app_evaluation": "應用評測(Beta)",
   "app_icon_and_name": "圖示",

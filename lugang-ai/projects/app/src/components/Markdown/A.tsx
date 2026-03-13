@@ -23,6 +23,7 @@ import Markdown from '.';
 import { getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
 import { isObjectId } from '@fastgpt/global/common/string/utils';
 import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
+import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 
 export type AProps = {
   chatAuthData?: {
@@ -86,6 +87,10 @@ const CiteLink = React.memo(function CiteLink({
     [sourceData]
   );
 
+  // 鲁港通：判断引用来源是否为网页链接类型，若是则直接跳转原始网址
+  const isLinkType = datasetCiteData?.collection?.type === DatasetCollectionTypeEnum.link;
+  const rawLink = datasetCiteData?.collection?.rawLink;
+
   return (
     <Popover
       isLazy
@@ -126,6 +131,14 @@ const CiteLink = React.memo(function CiteLink({
                 display={'inline-flex'}
                 height={6}
                 mr={1}
+                // 鲁港通：网页类型引用，来源名称可点击直接跳转原始网址
+                {...(isLinkType && rawLink
+                  ? {
+                      cursor: 'pointer',
+                      _hover: { color: 'primary.600', textDecoration: 'underline' },
+                      onClick: () => window.open(rawLink, '_blank')
+                    }
+                  : {})}
               >
                 <Flex px={1.5}>
                   <MyIcon name={icon as any} mr={1} flexShrink={0} w={'12px'} />
@@ -140,23 +153,38 @@ const CiteLink = React.memo(function CiteLink({
                   </Box>
                 </Flex>
               </Box>
-              <Button
-                variant={'ghost'}
-                color={'primary.600'}
-                size={'xs'}
-                onClick={() => {
-                  onClose();
-                  onOpenCiteModal?.({
-                    quoteId: id,
-                    sourceId: sourceData.sourceId,
-                    sourceName: sourceData.sourceName,
-                    datasetId: datasetCiteData?.collection.datasetId,
-                    collectionId: datasetCiteData?.collection._id
-                  });
-                }}
-              >
-                {t('common:all_quotes')}
-              </Button>
+              {/* 鲁港通：网页类型显示"打开链接"按钮直接跳转，其他类型显示"全部引用" */}
+              {isLinkType && rawLink ? (
+                <Button
+                  variant={'ghost'}
+                  color={'primary.600'}
+                  size={'xs'}
+                  onClick={() => {
+                    onClose();
+                    window.open(rawLink, '_blank');
+                  }}
+                >
+                  {t('common:open_link')}
+                </Button>
+              ) : (
+                <Button
+                  variant={'ghost'}
+                  color={'primary.600'}
+                  size={'xs'}
+                  onClick={() => {
+                    onClose();
+                    onOpenCiteModal?.({
+                      quoteId: id,
+                      sourceId: sourceData.sourceId,
+                      sourceName: sourceData.sourceName,
+                      datasetId: datasetCiteData?.collection.datasetId,
+                      collectionId: datasetCiteData?.collection._id
+                    });
+                  }}
+                >
+                  {t('common:all_quotes')}
+                </Button>
+              )}
             </Flex>
             <Box h={'300px'} overflow={'auto'} px={4}>
               <Markdown source={datasetCiteData?.q} />
