@@ -256,9 +256,10 @@ const NavigationSection = () => {
   const { feConfigs } = useSystemStore();
   const { userInfo } = useUserStore();
   const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
-  // 鲁港通 - 非管理员用户隐藏团队应用和精选应用，复用简化导航
-  const isAdmin = !!userInfo?.team.permission.hasManagePer;
-  const showSimplifiedNav = enableUserChatOnly || !isAdmin;
+  // 鲁港通 - 仅 root 管理员显示完整导航（团队应用、精选应用）
+  // hasManagePer 对所有团队 owner 都为 true，不能用来区分管理员
+  const isRootAdmin = userInfo?.username === 'root';
+  const showSimplifiedNav = enableUserChatOnly || !isRootAdmin;
 
   const isEnableHome = useContextSelector(
     ChatSettingContext,
@@ -405,7 +406,8 @@ const BottomSection = () => {
   const { userInfo } = useUserStore();
   const isLoggedIn = !!userInfo;
   const avatar = userInfo?.avatar;
-  const isAdmin = !!userInfo?.team.permission.hasManagePer;
+  // 鲁港通 - 仅 root 管理员显示设置按钮
+  const isRootAdmin = userInfo?.username === 'root';
   const isShare = pathname === '/chat/share';
 
   const isCollapsed = useContextSelector(ChatSettingContext, (v) => v.collapse === 1);
@@ -415,8 +417,8 @@ const BottomSection = () => {
   );
   const onSettingClick = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
 
-  // 鲁港通 - 启用管理员设置功能，纯聊天模式下隐藏设置按钮
-  const showSettingButton = isAdmin && !isShare && !enableUserChatOnly;
+  // 鲁港通 - 仅 root 管理员显示设置按钮，纯聊天模式下隐藏
+  const showSettingButton = isRootAdmin && !isShare && !enableUserChatOnly;
 
   return (
     <MotionBox mt={'auto'} px={3} py={4} layout={false}>
