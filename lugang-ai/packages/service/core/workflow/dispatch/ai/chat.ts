@@ -187,7 +187,21 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       usage
     } = await createLLMResponse({
       body: {
-        model: modelConstantsData.model,
+        // 鲁港通 - 联网搜索开关：根据用户选择控制模型名后缀
+        // 'on' → 强制追加 -internet 后缀启用联网搜索
+        // 'off' → 强制移除 -internet 后缀关闭联网搜索
+        // 'auto'/undefined → 保持模型原始配置不变
+        model: (() => {
+          const baseModel = modelConstantsData.model;
+          const searchSetting = globalVariables?.__enableSearch__;
+          if (searchSetting === 'on' && !baseModel.endsWith('-internet')) {
+            return baseModel + '-internet';
+          }
+          if (searchSetting === 'off' && baseModel.endsWith('-internet')) {
+            return baseModel.replace(/-internet$/, '');
+          }
+          return baseModel;
+        })(),
         stream,
         messages: filterMessages,
         temperature,

@@ -22,6 +22,8 @@ import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
 
 // 鲁港通 - 深度思考开关 localStorage key
 const DEEP_THINKING_KEY = 'lugang_enable_thinking';
+// 鲁港通 - 联网搜索开关 localStorage key
+const SEARCH_MODE_KEY = 'lugang_search_mode';
 
 const InputGuideBox = dynamic(() => import('./InputGuideBox'));
 
@@ -69,6 +71,36 @@ const ChatInput = ({
       localStorage.setItem(DEEP_THINKING_KEY, String(next));
       return next;
     });
+  }, []);
+
+  // 鲁港通 - 联网搜索三级开关状态（auto → on → off → auto）
+  type SearchMode = 'auto' | 'on' | 'off';
+  const [searchMode, setSearchMode] = useState<SearchMode>(() => {
+    if (typeof window === 'undefined') return 'auto';
+    const saved = localStorage.getItem(SEARCH_MODE_KEY);
+    if (saved === 'on' || saved === 'off') return saved;
+    return 'auto';
+  });
+  const [showSearchMenu, setShowSearchMenu] = useState(false);
+  const searchMenuRef = useRef<HTMLDivElement>(null);
+
+  // 鲁港通 - 点击外部关闭联网搜索菜单
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (searchMenuRef.current && !searchMenuRef.current.contains(e.target as Node)) {
+        setShowSearchMenu(false);
+      }
+    };
+    if (showSearchMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSearchMenu]);
+
+  const setSearchModeAndSave = useCallback((mode: SearchMode) => {
+    setSearchMode(mode);
+    localStorage.setItem(SEARCH_MODE_KEY, mode);
+    setShowSearchMenu(false);
   }, []);
 
   const InputLeftComponent = useContextSelector(ChatBoxContext, (v) => v.InputLeftComponent);
@@ -136,11 +168,13 @@ const ChatInput = ({
         text: textareaValue.trim(),
         files: fileList,
         // 鲁港通 - 深度思考开关：注入 enableThinking 标志
-        enableThinking
+        enableThinking,
+        // 鲁港通 - 联网搜索开关：注入 searchMode
+        enableSearch: searchMode
       });
       replaceFiles([]);
     },
-    [TextareaDom, canSendMessage, fileList, onSendMessage, replaceFiles, enableThinking]
+    [TextareaDom, canSendMessage, fileList, onSendMessage, replaceFiles, enableThinking, searchMode]
   );
 
   const RenderTextarea = useMemo(
@@ -316,6 +350,123 @@ const ChatInput = ({
               深度思考
             </Text>
           </Flex>
+
+          {/* 鲁港通 - 联网搜索三级开关 */}
+          <Box position={'relative'} ref={searchMenuRef} flexShrink={0}>
+            <Flex
+              alignItems={'center'}
+              gap={1}
+              cursor={'pointer'}
+              onClick={() => setShowSearchMenu(!showSearchMenu)}
+              px={2}
+              py={1}
+              borderRadius={'md'}
+              bg={searchMode === 'on' ? 'blue.50' : searchMode === 'off' ? 'transparent' : 'transparent'}
+              border={'1px solid'}
+              borderColor={searchMode === 'on' ? 'blue.300' : searchMode === 'auto' ? 'gray.200' : 'transparent'}
+              _hover={{ bg: searchMode === 'on' ? 'blue.100' : 'rgba(0,0,0,0.04)' }}
+            >
+              <Box
+                w={'14px'}
+                h={'14px'}
+                display={'flex'}
+                alignItems={'center'}
+                justifyContent={'center'}
+              >
+                <Box
+                  w={'12px'}
+                  h={'12px'}
+                  borderRadius={'50%'}
+                  border={'1.5px solid'}
+                  borderColor={searchMode === 'on' ? 'blue.500' : searchMode === 'auto' ? '#707070' : 'myGray.300'}
+                  position={'relative'}
+                  _after={searchMode !== 'off' ? {
+                    content: '""',
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    w: '4px',
+                    h: '4px',
+                    borderRadius: '50%',
+                    bg: searchMode === 'on' ? 'blue.500' : '#707070'
+                  } : undefined}
+                />
+              </Box>
+              <Text
+                fontSize={'xs'}
+                color={searchMode === 'on' ? 'blue.600' : searchMode === 'auto' ? 'myGray.600' : 'myGray.400'}
+                whiteSpace={'nowrap'}
+                display={['none', 'block']}
+              >
+                {searchMode === 'on' ? '联网搜索' : searchMode === 'off' ? '关闭联网' : '自动联网'}
+              </Text>
+            </Flex>
+
+            {/* 下拉菜单 */}
+            {showSearchMenu && (
+              <Box
+                position={'absolute'}
+                bottom={'calc(100% + 4px)'}
+                left={0}
+                bg={'white'}
+                borderRadius={'lg'}
+                boxShadow={'0px 4px 16px rgba(0, 0, 0, 0.12)'}
+                border={'1px solid'}
+                borderColor={'gray.100'}
+                py={1}
+                zIndex={10}
+                minW={'140px'}
+              >
+                {([
+                  { key: 'auto' as const, label: '自动联网搜索', desc: '由AI判断是否联网' },
+                  { key: 'on' as const, label: '开启联网搜索', desc: '始终联网获取最新信息' },
+                  { key: 'off' as const, label: '关闭联网搜索', desc: '仅使用知识库回答' }
+                ]).map((item) => (
+                  <Flex
+                    key={item.key}
+                    px={3}
+                    py={2}
+                    cursor={'pointer'}
+                    alignItems={'center'}
+                    gap={2}
+                    bg={searchMode === item.key ? 'blue.50' : 'transparent'}
+                    _hover={{ bg: searchMode === item.key ? 'blue.50' : 'gray.50' }}
+                    onClick={() => setSearchModeAndSave(item.key)}
+                  >
+                    <Box
+                      w={'10px'}
+                      h={'10px'}
+                      borderRadius={'50%'}
+                      border={'1.5px solid'}
+                      borderColor={searchMode === item.key ? 'blue.500' : 'gray.300'}
+                      position={'relative'}
+                      flexShrink={0}
+                      _after={searchMode === item.key ? {
+                        content: '""',
+                        position: 'absolute',
+                        top: '50%',
+                        left: '50%',
+                        transform: 'translate(-50%, -50%)',
+                        w: '4px',
+                        h: '4px',
+                        borderRadius: '50%',
+                        bg: 'blue.500'
+                      } : undefined}
+                    />
+                    <Box>
+                      <Text fontSize={'xs'} fontWeight={500} color={searchMode === item.key ? 'blue.600' : 'myGray.700'}>
+                        {item.label}
+                      </Text>
+                      <Text fontSize={'10px'} color={'myGray.400'} mt={'1px'}>
+                        {item.desc}
+                      </Text>
+                    </Box>
+                  </Flex>
+                ))}
+              </Box>
+            )}
+          </Box>
         </Flex>
 
         {/* 右侧原有按钮组 */}
@@ -425,7 +576,10 @@ const ChatInput = ({
     handleSend,
     onStop,
     enableThinking,
-    toggleThinking
+    toggleThinking,
+    searchMode,
+    showSearchMenu,
+    setSearchModeAndSave
   ]);
 
   const activeStyles: FlexProps = {

@@ -31,6 +31,8 @@ export type ChatBoxInputType = {
   hideInUI?: boolean;
   // 鲁港通 - 深度思考开关
   enableThinking?: boolean;
+  // 鲁港通 - 联网搜索开关（auto/on/off）
+  enableSearch?: 'auto' | 'on' | 'off';
 };
 
 export type SendPromptFnType = (

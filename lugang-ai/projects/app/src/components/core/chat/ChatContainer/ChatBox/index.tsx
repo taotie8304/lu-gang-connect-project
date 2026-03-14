@@ -449,7 +449,8 @@ const ChatBox = ({
       autoTTSResponse = false,
       isInteractivePrompt = false,
       hideInUI = false,
-      enableThinking = false
+      enableThinking = false,
+      enableSearch = 'auto'
     }) => {
       variablesForm.handleSubmit(
         async ({ variables = {} }) => {
@@ -600,7 +601,9 @@ const ChatBox = ({
               variables: {
                 ...requestVariables,
                 // 鲁港通 - 深度思考开关：传递给后端 AI 调用
-                ...(enableThinking ? { __enableThinking__: true } : {})
+                ...(enableThinking ? { __enableThinking__: true } : {}),
+                // 鲁港通 - 联网搜索开关：传递给后端 AI 调用
+                ...(enableSearch !== 'auto' ? { __enableSearch__: enableSearch } : {})
               }
             });
 
