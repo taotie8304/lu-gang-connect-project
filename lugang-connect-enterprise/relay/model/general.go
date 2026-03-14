@@ -65,6 +65,9 @@ type GeneralOpenAIRequest struct {
 	// Others
 	Instruction string `json:"instruction,omitempty"`
 	NumCtx      int    `json:"num_ctx,omitempty"`
+	// 鲁港通 - 阿里百炼深度思考控制
+	EnableThinking *bool `json:"enable_thinking,omitempty"`
+	ThinkingBudget *int  `json:"thinking_budget,omitempty"`
 }
 
 func (r GeneralOpenAIRequest) ParseInput() []string {

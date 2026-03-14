@@ -2,9 +2,7 @@ version: '3.8'
 
 services:
   lugang-enterprise:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/taotie8304/lugang-enterprise:latest
     container_name: lugang-enterprise
     restart: always
     environment:
@@ -25,3 +23,13 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+    networks:
+      - default
+      - lugang-ai
+
+networks:
+  default:
+    driver: bridge
+  lugang-ai:
+    external: true
+    name: lugang-ai_default

@@ -31,15 +31,32 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 		aliModel = strings.TrimSuffix(aliModel, EnableSearchModelSuffix)
 	}
 
+	// 鲁港通 - 深度思考开关：读取前端传来的 enable_thinking 参数
+	// 如果前端没传（nil），默认关闭思考模式以减少响应时间
+	// 如果前端传了 true，则开启深度思考
+	enableThinking := false
+	var thinkingBudget *int
+	if request.EnableThinking != nil && *request.EnableThinking {
+		enableThinking = true
+		if request.ThinkingBudget != nil {
+			thinkingBudget = request.ThinkingBudget
+		} else {
+			defaultBudget := 8000
+			thinkingBudget = &defaultBudget
+		}
+	}
+
 	compatReq := &CompatChatRequest{
-		Model:       aliModel,
-		Messages:    request.Messages,
-		Stream:      request.Stream,
-		Temperature: request.Temperature,
-		TopP:        request.TopP,
-		MaxTokens:   request.MaxTokens,
-		Tools:       request.Tools,
-		Stop:        request.Stop,
+		Model:          aliModel,
+		Messages:       request.Messages,
+		Stream:         request.Stream,
+		Temperature:    request.Temperature,
+		TopP:           request.TopP,
+		MaxTokens:      request.MaxTokens,
+		Tools:          request.Tools,
+		Stop:           request.Stop,
+		EnableThinking: &enableThinking,
+		ThinkingBudget: thinkingBudget,
 	}
 
 	if enableSearch {

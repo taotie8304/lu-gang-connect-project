@@ -6,19 +6,21 @@ import (
 )
 
 // CompatChatRequest 鲁港通 - OpenAI 兼容格式请求（Qwen3.5/QwQ/Qwen3 系列）
-// 支持 enable_search 网络搜索和 reasoning_content 思考过程
+// 支持 enable_search 网络搜索、enable_thinking 深度思考控制
 type CompatChatRequest struct {
-	Model         string               `json:"model"`
-	Messages      []model.Message      `json:"messages"`
-	Stream        bool                 `json:"stream,omitempty"`
-	Temperature   *float64             `json:"temperature,omitempty"`
-	TopP          *float64             `json:"top_p,omitempty"`
-	MaxTokens     int                  `json:"max_tokens,omitempty"`
-	Tools         []model.Tool         `json:"tools,omitempty"`
-	Stop          any                  `json:"stop,omitempty"`
-	EnableSearch  bool                 `json:"enable_search,omitempty"`
-	SearchOptions *AliSearchOptions    `json:"search_options,omitempty"`
-	StreamOptions *model.StreamOptions `json:"stream_options,omitempty"`
+	Model          string               `json:"model"`
+	Messages       []model.Message      `json:"messages"`
+	Stream         bool                 `json:"stream,omitempty"`
+	Temperature    *float64             `json:"temperature,omitempty"`
+	TopP           *float64             `json:"top_p,omitempty"`
+	MaxTokens      int                  `json:"max_tokens,omitempty"`
+	Tools          []model.Tool         `json:"tools,omitempty"`
+	Stop           any                  `json:"stop,omitempty"`
+	EnableSearch   bool                 `json:"enable_search,omitempty"`
+	EnableThinking *bool                `json:"enable_thinking,omitempty"`
+	ThinkingBudget *int                 `json:"thinking_budget,omitempty"`
+	SearchOptions  *AliSearchOptions    `json:"search_options,omitempty"`
+	StreamOptions  *model.StreamOptions `json:"stream_options,omitempty"`
 }
 
 // AliSearchOptions 阿里百炼联网搜索选项

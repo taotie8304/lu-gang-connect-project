@@ -254,7 +254,11 @@ const ActionButton: React.FC<{
 const NavigationSection = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
+  const { userInfo } = useUserStore();
   const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
+  // 鲁港通 - 非管理员用户隐藏团队应用和精选应用，复用简化导航
+  const isAdmin = !!userInfo?.team.permission.hasManagePer;
+  const showSimplifiedNav = enableUserChatOnly || !isAdmin;
 
   const isEnableHome = useContextSelector(
     ChatSettingContext,
@@ -276,8 +280,8 @@ const NavigationSection = () => {
   );
   const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
 
-  // 纯聊天模式下，简化导航（隐藏团队应用、收藏应用等管理入口）
-  if (enableUserChatOnly) {
+  // 鲁港通 - 简化导航：纯聊天模式或非管理员用户隐藏团队应用、收藏应用等管理入口
+  if (showSimplifiedNav) {
     return (
       <Flex mt={4} flexDirection={'column'} gap={1} px={4}>
         <AnimatedSection show={isCollapsed}>
