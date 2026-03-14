@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../../Provider';
 import { DEFAULT_LOGO_BANNER_URL } from '@/pageComponents/chat/constants';
 import { Box, Flex, Image, Grid, Button } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyIcon from '@fastgpt/web/components/common/Icon';
+import { EventNameEnum, eventBus } from '@/web/common/utils/eventbus';
 
 // 鲁港通默认欢迎语配置（普通话/粤语交替）
 const LUGANG_SLOGANS: Record<string, string> = {
@@ -76,6 +77,11 @@ const WelcomeHomeBox = () => {
   const displaySlogan = enableUserChatOnly 
     ? LUGANG_SLOGANS[currentLang] 
     : slogan;
+
+  // 鲁港通 - 快捷按钮点击：将 prompt 填入输入框，用户可补充内容后发送
+  const handleQuickAction = useCallback((prompt: string) => {
+    eventBus.emit(EventNameEnum.editQuestion, { text: prompt });
+  }, []);
 
   return (
     <Flex flexDir="column" justifyContent="flex-end" alignItems="center" gap={4} position="relative">
@@ -163,6 +169,7 @@ const WelcomeHomeBox = () => {
               borderColor="blue.200"
               borderRadius="xl"
               bg="white"
+              cursor="pointer"
               _hover={{
                 bg: 'blue.50',
                 borderColor: 'blue.400',
@@ -172,6 +179,7 @@ const WelcomeHomeBox = () => {
               transition="all 0.2s ease"
               flexDir="column"
               gap={1}
+              onClick={() => handleQuickAction(action.prompt)}
             >
               <MyIcon
                 name={action.icon as any}
