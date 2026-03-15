@@ -82,36 +82,52 @@ const ResponseTags = ({
     : true;
 
   const citationRenderList: CitationRenderItem[] = useMemo(() => {
-    // Dataset citations — 鲁港通：普通用户隐藏所有知识库引用，只有管理员可见
-    const datasetQuoteItems = isRoot
-      ? Object.values(
-          quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
-            if (!acc[cur.collectionId]) {
-              acc[cur.collectionId] = [cur];
-            }
-            return acc;
-          }, {})
-        ).flat()
-      : [];
+    // 鲁港通：按 collectionId 去重
+    const uniqueQuoteItems = Object.values(
+      quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
+        if (!acc[cur.collectionId]) {
+          acc[cur.collectionId] = [cur];
+        }
+        return acc;
+      }, {})
+    ).flat();
 
-    const datasetItems = datasetQuoteItems.map((item) => ({
-      type: 'dataset' as const,
-      key: item.collectionId,
-      displayText: item.sourceName,
-      icon: item.imageId
-        ? 'core/dataset/imageFill'
-        : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }),
-      onClick: () => {
-        onOpenCiteModal({
-          collectionId: item.collectionId,
-          sourceId: item.sourceId,
-          sourceName: item.sourceName,
-          datasetId: item.datasetId
-        });
-      }
-    }));
+    let datasetItems: CitationRenderItem[];
 
-    // Link citations
+    if (isRoot) {
+      // 管理员：显示所有引用，点击打开知识库详情
+      datasetItems = uniqueQuoteItems.map((item) => ({
+        type: 'dataset' as const,
+        key: item.collectionId,
+        displayText: item.sourceName,
+        icon: item.imageId
+          ? 'core/dataset/imageFill'
+          : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }),
+        onClick: () => {
+          onOpenCiteModal({
+            collectionId: item.collectionId,
+            sourceId: item.sourceId,
+            sourceName: item.sourceName,
+            datasetId: item.datasetId
+          });
+        }
+      }));
+    } else {
+      // 鲁港通：普通用户只显示有网页链接的引用（sourceId 以 http 开头），点击直接跳转源网站
+      datasetItems = uniqueQuoteItems
+        .filter((item) => item.sourceId && /^https?:\/\//.test(item.sourceId))
+        .map((item) => ({
+          type: 'link' as const,
+          key: item.collectionId,
+          displayText: item.sourceName,
+          icon: getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }),
+          onClick: () => {
+            window.open(item.sourceId, '_blank');
+          }
+        }));
+    }
+
+    // Link citations（工具返回的外部链接）
     const linkItems = toolCiteLinks.map((r, index) => ({
       type: 'link' as const,
       key: `${r.url}-${index}`,

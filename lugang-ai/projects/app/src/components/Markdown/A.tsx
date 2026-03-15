@@ -24,6 +24,7 @@ import { getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
 import { isObjectId } from '@fastgpt/global/common/string/utils';
 import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
 import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 export type AProps = {
   chatAuthData?: {
@@ -64,6 +65,9 @@ const CiteLink = React.memo(function CiteLink({
   showAnimation
 }: { id: string; showAnimation?: boolean } & AProps) {
   const { t } = useTranslation();
+  // 鲁港通：获取用户角色
+  const { userInfo } = useUserStore();
+  const isRoot = userInfo?.username === 'root';
 
   const { isOpen, onOpen, onClose } = useDisclosure();
 
@@ -87,10 +91,81 @@ const CiteLink = React.memo(function CiteLink({
     [sourceData]
   );
 
-  // 鲁港通：判断引用来源是否为网页链接类型，若是则直接跳转原始网址
   const isLinkType = datasetCiteData?.collection?.type === DatasetCollectionTypeEnum.link;
   const rawLink = datasetCiteData?.collection?.rawLink;
 
+  // 鲁港通：普通用户 - 数据加载完成后，如果不是网页链接类型则隐藏引用图标
+  if (!isRoot && datasetCiteData && !isLinkType) {
+    return <></>;
+  }
+
+  // 鲁港通：普通用户 - 简化的引用弹窗，只显示来源名称和跳转按钮
+  if (!isRoot) {
+    return (
+      <Popover
+        isLazy
+        direction="rtl"
+        placement="bottom"
+        strategy={'fixed'}
+        isOpen={isOpen}
+        onClose={onClose}
+        onOpen={() => {
+          onOpen();
+          if (showAnimation) return;
+          getQuoteDataById(id);
+        }}
+        trigger={'hover'}
+        gutter={4}
+      >
+        <PopoverTrigger>
+          <Button variant={'unstyled'} minH={0} minW={0} h={'auto'}>
+            <MyIcon
+              name={'core/chat/quoteSign'}
+              w={'1rem'}
+              color={'primary.700'}
+              cursor={'pointer'}
+            />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent boxShadow={'lg'} w={'400px'} maxW={'90vw'} py={3}>
+          <MyBox isLoading={loading || showAnimation}>
+            <PopoverArrow />
+            <PopoverBody py={0} px={0} fontSize={'sm'}>
+              <Flex px={4} alignItems={'center'} justifyContent={'space-between'}>
+                <Flex alignItems={'center'} flex={1} overflow={'hidden'} mr={2}>
+                  <MyIcon name={icon as any} mr={1} flexShrink={0} w={'12px'} />
+                  <Box
+                    className={'textEllipsis'}
+                    wordBreak={'break-all'}
+                    fontSize={'mini'}
+                    color={'myGray.900'}
+                  >
+                    {sourceData.sourceName}
+                  </Box>
+                </Flex>
+                {isLinkType && rawLink && (
+                  <Button
+                    variant={'ghost'}
+                    color={'primary.600'}
+                    size={'xs'}
+                    flexShrink={0}
+                    onClick={() => {
+                      onClose();
+                      window.open(rawLink, '_blank');
+                    }}
+                  >
+                    {t('common:open_link')}
+                  </Button>
+                )}
+              </Flex>
+            </PopoverBody>
+          </MyBox>
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
+  // 管理员：显示完整的引用预览（原始行为）
   return (
     <Popover
       isLazy
@@ -131,7 +206,6 @@ const CiteLink = React.memo(function CiteLink({
                 display={'inline-flex'}
                 height={6}
                 mr={1}
-                // 鲁港通：网页类型引用，来源名称可点击直接跳转原始网址
                 {...(isLinkType && rawLink
                   ? {
                       cursor: 'pointer',
@@ -153,7 +227,6 @@ const CiteLink = React.memo(function CiteLink({
                   </Box>
                 </Flex>
               </Box>
-              {/* 鲁港通：网页类型显示"打开链接"按钮直接跳转，其他类型显示"全部引用" */}
               {isLinkType && rawLink ? (
                 <Button
                   variant={'ghost'}
