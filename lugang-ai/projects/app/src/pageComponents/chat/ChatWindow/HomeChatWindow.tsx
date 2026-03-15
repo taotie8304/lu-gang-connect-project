@@ -98,9 +98,23 @@ const HomeChatWindow = ({ myApps }: Props) => {
     [chatSettings?.quickAppList, appId]
   );
 
+  // 鲁港通 - 过滤模型列表：普通用户隐藏仅用于分类/提取的辅助模型
+  const isRoot = userInfo?.username === 'root';
   const availableModels = useMemo(
-    () => llmModelList.map((model) => ({ value: model.model, label: model.name })),
-    [llmModelList]
+    () =>
+      llmModelList
+        .filter((model) => {
+          // 管理员可以看到所有模型
+          if (isRoot) return true;
+          // 普通用户：排除仅用于分类/提取且不支持工具调用的辅助模型
+          const isUtilityOnly =
+            (model.usedInClassify || model.usedInExtractFields) &&
+            !model.functionCall &&
+            !model.toolChoice;
+          return !isUtilityOnly;
+        })
+        .map((model) => ({ value: model.model, label: model.name })),
+    [llmModelList, isRoot]
   );
   const [selectedModel, setSelectedModel] = useLocalStorageState<string>('chat_home_model', {
     defaultValue: defaultModels.llm?.model
