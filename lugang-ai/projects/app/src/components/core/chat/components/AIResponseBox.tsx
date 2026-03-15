@@ -19,6 +19,7 @@ import type {
 import React, { useCallback, useMemo } from 'react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import Avatar from '@fastgpt/web/components/common/Avatar';
+import { useUserStore } from '@/web/support/user/useUserStore';
 import type {
   InteractiveBasicType,
   PaymentPauseInteractive,
@@ -49,6 +50,58 @@ const accordionButtonStyle = {
   }
 };
 
+/**
+ * 鲁港通 - 过滤 reasoning 内容中的敏感信息
+ * 普通用户可以看到思考过程，但不应看到系统提示词、角色设定、工作流指令等
+ */
+const sensitivePatterns = [
+  /知识库/,
+  /数据库/,
+  /检索/,
+  /系统指令/,
+  /系统提示/,
+  /角色设定/,
+  /工作流/,
+  /prompt/i,
+  /不暴露\s*AI\s*身份/,
+  /不暴露.*知识库来源/,
+  /不编造不确定/,
+  /核心结论\s*\+\s*分步实操\s*\+\s*关键提示/,
+  /三段式结构/,
+  /有序列表/,
+  /加粗字体/,
+  /独立段落/,
+  /不提及.*知识库/,
+  /保持专业.*客观.*自信/,
+  /以专家口吻/,
+  /遵守约束条件/,
+  /根据我的角色设定/,
+  /涉及流程.*有序列表/,
+  /涉及风险提示.*加粗/,
+  /风险提示.*独立段落/,
+  /根据知识库中的信息/,
+  /我需要整合这些信息/,
+  /我的角色/,
+  /约束条件/,
+  /指令要求/,
+  /system\s*prompt/i,
+  /role\s*setting/i
+];
+
+function filterReasoningContent(content: string): string {
+  // 按换行分段，过滤包含敏感关键词的行/段落
+  const lines = content.split('\n');
+  const filtered = lines.filter((line) => {
+    const trimmed = line.trim();
+    if (!trimmed) return true; // 保留空行
+    return !sensitivePatterns.some((pattern) => pattern.test(trimmed));
+  });
+
+  // 清理连续多个空行为最多一个
+  let result = filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return result;
+}
+
 const RenderResoningContent = React.memo(function RenderResoningContent({
   content,
   isChatting,
@@ -59,7 +112,15 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
   isLastResponseValue: boolean;
 }) {
   const { t } = useTranslation();
+  const { userInfo } = useUserStore();
+  const isRoot = userInfo?.username === 'root';
   const showAnimation = isChatting && isLastResponseValue;
+
+  // 鲁港通 - 非 root 用户过滤 reasoning 中的敏感内容
+  const displayContent = useMemo(
+    () => (isRoot ? content : filterReasoningContent(content)),
+    [content, isRoot]
+  );
 
   return (
     <Accordion allowToggle defaultIndex={isLastResponseValue ? 0 : undefined}>
@@ -82,7 +143,7 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
           borderColor={'myGray.300'}
           color={'myGray.500'}
         >
-          <Markdown source={content} showAnimation={showAnimation} />
+          <Markdown source={displayContent} showAnimation={showAnimation} />
         </AccordionPanel>
       </AccordionItem>
     </Accordion>
