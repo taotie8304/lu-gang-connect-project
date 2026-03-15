@@ -148,17 +148,19 @@ const completions = async ({
     body: {
       model: cqModel.model,
       temperature: 0.01,
+      max_tokens: 50, // 鲁港通 - 限制分类输出长度，防止模型生成完整回答
       messages: chats2GPTMessages({ messages, reserveId: false }),
-      stream: true
+      stream: false // 鲁港通 - 分类无需流式，减少开销
     },
     userKey: externalProvider.openaiAccount
   });
 
-  // console.log(JSON.stringify(chats2GPTMessages({ messages, reserveId: false }), null, 2));
-
+  // 鲁港通 - 改进分类匹配逻辑：先精确匹配（trim后），再模糊匹配
+  const trimmedAnswer = answer.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
   const id =
-    agents.find((item) => answer.includes(item.key))?.key ||
-    agents.find((item) => answer.includes(item.value))?.key ||
+    agents.find((item) => trimmedAnswer === item.key)?.key ||
+    agents.find((item) => trimmedAnswer.includes(item.key))?.key ||
+    agents.find((item) => trimmedAnswer.includes(item.value))?.key ||
     '';
 
   if (!id) {
