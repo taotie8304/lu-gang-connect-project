@@ -83,7 +83,7 @@ const ResponseTags = ({
 
   const citationRenderList: CitationRenderItem[] = useMemo(() => {
     // Dataset citations — 鲁港通：普通用户隐藏所有知识库引用，只有管理员可见
-    const datasetItems = isRoot
+    const datasetQuoteItems = isRoot
       ? Object.values(
           quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
             if (!acc[cur.collectionId]) {
@@ -92,23 +92,24 @@ const ResponseTags = ({
             return acc;
           }, {})
         ).flat()
-      : ([] as SearchDataResponseItemType[])
-      .map((item) => ({
-        type: 'dataset' as const,
-        key: item.collectionId,
-        displayText: item.sourceName,
-        icon: item.imageId
-          ? 'core/dataset/imageFill'
-          : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }),
-        onClick: () => {
-          onOpenCiteModal({
-            collectionId: item.collectionId,
-            sourceId: item.sourceId,
-            sourceName: item.sourceName,
-            datasetId: item.datasetId
-          });
-        }
-      }));
+      : [];
+
+    const datasetItems = datasetQuoteItems.map((item) => ({
+      type: 'dataset' as const,
+      key: item.collectionId,
+      displayText: item.sourceName,
+      icon: item.imageId
+        ? 'core/dataset/imageFill'
+        : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }),
+      onClick: () => {
+        onOpenCiteModal({
+          collectionId: item.collectionId,
+          sourceId: item.sourceId,
+          sourceName: item.sourceName,
+          datasetId: item.datasetId
+        });
+      }
+    }));
 
     // Link citations
     const linkItems = toolCiteLinks.map((r, index) => ({
