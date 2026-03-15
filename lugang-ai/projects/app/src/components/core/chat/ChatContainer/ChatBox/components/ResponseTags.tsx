@@ -15,7 +15,6 @@ import { useSize } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../Provider';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import { isCitationUrl } from '@fastgpt/global/support/permission/citation';
 
 export type CitationRenderItem = {
   type: 'dataset' | 'link';
@@ -83,22 +82,17 @@ const ResponseTags = ({
     : true;
 
   const citationRenderList: CitationRenderItem[] = useMemo(() => {
-    // Dataset citations — 普通用户过滤掉文件类型，只保留 URL 类型
-    const datasetItems = Object.values(
-      quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
-        if (!acc[cur.collectionId]) {
-          acc[cur.collectionId] = [cur];
-        }
-        return acc;
-      }, {})
-    )
-      .flat()
-      .filter((item) => {
-        // 管理员显示所有引用
-        if (isRoot) return true;
-        // 普通用户只显示 URL 类型引用
-        return isCitationUrl(undefined, item.sourceId);
-      })
+    // Dataset citations — 鲁港通：普通用户隐藏所有知识库引用，只有管理员可见
+    const datasetItems = isRoot
+      ? Object.values(
+          quoteList.reduce((acc: Record<string, SearchDataResponseItemType[]>, cur) => {
+            if (!acc[cur.collectionId]) {
+              acc[cur.collectionId] = [cur];
+            }
+            return acc;
+          }, {})
+        ).flat()
+      : ([] as SearchDataResponseItemType[])
       .map((item) => ({
         type: 'dataset' as const,
         key: item.collectionId,

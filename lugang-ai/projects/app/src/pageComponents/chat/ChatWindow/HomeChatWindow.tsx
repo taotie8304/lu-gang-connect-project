@@ -98,20 +98,16 @@ const HomeChatWindow = ({ myApps }: Props) => {
     [chatSettings?.quickAppList, appId]
   );
 
-  // 鲁港通 - 过滤模型列表：普通用户隐藏仅用于分类/提取的辅助模型
+  // 鲁港通 - 过滤模型列表：普通用户隐藏分类专用模型和向量模型
   const isRoot = userInfo?.username === 'root';
+  // 鲁港通 - 仅用于内部分类/提取的模型ID列表，普通用户不可见
+  const hiddenModelIds = ['qwen-turbo'];
   const availableModels = useMemo(
     () =>
       llmModelList
         .filter((model) => {
-          // 管理员可以看到所有模型
           if (isRoot) return true;
-          // 普通用户：排除仅用于分类/提取且不支持工具调用的辅助模型
-          const isUtilityOnly =
-            (model.usedInClassify || model.usedInExtractFields) &&
-            !model.functionCall &&
-            !model.toolChoice;
-          return !isUtilityOnly;
+          return !hiddenModelIds.includes(model.model);
         })
         .map((model) => ({ value: model.model, label: model.name })),
     [llmModelList, isRoot]
