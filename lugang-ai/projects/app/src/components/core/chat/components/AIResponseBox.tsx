@@ -55,6 +55,7 @@ const accordionButtonStyle = {
  * 普通用户可以看到思考过程，但不应看到系统提示词、角色设定、工作流指令等
  */
 const sensitivePatterns = [
+  // 中文关键词
   /知识库/,
   /数据库/,
   /检索/,
@@ -62,30 +63,45 @@ const sensitivePatterns = [
   /系统提示/,
   /角色设定/,
   /工作流/,
-  /prompt/i,
   /不暴露\s*AI\s*身份/,
   /不暴露.*知识库来源/,
   /不编造不确定/,
   /核心结论\s*\+\s*分步实操\s*\+\s*关键提示/,
   /三段式结构/,
-  /有序列表/,
-  /加粗字体/,
-  /独立段落/,
   /不提及.*知识库/,
   /保持专业.*客观.*自信/,
   /以专家口吻/,
   /遵守约束条件/,
   /根据我的角色设定/,
-  /涉及流程.*有序列表/,
-  /涉及风险提示.*加粗/,
-  /风险提示.*独立段落/,
   /根据知识库中的信息/,
   /我需要整合这些信息/,
   /我的角色/,
   /约束条件/,
   /指令要求/,
+  // 英文关键词 - 模型复述系统提示词时常用的表达
   /system\s*prompt/i,
-  /role\s*setting/i
+  /system\s*instruction/i,
+  /role\s*setting/i,
+  /knowledge\s*base/i,
+  /do\s*not\s*mention/i,
+  /do\s*not\s*reveal/i,
+  /must\s*not\s*reveal/i,
+  /no\s*AI\s*identity/i,
+  /AI\s*identity\s*disclosure/i,
+  /no\s*mention\s*of\s*data\s*source/i,
+  /as\s*per\s*the\s*system\s*instruction/i,
+  /follow\s*the\s*output\s*format/i,
+  /avoid\s*forbidden\s*words/i,
+  /forbidden\s*words/i,
+  /\bRemember:?\s*Do\s*not/i,
+  /\bConstraints?:/i,
+  /\bRole:/i,
+  /professional\s*tone/i,
+  /Core\s*Conclusion\s*\+/i,
+  /Step-by-Step\s*Practi/i,
+  /Key\s*Tips?\b/i,
+  /not\s*"?listed\s*to\s*open"?/i,
+  /data\s*sources/i
 ];
 
 function filterReasoningContent(content: string): string {
