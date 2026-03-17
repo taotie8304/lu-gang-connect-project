@@ -533,6 +533,9 @@ const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
   tool_choice,
   parallel_tool_calls,
   toolCallMode,
+  // 鲁港通 - 深度思考参数单独解构，确保不被 defaultConfig 覆盖
+  enable_thinking,
+  thinking_budget,
   ...body
 }: LLMRequestBodyType<T>): Promise<{
   requestBody: InferCompletionsBody<T>;
@@ -590,7 +593,9 @@ const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
       tools,
       tool_choice,
       parallel_tool_calls
-    })
+    }),
+    // 鲁港通 - 深度思考参数放在最后，确保不被 defaultConfig 覆盖
+    ...(enable_thinking ? { enable_thinking, thinking_budget } : {})
   } as T;
 
   // field map

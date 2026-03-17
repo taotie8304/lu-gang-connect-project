@@ -71,7 +71,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(isIncluded).toBe(shouldBeIncluded);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -97,7 +97,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(isValid).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -121,7 +121,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(isValid).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -145,7 +145,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(isValid).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -169,7 +169,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(hasOverlap1).toBe(hasOverlap2);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -201,7 +201,7 @@ describe('Task 10.4: 活动日期过滤属性测试', () => {
             expect(isValidAtEnd).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });

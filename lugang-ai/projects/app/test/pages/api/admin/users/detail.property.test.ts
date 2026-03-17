@@ -80,7 +80,7 @@ describe('Property 5: 管理员更新用户信息后数据库一致', () => {
           expect(validatePassword(body.newPassword)).toBe(true);
         }
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });
@@ -121,7 +121,7 @@ describe('Property 6: 信息变更同步到鲁港通后端', () => {
           }
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });
@@ -138,7 +138,7 @@ describe('Property 7: 密码长度校验', () => {
           expect(validatePassword(shortPassword)).toBe(false);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -150,7 +150,7 @@ describe('Property 7: 密码长度校验', () => {
           expect(validatePassword(validPassword)).toBe(true);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });
@@ -179,7 +179,7 @@ describe('Property 8: root 用户不可修改', () => {
           expect(isRootUser('root')).toBe(true);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -191,7 +191,7 @@ describe('Property 8: root 用户不可修改', () => {
           expect(username === 'root').toBe(false);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });

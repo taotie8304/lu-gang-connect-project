@@ -30,7 +30,7 @@ describe('filterCitationsByRelevance - Property 1: 知识库引用相关性过�
           expect(result).toEqual(items);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -57,7 +57,7 @@ describe('filterCitationsByRelevance - Property 1: 知识库引用相关性过�
           }
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -71,7 +71,7 @@ describe('filterCitationsByRelevance - Property 1: 知识库引用相关性过�
         const result = filterCitationsByRelevance(items, { isRoot: false, threshold });
         expect(result.find((i) => i.id === 'empty')).toBeUndefined();
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });

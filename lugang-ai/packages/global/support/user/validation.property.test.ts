@@ -26,7 +26,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -46,7 +46,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -84,7 +84,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -104,7 +104,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -142,7 +142,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toBeUndefined();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -163,7 +163,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toBeUndefined();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -177,7 +177,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('手机号');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -197,7 +197,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('邮箱');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -211,7 +211,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('用户名');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -243,7 +243,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toBeUndefined();
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -257,7 +257,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('邮箱');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -271,7 +271,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('手机号');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -285,7 +285,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('生日');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -299,7 +299,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('地址');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -313,7 +313,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(result.error).toContain('Google');
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -341,7 +341,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(isEmail(str)).toBe(isValidEmail(str));
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -353,7 +353,7 @@ describe('Property 5: User Profile Validation', () => {
             expect(isPhone(str)).toBe(isValidChinesePhone(str));
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });

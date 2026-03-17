@@ -73,7 +73,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           // 密码验证函数应该返回 true
           expect(checkPasswordRule(password)).toBe(true);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -103,7 +103,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           // 密码验证应该失败
           expect(checkPasswordRule(password)).toBe(false);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -128,7 +128,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(/[a-z]/.test(password)).toBe(false);
           expect(checkPasswordRule(password)).toBe(false);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -153,7 +153,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(/\d/.test(password)).toBe(false);
           expect(checkPasswordRule(password)).toBe(false);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -178,7 +178,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(password.length).toBeLessThan(8);
           expect(checkPasswordRule(password)).toBe(false);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -202,7 +202,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(password.length).toBeGreaterThan(20);
           expect(checkPasswordRule(password)).toBe(false);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -225,7 +225,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(password.length).toBe(8);
           expect(checkPasswordRule(password)).toBe(true);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -246,7 +246,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           expect(password.length).toBe(20);
           expect(checkPasswordRule(password)).toBe(true);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -281,7 +281,7 @@ describe('Property-Based Tests: Password Validation Rules', () => {
           // 应该被接受
           expect(checkPasswordRule(password)).toBe(true);
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });

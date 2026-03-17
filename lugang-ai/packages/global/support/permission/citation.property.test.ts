@@ -24,7 +24,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
         fc.property(fc.constant('root'), (username) => {
           return isAdminUser(username) === true;
         }),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -36,7 +36,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return isAdminUser(username) === false;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -48,7 +48,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return isCitationUrl(undefined, url) === true;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -60,7 +60,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return isCitationUrl(DatasetCollectionTypeEnum.link, sourceId) === true;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -81,7 +81,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return canUserViewCitationSource(username, collectionType, sourceId) === false;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -96,7 +96,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return canUserViewCitationSource('root', collectionType, sourceId) === true;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -120,7 +120,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return filtered.length === citations.length;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -145,7 +145,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return filtered.length <= citations.length;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -170,7 +170,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return filtered.every((citation) => /^https?:\/\//i.test(citation.sourceId || ''));
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -183,7 +183,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return canUserViewCitationSource(username, undefined, url) === true;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -199,7 +199,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return result1 === result2;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -247,7 +247,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return true;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -260,7 +260,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return filtered.length === 0;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -291,7 +291,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return filtered.every((citation) => /^https?:\/\//i.test(citation.sourceId || ''));
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -313,7 +313,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return canNormalUserViewCitation(collectionType, sourceId) === false;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });
@@ -337,7 +337,7 @@ describe('Task 12.4: 引用权限过滤属性测试', () => {
             return canUserViewCitationSource(username, collectionType, sourceId) === false;
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
   });

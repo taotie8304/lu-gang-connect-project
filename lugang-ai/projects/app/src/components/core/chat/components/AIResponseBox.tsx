@@ -85,6 +85,11 @@ const sensitivePatterns = [
   /提供的信息/,
   /根据.*提供/,
   /根据.*内容/,
+  /引用模板/,
+  /输出格式/,
+  /禁止显示/,
+  /禁止提及/,
+  /禁止暴露/,
   // 英文关键词 - 模型复述系统提示词时常用的表达
   /system\s*prompt/i,
   /system\s*instruction/i,
@@ -137,7 +142,90 @@ const sensitivePatterns = [
   /Contains\s*specific\s*info\s*on/i,
   /I\s*need\s*to\s*align/i,
   /system\s*date/i,
-  /current\s*date.*provided/i
+  /current\s*date.*provided/i,
+  // 鲁港通 - 引用模板和 Cites 标签泄露
+  /<\/?Cites>/i,
+  /\[citation:/i,
+  /\bcite\s*HKMA/i,
+  /\bcite\s*SFC/i,
+  /\bcite\s*IA\b/i,
+  /regulatory\s*doc\s*numbers/i,
+  /依据\s*SFC/i,
+  /号文件/,
+  // 鲁港通 - 模型自我约束检查的表达
+  /Checking\s*constraints/i,
+  /Verifying\s*constraints/i,
+  /Output\s*Format\s*Check/i,
+  /Format\s*Check/i,
+  /Compliance\s*Check/i,
+  /Self[\s-]*Check/i,
+  /Let\s*me\s*check\s*the\s*constraints/i,
+  /Let\s*me\s*verify/i,
+  /Let\s*me\s*review\s*the/i,
+  /I\s*need\s*to\s*follow/i,
+  /I\s*must\s*follow/i,
+  /I\s*should\s*follow/i,
+  /I\s*need\s*to\s*check/i,
+  /I\s*must\s*not\s*mention/i,
+  /I\s*should\s*not\s*mention/i,
+  /I\s*must\s*not\s*reveal/i,
+  /I\s*should\s*not\s*reveal/i,
+  /I\s*must\s*not\s*show/i,
+  /I\s*need\s*to\s*ensure/i,
+  /I\s*need\s*to\s*make\s*sure/i,
+  /I\s*need\s*to\s*integrate/i,
+  /I\s*need\s*to\s*combine/i,
+  /I\s*need\s*to\s*synthesize/i,
+  /I\s*need\s*to\s*use\s*the\s*KB/i,
+  /I\s*need\s*to\s*reference/i,
+  /I\s*need\s*to\s*cite/i,
+  /I\s*should\s*cite/i,
+  /I\s*must\s*cite/i,
+  /I\s*should\s*include/i,
+  /I\s*must\s*include/i,
+  /I\s*should\s*use/i,
+  /I\s*must\s*use/i,
+  // 鲁港通 - 模型分析系统提示词结构的表达
+  /system\s*message/i,
+  /system\s*role/i,
+  /system\s*context/i,
+  /the\s*prompt\s*says/i,
+  /the\s*prompt\s*mentions/i,
+  /the\s*prompt\s*requires/i,
+  /the\s*instruction\s*says/i,
+  /the\s*instruction\s*requires/i,
+  /according\s*to\s*the\s*prompt/i,
+  /according\s*to\s*the\s*instruction/i,
+  /according\s*to\s*my\s*instructions/i,
+  /as\s*instructed/i,
+  /as\s*per\s*instructions/i,
+  /as\s*per\s*the\s*prompt/i,
+  /as\s*per\s*my\s*role/i,
+  /per\s*the\s*system/i,
+  /per\s*the\s*KB/i,
+  /per\s*the\s*knowledge/i,
+  // 鲁港通 - 模型引用知识库日期/来源的内部分析
+  /Published\s*\d{4}-\d{2}-\d{2}/i,
+  /KB\s*date/i,
+  /KB\s*source/i,
+  /KB\s*reference/i,
+  /KB\s*data/i,
+  /KB\s*entry/i,
+  /KB\s*article/i,
+  /KB\s*document/i,
+  /KB\s*text/i,
+  /KB\s*passage/i,
+  /KB\s*section/i,
+  /KB\s*chunk/i,
+  /KB\s*snippet/i,
+  /KB\s*excerpt/i,
+  /KB\s*material/i,
+  /KB\s*record/i,
+  // 鲁港通 - 模型讨论目标用户/HNWI的内部分析
+  /Target\s*HNWI/i,
+  /target\s*audience/i,
+  /target\s*user/i,
+  /high[\s-]*net[\s-]*worth/i
 ];
 
 function filterReasoningContent(content: string): string {
@@ -201,6 +289,16 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
     </Accordion>
   );
 });
+/**
+ * 鲁港通 - 移除回答文本中的 [id](CITE) 引用标记
+ * 这些标记会在鼠标悬停时弹出知识库原文内容，暴露内部数据
+ * 仅对非 root 用户生效，root 用户保留用于调试
+ */
+function stripCiteMarks(text: string): string {
+  // 匹配 [hexId](CITE) 格式，如 [6a7b8c](CITE)
+  return text.replace(/\[[\w]+\]\(CITE\)/g, '');
+}
+
 const RenderText = React.memo(function RenderText({
   showAnimation,
   text,
@@ -215,13 +313,15 @@ const RenderText = React.memo(function RenderText({
   const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
   const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v.chatId);
   const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
+  const { userInfo } = useUserStore();
+  const isRoot = userInfo?.username === 'root';
 
   const source = useMemo(() => {
     if (!text) return '';
 
-    // Remove quote references if not showing response detail
-    return text;
-  }, [text]);
+    // 鲁港通 - 非 root 用户移除 [id](CITE) 标记，防止悬停弹窗暴露知识库内容
+    return isRoot ? text : stripCiteMarks(text);
+  }, [text, isRoot]);
 
   const chatAuthData = useCreation(() => {
     return { appId, chatId, chatItemDataId, ...outLinkAuthData };

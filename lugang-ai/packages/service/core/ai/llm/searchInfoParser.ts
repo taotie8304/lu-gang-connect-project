@@ -41,9 +41,30 @@ export function parseSearchResults(searchResults: AliSearchResult[]): WebSearchC
 /**
  * 从 LLM 响应对象中提取 search_info 并解析
  * 适用于非流式响应和流式 chunk
+ * 鲁港通 - 兼容阿里百炼多种响应格式：
+ * - 顶层 response.search_info（非流式）
+ * - response.choices[0].delta.search_info（流式 chunk）
+ * - response.choices[0].message.search_info（非流式 choice）
  */
 export function extractSearchCitations(response: any): WebSearchCitation[] {
-  const searchInfo: AliSearchInfo | undefined = response?.search_info;
-  if (!searchInfo?.search_results) return [];
-  return parseSearchResults(searchInfo.search_results);
+  // 鲁港通 - 优先从顶层提取（非流式响应常见位置）
+  const topLevelSearchInfo: AliSearchInfo | undefined = response?.search_info;
+  if (topLevelSearchInfo?.search_results) {
+    return parseSearchResults(topLevelSearchInfo.search_results);
+  }
+
+  // 鲁港通 - 从 choices[0].delta 提取（流式 chunk 常见位置）
+  const deltaSearchInfo: AliSearchInfo | undefined = response?.choices?.[0]?.delta?.search_info;
+  if (deltaSearchInfo?.search_results) {
+    return parseSearchResults(deltaSearchInfo.search_results);
+  }
+
+  // 鲁港通 - 从 choices[0].message 提取（非流式 choice 常见位置）
+  const messageSearchInfo: AliSearchInfo | undefined =
+    response?.choices?.[0]?.message?.search_info;
+  if (messageSearchInfo?.search_results) {
+    return parseSearchResults(messageSearchInfo.search_results);
+  }
+
+  return [];
 }

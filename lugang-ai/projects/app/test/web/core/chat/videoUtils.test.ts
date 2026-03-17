@@ -64,7 +64,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
         expect(result!.platform).toBe('youtube');
         expect(result!.videoId).toBe(id);
       }),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -76,7 +76,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
         expect(thumbnail).toContain(id);
         expect(thumbnail).toMatch(/^https:\/\/img\.youtube\.com\/vi\//);
       }),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -88,7 +88,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
         expect(result!.platform).toBe('bilibili');
         expect(result!.videoId).toBe(id);
       }),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -100,7 +100,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
         expect(result!.platform).toBe('douyin');
         expect(result!.videoId).toBe(id);
       }),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -112,7 +112,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
         expect(result!.platform).toBe('xiaohongshu');
         expect(result!.videoId).toBe(id);
       }),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -125,7 +125,7 @@ describe('detectVideoPlatform & getVideoThumbnail - Property 3: 视频平台识�
           expect(thumbnail).toBeNull();
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 });

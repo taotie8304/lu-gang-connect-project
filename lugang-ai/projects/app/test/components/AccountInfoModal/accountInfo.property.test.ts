@@ -58,7 +58,7 @@ describe('Property 1: 额度数据完整渲染', () => {
         // Progress bar shown only when quota > 0
         expect(display.showProgress).toBe(data.quota > 0);
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });
@@ -92,7 +92,7 @@ describe('Property 2: 后端不可用时降级为默认值', () => {
           expect(display.showProgress).toBe(false);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });

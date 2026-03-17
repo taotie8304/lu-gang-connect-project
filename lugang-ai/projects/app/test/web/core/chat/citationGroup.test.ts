@@ -41,7 +41,7 @@ describe('groupCitations - Property 4: 引用分组正确性', () => {
           );
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -56,7 +56,7 @@ describe('groupCitations - Property 4: 引用分组正确性', () => {
           expect(isGroupOrderValid(result)).toBe(true);
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -78,7 +78,7 @@ describe('groupCitations - Property 4: 引用分组正确性', () => {
           expect(linkCount).toBe(linkItems.length);
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 });

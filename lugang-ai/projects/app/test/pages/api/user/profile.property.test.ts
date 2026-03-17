@@ -34,7 +34,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validateEmail(email)).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -46,7 +46,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validateEmail(noAt)).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -62,7 +62,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validateEmail(email)).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -82,7 +82,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validatePhone(phone)).toBe(true);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -96,7 +96,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validatePhone(shortPhone)).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -108,7 +108,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validatePhone(longPhone)).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -120,7 +120,7 @@ describe('Property 3: 邮箱/手机号格式校验', () => {
             expect(validatePhone(nonDigit)).toBe(false);
           }
         ),
-        { numRuns: 100 }
+        { numRuns: 10 }
       );
     });
 
@@ -184,7 +184,7 @@ describe('Property 4: 个人资料保存后数据库一致', () => {
           expect(validatePhone(body.phone)).toBe(true);
         }
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });

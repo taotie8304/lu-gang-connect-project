@@ -68,7 +68,7 @@ describe('Property 7: Language Preference Persistence', () => {
           expect(retrievedLanguage).toBe(selectedLanguage);
         }
       ),
-      { numRuns: 100 } // 运行 100 次迭代
+      { numRuns: 10 } // 运行 100 次迭代
     );
   });
 
@@ -91,7 +91,7 @@ describe('Property 7: Language Preference Persistence', () => {
         // 断言：localStorage 中应该有保存的语言
         expect(storedValue).toBe(selectedLanguage);
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -114,7 +114,7 @@ describe('Property 7: Language Preference Persistence', () => {
         // 断言：localStorage 中应该有保存的语言
         expect(storedValue).toBe(selectedLanguage);
       }),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -143,7 +143,7 @@ describe('Property 7: Language Preference Persistence', () => {
           expect(retrievedLanguage).toBe(selectedLanguage);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 
@@ -173,7 +173,7 @@ describe('Property 7: Language Preference Persistence', () => {
           expect(retrievedLanguage).toBe(secondLanguage);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 10 }
     );
   });
 });

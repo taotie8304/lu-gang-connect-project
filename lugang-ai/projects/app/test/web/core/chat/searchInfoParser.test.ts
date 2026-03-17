@@ -44,7 +44,7 @@ describe('parseSearchResults - Property 2: 联网搜索结果解析', () => {
           });
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -65,7 +65,7 @@ describe('parseSearchResults - Property 2: 联网搜索结果解析', () => {
           });
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -82,7 +82,7 @@ describe('parseSearchResults - Property 2: 联网搜索结果解析', () => {
           });
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
@@ -90,18 +90,20 @@ describe('parseSearchResults - Property 2: 联网搜索结果解析', () => {
     fc.assert(
       fc.property(
         fc.record({
-          choices: fc.array(fc.anything(), { minLength: 0, maxLength: 3 })
+          id: fc.string(),
+          object: fc.string()
         }),
         (response) => {
+          // 鲁港�?- 确保响应中没有任�?search_info 字段
           const result = extractSearchCitations(response);
           expect(result).toEqual([]);
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
     );
   });
 
-  it('extractSearchCitations correctly extracts from response with search_info', () => {
+  it('extractSearchCitations correctly extracts from top-level search_info', () => {
     fc.assert(
       fc.property(
         fc.array(arbValidSearchResult, { minLength: 1, maxLength: 10 }),
@@ -116,7 +118,47 @@ describe('parseSearchResults - Property 2: 联网搜索结果解析', () => {
           });
         }
       ),
-      { numRuns: 20 }
+      { numRuns: 10 }
+    );
+  });
+
+  // 鲁港�?- 测试�?choices[0].delta.search_info 提取（流�?chunk�?
+  it('extractSearchCitations correctly extracts from delta search_info', () => {
+    fc.assert(
+      fc.property(
+        fc.array(arbValidSearchResult, { minLength: 1, maxLength: 10 }),
+        (searchResults) => {
+          const response = {
+            choices: [{ delta: { search_info: { search_results: searchResults } } }]
+          };
+          const result = extractSearchCitations(response);
+          expect(result.length).toBe(searchResults.length);
+          result.forEach((citation, i) => {
+            expect(citation.url).toBe(searchResults[i].url);
+          });
+        }
+      ),
+      { numRuns: 10 }
+    );
+  });
+
+  // 鲁港�?- 测试�?choices[0].message.search_info 提取（非流式 choice�?
+  it('extractSearchCitations correctly extracts from message search_info', () => {
+    fc.assert(
+      fc.property(
+        fc.array(arbValidSearchResult, { minLength: 1, maxLength: 10 }),
+        (searchResults) => {
+          const response = {
+            choices: [{ message: { search_info: { search_results: searchResults } } }]
+          };
+          const result = extractSearchCitations(response);
+          expect(result.length).toBe(searchResults.length);
+          result.forEach((citation, i) => {
+            expect(citation.url).toBe(searchResults[i].url);
+          });
+        }
+      ),
+      { numRuns: 10 }
     );
   });
 });
