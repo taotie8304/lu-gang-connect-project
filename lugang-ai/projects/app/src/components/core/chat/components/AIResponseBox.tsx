@@ -78,13 +78,22 @@ const sensitivePatterns = [
   /我的角色/,
   /约束条件/,
   /指令要求/,
+  /参考资料/,
+  /引用来源/,
+  /数据来源/,
+  /背景知识/,
+  /提供的信息/,
+  /根据.*提供/,
+  /根据.*内容/,
   // 英文关键词 - 模型复述系统提示词时常用的表达
   /system\s*prompt/i,
   /system\s*instruction/i,
   /role\s*setting/i,
   /knowledge\s*base/i,
+  /\bKB\b/,
   /do\s*not\s*mention/i,
   /do\s*not\s*reveal/i,
+  /do\s*not\s*show/i,
   /must\s*not\s*reveal/i,
   /no\s*AI\s*identity/i,
   /AI\s*identity\s*disclosure/i,
@@ -94,6 +103,7 @@ const sensitivePatterns = [
   /avoid\s*forbidden\s*words/i,
   /forbidden\s*words/i,
   /\bRemember:?\s*Do\s*not/i,
+  /\bConstraints?\s*Check/i,
   /\bConstraints?:/i,
   /\bRole:/i,
   /professional\s*tone/i,
@@ -101,11 +111,38 @@ const sensitivePatterns = [
   /Step-by-Step\s*Practi/i,
   /Key\s*Tips?\b/i,
   /not\s*"?listed\s*to\s*open"?/i,
-  /data\s*sources/i
+  /data\s*sources/i,
+  // 鲁港通 - 模型分析知识库时常用的表达
+  /Analyze\s*the\s*Knowledge/i,
+  /Review\s*Knowledge/i,
+  /Refining\s*based\s*on\s*KB/i,
+  /Evaluate\s*Knowledge/i,
+  /KB\s*Content/i,
+  /KB\s*Constraints/i,
+  /KB\s*Info/i,
+  /KB\s*says/i,
+  /KB\s*mentions/i,
+  /KB\s*has\s*info/i,
+  /Drafting\s*Content/i,
+  /Adhering\s*to\s*Constraints/i,
+  /Constraint\s*Check/i,
+  /align\s*with\s*the\s*KB/i,
+  /align\s*with\s*KB/i,
+  /provided\s*as\s*"?my\s*knowledge/i,
+  /provided\s*as\s*"?your\s*knowledge/i,
+  /my\s*knowledge\s*base/i,
+  /the\s*knowledge\s*base/i,
+  /from\s*the\s*KB/i,
+  /in\s*the\s*KB/i,
+  /Contains\s*specific\s*info\s*on/i,
+  /I\s*need\s*to\s*align/i,
+  /system\s*date/i,
+  /current\s*date.*provided/i
 ];
 
 function filterReasoningContent(content: string): string {
-  // 按换行分段，过滤包含敏感关键词的行/段落
+  // 鲁港通 - 按换行分段，过滤包含敏感关键词的行/段落
+  // 保留正常的推理分析内容，只移除暴露系统提示词/知识库机制/约束条件的行
   const lines = content.split('\n');
   const filtered = lines.filter((line) => {
     const trimmed = line.trim();
@@ -113,9 +150,8 @@ function filterReasoningContent(content: string): string {
     return !sensitivePatterns.some((pattern) => pattern.test(trimmed));
   });
 
-  // 清理连续多个空行为最多一个
-  let result = filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  return result;
+  // 鲁港通 - 清理连续多个空行为最多一个
+  return filtered.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
 const RenderResoningContent = React.memo(function RenderResoningContent({
