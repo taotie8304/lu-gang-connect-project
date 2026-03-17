@@ -15,12 +15,20 @@ import { useSize } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../Provider';
 import { useUserStore } from '@/web/support/user/useUserStore';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { filterCitationsByRelevance } from '@fastgpt/global/core/chat/citationFilter';
+import {
+  detectVideoPlatform,
+  getVideoThumbnail
+} from '@fastgpt/global/common/string/videoUtils';
 
 export type CitationRenderItem = {
-  type: 'dataset' | 'link';
+  type: 'dataset' | 'link' | 'web';
   key: string;
   displayText: string;
   icon?: string;
+  thumbnail?: string | null;
+  isVideo?: boolean;
   onClick: () => any;
 };
 
@@ -49,6 +57,8 @@ const ResponseTags = ({
   // 鲁港通：获取当前用户，普通用户不显示文件类型引用
   const { userInfo } = useUserStore();
   const isRoot = userInfo?.username === 'root';
+  // 鲁港通 - 引用相关性过滤阈值
+  const { feConfigs } = useSystemStore();
 
   const chatTime = historyItem.time || new Date();
   const durationSeconds = historyItem.durationSeconds || 0;
@@ -56,7 +66,8 @@ const ResponseTags = ({
     totalQuoteList: quoteList = [],
     llmModuleAccount = 0,
     historyPreviewLength = 0,
-    toolCiteLinks = []
+    toolCiteLinks = [],
+    webSearchCitations = []
   } = useMemo(() => addStatisticalDataToHistoryItem(historyItem), [historyItem]);
 
   const [quoteFolded, setQuoteFolded] = useState<boolean>(true);
@@ -92,11 +103,18 @@ const ResponseTags = ({
       }, {})
     ).flat();
 
+    // 鲁港通 - 知识库引用相关性过滤（普通用户）
+    const threshold = feConfigs?.citationRelevanceThreshold ?? 0.4;
+    const filteredQuoteItems = filterCitationsByRelevance(uniqueQuoteItems, {
+      isRoot,
+      threshold
+    });
+
     let datasetItems: CitationRenderItem[];
 
     if (isRoot) {
       // 管理员：显示所有引用，点击打开知识库详情
-      datasetItems = uniqueQuoteItems.map((item) => ({
+      datasetItems = filteredQuoteItems.map((item) => ({
         type: 'dataset' as const,
         key: item.collectionId,
         displayText: item.sourceName,
@@ -114,7 +132,7 @@ const ResponseTags = ({
       }));
     } else {
       // 鲁港通：普通用户只显示有网页链接的引用（sourceId 以 http 开头），点击直接跳转源网站
-      datasetItems = uniqueQuoteItems
+      datasetItems = filteredQuoteItems
         .filter((item) => item.sourceId && /^https?:\/\//.test(item.sourceId))
         .map((item) => ({
           type: 'link' as const,
@@ -137,8 +155,27 @@ const ResponseTags = ({
       }
     }));
 
-    return [...datasetItems, ...linkItems];
-  }, [quoteList, toolCiteLinks, onOpenCiteModal, isRoot]);
+    // 鲁港通 - 联网搜索引用（来自阿里百炼 search_info）
+    const webItems: CitationRenderItem[] = webSearchCitations.map((item, index) => {
+      const videoInfo = detectVideoPlatform(item.url);
+      const thumbnail = videoInfo ? getVideoThumbnail(item.url) : null;
+
+      return {
+        type: 'web' as const,
+        key: `web-${item.url}-${index}`,
+        displayText: item.title || item.url,
+        icon: 'common/linkBlue',
+        thumbnail,
+        isVideo: !!videoInfo,
+        onClick: () => {
+          window.open(item.url, '_blank');
+        }
+      };
+    });
+
+    // 分组展示：知识库引用 → 联网搜索引用 → 工具链接
+    return [...datasetItems, ...webItems, ...linkItems];
+  }, [quoteList, toolCiteLinks, webSearchCitations, onOpenCiteModal, isRoot, feConfigs?.citationRelevanceThreshold]);
 
   const notEmptyTags = notSharePage || quoteList.length > 0 || (isPc && durationSeconds > 0);
 
@@ -190,6 +227,67 @@ const ResponseTags = ({
             }
           >
             {citationRenderList.map((item, index) => {
+              // 鲁港通 - 视频引用卡片样式
+              if (item.isVideo && item.thumbnail) {
+                return (
+                  <MyTooltip key={item.key} label={item.displayText}>
+                    <Flex
+                      alignItems={'center'}
+                      fontSize={'xs'}
+                      border={'sm'}
+                      borderRadius={'sm'}
+                      overflow={'hidden'}
+                      cursor={'pointer'}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        item.onClick?.();
+                      }}
+                      height={'48px'}
+                      maxW={'200px'}
+                    >
+                      <Box
+                        as="img"
+                        src={item.thumbnail}
+                        alt={item.displayText}
+                        h={'full'}
+                        w={'64px'}
+                        objectFit={'cover'}
+                        flexShrink={0}
+                        onError={(e: React.SyntheticEvent<HTMLImageElement>) => {
+                          // 缩略图加载失败，降级为平台图标
+                          const target = e.currentTarget;
+                          target.style.display = 'none';
+                          const fallback = target.nextElementSibling as HTMLElement;
+                          if (fallback) fallback.style.display = 'flex';
+                        }}
+                      />
+                      <Flex
+                        display={'none'}
+                        w={'64px'}
+                        h={'full'}
+                        bg={'myGray.100'}
+                        alignItems={'center'}
+                        justifyContent={'center'}
+                        flexShrink={0}
+                      >
+                        <MyIcon name={item.icon as any} w={'16px'} />
+                      </Flex>
+                      <Flex direction={'column'} px={1.5} py={1} overflow={'hidden'} flex={1}>
+                        <Box
+                          className="textEllipsis3"
+                          wordBreak={'break-all'}
+                          fontSize={'mini'}
+                          lineHeight={'1.3'}
+                        >
+                          {item.displayText}
+                        </Box>
+                      </Flex>
+                    </Flex>
+                  </MyTooltip>
+                );
+              }
+
+              // 标准引用样式
               return (
                 <MyTooltip key={item.key} label={t('common:core.chat.quote.Read Quote')}>
                   <Flex

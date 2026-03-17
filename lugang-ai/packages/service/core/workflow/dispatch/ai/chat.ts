@@ -186,7 +186,9 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       answerText,
       finish_reason,
       getEmptyResponseTip,
-      usage
+      usage,
+      // 鲁港通 - 联网搜索引用
+      webSearchCitations
     } = await createLLMResponse({
       body: {
         // 鲁港通 - 联网搜索开关：根据用户选择控制模型名后缀
@@ -276,7 +278,9 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         reasoningText,
         historyPreview: getHistoryPreview(chatCompleteMessages, 10000, aiChatVision),
         contextTotalLen: completeMessages.length,
-        finishReason: finish_reason
+        finishReason: finish_reason,
+        // 鲁港通 - 联网搜索引用透传到前端
+        webSearchCitations
       },
       [DispatchNodeResponseKeyEnum.nodeDispatchUsages]: [
         {

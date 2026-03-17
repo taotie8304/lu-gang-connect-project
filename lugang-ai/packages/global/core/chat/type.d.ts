@@ -151,6 +151,8 @@ export type ResponseTagItemType = {
   llmModuleAccount?: number;
   historyPreviewLength?: number;
   toolCiteLinks?: ToolCiteLinksType[];
+  // 鲁港通 - 联网搜索引用
+  webSearchCitations?: WebSearchCitation[];
 };
 
 export type ChatItemType = ChatItemMergeType & {
@@ -198,6 +200,15 @@ export type HistoryItemType = {
 export type ChatHistoryItemType = HistoryItemType & {
   appId: string;
   top: boolean;
+};
+
+// 鲁港通 - 联网搜索引用类型，来自阿里百炼 search_info.search_results
+export type WebSearchCitation = {
+  index: number;
+  title: string;
+  url: string;
+  icon?: string;
+  siteName?: string;
 };
 
 /* ------- response data ------------ */

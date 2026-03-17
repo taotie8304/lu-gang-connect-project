@@ -143,6 +143,9 @@ export type FastGPTFeConfigsType = {
 
   ip_whitelist?: string;
 
+  // 鲁港通 - 引用系统配置
+  citationRelevanceThreshold?: number; // 知识库引用相关性过滤阈值，默认 0.4
+
   // 鲁港通用户界面配置
   defaultChatAppId?: string;      // 默认聊天应用 ID
   enableUserChatOnly?: boolean;   // 启用纯聊天模式（普通用户直接进入聊天界面）

@@ -10,6 +10,7 @@ import type {
   StreamChatType,
   UnStreamChatType
 } from '@fastgpt/global/core/ai/type';
+import type { WebSearchCitation } from '@fastgpt/global/core/chat/type.d';
 import {
   computedMaxToken,
   computedTemperature,
@@ -30,6 +31,7 @@ import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
 import { i18nT } from '../../../../web/i18n/utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import json5 from 'json5';
+import { extractSearchCitations } from './searchInfoParser';
 
 export type ResponseEvents = {
   onStreaming?: ({ text }: { text: string }) => void;
@@ -56,6 +58,8 @@ type LLMResponse = {
     inputTokens: number;
     outputTokens: number;
   };
+  // 鲁港通 - 联网搜索引用
+  webSearchCitations?: WebSearchCitation[];
 
   requestMessages: ChatCompletionMessageParam[];
   assistantMessage: ChatCompletionMessageParam[];
@@ -104,7 +108,7 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
     }
   });
 
-  const { answerText, reasoningText, toolCalls, finish_reason, usage } = await (async () => {
+  const { answerText, reasoningText, toolCalls, finish_reason, usage, webSearchCitations } = await (async () => {
     if (isStreamResponse) {
       return createStreamResponse({
         response,
@@ -162,6 +166,8 @@ export const createLLMResponse = async <T extends CompletionsBodyType>(
       inputTokens,
       outputTokens
     },
+    // 鲁港通 - 联网搜索引用
+    webSearchCitations,
 
     requestMessages,
     assistantMessage,
@@ -173,7 +179,7 @@ type CompleteParams = Pick<CreateLLMResponseProps<CompletionsBodyType>, 'body'> 
 
 type CompleteResponse = Pick<
   LLMResponse,
-  'answerText' | 'reasoningText' | 'toolCalls' | 'finish_reason'
+  'answerText' | 'reasoningText' | 'toolCalls' | 'finish_reason' | 'webSearchCitations'
 > & {
   usage?: CompletionUsage;
 };
@@ -195,6 +201,9 @@ export const createStreamResponse = async ({
 
   const { parsePart, getResponseData, updateFinishReason } = parseLLMStreamResponse();
 
+  // 鲁港通 - 收集流式响应中的 search_info
+  let streamSearchCitations: WebSearchCitation[] = [];
+
   if (tools?.length) {
     if (toolCallMode === 'toolChoice') {
       let callingTool: ChatCompletionMessageToolCall['function'] | null = null;
@@ -205,6 +214,12 @@ export const createStreamResponse = async ({
           response.controller?.abort();
           updateFinishReason('close');
           break;
+        }
+
+        // 鲁港通 - 提取流式 chunk 中的 search_info
+        const chunkCitations = extractSearchCitations(part);
+        if (chunkCitations.length > 0) {
+          streamSearchCitations = chunkCitations;
         }
 
         const { reasoningContent, responseContent } = parsePart({
@@ -274,7 +289,8 @@ export const createStreamResponse = async ({
         reasoningText: reasoningContent,
         finish_reason,
         usage,
-        toolCalls: toolCalls.filter((call) => !!call)
+        toolCalls: toolCalls.filter((call) => !!call),
+        webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
       };
     } else {
       let startResponseWrite = false;
@@ -285,6 +301,12 @@ export const createStreamResponse = async ({
           response.controller?.abort();
           updateFinishReason('close');
           break;
+        }
+
+        // 鲁港通 - 提取流式 chunk 中的 search_info
+        const chunkCitations = extractSearchCitations(part);
+        if (chunkCitations.length > 0) {
+          streamSearchCitations = chunkCitations;
         }
 
         const { reasoningContent, content, responseContent } = parsePart({
@@ -345,7 +367,8 @@ export const createStreamResponse = async ({
         reasoningText: reasoningContent,
         finish_reason,
         usage,
-        toolCalls
+        toolCalls,
+        webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
       };
     }
   } else {
@@ -355,6 +378,12 @@ export const createStreamResponse = async ({
         response.controller?.abort();
         updateFinishReason('close');
         break;
+      }
+
+      // 鲁港通 - 提取流式 chunk 中的 search_info
+      const chunkCitations = extractSearchCitations(part);
+      if (chunkCitations.length > 0) {
+        streamSearchCitations = chunkCitations;
       }
 
       const { reasoningContent, responseContent } = parsePart({
@@ -377,7 +406,8 @@ export const createStreamResponse = async ({
       answerText: content,
       reasoningText: reasoningContent,
       finish_reason,
-      usage
+      usage,
+      webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
     };
   }
 };
@@ -454,12 +484,16 @@ export const createCompleteResponse = async ({
     });
   }
 
+  // 鲁港通 - 提取非流式响应中的 search_info
+  const webSearchCitations = extractSearchCitations(response);
+
   return {
     reasoningText: formatReasonContent,
     answerText: formatContent,
     toolCalls,
     finish_reason,
-    usage
+    usage,
+    webSearchCitations: webSearchCitations.length > 0 ? webSearchCitations : undefined
   };
 };
 

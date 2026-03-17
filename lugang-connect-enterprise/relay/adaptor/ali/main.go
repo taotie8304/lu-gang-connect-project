@@ -61,6 +61,11 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 
 	if enableSearch {
 		compatReq.EnableSearch = true
+		// 鲁港通 - 启用搜索来源返回，让前端可以展示联网搜索的来源 URL 和标题
+		compatReq.SearchOptions = &AliSearchOptions{
+			EnableSource:   true,
+			EnableCitation: true,
+		}
 	}
 
 	return compatReq

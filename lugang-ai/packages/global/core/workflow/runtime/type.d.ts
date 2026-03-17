@@ -251,6 +251,9 @@ export type DispatchNodeResponseType = {
   // tool params
   toolParamsResult?: Record<string, any>;
 
+  // 鲁港通 - 联网搜索引用
+  webSearchCitations?: import('../../chat/type').WebSearchCitation[];
+
   toolRes?: any;
 
   // abandon

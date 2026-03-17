@@ -126,6 +126,8 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   favicon: '/favicon.ico',
   uploadFileMaxSize: 500,
   chineseRedirectUrl: process.env.CHINESE_IP_REDIRECT_URL || '',
+  // 鲁港通 - 引用系统配置
+  citationRelevanceThreshold: 0.4,
   // 鲁港通用户界面配置
   defaultChatAppId: '',
   enableUserChatOnly: true,

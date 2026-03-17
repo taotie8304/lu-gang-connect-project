@@ -23,10 +23,14 @@ type CompatChatRequest struct {
 	StreamOptions  *model.StreamOptions `json:"stream_options,omitempty"`
 }
 
-// AliSearchOptions 阿里百炼联网搜索选项
+// AliSearchOptions 鲁港通 - 阿里百炼联网搜索选项
+// enable_source: 返回搜索来源 URL 和标题信息
+// enable_citation: 返回引用角标信息
 type AliSearchOptions struct {
 	ForcedSearch   bool   `json:"forced_search,omitempty"`
 	SearchStrategy string `json:"search_strategy,omitempty"`
+	EnableSource   bool   `json:"enable_source,omitempty"`
+	EnableCitation bool   `json:"enable_citation,omitempty"`
 }
 
 type Message struct {

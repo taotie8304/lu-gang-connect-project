@@ -1,5 +1,9 @@
 import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
-import { type ChatHistoryItemResType, type ChatItemType } from '@fastgpt/global/core/chat/type';
+import {
+  type ChatHistoryItemResType,
+  type ChatItemType,
+  type WebSearchCitation
+} from '@fastgpt/global/core/chat/type';
 import { type SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { type ToolCiteLinksType } from '@fastgpt/global/core/chat/type';
@@ -42,7 +46,7 @@ export function addStatisticalDataToHistoryItem(historyItem: ChatItemType) {
   const flatResData = getFlatAppResponses(historyItem.responseData || []);
 
   // get llm module account and history preview length and total quote list and external link list
-  const { llmModuleAccount, historyPreviewLength, totalQuoteList, toolCiteLinks } =
+  const { llmModuleAccount, historyPreviewLength, totalQuoteList, toolCiteLinks, webSearchCitations } =
     flatResData.reduce(
       (acc, item) => {
         // LLM
@@ -50,6 +54,10 @@ export function addStatisticalDataToHistoryItem(historyItem: ChatItemType) {
           acc.llmModuleAccount = acc.llmModuleAccount + 1;
           if (acc.historyPreviewLength === undefined) {
             acc.historyPreviewLength = item.historyPreview?.length;
+          }
+          // 鲁港通 - 提取联网搜索引用
+          if (item.webSearchCitations?.length) {
+            acc.webSearchCitations.push(...item.webSearchCitations);
           }
         }
         // Dataset search result
@@ -80,7 +88,8 @@ export function addStatisticalDataToHistoryItem(historyItem: ChatItemType) {
         historyPreviewLength: undefined as number | undefined,
         totalQuoteList: [] as SearchDataResponseItemType[],
         toolCiteLinks: [] as ToolCiteLinksType[],
-        linkDedupe: new Set<string>()
+        linkDedupe: new Set<string>(),
+        webSearchCitations: [] as WebSearchCitation[]
       }
     );
 
@@ -89,6 +98,7 @@ export function addStatisticalDataToHistoryItem(historyItem: ChatItemType) {
     llmModuleAccount,
     totalQuoteList,
     historyPreviewLength,
-    ...(toolCiteLinks.length ? { toolCiteLinks } : {})
+    ...(toolCiteLinks.length ? { toolCiteLinks } : {}),
+    ...(webSearchCitations.length ? { webSearchCitations } : {})
   };
 }

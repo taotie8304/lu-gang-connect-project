@@ -129,12 +129,13 @@ type ChatCompletionsStreamResponseChoice struct {
 }
 
 type ChatCompletionsStreamResponse struct {
-	Id      string                                `json:"id"`
-	Object  string                                `json:"object"`
-	Created int64                                 `json:"created"`
-	Model   string                                `json:"model"`
-	Choices []ChatCompletionsStreamResponseChoice `json:"choices"`
-	Usage   *model.Usage                          `json:"usage,omitempty"`
+	Id         string                                `json:"id"`
+	Object     string                                `json:"object"`
+	Created    int64                                 `json:"created"`
+	Model      string                                `json:"model"`
+	Choices    []ChatCompletionsStreamResponseChoice `json:"choices"`
+	Usage      *model.Usage                          `json:"usage,omitempty"`
+	SearchInfo any                                   `json:"search_info,omitempty"` // 鲁港通 - 阿里百炼联网搜索来源信息
 }
 
 type CompletionsStreamResponse struct {
