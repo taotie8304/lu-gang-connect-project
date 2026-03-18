@@ -95,6 +95,7 @@ export const filterPublicNodeResponseData = ({
     [FlowNodeTypeEnum.appModule]: true,
     [FlowNodeTypeEnum.pluginModule]: true,
     [FlowNodeTypeEnum.datasetSearchNode]: true,
+    [FlowNodeTypeEnum.chatNode]: true,
     [FlowNodeTypeEnum.agent]: true,
     [FlowNodeTypeEnum.pluginOutput]: true,
 
@@ -106,12 +107,16 @@ export const filterPublicNodeResponseData = ({
         quoteList: true,
         moduleType: true,
         pluginOutput: true,
-        runningTime: true
+        runningTime: true,
+        // 鲁港通 - 联网搜索引用需要透传到前端
+        webSearchCitations: true
       }
     : {
         moduleType: true,
         pluginOutput: true,
-        runningTime: true
+        runningTime: true,
+        // 鲁港通 - 联网搜索引用需要透传到前端
+        webSearchCitations: true
       };
 
   return nodeRespones
