@@ -40,7 +40,7 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
     return [];
   }
   if (apiPath.includes('team/collaborator/list')) {
-    return { members: [], groups: [] };
+    return { clbs: [], parentClbs: [] };
   }
   if (apiPath.includes('team/tag/list')) {
     return [];
@@ -63,7 +63,7 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
     return { total: 0, list: [] };
   }
   if (apiPath.includes('app/collaborator/list')) {
-    return { members: [], groups: [] };
+    return { clbs: [], parentClbs: [] };
   }
   if (apiPath.includes('app/template/getTemplateTypes')) {
     return [];
@@ -105,7 +105,7 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   
   // 知识库相关
   if (apiPath.includes('dataset/collaborator/list')) {
-    return { members: [], groups: [] };
+    return { clbs: [], parentClbs: [] };
   }
   if (apiPath.includes('dataset/tag/list')) {
     return { total: 0, list: [] };
@@ -130,7 +130,7 @@ function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
   
   // 系统相关
   if (apiPath.includes('system/model/collaborator/list')) {
-    return { members: [], groups: [] };
+    return { clbs: [], parentClbs: [] };
   }
   
   // 用户搜索

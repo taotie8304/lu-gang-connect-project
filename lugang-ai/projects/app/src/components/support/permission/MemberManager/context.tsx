@@ -124,13 +124,13 @@ const CollaboratorContextProvider = ({
   } = useRequest2(
     async () => {
       // 鲁港通：移除 isPlus 限制，允许所有用户使用协作者功能
-      const { clbs, parentClbs = [] } = await onGetCollaboratorList();
+      const { clbs = [], parentClbs = [] } = (await onGetCollaboratorList()) ?? {};
       return {
-        clbs: clbs.map((clb) => ({
+        clbs: (clbs ?? []).map((clb) => ({
           ...clb,
           permission: new Permission({ role: clb.permission.role })
         })),
-        parentClbs: parentClbs.map((clb) => ({
+        parentClbs: (parentClbs ?? []).map((clb) => ({
           ...clb,
           permission: new Permission({ role: clb.permission.role })
         }))
