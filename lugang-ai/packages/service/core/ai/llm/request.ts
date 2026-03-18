@@ -380,6 +380,12 @@ export const createStreamResponse = async ({
         break;
       }
 
+      // 鲁港通 - 调试：记录流式 chunk 中的非标准字段（仅在 finish_reason 存在时记录，减少日志量）
+      if (part.choices?.[0]?.finish_reason) {
+        const partKeys = Object.keys(part || {});
+        addLog.info('鲁港通流式最终chunk字段', { keys: partKeys, hasSearchInfo: 'search_info' in (part as any) });
+      }
+
       // 鲁港通 - 提取流式 chunk 中的 search_info
       const chunkCitations = extractSearchCitations(part);
       if (chunkCitations.length > 0) {

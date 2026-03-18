@@ -1,5 +1,6 @@
 // 鲁港通 - 解析阿里百炼 search_info.search_results 为 WebSearchCitation[]
 import type { WebSearchCitation } from '@fastgpt/global/core/chat/type.d';
+import { addLog } from '../../../common/system/log';
 
 /**
  * 阿里百炼 search_info 响应结构
@@ -47,6 +48,20 @@ export function parseSearchResults(searchResults: AliSearchResult[]): WebSearchC
  * - response.choices[0].message.search_info（非流式 choice）
  */
 export function extractSearchCitations(response: any): WebSearchCitation[] {
+  // 鲁港通 - 调试日志：记录响应中是否包含 search_info
+  const hasSearchInfo = !!(
+    response?.search_info ||
+    response?.choices?.[0]?.delta?.search_info ||
+    response?.choices?.[0]?.message?.search_info
+  );
+  if (hasSearchInfo) {
+    addLog.info('鲁港通联网搜索引用提取成功', {
+      topLevel: !!response?.search_info,
+      delta: !!response?.choices?.[0]?.delta?.search_info,
+      message: !!response?.choices?.[0]?.message?.search_info
+    });
+  }
+
   // 鲁港通 - 优先从顶层提取（非流式响应常见位置）
   const topLevelSearchInfo: AliSearchInfo | undefined = response?.search_info;
   if (topLevelSearchInfo?.search_results) {
