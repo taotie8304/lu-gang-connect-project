@@ -1,13 +1,10 @@
-// 鲁港通 - 解析阿里百炼 search_info.search_results 为 WebSearchCitation[]
-import type { WebSearchCitation } from '@fastgpt/global/core/chat/type.d';
-import { addLog } from '../../../common/system/log';
-
 /**
- * 阿里百炼 search_info 响应结构
- * 兼容模式下，search_info 可能出现在：
- * - 非流式响应的顶层 JSON
- * - 流式响应的某个 chunk 中
+ * 鲁港通 - 联网搜索引用解析器
+ * 1. 优先从阿里百炼 search_info 字段提取（非流式或未来流式支持时）
+ * 2. Fallback：从模型回答文本中提取 markdown 链接作为联网搜索引用
  */
+import type { WebSearchCitation } from '@fastgpt/global/core/chat/type.d';
+
 export type AliSearchResult = {
   index?: number;
   title?: string;
@@ -22,8 +19,6 @@ export type AliSearchInfo = {
 
 /**
  * 将阿里百炼 search_results 转换为 WebSearchCitation[]
- * - 跳过缺少 url 的条目
- * - 保留 title、icon、siteName 等元数据
  */
 export function parseSearchResults(searchResults: AliSearchResult[]): WebSearchCitation[] {
   if (!Array.isArray(searchResults)) return [];
@@ -41,40 +36,22 @@ export function parseSearchResults(searchResults: AliSearchResult[]): WebSearchC
 
 /**
  * 从 LLM 响应对象中提取 search_info 并解析
- * 适用于非流式响应和流式 chunk
- * 鲁港通 - 兼容阿里百炼多种响应格式：
- * - 顶层 response.search_info（非流式）
- * - response.choices[0].delta.search_info（流式 chunk）
- * - response.choices[0].message.search_info（非流式 choice）
+ * 兼容阿里百炼多种响应格式
  */
 export function extractSearchCitations(response: any): WebSearchCitation[] {
-  // 鲁港通 - 调试日志：记录响应中是否包含 search_info
-  const hasSearchInfo = !!(
-    response?.search_info ||
-    response?.choices?.[0]?.delta?.search_info ||
-    response?.choices?.[0]?.message?.search_info
-  );
-  if (hasSearchInfo) {
-    addLog.info('鲁港通联网搜索引用提取成功', {
-      topLevel: !!response?.search_info,
-      delta: !!response?.choices?.[0]?.delta?.search_info,
-      message: !!response?.choices?.[0]?.message?.search_info
-    });
-  }
-
-  // 鲁港通 - 优先从顶层提取（非流式响应常见位置）
+  // 优先从顶层提取（非流式响应常见位置）
   const topLevelSearchInfo: AliSearchInfo | undefined = response?.search_info;
   if (topLevelSearchInfo?.search_results) {
     return parseSearchResults(topLevelSearchInfo.search_results);
   }
 
-  // 鲁港通 - 从 choices[0].delta 提取（流式 chunk 常见位置）
+  // 从 choices[0].delta 提取（流式 chunk 常见位置）
   const deltaSearchInfo: AliSearchInfo | undefined = response?.choices?.[0]?.delta?.search_info;
   if (deltaSearchInfo?.search_results) {
     return parseSearchResults(deltaSearchInfo.search_results);
   }
 
-  // 鲁港通 - 从 choices[0].message 提取（非流式 choice 常见位置）
+  // 从 choices[0].message 提取（非流式 choice 常见位置）
   const messageSearchInfo: AliSearchInfo | undefined =
     response?.choices?.[0]?.message?.search_info;
   if (messageSearchInfo?.search_results) {
@@ -82,4 +59,47 @@ export function extractSearchCitations(response: any): WebSearchCitation[] {
   }
 
   return [];
+}
+
+/**
+ * 鲁港通 - 从模型回答文本中提取联网搜索引用（Fallback 方案）
+ * 当 DashScope OpenAI 兼容模式流式不返回 search_info 时，
+ * 从回答文本中解析 markdown 链接 [title](url) 作为联网搜索引用。
+ *
+ * 过滤规则：
+ * - 只提取 http/https 开头的外部链接
+ * - 排除图片链接 ![alt](url)
+ * - 排除知识库引用 [hexId](CITE)
+ * - 按 URL 去重
+ */
+export function extractCitationsFromAnswerText(answerText: string): WebSearchCitation[] {
+  if (!answerText) return [];
+
+  const citations: WebSearchCitation[] = [];
+  const seenUrls = new Set<string>();
+
+  // 匹配 markdown 链接 [title](url)，排除图片 ![alt](url)
+  // 使用 negative lookbehind 排除 ! 前缀
+  const linkRegex = /(?<!!)\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = linkRegex.exec(answerText)) !== null) {
+    const title = match[1];
+    const url = match[2];
+
+    // 排除知识库引用格式 [hexId](CITE)
+    if (/^[a-f0-9]{24}$/i.test(title) || url === 'CITE') continue;
+
+    // URL 去重
+    if (seenUrls.has(url)) continue;
+    seenUrls.add(url);
+
+    citations.push({
+      index: citations.length,
+      title: title.trim(),
+      url: url.trim()
+    });
+  }
+
+  return citations;
 }

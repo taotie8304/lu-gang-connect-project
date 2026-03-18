@@ -31,7 +31,7 @@ import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
 import { i18nT } from '../../../../web/i18n/utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import json5 from 'json5';
-import { extractSearchCitations } from './searchInfoParser';
+import { extractSearchCitations, extractCitationsFromAnswerText } from './searchInfoParser';
 
 export type ResponseEvents = {
   onStreaming?: ({ text }: { text: string }) => void;
@@ -284,13 +284,18 @@ export const createStreamResponse = async ({
 
       const { reasoningContent, content, finish_reason, usage } = getResponseData();
 
+      // 鲁港通 - 联网搜索引用 Fallback
+      const finalWebCitations = streamSearchCitations.length > 0
+        ? streamSearchCitations
+        : extractCitationsFromAnswerText(content);
+
       return {
         answerText: content,
         reasoningText: reasoningContent,
         finish_reason,
         usage,
         toolCalls: toolCalls.filter((call) => !!call),
-        webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
+        webSearchCitations: finalWebCitations.length > 0 ? finalWebCitations : undefined
       };
     } else {
       let startResponseWrite = false;
@@ -362,13 +367,18 @@ export const createStreamResponse = async ({
         onToolCall?.({ call });
       });
 
+      // 鲁港通 - 联网搜索引用 Fallback
+      const promptToolWebCitations = streamSearchCitations.length > 0
+        ? streamSearchCitations
+        : extractCitationsFromAnswerText(llmAnswer);
+
       return {
         answerText: llmAnswer,
         reasoningText: reasoningContent,
         finish_reason,
         usage,
         toolCalls,
-        webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
+        webSearchCitations: promptToolWebCitations.length > 0 ? promptToolWebCitations : undefined
       };
     }
   } else {
@@ -378,12 +388,6 @@ export const createStreamResponse = async ({
         response.controller?.abort();
         updateFinishReason('close');
         break;
-      }
-
-      // 鲁港通 - 调试：记录流式 chunk 中的非标准字段（仅在 finish_reason 存在时记录，减少日志量）
-      if (part.choices?.[0]?.finish_reason) {
-        const partKeys = Object.keys(part || {});
-        addLog.info('鲁港通流式最终chunk字段', { keys: partKeys, hasSearchInfo: 'search_info' in (part as any) });
       }
 
       // 鲁港通 - 提取流式 chunk 中的 search_info
@@ -408,12 +412,19 @@ export const createStreamResponse = async ({
 
     const { reasoningContent, content, finish_reason, usage } = getResponseData();
 
+    // 鲁港通 - 联网搜索引用 Fallback：
+    // DashScope OpenAI 兼容模式流式不返回 search_info，
+    // 从回答文本中提取 markdown 链接作为联网搜索引用
+    const finalWebCitations = streamSearchCitations.length > 0
+      ? streamSearchCitations
+      : extractCitationsFromAnswerText(content);
+
     return {
       answerText: content,
       reasoningText: reasoningContent,
       finish_reason,
       usage,
-      webSearchCitations: streamSearchCitations.length > 0 ? streamSearchCitations : undefined
+      webSearchCitations: finalWebCitations.length > 0 ? finalWebCitations : undefined
     };
   }
 };
@@ -490,8 +501,11 @@ export const createCompleteResponse = async ({
     });
   }
 
-  // 鲁港通 - 提取非流式响应中的 search_info
-  const webSearchCitations = extractSearchCitations(response);
+  // 鲁港通 - 提取非流式响应中的 search_info，Fallback 从回答文本提取
+  const apiCitations = extractSearchCitations(response);
+  const finalCitations = apiCitations.length > 0
+    ? apiCitations
+    : extractCitationsFromAnswerText(formatContent);
 
   return {
     reasoningText: formatReasonContent,
@@ -499,7 +513,7 @@ export const createCompleteResponse = async ({
     toolCalls,
     finish_reason,
     usage,
-    webSearchCitations: webSearchCitations.length > 0 ? webSearchCitations : undefined
+    webSearchCitations: finalCitations.length > 0 ? finalCitations : undefined
   };
 };
 

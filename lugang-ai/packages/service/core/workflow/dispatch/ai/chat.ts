@@ -40,7 +40,7 @@ import { parseUrlToFileType } from '@fastgpt/global/common/file/tools';
 import { i18nT } from '../../../../../web/i18n/utils';
 import { postTextCensor } from '../../../chat/postTextCensor';
 import { createLLMResponse } from '../../../ai/llm/request';
-import { sanitizeReasoningContent } from '@fastgpt/global/core/ai/llm/utils';
+import { sanitizeReasoningContent, createReasoningSanitizer } from '@fastgpt/global/core/ai/llm/utils';
 import { formatModelChars2Points } from '../../../../support/wallet/usage/utils';
 
 export type ChatProps = ModuleDispatchProps<
@@ -181,6 +181,9 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
 
     const write = res ? responseWriteController({ res, readStream: stream }) : undefined;
 
+    // 鲁港通 - 创建流式思考内容过滤器（有状态，处理跨 chunk 的标签）
+    const reasoningSanitizer = createReasoningSanitizer();
+
     const {
       completeMessages,
       reasoningText,
@@ -230,8 +233,8 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       isAborted: () => res?.closed,
       onReasoning({ text }) {
         if (!aiChatReasoning) return;
-        // 鲁港通 - 过滤思考内容中的敏感信息（Cites标记、系统提示词引用等）
-        const sanitized = sanitizeReasoningContent(text);
+        // 鲁港通 - 流式过滤思考内容中的敏感信息（支持跨 chunk 的标签匹配）
+        const sanitized = reasoningSanitizer.processChunk(text);
         if (!sanitized) return;
         workflowStreamResponse?.({
           write,
@@ -252,6 +255,18 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         });
       }
     });
+
+    // 鲁港通 - 刷新流式过滤器缓冲区中的剩余内容
+    const flushedReasoning = reasoningSanitizer.flush();
+    if (flushedReasoning && aiChatReasoning) {
+      workflowStreamResponse?.({
+        write,
+        event: SseResponseEventEnum.answer,
+        data: textAdaptGptResponse({
+          reasoning_content: flushedReasoning
+        })
+      });
+    }
 
     // 鲁港通 - 对最终存储的 reasoningText 也进行敏感信息过滤
     const sanitizedReasoningText = sanitizeReasoningContent(reasoningText);
