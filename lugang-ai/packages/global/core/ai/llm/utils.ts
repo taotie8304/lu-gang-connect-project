@@ -21,6 +21,8 @@ const cleanReasoningText = (text: string): string => {
   result = result.replace(/[\[【]id[\]】]\(CITE\)/gi, '');
   result = result.replace(/^.*Citation[s]?\s*[:：].*\(CITE\).*$/gm, '');
   result = result.replace(/\(CITE\)/g, '');
+  // 鲁港通 - 移除独立出现的知识库 hex ID（24位十六进制）
+  result = result.replace(/\b[a-f0-9]{24}\b/gi, '');
 
   // ===== B) 模型讨论/复述引用规则（中文） =====
   const cnPatterns = [
@@ -40,7 +42,15 @@ const cleanReasoningText = (text: string): string => {
     /^.*追溯展示规则.*$/gm,
     /^.*引用格式.*\[id\]\(CITE\).*$/gm,
     /^.*需要在.*结尾.*添加引用.*$/gm,
-    /^.*每段话.*至少.*引用.*$/gm
+    /^.*每段话.*至少.*引用.*$/gm,
+    // 鲁港通 - 模型讨论引用匹配/关联性
+    /^.*这些引用.*$/gm,
+    /^.*引用.*关联不大.*$/gm,
+    /^.*引用.*关系不大.*$/gm,
+    /^.*无法找到.*引用.*$/gm,
+    /^.*尽量使用.*引用.*$/gm,
+    /^.*现有.*引用.*$/gm,
+    /^.*无法引用.*$/gm
   ];
 
   // ===== C) 模型讨论/复述引用规则（英文） =====
