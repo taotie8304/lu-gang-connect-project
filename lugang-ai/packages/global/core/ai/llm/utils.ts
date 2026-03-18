@@ -1,163 +1,127 @@
 /**
- * 鲁港通 - 流式深度思考内容过滤器（有状态）
- * 处理流式推理输出中跨 chunk 的敏感信息过滤
- * 使用缓冲机制确保跨 chunk 的标签和引用标记能被完整匹配
+ * 鲁港通 - 深度思考内容敏感信息清理工具
+ *
+ * 核心策略：流式直接透传，仅对最终完整文本做清理
+ * - processChunk: 直接返回原文（零缓冲，避免卡死）
+ * - flush: 返回空字符串（无缓冲区）
+ * - sanitizeReasoningContent: 对完整 reasoningText 做一次性清理
+ * - removeDatasetCiteText: 移除知识库引用标记（供其他模块使用）
  */
-export const createReasoningSanitizer = () => {
-  let buffer = '';
 
-  /**
-   * 对完整文本进行敏感信息清理（内部使用）
-   * 覆盖三大类泄露：
-   * A) 直接的标签和格式（<Cites>、[id](CITE) 等）
-   * B) 模型用自然语言讨论/复述引用规则和 Cites 内容
-   * C) 系统提示词相关提及
-   */
-  const cleanText = (text: string): string => {
-    let result = text;
+/**
+ * 对完整的思考文本进行敏感信息清理
+ * 移除：Cites 标签、引用格式、系统提示词复述、知识库讨论等
+ */
+const cleanReasoningText = (text: string): string => {
+  let result = text;
 
-    // ===== A) 直接标签和格式 =====
-    result = result.replace(/<Cites>[\s\S]*?<\/Cites>/gi, '');
-    result = result.replace(/\[([a-f0-9]{24})\]\(CITE\)/gi, '');
-    result = result.replace(/[\[【]id[\]】]\(CITE\)/gi, '');
-    result = result.replace(/^.*Citation[s]?\s*[:：].*\(CITE\).*$/gm, '');
-    result = result.replace(/\(CITE\)/g, '');
+  // ===== A) 直接标签和格式 =====
+  result = result.replace(/<Cites>[\s\S]*?<\/Cites>/gi, '');
+  result = result.replace(/\[([a-f0-9]{24})\]\(CITE\)/gi, '');
+  result = result.replace(/[\[【]id[\]】]\(CITE\)/gi, '');
+  result = result.replace(/^.*Citation[s]?\s*[:：].*\(CITE\).*$/gm, '');
+  result = result.replace(/\(CITE\)/g, '');
 
-    // ===== B) 模型讨论/复述引用规则（中文） =====
-    const cnPatterns = [
-      /^.*根据\s*Cites\s*部分.*$/gm,
-      /^.*Cites\s*部分.*只有.*id.*$/gm,
-      /^.*Cites\s*中的内容.*$/gm,
-      /^.*Cite\s*中的内容.*$/gm,
-      /^.*<Cites>.*内容.*$/gm,
-      /^.*在\s*Cites\s*中.*$/gm,
-      /^.*从\s*Cites\s*中.*$/gm,
-      /^.*Cites\s*标[签记].*$/gm,
-      /^.*cite\s*id\s*可用.*$/gim,
-      /^.*只有一个\s*(?:cite\s*)?id.*$/gim,
-      /^.*由于只有一个.*id.*可用.*$/gm,
-      /^.*可用的\s*(?:cite\s*)?id.*$/gim,
-      /^.*使用\s*\[id\]\(CITE\)\s*.*引用.*$/gm,
-      /^.*追溯展示规则.*$/gm,
-      /^.*每段话.*至少包含一个引用.*$/gm,
-      /^.*每段话.*至少使用一次.*id.*$/gm,
-      /^.*每段话.*都需要.*引用标记.*$/gm,
-      /^.*每段话.*添加引用.*$/gm,
-      /^.*不要伪造\s*id.*$/gm,
-      /^.*CITE\s*是固定常量.*$/gm,
-      /^.*在.*每段话结尾.*整合引用.*$/gm,
-      /^.*引用标记.*格式.*$/gm,
-      /^.*不同内容来自不同的来源.*$/gm,
-      /^.*合理分配引用.*$/gm,
-      /^.*确保每段话都有引用.*$/gm,
-      /^.*需要在每段话中.*引用.*$/gm,
-      /^.*来源是[""].*\.pdf[""].*$/gm,
-      /^.*来源是[""].*\.docx?[""].*$/gm,
-      /^.*来源是[""].*\.xlsx?[""].*$/gm,
-      /^.*来源是[""].*\.txt[""].*$/gm,
-      /^.*让我重新理解规则.*$/gm,
-      /^.*让我理解.*引用规则.*$/gm,
-      /^.*重新理解.*Cites.*$/gim,
-      /^.*理解.*引用.*规则.*$/gm
-    ];
-    for (const p of cnPatterns) {
-      result = result.replace(p, '');
-    }
+  // ===== B) 模型讨论/复述引用规则（中文） =====
+  const cnPatterns = [
+    /^.*根据\s*Cites\s*部分.*$/gm,
+    /^.*Cites\s*部分.*只有.*id.*$/gm,
+    /^.*Cites\s*中的内容.*$/gm,
+    /^.*Cite\s*中的内容.*$/gm,
+    /^.*<Cites>.*内容.*$/gm,
+    /^.*在\s*Cites\s*中.*$/gm,
+    /^.*从\s*Cites\s*中.*$/gm,
+    /^.*Cites\s*标[签记].*$/gm,
+    /^.*cite\s*id\s*可用.*$/gim,
+    /^.*只有一个\s*(?:cite\s*)?id.*$/gim,
+    /^.*可用的\s*(?:cite\s*)?id.*$/gim,
+    /^.*由于只有一个.*id.*可用.*$/gm,
+    /^.*引用标[签记识].*\(CITE\).*$/gm,
+    /^.*追溯展示规则.*$/gm,
+    /^.*引用格式.*\[id\]\(CITE\).*$/gm,
+    /^.*需要在.*结尾.*添加引用.*$/gm,
+    /^.*每段话.*至少.*引用.*$/gm
+  ];
 
-    // ===== B2) 模型讨论/复述引用规则（英文） =====
-    const enPatterns = [
-      /^.*based on the Cites section.*$/gim,
-      /^.*from the Cites.*$/gim,
-      /^.*in the Cites.*$/gim,
-      /^.*the Cites contains.*$/gim,
-      /^.*Cites section.*only.*id.*$/gim,
-      /^.*available cite id.*$/gim,
-      /^.*only one cite.*$/gim,
-      /^.*every paragraph must have at least one cit.*$/gim,
-      /^.*\[id\]\(CITE\) format.*$/gim,
-      /^.*CITE is a fixed constant.*$/gim,
-      /^.*do not fabricate id.*$/gim,
-      /^.*must use.*\(CITE\).*to cite.*$/gim,
-      /^.*citation.*support.*\[id\]\(CITE\).*$/gim,
-      /^.*need to add citation.*each paragraph.*$/gim,
-      /^.*at least one citation per paragraph.*$/gim,
-      /^.*I need to.*cite.*in each paragraph.*$/gim,
-      /^.*I should.*cite.*every paragraph.*$/gim,
-      /^.*different content.*different sources.*$/gim,
-      /^.*allocate citations.*$/gim,
-      /^.*distribute.*citations.*$/gim,
-      /^.*ensure.*paragraph.*has.*citation.*$/gim
-    ];
-    for (const p of enPatterns) {
-      result = result.replace(p, '');
-    }
+  // ===== C) 模型讨论/复述引用规则（英文） =====
+  const enPatterns = [
+    /^.*based on the Cites section.*$/gim,
+    /^.*from the Cites.*$/gim,
+    /^.*in the Cites.*$/gim,
+    /^.*Cites section.*only.*id.*$/gim,
+    /^.*available cite id.*$/gim,
+    /^.*only one.*cite.*id.*available.*$/gim,
+    /^.*\[id\]\(CITE\)\s*format.*$/gim,
+    /^.*citation.*format.*\(CITE\).*$/gim,
+    /^.*add citation.*at the end.*$/gim,
+    /^.*each paragraph.*at least.*citation.*$/gim,
+    /^.*traceability.*display.*rules.*$/gim,
+    /^.*I need to add.*\[.*\]\(CITE\).*$/gim,
+    /^.*I should cite.*using.*CITE.*$/gim,
+    /^.*let me add.*citations.*$/gim,
+    /^.*I'll include.*\(CITE\).*$/gim
+  ];
 
-    // ===== C) 系统提示词相关提及 =====
-    result = result.replace(/系统提示词[中的要求指示说明]*/g, '');
-    result = result.replace(/引用提示词[中的要求指示说明]*/g, '');
-    result = result.replace(/引用规则[中的要求指示说明]*/g, '');
+  // ===== D) 系统提示词复述 =====
+  const systemPromptPatterns = [
+    /^.*任务描述.*知识库回答助手.*$/gm,
+    /^.*使用 Markdown 语法优化.*$/gm,
+    /^.*保持答案与.*一致.*避免提及.*$/gm,
+    /^.*使用与问题相同的语言.*$/gm,
+    /^.*task description.*knowledge base.*assistant.*$/gim,
+    /^.*use Markdown syntax.*optimize.*$/gim,
+    /^.*keep.*answer.*consistent.*avoid mentioning.*$/gim,
+    /^.*use the same language as the question.*$/gim
+  ];
 
-    // ===== D) 清理多余空行 =====
-    result = result.replace(/\n{3,}/g, '\n\n');
+  const allPatterns = [...cnPatterns, ...enPatterns, ...systemPromptPatterns];
+  for (const pattern of allPatterns) {
+    result = result.replace(pattern, '');
+  }
 
-    return result;
-  };
+  // ===== E) 清理多余空行 =====
+  result = result.replace(/\n{3,}/g, '\n\n');
+  result = result.trim();
 
-  const processChunk = (chunk: string): string => {
-    buffer += chunk;
-
-    const openCitesCount = (buffer.match(/<Cites>/gi) || []).length;
-    const closeCitesCount = (buffer.match(/<\/Cites>/gi) || []).length;
-    if (openCitesCount > closeCitesCount) {
-      return '';
-    }
-
-    const lastBracket = buffer.lastIndexOf('[');
-    if (lastBracket !== -1) {
-      const afterBracket = buffer.slice(lastBracket);
-      if (afterBracket.length < 32 && !afterBracket.includes(')') && /^\[[a-f0-9]*$/i.test(afterBracket)) {
-        return '';
-      }
-    }
-
-    const partialTagMatch = buffer.match(/<\/?C(?:i(?:t(?:e(?:s)?)?)?)?$/i);
-    if (partialTagMatch) {
-      return '';
-    }
-
-    const cleaned = cleanText(buffer);
-    buffer = '';
-    return cleaned;
-  };
-
-  const flush = (): string => {
-    if (!buffer) return '';
-    const cleaned = cleanText(buffer);
-    buffer = '';
-    return cleaned;
-  };
-
-  return { processChunk, flush };
+  return result;
 };
 
 /**
- * 鲁港通 - 清理深度思考内容中的敏感信息（无状态版本）
- * 用于对最终完整的 reasoningText 进行一次性清理
+ * 鲁港通 - 创建流式思考内容处理器
+ *
+ * 关键设计：processChunk 直接透传，零缓冲
+ * 之前的缓冲方案会在自然语言中误匹配 `<C`、`<Ci` 等片段导致流卡死
  */
-export const sanitizeReasoningContent = (text: string): string => {
-  if (!text) return text;
-
-  const sanitizer = createReasoningSanitizer();
-  sanitizer.processChunk(text);
-  const result = sanitizer.flush();
-
-  return result.trim() ? result : '';
+export const createReasoningSanitizer = () => {
+  return {
+    /** 直接透传，不做任何缓冲或过滤 */
+    processChunk(text: string): string {
+      return text;
+    },
+    /** 无缓冲区，返回空字符串 */
+    flush(): string {
+      return '';
+    }
+  };
 };
 
-export const removeDatasetCiteText = (text: string, retainDatasetCite: boolean) => {
-  return retainDatasetCite
-    ? text.replace(/[\[【]id[\]】]\(CITE\)/g, '')
-    : text
-        .replace(/[\[【]([a-f0-9]{24})[\]】](?:\([^\)]*\)?)?/g, '')
-        .replace(/[\[【]id[\]】]\(CITE\)/g, '');
+/**
+ * 对最终完整的 reasoningText 进行敏感信息清理
+ * 在流式结束后调用，对存储的完整文本做一次性处理
+ */
+export const sanitizeReasoningContent = (text: string): string => {
+  if (!text) return '';
+  return cleanReasoningText(text);
+};
+
+/**
+ * 移除知识库引用标记（供 request.ts 等模块使用）
+ * retainDatasetCite=true 时保留引用，false 时移除
+ */
+export const removeDatasetCiteText = (text: string, retainDatasetCite?: boolean): string => {
+  if (!text) return '';
+  if (retainDatasetCite) return text;
+
+  // 移除 [hexId](CITE) 格式的引用标记
+  return text.replace(/\[([a-f0-9]{24})\]\(CITE\)/gi, '');
 };
