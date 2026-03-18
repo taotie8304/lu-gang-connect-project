@@ -600,8 +600,8 @@ const ChatBox = ({
               generatingMessage: (e) => generatingMessage({ ...e, autoTTSResponse }),
               variables: {
                 ...requestVariables,
-                // 鲁港通 - 深度思考开关：传递给后端 AI 调用
-                ...(enableThinking ? { __enableThinking__: true } : {}),
+                // 鲁港通 - 深度思考开关：始终传递给后端，确保关闭时显式传 false
+                __enableThinking__: enableThinking || false,
                 // 鲁港通 - 联网搜索开关：传递给后端 AI 调用
                 ...(enableSearch !== 'auto' ? { __enableSearch__: enableSearch } : {})
               }

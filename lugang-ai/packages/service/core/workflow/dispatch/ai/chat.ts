@@ -40,6 +40,7 @@ import { parseUrlToFileType } from '@fastgpt/global/common/file/tools';
 import { i18nT } from '../../../../../web/i18n/utils';
 import { postTextCensor } from '../../../chat/postTextCensor';
 import { createLLMResponse } from '../../../ai/llm/request';
+import { sanitizeReasoningContent } from '@fastgpt/global/core/ai/llm/utils';
 import { formatModelChars2Points } from '../../../../support/wallet/usage/utils';
 
 export type ChatProps = ModuleDispatchProps<
@@ -220,17 +221,23 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         useVision: aiChatVision,
         requestOrigin,
         // 鲁港通 - 深度思考开关：用户通过前端开关控制
-        ...(globalVariables?.__enableThinking__ ? { enable_thinking: true, thinking_budget: 8000 } : {})
+        // 必须显式传 false 来关闭，否则 Qwen3.5 等模型会默认启用思考
+        ...(globalVariables?.__enableThinking__ === true
+          ? { enable_thinking: true, thinking_budget: 8000 }
+          : { enable_thinking: false })
       },
       userKey: externalProvider.openaiAccount,
       isAborted: () => res?.closed,
       onReasoning({ text }) {
         if (!aiChatReasoning) return;
+        // 鲁港通 - 过滤思考内容中的敏感信息（Cites标记、系统提示词引用等）
+        const sanitized = sanitizeReasoningContent(text);
+        if (!sanitized) return;
         workflowStreamResponse?.({
           write,
           event: SseResponseEventEnum.answer,
           data: textAdaptGptResponse({
-            reasoning_content: text
+            reasoning_content: sanitized
           })
         });
       },
@@ -246,7 +253,10 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       }
     });
 
-    if (!answerText && !reasoningText) {
+    // 鲁港通 - 对最终存储的 reasoningText 也进行敏感信息过滤
+    const sanitizedReasoningText = sanitizeReasoningContent(reasoningText);
+
+    if (!answerText && !sanitizedReasoningText) {
       return getNodeErrResponse({ error: getEmptyResponseTip() });
     }
 
@@ -262,11 +272,11 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
     return {
       data: {
         answerText: answerText,
-        reasoningText,
+        reasoningText: sanitizedReasoningText,
         history: chatCompleteMessages
       },
       [DispatchNodeResponseKeyEnum.answerText]: isResponseAnswerText ? answerText : undefined,
-      [DispatchNodeResponseKeyEnum.reasoningText]: aiChatReasoning ? reasoningText : undefined,
+      [DispatchNodeResponseKeyEnum.reasoningText]: aiChatReasoning ? sanitizedReasoningText : undefined,
 
       [DispatchNodeResponseKeyEnum.nodeResponse]: {
         totalPoints: points,
@@ -275,7 +285,7 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         outputTokens: usage.outputTokens,
         query: `${userChatInput}`,
         maxToken: max_tokens,
-        reasoningText,
+        reasoningText: sanitizedReasoningText,
         historyPreview: getHistoryPreview(chatCompleteMessages, 10000, aiChatVision),
         contextTotalLen: completeMessages.length,
         finishReason: finish_reason,

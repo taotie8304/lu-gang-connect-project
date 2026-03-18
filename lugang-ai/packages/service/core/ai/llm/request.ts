@@ -595,7 +595,8 @@ const llmCompletionsBodyFormat = async <T extends CompletionsBodyType>({
       parallel_tool_calls
     }),
     // 鲁港通 - 深度思考参数放在最后，确保不被 defaultConfig 覆盖
-    ...(enable_thinking ? { enable_thinking, thinking_budget } : {})
+    // 显式传 enable_thinking: false 来关闭 Qwen3.5 等模型的默认思考行为
+    ...(enable_thinking !== undefined ? { enable_thinking, ...(enable_thinking ? { thinking_budget } : {}) } : {})
   } as T;
 
   // field map
