@@ -74,7 +74,7 @@ LUGANG_ENTERPRISE_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-enterpris
 echo -e "${BLUE}配置信息:${NC}"
 echo "  GitHub 用户名: $GITHUB_USERNAME"
 echo "  鲁港通前端镜像: $LUGANG_AI_IMAGE"
-echo "  鲁港通后端镜像: $LUGANG_ONEAPI_IMAGE"
+echo "  鲁港通后端镜像: $LUGANG_ENTERPRISE_IMAGE"
 echo ""
 
 # 步骤 1: 登录到 GitHub Container Registry
@@ -95,14 +95,17 @@ echo -e "${GREEN}✓ 鲁港通前端镜像拉取成功${NC}"
 # 步骤 3: 拉取鲁港通后端镜像
 echo ""
 echo -e "${YELLOW}[3/6] 拉取鲁港通后端镜像${NC}"
-docker pull $LUGANG_ONEAPI_IMAGE || echo -e "${YELLOW}⚠ 鲁港通后端镜像拉取失败，可能尚未构建${NC}"
+docker pull $LUGANG_ENTERPRISE_IMAGE || echo -e "${YELLOW}⚠ 鲁港通后端镜像拉取失败，可能尚未构建${NC}"
 echo -e "${GREEN}✓ 鲁港通后端镜像拉取完成${NC}"
 
-# 步骤 4: 停止旧容器
+# 步骤 4: 记录当前版本（用于回滚）并停止旧容器
 echo ""
-echo -e "${YELLOW}[4/6] 停止旧容器${NC}"
+echo -e "${YELLOW}[4/6] 记录当前版本并停止旧容器${NC}"
+CURRENT_AI_IMAGE=$(docker inspect --format='{{.Config.Image}}' lugang-ai-app 2>/dev/null || echo "无")
+echo "${CURRENT_AI_IMAGE}" > /tmp/lugang-ai-rollback-previous-tag
+echo -e "${GREEN}✓ 当前版本已记录: ${CURRENT_AI_IMAGE}（可用 ./rollback.sh 回滚）${NC}"
 export LUGANG_AI_IMAGE
-export LUGANG_ONEAPI_IMAGE
+export LUGANG_ENTERPRISE_IMAGE
 export MONGO_PASSWORD
 export PG_PASSWORD
 export SESSION_SECRET
