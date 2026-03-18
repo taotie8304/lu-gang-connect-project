@@ -72,9 +72,10 @@ const CollectionCard = () => {
     useContextSelector(CollectionPageContext, (v) => v);
 
   // Add file status icon
+  // 鲁港通 - 防御性检查，确保 collections 始终为数组
   const formatCollections = useMemo(
     () =>
-      collections.map((collection) => {
+      (collections ?? []).map((collection) => {
         const icon = getCollectionIcon({ type: collection.type, name: collection.name });
         const status = (() => {
           if (collection.hasError) {

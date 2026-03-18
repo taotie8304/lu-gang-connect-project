@@ -128,7 +128,8 @@ export const DatasetPageContextProvider = ({
   );
   const { data: searchDatasetTagsResult = [] } = useRequest2(
     async () => {
-      if (!searchTagKey) return allDatasetTags;
+      // 鲁港通 - 防御性检查，确保始终返回数组
+      if (!searchTagKey) return allDatasetTags ?? [];
       const { list } = await getDatasetCollectionTags({
         datasetId: datasetDetail._id,
         searchText: searchTagKey,
