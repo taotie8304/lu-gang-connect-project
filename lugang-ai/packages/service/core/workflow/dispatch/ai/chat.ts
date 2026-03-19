@@ -40,6 +40,7 @@ import { parseUrlToFileType } from '@fastgpt/global/common/file/tools';
 import { i18nT } from '../../../../../web/i18n/utils';
 import { postTextCensor } from '../../../chat/postTextCensor';
 import { createLLMResponse } from '../../../ai/llm/request';
+import { addLog } from '../../../../common/system/log';
 import { sanitizeReasoningContent, createReasoningSanitizer } from '@fastgpt/global/core/ai/llm/utils';
 import { formatModelChars2Points } from '../../../../support/wallet/usage/utils';
 
@@ -202,6 +203,13 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         model: (() => {
           const baseModel = modelConstantsData.model;
           const searchSetting = globalVariables?.__enableSearch__;
+          // 鲁港通 - 调试：联网搜索开关状态
+          addLog.info('鲁港通联网搜索开关调试', {
+            baseModel,
+            searchSetting,
+            enableThinking: globalVariables?.__enableThinking__,
+            allGlobalVarKeys: Object.keys(globalVariables || {})
+          });
           if (searchSetting === 'on' && !baseModel.endsWith('-internet')) {
             return baseModel + '-internet';
           }
