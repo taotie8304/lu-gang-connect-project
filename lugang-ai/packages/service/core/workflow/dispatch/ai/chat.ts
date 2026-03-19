@@ -196,17 +196,17 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
     } = await createLLMResponse({
       body: {
         // 鲁港通 - 联网搜索开关：根据用户选择控制模型名后缀
-        // 'on' → 强制追加 -internet 后缀启用联网搜索
         // 'off' → 强制移除 -internet 后缀关闭联网搜索
-        // 'auto'/undefined → 保持模型原始配置不变
+        // 'on'/'auto'/undefined → 默认启用联网搜索，追加 -internet 后缀
+        // 联网搜索结果与知识库内容由模型自动整合，确保回答全面
         model: (() => {
           const baseModel = modelConstantsData.model;
           const searchSetting = globalVariables?.__enableSearch__;
-          if (searchSetting === 'on' && !baseModel.endsWith('-internet')) {
-            return baseModel + '-internet';
-          }
           if (searchSetting === 'off' && baseModel.endsWith('-internet')) {
             return baseModel.replace(/-internet$/, '');
+          }
+          if (searchSetting !== 'off' && !baseModel.endsWith('-internet')) {
+            return baseModel + '-internet';
           }
           return baseModel;
         })(),
