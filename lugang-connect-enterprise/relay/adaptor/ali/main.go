@@ -32,11 +32,12 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 	}
 
 	// 鲁港通 - 深度思考开关：读取前端传来的 enable_thinking 参数
-	// 如果前端没传（nil），默认关闭思考模式以减少响应时间
-	// 如果前端传了 true，则开启深度思考
+	// 仅对支持思考的模型传递，避免旧模型不识别此参数
 	enableThinking := false
 	var thinkingBudget *int
-	if request.EnableThinking != nil && *request.EnableThinking {
+	isThinkingCapable := strings.HasPrefix(strings.ToLower(aliModel), "qwen3") ||
+		strings.HasPrefix(strings.ToLower(aliModel), "qwq")
+	if request.EnableThinking != nil && *request.EnableThinking && isThinkingCapable {
 		enableThinking = true
 		if request.ThinkingBudget != nil {
 			thinkingBudget = request.ThinkingBudget
@@ -47,16 +48,20 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 	}
 
 	compatReq := &CompatChatRequest{
-		Model:          aliModel,
-		Messages:       request.Messages,
-		Stream:         request.Stream,
-		Temperature:    request.Temperature,
-		TopP:           request.TopP,
-		MaxTokens:      request.MaxTokens,
-		Tools:          request.Tools,
-		Stop:           request.Stop,
-		EnableThinking: &enableThinking,
-		ThinkingBudget: thinkingBudget,
+		Model:       aliModel,
+		Messages:    request.Messages,
+		Stream:      request.Stream,
+		Temperature: request.Temperature,
+		TopP:        request.TopP,
+		MaxTokens:   request.MaxTokens,
+		Tools:       request.Tools,
+		Stop:        request.Stop,
+	}
+
+	// 鲁港通 - 仅对支持思考的模型传递 enable_thinking
+	if isThinkingCapable {
+		compatReq.EnableThinking = &enableThinking
+		compatReq.ThinkingBudget = thinkingBudget
 	}
 
 	if enableSearch {
@@ -89,9 +94,13 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 	request.TopP = helper.Float64PtrMax(request.TopP, 0.9999)
 
 	// 鲁港通 - 深度思考开关（DashScope 原生协议）
+	// 仅对支持思考的模型传递 enable_thinking 参数
+	// qwen-turbo 等旧模型不支持此参数，传递会导致错误或空响应
 	enableThinking := false
 	var thinkingBudget *int
-	if request.EnableThinking != nil && *request.EnableThinking {
+	isThinkingCapableModel := strings.HasPrefix(strings.ToLower(aliModel), "qwen3") ||
+		strings.HasPrefix(strings.ToLower(aliModel), "qwq")
+	if request.EnableThinking != nil && *request.EnableThinking && isThinkingCapableModel {
 		enableThinking = true
 		if request.ThinkingBudget != nil {
 			thinkingBudget = request.ThinkingBudget
@@ -111,8 +120,12 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		TopK:              request.TopK,
 		ResultFormat:      "message",
 		Tools:             request.Tools,
-		EnableThinking:    &enableThinking,
-		ThinkingBudget:    thinkingBudget,
+	}
+
+	// 鲁港通 - 仅对支持思考的模型传递 enable_thinking 参数
+	if isThinkingCapableModel {
+		params.EnableThinking = &enableThinking
+		params.ThinkingBudget = thinkingBudget
 	}
 
 	// 鲁港通 - 联网搜索时启用来源返回
