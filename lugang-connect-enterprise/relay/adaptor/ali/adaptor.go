@@ -39,13 +39,10 @@ func isInternetSearchModel(modelName string) bool {
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
 	a.isInternetModel = isInternetSearchModel(meta.ActualModelName)
-	// 鲁港通 - 联网搜索模型使用 DashScope 原生协议（才能获取 search_info）
-	// 非联网搜索的 Qwen3.5/QwQ/Qwen3 仍使用 OpenAI 兼容模式
-	if a.isInternetModel {
-		a.useCompatMode = false
-	} else {
-		a.useCompatMode = isCompatibleModel(meta.ActualModelName)
-	}
+	// 鲁港通 - Qwen3.5/QwQ/Qwen3 系列（含联网搜索模型）统一使用 OpenAI 兼容接口
+	// 原因：qwen3.5-plus 等新模型不支持 DashScope 原生协议 URL，会返回 400 url error
+	// 联网搜索引用通过 fallback 方案（从回答文本提取 markdown 链接）获取
+	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
