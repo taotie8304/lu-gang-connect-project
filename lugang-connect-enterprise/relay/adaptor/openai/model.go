@@ -95,6 +95,7 @@ type TextResponse struct {
 	Created     int64                `json:"created"`
 	Choices     []TextResponseChoice `json:"choices"`
 	model.Usage `json:"usage"`
+	SearchInfo  any                  `json:"search_info,omitempty"` // 鲁港通 - 阿里百炼联网搜索来源信息
 }
 
 type EmbeddingResponseItem struct {

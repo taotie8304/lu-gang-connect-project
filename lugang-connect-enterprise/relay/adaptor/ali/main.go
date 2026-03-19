@@ -87,22 +87,48 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		aliModel = strings.TrimSuffix(aliModel, EnableSearchModelSuffix)
 	}
 	request.TopP = helper.Float64PtrMax(request.TopP, 0.9999)
+
+	// 鲁港通 - 深度思考开关（DashScope 原生协议）
+	enableThinking := false
+	var thinkingBudget *int
+	if request.EnableThinking != nil && *request.EnableThinking {
+		enableThinking = true
+		if request.ThinkingBudget != nil {
+			thinkingBudget = request.ThinkingBudget
+		} else {
+			defaultBudget := 8000
+			thinkingBudget = &defaultBudget
+		}
+	}
+
+	params := Parameters{
+		EnableSearch:      enableSearch,
+		IncrementalOutput: request.Stream,
+		Seed:              uint64(request.Seed),
+		MaxTokens:         request.MaxTokens,
+		Temperature:       request.Temperature,
+		TopP:              request.TopP,
+		TopK:              request.TopK,
+		ResultFormat:      "message",
+		Tools:             request.Tools,
+		EnableThinking:    &enableThinking,
+		ThinkingBudget:    thinkingBudget,
+	}
+
+	// 鲁港通 - 联网搜索时启用来源返回
+	if enableSearch {
+		params.SearchOptions = &AliSearchOptions{
+			EnableSource:   true,
+			EnableCitation: true,
+		}
+	}
+
 	return &ChatRequest{
 		Model: aliModel,
 		Input: Input{
 			Messages: messages,
 		},
-		Parameters: Parameters{
-			EnableSearch:      enableSearch,
-			IncrementalOutput: request.Stream,
-			Seed:              uint64(request.Seed),
-			MaxTokens:         request.MaxTokens,
-			Temperature:       request.Temperature,
-			TopP:              request.TopP,
-			TopK:              request.TopK,
-			ResultFormat:      "message",
-			Tools:             request.Tools,
-		},
+		Parameters: params,
 	}
 }
 
@@ -194,6 +220,10 @@ func responseAli2OpenAI(response *ChatResponse) *openai.TextResponse {
 			TotalTokens:      response.Usage.InputTokens + response.Usage.OutputTokens,
 		},
 	}
+	// 鲁港通 - 透传联网搜索来源信息
+	if response.Output.SearchInfo != nil && len(response.Output.SearchInfo.SearchResults) > 0 {
+		fullTextResponse.SearchInfo = response.Output.SearchInfo
+	}
 	return &fullTextResponse
 }
 
@@ -220,6 +250,8 @@ func streamResponseAli2OpenAI(aliResponse *ChatResponse) *openai.ChatCompletions
 
 func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusCode, *model.Usage) {
 	var usage model.Usage
+	// 鲁港通 - 收集流式响应中的 search_info（DashScope 原生协议在最后一个 chunk 返回）
+	var collectedSearchInfo *AliSearchInfo
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Split(func(data []byte, atEOF bool) (advance int, token []byte, err error) {
 		if atEOF && len(data) == 0 {
@@ -254,6 +286,10 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 			usage.CompletionTokens = aliResponse.Usage.OutputTokens
 			usage.TotalTokens = aliResponse.Usage.InputTokens + aliResponse.Usage.OutputTokens
 		}
+		// 鲁港通 - 收集 search_info（DashScope 原生协议在 output.search_info 中返回）
+		if aliResponse.Output.SearchInfo != nil && len(aliResponse.Output.SearchInfo.SearchResults) > 0 {
+			collectedSearchInfo = aliResponse.Output.SearchInfo
+		}
 		response := streamResponseAli2OpenAI(&aliResponse)
 		if response == nil {
 			continue
@@ -266,6 +302,21 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 
 	if err := scanner.Err(); err != nil {
 		logger.SysError("error reading stream: " + err.Error())
+	}
+
+	// 鲁港通 - 在流式结束前，发送一个包含 search_info 的额外 chunk
+	if collectedSearchInfo != nil && len(collectedSearchInfo.SearchResults) > 0 {
+		searchInfoChunk := openai.ChatCompletionsStreamResponse{
+			Id:         "search_info",
+			Object:     "chat.completion.chunk",
+			Created:    helper.GetTimestamp(),
+			Model:      "qwen",
+			Choices:    []openai.ChatCompletionsStreamResponseChoice{},
+			SearchInfo: collectedSearchInfo,
+		}
+		if err := render.ObjectData(c, searchInfoChunk); err != nil {
+			logger.SysError("error sending search_info chunk: " + err.Error())
+		}
 	}
 
 	render.Done(c)

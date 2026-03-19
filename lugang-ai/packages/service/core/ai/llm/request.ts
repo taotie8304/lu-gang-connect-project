@@ -383,25 +383,11 @@ export const createStreamResponse = async ({
     }
   } else {
     // Not use tool
-    let chunkCount = 0;
     for await (const part of response) {
       if (isAborted?.()) {
         response.controller?.abort();
         updateFinishReason('close');
         break;
-      }
-
-      // 鲁港通 - 调试：记录前3个和最后几个 chunk 的原始结构
-      chunkCount++;
-      if (chunkCount <= 3) {
-        addLog.info('鲁港通流式chunk调试', {
-          chunkIndex: chunkCount,
-          chunkKeys: Object.keys(part || {}),
-          hasSearchInfo: !!(part as any)?.search_info,
-          deltaKeys: Object.keys(part?.choices?.[0]?.delta || {}),
-          deltaSearchInfo: !!(part?.choices?.[0]?.delta as any)?.search_info,
-          rawChunkStr: JSON.stringify(part).slice(0, 500)
-        });
       }
 
       // 鲁港通 - 提取流式 chunk 中的 search_info
@@ -426,26 +412,12 @@ export const createStreamResponse = async ({
 
     const { reasoningContent, content, finish_reason, usage } = getResponseData();
 
-    // 鲁港通 - 调试日志：联网搜索引用提取
-    addLog.info('鲁港通联网搜索引用调试', {
-      hasStreamSearchCitations: streamSearchCitations.length > 0,
-      streamSearchCitationsCount: streamSearchCitations.length,
-      contentLength: content?.length || 0,
-      contentLast500: content?.slice(-500) || '',
-      contentFirst500: content?.slice(0, 500) || ''
-    });
-
-    // 鲁港通 - 联网搜索引用 Fallback：
-    // DashScope OpenAI 兼容模式流式不返回 search_info，
-    // 从回答文本中提取 markdown 链接作为联网搜索引用
+    // 鲁港通 - 联网搜索引用：
+    // DashScope 原生协议通过 One API 转发时，search_info 在流式结束前的专用 chunk 中返回
+    // Fallback：从回答文本中提取 markdown 链接
     const finalWebCitations = streamSearchCitations.length > 0
       ? streamSearchCitations
       : extractCitationsFromAnswerText(content);
-
-    addLog.info('鲁港通联网搜索引用结果', {
-      finalWebCitationsCount: finalWebCitations.length,
-      finalWebCitations: finalWebCitations.slice(0, 5)
-    });
 
     return {
       answerText: content,

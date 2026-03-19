@@ -17,8 +17,9 @@ import (
 // https://help.aliyun.com/zh/dashscope/developer-reference/api-details
 
 type Adaptor struct {
-	meta          *meta.Meta
-	useCompatMode bool // 鲁港通 - Qwen3.5/QwQ/Qwen3 使用 OpenAI 兼容接口
+	meta            *meta.Meta
+	useCompatMode   bool // 鲁港通 - Qwen3.5/QwQ/Qwen3 使用 OpenAI 兼容接口
+	isInternetModel bool // 鲁港通 - 联网搜索模型，需要用原生协议获取 search_info
 }
 
 // isCompatibleModel 判断是否使用 OpenAI 兼容接口
@@ -30,9 +31,21 @@ func isCompatibleModel(modelName string) bool {
 		strings.HasPrefix(name, "qwen3-")
 }
 
+// isInternetSearchModel 判断是否为联网搜索模型
+func isInternetSearchModel(modelName string) bool {
+	return strings.HasSuffix(strings.ToLower(modelName), "-internet")
+}
+
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
-	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	a.isInternetModel = isInternetSearchModel(meta.ActualModelName)
+	// 鲁港通 - 联网搜索模型使用 DashScope 原生协议（才能获取 search_info）
+	// 非联网搜索的 Qwen3.5/QwQ/Qwen3 仍使用 OpenAI 兼容模式
+	if a.isInternetModel {
+		a.useCompatMode = false
+	} else {
+		a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	}
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {

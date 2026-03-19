@@ -1,11 +1,13 @@
 package model
 
 type Message struct {
-	Role       string  `json:"role,omitempty"`
-	Content    any     `json:"content,omitempty"`
-	Name       *string `json:"name,omitempty"`
-	ToolCalls  []Tool  `json:"tool_calls,omitempty"`
-	ToolCallId string  `json:"tool_call_id,omitempty"`
+	Role             string  `json:"role,omitempty"`
+	Content          any     `json:"content,omitempty"`
+	Name             *string `json:"name,omitempty"`
+	ToolCalls        []Tool  `json:"tool_calls,omitempty"`
+	ToolCallId       string  `json:"tool_call_id,omitempty"`
+	// 鲁港通 - 深度思考内容（阿里百炼 Qwen3.5/QwQ/Qwen3 系列返回）
+	ReasoningContent *string `json:"reasoning_content,omitempty"`
 }
 
 func (m Message) IsStringContent() bool {

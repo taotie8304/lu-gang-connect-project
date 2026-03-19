@@ -44,15 +44,20 @@ type Input struct {
 }
 
 type Parameters struct {
-	TopP              *float64     `json:"top_p,omitempty"`
-	TopK              int          `json:"top_k,omitempty"`
-	Seed              uint64       `json:"seed,omitempty"`
-	EnableSearch      bool         `json:"enable_search,omitempty"`
-	IncrementalOutput bool         `json:"incremental_output,omitempty"`
-	MaxTokens         int          `json:"max_tokens,omitempty"`
-	Temperature       *float64     `json:"temperature,omitempty"`
-	ResultFormat      string       `json:"result_format,omitempty"`
-	Tools             []model.Tool `json:"tools,omitempty"`
+	TopP              *float64            `json:"top_p,omitempty"`
+	TopK              int                 `json:"top_k,omitempty"`
+	Seed              uint64              `json:"seed,omitempty"`
+	EnableSearch      bool                `json:"enable_search,omitempty"`
+	IncrementalOutput bool                `json:"incremental_output,omitempty"`
+	MaxTokens         int                 `json:"max_tokens,omitempty"`
+	Temperature       *float64            `json:"temperature,omitempty"`
+	ResultFormat      string              `json:"result_format,omitempty"`
+	Tools             []model.Tool        `json:"tools,omitempty"`
+	// 鲁港通 - 联网搜索来源选项
+	SearchOptions     *AliSearchOptions   `json:"search_options,omitempty"`
+	// 鲁港通 - 深度思考控制（DashScope 原生协议）
+	EnableThinking    *bool               `json:"enable_thinking,omitempty"`
+	ThinkingBudget    *int                `json:"thinking_budget,omitempty"`
 }
 
 type ChatRequest struct {
@@ -173,6 +178,23 @@ type Output struct {
 	//Text         string                      `json:"text"`
 	//FinishReason string                      `json:"finish_reason"`
 	Choices []openai.TextResponseChoice `json:"choices"`
+	// 鲁港通 - 联网搜索来源信息（DashScope 原生协议返回）
+	SearchInfo *AliSearchInfo `json:"search_info,omitempty"`
+}
+
+// AliSearchInfo 鲁港通 - DashScope 原生协议返回的联网搜索来源
+type AliSearchInfo struct {
+	SearchResults []AliSearchResult `json:"search_results,omitempty"`
+	ExtraToolInfo []any             `json:"extra_tool_info,omitempty"`
+}
+
+// AliSearchResult 鲁港通 - 单条搜索来源
+type AliSearchResult struct {
+	Index    int    `json:"index"`
+	Title    string `json:"title"`
+	URL      string `json:"url"`
+	Icon     string `json:"icon,omitempty"`
+	SiteName string `json:"site_name,omitempty"`
 }
 
 type ChatResponse struct {
