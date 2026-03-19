@@ -116,6 +116,13 @@ const HomeChatWindow = ({ myApps }: Props) => {
     defaultValue: defaultModels.llm?.model
   });
 
+  // 鲁港通 - 修复默认模型未选中问题：当 defaultModels 异步加载完成后，若当前未选择模型则自动设置
+  useEffect(() => {
+    if (!selectedModel && defaultModels.llm?.model) {
+      setSelectedModel(defaultModels.llm.model);
+    }
+  }, [selectedModel, defaultModels.llm?.model, setSelectedModel]);
+
   const availableTools = useMemo(
     () => chatSettings?.selectedTools || [],
     [chatSettings?.selectedTools]

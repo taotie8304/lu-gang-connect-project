@@ -73,13 +73,13 @@ const ChatInput = ({
     });
   }, []);
 
-  // 鲁港通 - 联网搜索三级开关状态（auto → on → off → auto）
-  type SearchMode = 'auto' | 'on' | 'off';
+  // 鲁港通 - 联网搜索开关状态（on / off 两级切换）
+  type SearchMode = 'on' | 'off';
   const [searchMode, setSearchMode] = useState<SearchMode>(() => {
-    if (typeof window === 'undefined') return 'auto';
+    if (typeof window === 'undefined') return 'on';
     const saved = localStorage.getItem(SEARCH_MODE_KEY);
-    if (saved === 'on' || saved === 'off') return saved;
-    return 'auto';
+    if (saved === 'off') return 'off';
+    return 'on';
   });
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const searchMenuRef = useRef<HTMLDivElement>(null);
@@ -361,9 +361,9 @@ const ChatInput = ({
               px={2}
               py={1}
               borderRadius={'md'}
-              bg={searchMode === 'on' ? 'blue.50' : searchMode === 'off' ? 'transparent' : 'transparent'}
+              bg={searchMode === 'on' ? 'blue.50' : 'transparent'}
               border={'1px solid'}
-              borderColor={searchMode === 'on' ? 'blue.300' : searchMode === 'auto' ? 'gray.200' : 'transparent'}
+              borderColor={searchMode === 'on' ? 'blue.300' : 'transparent'}
               _hover={{ bg: searchMode === 'on' ? 'blue.100' : 'rgba(0,0,0,0.04)' }}
             >
               <Box
@@ -378,9 +378,9 @@ const ChatInput = ({
                   h={'12px'}
                   borderRadius={'50%'}
                   border={'1.5px solid'}
-                  borderColor={searchMode === 'on' ? 'blue.500' : searchMode === 'auto' ? '#707070' : 'myGray.300'}
+                  borderColor={searchMode === 'on' ? 'blue.500' : 'myGray.300'}
                   position={'relative'}
-                  _after={searchMode !== 'off' ? {
+                  _after={searchMode === 'on' ? {
                     content: '""',
                     position: 'absolute',
                     top: '50%',
@@ -389,17 +389,17 @@ const ChatInput = ({
                     w: '4px',
                     h: '4px',
                     borderRadius: '50%',
-                    bg: searchMode === 'on' ? 'blue.500' : '#707070'
+                    bg: 'blue.500'
                   } : undefined}
                 />
               </Box>
               <Text
                 fontSize={'xs'}
-                color={searchMode === 'on' ? 'blue.600' : searchMode === 'auto' ? 'myGray.600' : 'myGray.400'}
+                color={searchMode === 'on' ? 'blue.600' : 'myGray.400'}
                 whiteSpace={'nowrap'}
                 display={['none', 'block']}
               >
-                {searchMode === 'on' ? '联网搜索' : searchMode === 'off' ? '关闭联网' : '自动联网'}
+                {searchMode === 'on' ? '联网搜索' : '关闭联网'}
               </Text>
             </Flex>
 
@@ -419,9 +419,8 @@ const ChatInput = ({
                 minW={'140px'}
               >
                 {([
-                  { key: 'auto' as const, label: '自动联网搜索', desc: '由AI判断是否联网' },
-                  { key: 'on' as const, label: '开启联网搜索', desc: '始终联网获取最新信息' },
-                  { key: 'off' as const, label: '关闭联网搜索', desc: '仅使用知识库回答' }
+                  { key: 'on' as const, label: '联网搜索', desc: '联网获取最新信息并整合回答' },
+                  { key: 'off' as const, label: '关闭联网', desc: '仅使用知识库回答' }
                 ]).map((item) => (
                   <Flex
                     key={item.key}
