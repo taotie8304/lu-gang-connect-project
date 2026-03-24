@@ -31,9 +31,6 @@ importers:
       eslint-config-next:
         specifier: ^14.1.0
         version: 14.2.26(eslint@8.57.1)(typescript@5.8.2)
-      fast-check:
-        specifier: ^4.5.3
-        version: 4.5.3
       husky:
         specifier: ^8.0.3
         version: 8.0.3
@@ -266,6 +263,9 @@ importers:
       node-xlsx:
         specifier: ^0.24.0
         version: 0.24.0
+      opencc-js:
+        specifier: ^1.0.5
+        version: 1.0.5
       p-limit:
         specifier: ^7.2.0
         version: 7.2.0
@@ -9395,6 +9395,9 @@ packages:
 
   openapi-types@12.1.3:
     resolution: {integrity: sha512-N4YtSYJqghVu4iek2ZUvcN/0aqH1kRDuNqzcycDxhOUpg7GdvLa2F3DgS6yBNhInhv2r/6I0Flkn7CqL8+nIcw==}
+
+  opencc-js@1.0.5:
+    resolution: {integrity: sha512-LD+1SoNnZdlRwtYTjnQdFrSVCAaYpuDqL5CkmOaHOkKoKh7mFxUicLTRVNLU5C+Jmi1vXQ3QL4jWdgSaa4sKjg==}
 
   opener@1.5.2:
     resolution: {integrity: sha512-ur5UIdyw5Y7yEj9wLzhqXiy6GZ3Mwx0yGI+5sMn2r0N0v3cKJvUmFH5yPP+WXh9e0xfyzyJX95D8l088DNFj7A==}
@@ -22480,6 +22483,8 @@ snapshots:
       - encoding
 
   openapi-types@12.1.3: {}
+
+  opencc-js@1.0.5: {}
 
   opener@1.5.2: {}
 
