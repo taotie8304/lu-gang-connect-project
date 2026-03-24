@@ -55,8 +55,17 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 				render.StringData(c, data) // if error happened, pass the data to client
 				continue                   // just ignore the error
 			}
+			// 鲁港通 - 诊断日志：检查阿里百炼兼容模式是否返回 search_info
+			if streamResponse.SearchInfo != nil {
+				logger.SysLog("🔍 [DIAG] search_info found in stream chunk: " + data[dataPrefixLength:])
+			}
+			if strings.Contains(data, "search_info") {
+				logger.SysLog("🔍 [DIAG] raw chunk contains 'search_info': " + data[dataPrefixLength:])
+			}
 			if len(streamResponse.Choices) == 0 && streamResponse.Usage == nil && streamResponse.SearchInfo == nil {
 				// but for empty choice and no usage and no search_info, we should not pass it to client, this is for azure
+				// 鲁港通 - 诊断日志：记录被过滤掉的空 chunk
+				logger.SysLog("🔍 [DIAG] filtered empty chunk: " + data[dataPrefixLength:])
 				continue // just ignore empty choice
 			}
 			render.StringData(c, data)

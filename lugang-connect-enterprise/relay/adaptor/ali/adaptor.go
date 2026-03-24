@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/lugang-connect/enterprise/common/logger"
 	"github.com/lugang-connect/enterprise/relay/adaptor"
 	"github.com/lugang-connect/enterprise/relay/adaptor/openai"
 	"github.com/lugang-connect/enterprise/relay/meta"
@@ -113,6 +114,9 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
 	if a.useCompatMode {
+		// 鲁港通 - 诊断日志：确认走了兼容模式
+		logger.SysLog(fmt.Sprintf("🔍 [DIAG] Ali compat mode: model=%s, isStream=%v, isInternet=%v, url=%s",
+			meta.ActualModelName, meta.IsStream, a.isInternetModel, c.Request.URL.String()))
 		// 鲁港通 - 兼容模式返回标准 OpenAI 格式，直接用 OpenAI handler 处理
 		if meta.IsStream {
 			err, _, usage = openai.StreamHandler(c, resp, relaymode.ChatCompletions)
