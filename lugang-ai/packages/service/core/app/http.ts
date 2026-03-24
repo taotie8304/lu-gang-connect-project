@@ -6,6 +6,7 @@ import type { RequireOnlyOne } from '@fastgpt/global/common/type/utils';
 import type { HttpToolConfigType } from '@fastgpt/global/core/app/type';
 import { contentTypeMap, ContentTypes } from '@fastgpt/global/core/workflow/constants';
 import { replaceEditorVariable } from '@fastgpt/global/core/workflow/runtime/utils';
+import { convertParamsS2T } from '../../common/string/cjkNormalizer';
 
 export type RunHTTPToolParams = {
   baseUrl: string;
@@ -17,6 +18,7 @@ export type RunHTTPToolParams = {
   staticParams?: HttpToolConfigType['staticParams'];
   staticHeaders?: HttpToolConfigType['staticHeaders'];
   staticBody?: HttpToolConfigType['staticBody'];
+  enableS2T?: boolean; // 鲁港通 - 是否启用简繁转换
 };
 
 export type RunHTTPToolResult = RequireOnlyOne<{
@@ -31,8 +33,14 @@ const buildHttpRequest = ({
   customHeaders,
   staticParams,
   staticHeaders,
-  staticBody
+  staticBody,
+  enableS2T
 }: Omit<RunHTTPToolParams, 'baseUrl' | 'toolPath'>) => {
+  // 鲁港通 - 简繁转换：当 enableS2T 启用时，对 params 执行简体→繁体转换
+  if (enableS2T) {
+    params = convertParamsS2T(params);
+  }
+
   const replaceVariables = (text: string) => {
     return replaceEditorVariable({
       text,
@@ -133,7 +141,8 @@ export const runHTTPTool = async ({
   customHeaders,
   staticParams,
   staticHeaders,
-  staticBody
+  staticBody,
+  enableS2T
 }: RunHTTPToolParams): Promise<RunHTTPToolResult> => {
   try {
     const { headers, body, queryParams } = buildHttpRequest({
@@ -143,7 +152,8 @@ export const runHTTPTool = async ({
       customHeaders,
       staticParams,
       staticHeaders,
-      staticBody
+      staticBody,
+      enableS2T
     });
 
     const { data } = await axios({

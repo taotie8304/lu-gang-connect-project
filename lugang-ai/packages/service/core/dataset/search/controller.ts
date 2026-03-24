@@ -35,6 +35,11 @@ import { formatDatasetDataValue } from '../data/controller';
 import { pushTrack } from '../../../common/middle/tracks/utils';
 import { replaceS3KeyToPreviewUrl } from '../../../core/dataset/utils';
 import { addDays, addHours } from 'date-fns';
+// 鲁港通 - 简繁搜索规范化
+import {
+  simplifiedToTraditional,
+  traditionalToSimplified
+} from '../../../common/string/cjkNormalizer';
 
 export type SearchDatasetDataProps = {
   histories: ChatItemType[];
@@ -185,6 +190,17 @@ export async function searchDatasetData(
     datasetIds = [],
     collectionFilterMatch
   } = props;
+
+  // 鲁港通 - CJK 简繁搜索规范化：当启用时，扩展查询以同时搜索简体和繁体
+  if (global.feConfigs?.enableCjkNormalization) {
+    const expandedQueries = queries.flatMap((q) => {
+      const traditional = simplifiedToTraditional(q);
+      const simplified = traditionalToSimplified(q);
+      return [q, traditional, simplified];
+    });
+    queries = [...new Set(expandedQueries)];
+    reRankQuery = simplifiedToTraditional(reRankQuery);
+  }
 
   // Constants data
   const datasetDataSelectField =

@@ -29,6 +29,11 @@ import { SERVICE_LOCAL_HOST } from '../../../../common/system/tools';
 import { formatHttpError } from '../utils';
 import { isInternalAddress } from '../../../../common/system/utils';
 import { serviceRequestMaxContentLength } from '../../../../common/system/constants';
+import {
+  simplifiedToTraditional,
+  containsChinese,
+  convertParamsS2T
+} from '../../../../common/string/cjkNormalizer';
 
 type PropsArrType = {
   key: string;
@@ -188,6 +193,27 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
       return Promise.reject(`Invalid JSON body: ${httpJsonBody}`);
     }
   })();
+
+  // 鲁港通 - 简繁转换：当工作流变量 __enableS2T__ 启用时，对请求参数执行简体→繁体转换
+  const enableS2T = variables?.__enableS2T__ === true || variables?.__enableS2T__ === 'true';
+
+  if (enableS2T) {
+    // 转换 URL 中的中文
+    if (containsChinese(httpReqUrl)) {
+      httpReqUrl = simplifiedToTraditional(httpReqUrl);
+    }
+    // 转换 query params 中的中文值
+    for (const key of Object.keys(params)) {
+      if (typeof params[key] === 'string' && containsChinese(params[key])) {
+        params[key] = simplifiedToTraditional(params[key]);
+      }
+    }
+    // 鲁港通 - 转换 requestBody 中的中文值（仅普通对象，排除 FormData/URLSearchParams）
+    // convertParamsS2T 返回包含所有 key 的新对象，用转换后的值覆盖原值
+    if (typeof requestBody === 'object' && requestBody !== null && !(requestBody instanceof FormData) && !(requestBody instanceof URLSearchParams)) {
+      Object.assign(requestBody, convertParamsS2T(requestBody));
+    }
+  }
 
   // Just show
   const formattedRequestBody: Record<string, any> = (() => {

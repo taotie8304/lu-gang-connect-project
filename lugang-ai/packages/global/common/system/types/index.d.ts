@@ -145,6 +145,7 @@ export type FastGPTFeConfigsType = {
 
   // 鲁港通 - 引用系统配置
   citationRelevanceThreshold?: number; // 知识库引用相关性过滤阈值，默认 0.4
+  enableCjkNormalization?: boolean; // 鲁港通 - 知识库搜索简繁兼容开关，默认关闭
 
   // 鲁港通用户界面配置
   defaultChatAppId?: string;      // 默认聊天应用 ID

@@ -249,6 +249,8 @@ export const dispatchRunTool = async (props: RunToolProps): Promise<RunToolRespo
       }
 
       toolInput = params;
+      // 鲁港通 - 从工作流变量读取简繁转换开关
+      const enableS2T = variables?.__enableS2T__ === true || variables?.__enableS2T__ === 'true';
       const { data, errorMsg } = await runHTTPTool({
         baseUrl: baseUrl || '',
         toolPath: httpTool.path,
@@ -262,7 +264,8 @@ export const dispatchRunTool = async (props: RunToolProps): Promise<RunToolRespo
           : undefined,
         staticParams: httpTool.staticParams,
         staticHeaders: httpTool.staticHeaders,
-        staticBody: httpTool.staticBody
+        staticBody: httpTool.staticBody,
+        enableS2T
       });
 
       if (errorMsg) {
