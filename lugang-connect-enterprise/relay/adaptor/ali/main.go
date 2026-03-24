@@ -3,6 +3,7 @@ package ali
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"github.com/lugang-connect/enterprise/common/ctxkey"
 	"github.com/lugang-connect/enterprise/common/render"
 	"io"
@@ -145,13 +146,18 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		}
 	}
 
-	return &ChatRequest{
+	chatReq := &ChatRequest{
 		Model: aliModel,
 		Input: Input{
 			Messages: messages,
 		},
 		Parameters: params,
 	}
+	// 鲁港通 - 诊断日志：打印发送给 DashScope 原生协议的请求体
+	if reqBytes, err := json.Marshal(chatReq); err == nil {
+		logger.SysError("ali native request body: " + string(reqBytes))
+	}
+	return chatReq
 }
 
 func ConvertEmbeddingRequest(request model.GeneralOpenAIRequest) *EmbeddingRequest {
@@ -290,8 +296,15 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 
 	common.SetEventStreamHeaders(c)
 
+	// 鲁港通 - 诊断日志：记录收到的 chunk 数量
+	chunkCount := 0
 	for scanner.Scan() {
 		data := scanner.Text()
+		// 鲁港通 - 诊断日志：记录前几个原始行，帮助排查 DashScope 原生协议响应格式
+		if chunkCount < 5 {
+			logger.SysError("ali native stream raw line [" + fmt.Sprintf("%d", chunkCount) + "]: " + data)
+		}
+		chunkCount++
 		if len(data) < 5 || data[:5] != "data:" {
 			continue
 		}
@@ -301,7 +314,13 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 		err := json.Unmarshal([]byte(data), &aliResponse)
 		if err != nil {
 			logger.SysError("error unmarshalling stream response: " + err.Error())
+			// 鲁港通 - 诊断日志：打印无法解析的原始数据
+			logger.SysError("ali native unmarshal failed data: " + data)
 			continue
+		}
+		// 鲁港通 - 诊断日志：检查是否有错误码
+		if aliResponse.Code != "" {
+			logger.SysError("ali native stream error: code=" + aliResponse.Code + " message=" + aliResponse.Message)
 		}
 		if aliResponse.Usage.OutputTokens != 0 {
 			usage.PromptTokens = aliResponse.Usage.InputTokens
@@ -342,6 +361,10 @@ func StreamHandler(c *gin.Context, resp *http.Response) (*model.ErrorWithStatusC
 	}
 
 	render.Done(c)
+
+	// 鲁港通 - 诊断日志：总结流式响应情况
+	logger.SysError(fmt.Sprintf("ali native stream summary: totalChunks=%d, promptTokens=%d, completionTokens=%d, hasSearchInfo=%v",
+		chunkCount, usage.PromptTokens, usage.CompletionTokens, collectedSearchInfo != nil))
 
 	err := resp.Body.Close()
 	if err != nil {
