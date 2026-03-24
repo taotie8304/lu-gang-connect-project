@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -55,12 +56,19 @@ func StreamHandler(c *gin.Context, resp *http.Response, relayMode int) (*model.E
 				render.StringData(c, data) // if error happened, pass the data to client
 				continue                   // just ignore the error
 			}
-			// 鲁港通 - 诊断日志：检查阿里百炼兼容模式是否返回 search_info
-			if streamResponse.SearchInfo != nil {
-				logger.SysLog("🔍 [DIAG] search_info found in stream chunk: " + data[dataPrefixLength:])
+			// 鲁港通 - 诊断日志：记录每个 chunk 的关键信息（临时，验证后删除）
+			hasChoices := len(streamResponse.Choices) > 0
+			hasUsage := streamResponse.Usage != nil
+			hasSearchInfo := streamResponse.SearchInfo != nil
+			finishReason := ""
+			if hasChoices && streamResponse.Choices[0].FinishReason != nil {
+				finishReason = *streamResponse.Choices[0].FinishReason
 			}
+			logger.SysLog(fmt.Sprintf("🔍 [DIAG] chunk: choices=%v, usage=%v, searchInfo=%v, finish=%s",
+				hasChoices, hasUsage, hasSearchInfo, finishReason))
+			// 鲁港通 - 诊断：如果原始数据包含 search_info 但解析后没有，说明结构不匹配
 			if strings.Contains(data, "search_info") {
-				logger.SysLog("🔍 [DIAG] raw chunk contains 'search_info': " + data[dataPrefixLength:])
+				logger.SysLog("🔍 [DIAG] RAW chunk with search_info: " + data[dataPrefixLength:])
 			}
 			if len(streamResponse.Choices) == 0 && streamResponse.Usage == nil && streamResponse.SearchInfo == nil {
 				// but for empty choice and no usage and no search_info, we should not pass it to client, this is for azure

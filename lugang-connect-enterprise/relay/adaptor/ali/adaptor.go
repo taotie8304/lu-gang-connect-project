@@ -40,14 +40,10 @@ func isInternetSearchModel(modelName string) bool {
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
 	a.isInternetModel = isInternetSearchModel(meta.ActualModelName)
-	// 鲁港通 - 联网搜索模型必须走原生 DashScope 协议，因为只有原生协议才返回 search_info
-	// 兼容模式（/compatible-mode/v1/chat/completions）的 SSE 流不包含 search_info 数据
-	// 非联网模型（Qwen3.5/QwQ/Qwen3 系列）继续走兼容模式以支持 reasoning_content
-	if a.isInternetModel {
-		a.useCompatMode = false
-	} else {
-		a.useCompatMode = isCompatibleModel(meta.ActualModelName)
-	}
+	// 鲁港通 - 所有 Qwen3.5/QwQ/Qwen3 系列（含联网搜索模型）统一使用兼容模式
+	// 兼容模式同时支持 reasoning_content（深度思考）和 enable_search（联网搜索）
+	// search_info 通过兼容模式的 stream_options 在最后一个 chunk 中返回
+	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {

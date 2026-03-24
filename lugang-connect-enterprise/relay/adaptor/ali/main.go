@@ -71,6 +71,12 @@ func ConvertCompatRequest(request model.GeneralOpenAIRequest) *CompatChatRequest
 			EnableSource:   true,
 			EnableCitation: true,
 		}
+		// 鲁港通 - 流式模式下请求 include_usage，让最后一个 chunk 包含完整信息
+		if request.Stream {
+			compatReq.StreamOptions = &model.StreamOptions{
+				IncludeUsage: true,
+			}
+		}
 	}
 
 	return compatReq
