@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Flex, useDisclosure, Box } from '@chakra-ui/react';
+import { Flex, useDisclosure, Box, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import type { SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import dynamic from 'next/dynamic';
@@ -10,6 +10,7 @@ import ChatBoxDivider from '@/components/core/chat/Divider';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { type ChatSiteItemType } from '@fastgpt/global/core/chat/type';
+import { ChatRoleEnum, ChatItemValueTypeEnum } from '@fastgpt/global/core/chat/constants';
 import { addStatisticalDataToHistoryItem } from '@/global/core/chat/utils';
 import { useSize } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
@@ -71,6 +72,17 @@ const ResponseTags = ({
   } = useMemo(() => addStatisticalDataToHistoryItem(historyItem), [historyItem]);
 
   const [quoteFolded, setQuoteFolded] = useState<boolean>(true);
+
+  // 鲁港通 - 检测回答文本中是否有裸数字引用 [N]，但无联网搜索引用数据
+  const hasOrphanInlineRefs = useMemo(() => {
+    if (webSearchCitations.length > 0) return false;
+    if (historyItem.obj !== ChatRoleEnum.AI) return false;
+    const answerText = (historyItem.value as any[])
+      .filter((v: any) => v.type === ChatItemValueTypeEnum.text && v.text?.content)
+      .map((v: any) => v.text.content)
+      .join('');
+    return /\[\d+\]/.test(answerText);
+  }, [historyItem, webSearchCitations]);
 
   const chatType = useContextSelector(ChatBoxContext, (v) => v.chatType);
 
@@ -348,6 +360,16 @@ const ResponseTags = ({
             )}
           </Flex>
         </>
+      )}
+
+      {/* 鲁港通 - 回答中有 [N] 引用但无联网搜索引用数据时，显示提示 */}
+      {hasOrphanInlineRefs && citationRenderList.length === 0 && (
+        <Flex alignItems={'center'} mt={2} gap={1.5}>
+          <MyIcon name={'common/linkBlue'} w={'14px'} color={'myGray.500'} />
+          <Text fontSize={'xs'} color={'myGray.500'}>
+            {t('chat:citation_sources_unavailable')}
+          </Text>
+        </Flex>
       )}
 
       {notEmptyTags && (

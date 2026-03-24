@@ -31,7 +31,7 @@ import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
 import { i18nT } from '../../../../web/i18n/utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import json5 from 'json5';
-import { extractSearchCitations, extractCitationsFromAnswerText } from './searchInfoParser';
+import { extractSearchCitations, extractCitationsFromAnswerText, cleanOrphanCitations } from './searchInfoParser';
 
 export type ResponseEvents = {
   onStreaming?: ({ text }: { text: string }) => void;
@@ -289,8 +289,11 @@ export const createStreamResponse = async ({
         ? streamSearchCitations
         : extractCitationsFromAnswerText(content);
 
+      // 鲁港通 - 清理孤立引用序号
+      const cleanedContent = cleanOrphanCitations(content, finalWebCitations);
+
       return {
-        answerText: content,
+        answerText: cleanedContent,
         reasoningText: reasoningContent,
         finish_reason,
         usage,
@@ -372,8 +375,11 @@ export const createStreamResponse = async ({
         ? streamSearchCitations
         : extractCitationsFromAnswerText(llmAnswer);
 
+      // 鲁港通 - 清理孤立引用序号
+      const cleanedLlmAnswer = cleanOrphanCitations(llmAnswer, promptToolWebCitations);
+
       return {
-        answerText: llmAnswer,
+        answerText: cleanedLlmAnswer,
         reasoningText: reasoningContent,
         finish_reason,
         usage,
@@ -419,8 +425,11 @@ export const createStreamResponse = async ({
       ? streamSearchCitations
       : extractCitationsFromAnswerText(content);
 
+    // 鲁港通 - 清理孤立引用序号
+    const cleanedContent = cleanOrphanCitations(content, finalWebCitations);
+
     return {
-      answerText: content,
+      answerText: cleanedContent,
       reasoningText: reasoningContent,
       finish_reason,
       usage,
@@ -507,9 +516,12 @@ export const createCompleteResponse = async ({
     ? apiCitations
     : extractCitationsFromAnswerText(formatContent);
 
+  // 鲁港通 - 清理孤立引用序号
+  const cleanedFormatContent = cleanOrphanCitations(formatContent, finalCitations);
+
   return {
     reasoningText: formatReasonContent,
-    answerText: formatContent,
+    answerText: cleanedFormatContent,
     toolCalls,
     finish_reason,
     usage,

@@ -62,6 +62,25 @@ export function extractSearchCitations(response: any): WebSearchCitation[] {
 }
 
 /**
+ * 鲁港通 - 从回答文本中提取裸数字引用序号 [1], [2], [3]
+ * 返回引用序号数组（去重、升序排列）
+ */
+export function extractBareNumberReferences(text: string): number[] {
+  if (!text) return [];
+
+  const refs = new Set<number>();
+  // 鲁港通 - 匹配 [N] 格式的裸数字引用，排除 markdown 链接 [N](...)
+  const regex = /\[(\d+)\](?!\()/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    refs.add(parseInt(match[1], 10));
+  }
+
+  return Array.from(refs).sort((a, b) => a - b);
+}
+
+/**
  * 鲁港通 - 从模型回答文本中提取联网搜索引用（Fallback 方案）
  * 当 DashScope OpenAI 兼容模式流式不返回 search_info 时，
  * 从回答文本中解析 markdown 链接 [title](url) 作为联网搜索引用。
@@ -102,4 +121,26 @@ export function extractCitationsFromAnswerText(answerText: string): WebSearchCit
   }
 
   return citations;
+}
+
+
+/**
+ * 鲁港通 - 清理回答文本中的孤立引用序号
+ * - 有对应 citation 的 [N] 保留
+ * - 无对应 citation 的 [N] 移除
+ * - 非引用格式的文本内容不变
+ */
+export function cleanOrphanCitations(
+  text: string,
+  citations: WebSearchCitation[]
+): string {
+  if (!text) return text;
+
+  const validIndices = new Set(citations.map((c) => c.index));
+
+  // 鲁港通 - 替换 [N] 格式的裸数字引用（排除 markdown 链接 [N](...)）
+  return text.replace(/\[(\d+)\](?!\()/g, (match, numStr) => {
+    const num = parseInt(numStr, 10);
+    return validIndices.has(num) ? match : '';
+  });
 }

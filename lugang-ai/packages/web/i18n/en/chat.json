@@ -13,6 +13,7 @@
   "chat_history": "Conversation History",
   "chat_input_guide_lexicon_is_empty": "Lexicon not configured yet",
   "chat_test_app": "Debug-{{name}}",
+  "citation_sources_unavailable": "Citation sources unavailable",
   "citations": "{{num}} References",
   "clear_input_value": "Clear input",
   "click_contextual_preview": "Click to see contextual preview",

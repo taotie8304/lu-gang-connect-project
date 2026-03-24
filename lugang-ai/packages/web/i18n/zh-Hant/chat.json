@@ -13,6 +13,7 @@
   "chat_history": "對話紀錄",
   "chat_input_guide_lexicon_is_empty": "尚未設定詞彙庫",
   "chat_test_app": "除錯-{{name}}",
+  "citation_sources_unavailable": "引用來源暫不可用",
   "citations": "{{num}} 筆引用",
   "clear_input_value": "清空輸入",
   "click_contextual_preview": "點選檢視上下文預覽",
