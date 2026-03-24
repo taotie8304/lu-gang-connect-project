@@ -40,10 +40,14 @@ func isInternetSearchModel(modelName string) bool {
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
 	a.isInternetModel = isInternetSearchModel(meta.ActualModelName)
-	// 鲁港通 - Qwen3.5/QwQ/Qwen3 系列（含联网搜索模型）统一使用 OpenAI 兼容接口
-	// 原因：qwen3.5-plus 等新模型不支持 DashScope 原生协议 URL，会返回 400 url error
-	// 联网搜索引用通过 fallback 方案（从回答文本提取 markdown 链接）获取
-	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	// 鲁港通 - 联网搜索模型必须走原生 DashScope 协议，因为只有原生协议才返回 search_info
+	// 兼容模式（/compatible-mode/v1/chat/completions）的 SSE 流不包含 search_info 数据
+	// 非联网模型（Qwen3.5/QwQ/Qwen3 系列）继续走兼容模式以支持 reasoning_content
+	if a.isInternetModel {
+		a.useCompatMode = false
+	} else {
+		a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	}
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
@@ -113,10 +117,11 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
+	// 鲁港通 - 诊断日志：记录当前模式
+	logger.SysLog(fmt.Sprintf("🔍 [DIAG] Ali DoResponse: model=%s, isStream=%v, isInternet=%v, useCompat=%v",
+		meta.ActualModelName, meta.IsStream, a.isInternetModel, a.useCompatMode))
+
 	if a.useCompatMode {
-		// 鲁港通 - 诊断日志：确认走了兼容模式
-		logger.SysLog(fmt.Sprintf("🔍 [DIAG] Ali compat mode: model=%s, isStream=%v, isInternet=%v, url=%s",
-			meta.ActualModelName, meta.IsStream, a.isInternetModel, c.Request.URL.String()))
 		// 鲁港通 - 兼容模式返回标准 OpenAI 格式，直接用 OpenAI handler 处理
 		if meta.IsStream {
 			err, _, usage = openai.StreamHandler(c, resp, relaymode.ChatCompletions)
@@ -126,7 +131,7 @@ func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Met
 		return
 	}
 
-	// 旧 DashScope 格式处理
+	// 鲁港通 - 原生 DashScope 协议处理（联网搜索模型走这里，可以获取 search_info）
 	if meta.IsStream {
 		err, usage = StreamHandler(c, resp)
 	} else {
