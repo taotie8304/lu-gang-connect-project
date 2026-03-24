@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
-	"github.com/lugang-connect/enterprise/common/logger"
 	"github.com/lugang-connect/enterprise/relay/adaptor"
 	"github.com/lugang-connect/enterprise/relay/adaptor/openai"
 	"github.com/lugang-connect/enterprise/relay/meta"
@@ -40,10 +39,16 @@ func isInternetSearchModel(modelName string) bool {
 func (a *Adaptor) Init(meta *meta.Meta) {
 	a.meta = meta
 	a.isInternetModel = isInternetSearchModel(meta.ActualModelName)
-	// 鲁港通 - 所有 Qwen3.5/QwQ/Qwen3 系列（含联网搜索模型）统一使用兼容模式
-	// 兼容模式同时支持 reasoning_content（深度思考）和 enable_search（联网搜索）
-	// search_info 通过兼容模式的 stream_options 在最后一个 chunk 中返回
-	a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	// 鲁港通 - 联网搜索模型必须走 DashScope 原生协议
+	// 官方文档明确说明：OpenAI 兼容模式不支持返回搜索来源（search_info）和角标标注
+	// 只有 DashScope 原生协议才能返回 search_info，让前端展示引用来源
+	// 原生协议同时支持 enable_thinking（深度思考）+ enable_search（联网搜索）
+	// 非联网的 Qwen3.5/QwQ/Qwen3 系列继续走兼容模式以支持 reasoning_content
+	if a.isInternetModel {
+		a.useCompatMode = false
+	} else {
+		a.useCompatMode = isCompatibleModel(meta.ActualModelName)
+	}
 }
 
 func (a *Adaptor) GetRequestURL(meta *meta.Meta) (string, error) {
@@ -113,10 +118,6 @@ func (a *Adaptor) DoRequest(c *gin.Context, meta *meta.Meta, requestBody io.Read
 }
 
 func (a *Adaptor) DoResponse(c *gin.Context, resp *http.Response, meta *meta.Meta) (usage *model.Usage, err *model.ErrorWithStatusCode) {
-	// 鲁港通 - 诊断日志：记录当前模式
-	logger.SysLog(fmt.Sprintf("🔍 [DIAG] Ali DoResponse: model=%s, isStream=%v, isInternet=%v, useCompat=%v",
-		meta.ActualModelName, meta.IsStream, a.isInternetModel, a.useCompatMode))
-
 	if a.useCompatMode {
 		// 鲁港通 - 兼容模式返回标准 OpenAI 格式，直接用 OpenAI handler 处理
 		if meta.IsStream {

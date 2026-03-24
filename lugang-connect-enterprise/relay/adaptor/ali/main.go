@@ -134,11 +134,14 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		params.ThinkingBudget = thinkingBudget
 	}
 
-	// 鲁港通 - 联网搜索时启用来源返回
+	// 鲁港通 - 联网搜索时启用来源返回和角标标注
+	// 官方文档：DashScope 原生协议支持 enable_source + enable_citation
+	// 角标格式 [1] [2] 与前端 Citation Parser 匹配
 	if enableSearch {
 		params.SearchOptions = &AliSearchOptions{
 			EnableSource:   true,
 			EnableCitation: true,
+			ForcedSearch:   true,
 		}
 	}
 
