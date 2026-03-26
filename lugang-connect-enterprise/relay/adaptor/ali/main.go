@@ -98,6 +98,11 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		enableSearch = true
 		aliModel = strings.TrimSuffix(aliModel, EnableSearchModelSuffix)
 	}
+	// 鲁港通 - DashScope 原生协议不支持 qwen3.5-plus，需要映射到 qwen3-max
+	// 官方文档确认：qwen3.5-plus 只在兼容模式下支持，原生协议用 qwen3-max（支持思考+搜索）
+	if strings.ToLower(aliModel) == "qwen3.5-plus" {
+		aliModel = "qwen3-max"
+	}
 	request.TopP = helper.Float64PtrMax(request.TopP, 0.9999)
 
 	// 鲁港通 - 深度思考开关（DashScope 原生协议）
