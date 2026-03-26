@@ -128,6 +128,10 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   chineseRedirectUrl: process.env.CHINESE_IP_REDIRECT_URL || '',
   // 鲁港通 - 引用系统配置
   citationRelevanceThreshold: 0.4,
+  // 鲁港通 - 用户注册和登录配置
+  register_method: ['email', 'phone'],
+  login_method: ['email', 'phone'],
+  find_password_method: ['email', 'phone'],
   // 鲁港通用户界面配置
   defaultChatAppId: '',
   enableUserChatOnly: true,
