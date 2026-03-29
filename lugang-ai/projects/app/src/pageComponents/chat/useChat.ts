@@ -1,6 +1,7 @@
 import { getRecentlyUsedApps } from '@/web/core/app/api';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { useUserStore } from '@/web/support/user/useUserStore';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
 import { useMount } from 'ahooks';
 import { useState, useEffect } from 'react';
@@ -8,8 +9,12 @@ import { useState, useEffect } from 'react';
 export const useChat = (appId: string) => {
   const { setSource, setAppId } = useChatStore();
   const { userInfo, initUserInfo } = useUserStore();
+  const { feConfigs } = useSystemStore();
 
   const [isInitedUser, setIsInitedUser] = useState(false);
+
+  // 鲁港通 - 如果 URL 没有提供 appId，使用默认聊天应用 ID
+  const effectiveAppId = appId || feConfigs?.defaultChatAppId || '';
 
   // get app list
   const { data: myApps = [] } = useRequest2(() => getRecentlyUsedApps({ getRecentlyChat: true }), {
@@ -22,7 +27,7 @@ export const useChat = (appId: string) => {
   // initialize user info
   useMount(async () => {
     // ensure store has current appId before setting source (avoids fallback to lastChatAppId)
-    if (appId) setAppId(appId);
+    if (effectiveAppId) setAppId(effectiveAppId);
     try {
       await initUserInfo();
     } catch (error) {
@@ -35,10 +40,10 @@ export const useChat = (appId: string) => {
 
   // sync appId to store as soon as route/appId changes
   useEffect(() => {
-    if (appId) {
-      setAppId(appId);
+    if (effectiveAppId) {
+      setAppId(effectiveAppId);
     }
-  }, [appId, setAppId, userInfo]);
+  }, [effectiveAppId, setAppId, userInfo]);
 
   return {
     isInitedUser,
