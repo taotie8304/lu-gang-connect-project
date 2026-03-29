@@ -133,7 +133,7 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   login_method: ['email', 'phone'],
   find_password_method: ['email', 'phone'],
   // 鲁港通用户界面配置
-  defaultChatAppId: '',
+  defaultChatAppId: process.env.DEFAULT_APP_ID || '',
   enableUserChatOnly: true,
   adminPath: '/admin',
   oneApiUrl: process.env.ONE_API_URL || 'https://api.airscend.com'
