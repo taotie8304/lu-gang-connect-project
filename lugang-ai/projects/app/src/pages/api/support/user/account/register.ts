@@ -24,6 +24,7 @@ import { isEmail, isPhone, validateUserRegistration } from '@fastgpt/global/supp
 import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
 import { PerResourceTypeEnum, ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { TeamDefaultRoleVal } from '@fastgpt/global/support/permission/user/constant';
+import { sumPer } from '@fastgpt/global/support/permission/utils';
 import { Types } from 'mongoose';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -183,22 +184,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         { session }
       );
 
-      // 为新用户添加默认应用的读取权限
+      // 鲁港通：为新用户添加默认应用的读取权限（包含聊天日志读取权限）
+      // ReadPermissionVal (0b100) + AppReadChatLogPerVal (0b1000) = 0b1100 = 12
       const defaultAppId = process.env.DEFAULT_APP_ID;
       if (defaultAppId) {
+        const { AppReadChatLogPerVal } = await import('@fastgpt/global/support/permission/app/constant');
+        const appPermission = sumPer(ReadPermissionVal, AppReadChatLogPerVal);
+        
         await MongoResourcePermission.create(
           [{
             resourceType: PerResourceTypeEnum.app,
             teamId: rootTeamMember.teamId,
             resourceId: new Types.ObjectId(defaultAppId),
             tmbId: tmb._id,
-            permission: ReadPermissionVal
+            permission: appPermission
           }],
           { session }
         );
         addLog.info('鲁港通用户应用权限已分配', { 
           tmbId: tmb._id.toString(), 
-          appId: defaultAppId 
+          appId: defaultAppId,
+          permission: appPermission
         });
       }
 

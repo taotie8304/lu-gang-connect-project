@@ -158,10 +158,6 @@ func ConvertRequest(request model.GeneralOpenAIRequest) *ChatRequest {
 		},
 		Parameters: params,
 	}
-	// 鲁港通 - 诊断日志：打印发送给 DashScope 原生协议的请求体
-	if reqBytes, err := json.Marshal(chatReq); err == nil {
-		logger.SysError("ali native request body: " + string(reqBytes))
-	}
 	return chatReq
 }
 
