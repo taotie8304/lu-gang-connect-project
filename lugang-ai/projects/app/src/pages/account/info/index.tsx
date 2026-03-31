@@ -775,6 +775,70 @@ const Other = ({ onOpenContact }: { onOpenContact: () => void }) => {
             </Flex>
           )}
       </Grid>
+
+      {/* 鲁港通：用户信息板块 */}
+      <Box mt={6}>
+        <InfoSection
+          title="使用须知"
+          icon="common/info"
+          content="欢迎使用鲁港通跨境AI智能平台。请遵守平台使用规范，合理使用AI服务。如有任何问题，请联系客服。"
+        />
+        <InfoSection
+          title="服务时间"
+          icon="common/clockLight"
+          content="客服工作时间：周一至周五 9:00-18:00（节假日除外）。紧急问题请通过邮件联系：support@airscend.com"
+          mt={4}
+        />
+        <InfoSection
+          title="重要公告"
+          icon="common/noticeLight"
+          content="系统将于本周六凌晨2:00-4:00进行维护升级，期间服务可能短暂中断，请提前做好准备。感谢您的理解与支持！"
+          mt={4}
+        />
+      </Box>
+    </Box>
+  );
+};
+
+// 鲁港通：信息板块组件
+const InfoSection = ({
+  title,
+  icon,
+  content,
+  ...boxProps
+}: {
+  title: string;
+  icon: string;
+  content: string;
+} & BoxProps) => {
+  return (
+    <Box
+      bg="white"
+      borderWidth="1px"
+      borderColor="borderColor.low"
+      borderRadius="md"
+      p={4}
+      {...boxProps}
+    >
+      <Flex alignItems="center" mb={2}>
+        <MyIcon name={icon} w="18px" color="primary.600" />
+        <Box
+          ml={2}
+          fontSize="md"
+          fontWeight="medium"
+          color="myGray.900"
+        >
+          {title}
+        </Box>
+      </Flex>
+      <Box
+        fontSize="sm"
+        color="myGray.600"
+        lineHeight="1.6"
+        whiteSpace="pre-wrap"
+      >
+        {content}
+      </Box>
     </Box>
   );
 };
