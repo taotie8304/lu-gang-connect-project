@@ -47,8 +47,10 @@ const SystemContentModal: React.FC<SystemContentModalProps> = ({
         throw new Error('獲取內容失敗');
       }
 
-      const data = await response.json();
-      setContent(data.content || '');
+      const result = await response.json();
+      // 鲁港通：API 返回格式为 { code, data: { content, ... } }
+      const contentData = result.data || result;
+      setContent(contentData.content || '');
     } catch (err: any) {
       console.error('鲁港通：获取系统内容失败', { contentKey, error: err.message });
       setError('獲取內容失敗，請稍後再試');
