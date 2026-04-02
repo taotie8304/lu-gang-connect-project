@@ -43,7 +43,7 @@ interface UserSettingsPanelProps {
 }
 
 const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }) => {
-  const { t } = useTranslation();
+  const { t } = useTranslation(['common', 'system_content']);
   const router = useRouter();
   const { setUserInfo } = useUserStore();
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
@@ -136,36 +136,36 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'termsOfUse',
       icon: 'book',
-      label: '使用條款',
+      label: t('system_content:terms_of_use'),
       onClick: () => {
         setSystemContentModal({
           isOpen: true,
           contentKey: SystemContentKeyEnum.termsOfUse,
-          title: '使用條款'
+          title: t('system_content:terms_of_use')
         });
       }
     },
     {
       key: 'privacyPolicy',
       icon: 'book',
-      label: '隱私政策',
+      label: t('system_content:privacy_policy'),
       onClick: () => {
         setSystemContentModal({
           isOpen: true,
           contentKey: SystemContentKeyEnum.privacyPolicy,
-          title: '隱私政策'
+          title: t('system_content:privacy_policy')
         });
       }
     },
     {
       key: 'dataCollection',
       icon: 'book',
-      label: '個人資料收集聲明',
+      label: t('system_content:data_collection'),
       onClick: () => {
         setSystemContentModal({
           isOpen: true,
           contentKey: SystemContentKeyEnum.dataCollection,
-          title: '個人資料收集聲明'
+          title: t('system_content:data_collection')
         });
       }
     },
