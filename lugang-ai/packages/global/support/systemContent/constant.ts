@@ -4,10 +4,13 @@
 
 export enum SystemContentKeyEnum {
   termsOfUse = 'terms_of_use',
+  termsOfUseZhCN = 'terms_of_use_zh-CN',
   termsOfUseEn = 'terms_of_use_en',
   privacyPolicy = 'privacy_policy',
+  privacyPolicyZhCN = 'privacy_policy_zh-CN',
   privacyPolicyEn = 'privacy_policy_en',
   dataCollection = 'data_collection',
+  dataCollectionZhCN = 'data_collection_zh-CN',
   dataCollectionEn = 'data_collection_en'
 }
 

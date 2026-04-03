@@ -22,16 +22,22 @@ async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
     const locale = req.cookies.NEXT_LOCALE || 'zh-Hant';
     let contentKey = key as SystemContentKeyEnum;
     
-    // 如果是英文，添加 _en 后缀
+    // 根据语言选择对应的内容版本
     if (locale === 'en') {
+      // 英文：添加 _en 后缀
       const enKey = `${key}_en` as SystemContentKeyEnum;
-      // 检查英文版本是否存在于枚举中
       if (Object.values(SystemContentKeyEnum).includes(enKey)) {
         contentKey = enKey;
       }
+    } else if (locale === 'zh-CN') {
+      // 简体中文：添加 _zh-CN 后缀
+      const cnKey = `${key}_zh-CN` as SystemContentKeyEnum;
+      if (Object.values(SystemContentKeyEnum).includes(cnKey)) {
+        contentKey = cnKey;
+      }
+      // 如果简体版本不存在，回退到繁体版本
     }
-    // 中文（简体和繁体）使用相同的内容（繁体）
-    // 因为数据库中存储的是繁体中文版本
+    // 繁体中文（zh-Hant）：使用原始 key
 
     const content = await getSystemContent(contentKey);
 
