@@ -278,7 +278,7 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 // ========================================
 // 数据库配置
 // ========================================
-const MONGODB_URI = 'mongodb://root:huijin8304@172.17.0.1:27017';
+const MONGODB_URI = 'mongodb://root:LuGang2024Secure@mongo:27017/lugang_ai?authSource=admin';
 const DATABASE_NAME = 'lugang_ai';
 
 async function addEnglishTerms() {

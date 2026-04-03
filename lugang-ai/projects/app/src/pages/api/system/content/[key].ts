@@ -18,7 +18,22 @@ async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
   }
 
   try {
-    const content = await getSystemContent(key as SystemContentKeyEnum);
+    // 鲁港通：根据用户语言选择对应的内容 key
+    const locale = req.cookies.NEXT_LOCALE || 'zh-Hant';
+    let contentKey = key as SystemContentKeyEnum;
+    
+    // 如果是英文，添加 _en 后缀
+    if (locale === 'en') {
+      const enKey = `${key}_en` as SystemContentKeyEnum;
+      // 检查英文版本是否存在于枚举中
+      if (Object.values(SystemContentKeyEnum).includes(enKey)) {
+        contentKey = enKey;
+      }
+    }
+    // 中文（简体和繁体）使用相同的内容（繁体）
+    // 因为数据库中存储的是繁体中文版本
+
+    const content = await getSystemContent(contentKey);
 
     if (!content) {
       return Promise.reject('Content not found');
