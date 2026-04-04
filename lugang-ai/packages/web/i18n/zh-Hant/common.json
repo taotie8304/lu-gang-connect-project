@@ -1396,5 +1396,15 @@
   "zoomout_tip": "放大  ctrl  +",
   "zoomout_tip_mac": "放大  ⌘  +",
   "admin_dashboard": "管理後台",
-  "user.Personal_Center": "個人中心"
+  "user.Personal_Center": "個人中心",
+  "user_settings": {
+    "title": "設置",
+    "activity_center": "活動中心",
+    "account_info": "帳戶資訊",
+    "language": "語言",
+    "change_password": "修改密碼",
+    "product_feedback": "產品回饋",
+    "accessibility": "輔助使用設計",
+    "logout": "登出"
+  }
 }

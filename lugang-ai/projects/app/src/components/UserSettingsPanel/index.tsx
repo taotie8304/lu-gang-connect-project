@@ -86,7 +86,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'activityCenter',
       icon: 'core/chat/sidebar/home',
-      label: '活動中心',
+      label: t('common:user_settings.activity_center'),
       onClick: () => {
         setIsActivityListModalOpen(true);
       }
@@ -94,7 +94,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'accountInfo',
       icon: 'support/pay/payRecordLight',
-      label: '账户信息',
+      label: t('common:user_settings.account_info'),
       onClick: () => {
         setIsAccountInfoModalOpen(true);
       }
@@ -102,7 +102,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'language',
       icon: 'common/language/zh',
-      label: '語言',
+      label: t('common:user_settings.language'),
       onClick: () => {
         setIsLanguageSelectorOpen(true);
       }
@@ -110,7 +110,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'changePassword',
       icon: 'support/user/key',
-      label: '修改密碼',
+      label: t('common:user_settings.change_password'),
       onClick: () => {
         setIsPasswordModalOpen(true);
       }
@@ -118,7 +118,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'feedback',
       icon: 'feedback',
-      label: '產品反饋',
+      label: t('common:user_settings.product_feedback'),
       onClick: () => {
         // 打开邮件客户端
         window.location.href = 'mailto:service@airscend.com?subject=鲁港通产品反馈';
@@ -128,7 +128,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'accessibility',
       icon: 'common/info',
-      label: '輔助使用設計',
+      label: t('common:user_settings.accessibility'),
       onClick: () => {
         setIsAccessibilityModalOpen(true);
       }
@@ -172,7 +172,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
     {
       key: 'logout',
       icon: 'core/chat/sidebar/logout',
-      label: '登出',
+      label: t('common:user_settings.logout'),
       onClick: () => {
         onClose();
         openConfirm({ onConfirm: handleLogout })();
@@ -185,7 +185,7 @@ const UserSettingsPanel: React.FC<UserSettingsPanelProps> = ({ isOpen, onClose }
       <Modal isOpen={isOpen} onClose={onClose} size="md" isCentered>
         <ModalOverlay />
         <ModalContent>
-          <ModalHeader>設置</ModalHeader>
+          <ModalHeader>{t('common:user_settings.title')}</ModalHeader>
           <ModalCloseButton />
           <ModalBody pb={6}>
             <VStack spacing={0} align="stretch">
