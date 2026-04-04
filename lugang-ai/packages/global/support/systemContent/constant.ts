@@ -562,6 +562,11 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
     defaultTitle: '隱私政策',
     defaultContent: '# 隱私政策\n\n隱私政策內容待管理員配置。'
   },
+  [SystemContentKeyEnum.privacyPolicyZhCN]: {
+    label: '隐私政策',
+    defaultTitle: '隐私政策',
+    defaultContent: '# 隐私政策\n\n隐私政策内容待管理员配置。'
+  },
   [SystemContentKeyEnum.privacyPolicyEn]: {
     label: 'Privacy Policy',
     defaultTitle: 'Privacy Policy',
@@ -571,6 +576,11 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
     label: '個人資料收集聲明',
     defaultTitle: '個人資料收集聲明',
     defaultContent: '# 個人資料收集聲明\n\n個人資料收集聲明內容待管理員配置。'
+  },
+  [SystemContentKeyEnum.dataCollectionZhCN]: {
+    label: '个人资料收集声明',
+    defaultTitle: '个人资料收集声明',
+    defaultContent: '# 个人资料收集声明\n\n个人资料收集声明内容待管理员配置。'
   },
   [SystemContentKeyEnum.dataCollectionEn]: {
     label: 'Personal Data Collection Statement',
