@@ -36,6 +36,9 @@ inclusion: always
 - [x] 后端 root 密码重置 - 使用标准 bcrypt 哈希
 - [x] 多语言系统内容支持 - 使用条款、隐私政策、个人资料收集声明（简体/繁体/英文）
 - [x] 自动繁简转换功能 - 使用 opencc-js 自动将繁体内容转换为简体（convert_to_simplified.js）
+- [x] 用户设置面板多语言支持 - 菜单项自动根据语言切换
+- [x] 项目文档整理 - 创建统一主文档 PROJECT-MASTER.md
+- [x] 临时测试文件清理 - 删除 47 个临时测试和检查文件
 
 ## 重要决策记录
 
@@ -52,6 +55,10 @@ inclusion: always
   - API 根据 Cookie (`NEXT_LOCALE`) 自动选择对应语言版本
   - 繁简转换使用 opencc-js (hk→cn)，转换准确率 >99%
   - 简体版本可通过 `convert_to_simplified.js` 脚本自动生成，无需人工翻译
+- **项目文档管理**：
+  - 所有重要信息整合到 `PROJECT-MASTER.md` 统一文档
+  - 临时测试文件定期清理，只保留实用工具脚本
+  - 命名规范统一使用"鲁港通"品牌名称
 
 ## 服务器部署信息
 
