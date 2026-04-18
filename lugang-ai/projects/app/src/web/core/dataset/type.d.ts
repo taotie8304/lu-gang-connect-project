@@ -49,3 +49,55 @@ export type ImportSourceParamsType = UseFormReturn<
   },
   any
 >;
+
+// 鲁港通 - 自动更新配置类型
+export type AutoUpdateConfigType = {
+  enabled: boolean;
+  source: 'hk-gov-data' | 'custom';
+  datasetUrl: string;
+  fileFormat: 'csv' | 'xlsx' | 'xml' | 'api';
+  api?: {
+    endpoint: string;
+    method: string;
+    headers?: Record<string, string>;
+    cacheKey?: string;
+  };
+  detection: {
+    yearPattern?: string[];
+    checkUpdateTime: boolean;
+    detailPageCheck: boolean;
+  };
+  notification?: {
+    enabled: boolean;
+    email?: string;
+  };
+};
+
+// 鲁港通 - 自动更新历史记录类型
+export type AutoUpdateHistoryType = {
+  timestamp: Date;
+  status: 'success' | 'failed';
+  message: string;
+  fileUrl?: string;
+  fileName?: string;
+  fileSize?: number;
+};
+
+// 鲁港通 - 自动更新历史响应类型
+export type AutoUpdateHistoryResponseType = {
+  enabled: boolean;
+  lastCheckTime?: Date;
+  lastUpdateTime?: Date;
+  history: AutoUpdateHistoryType[];
+};
+
+// 鲁港通 - 数据集识别结果类型
+export type DetectResultType = {
+  success: boolean;
+  message?: string;
+  files: Array<{
+    fileName: string;
+    format: string;
+    fileUrl: string;
+  }>;
+};

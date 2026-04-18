@@ -201,6 +201,25 @@ const DataCard = () => {
               {t('dataset:insert_images')}
             </Button>
           )}
+          {collection && (
+            <Button
+              ml={2}
+              variant={'whiteBase'}
+              size={['sm', 'md']}
+              onClick={() => {
+                router.push({
+                  query: {
+                    datasetId,
+                    collectionId,
+                    currentTab: TabEnum.autoUpdate
+                  }
+                });
+              }}
+            >
+              <MyIcon name={'common/settingLight'} w={'14px'} mr={1} />
+              {t('dataset:enable_auto_update')}
+            </Button>
+          )}
         </Flex>
         <Box justifyContent={'center'} px={6} pos={'relative'} w={'100%'}>
           <MyDivider my={'17px'} w={'100%'} />

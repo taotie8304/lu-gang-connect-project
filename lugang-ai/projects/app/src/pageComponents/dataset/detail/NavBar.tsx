@@ -12,6 +12,7 @@ import FolderPath from '@/components/common/folder/Path';
 export enum TabEnum {
   dataCard = 'dataCard',
   collectionCard = 'collectionCard',
+  autoUpdate = 'autoUpdate',
   test = 'test',
   info = 'info',
   import = 'import'
@@ -59,11 +60,15 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
           pt={3}
           px={4}
           justify={'space-between'}
-          borderBottom={currentTab === TabEnum.dataCard ? 'none' : theme.borders.base}
+          borderBottom={
+            currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate
+              ? 'none'
+              : theme.borders.base
+          }
           borderColor={'myGray.200'}
           position={'relative'}
         >
-          {currentTab === TabEnum.dataCard ? (
+          {(currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate) ? (
             <>
               <Flex
                 alignItems={'center'}
@@ -112,7 +117,11 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
             <LightRowTabs<TabEnum>
               px={4}
               py={1}
-              visibility={currentTab === TabEnum.dataCard ? 'hidden' : 'visible'}
+              visibility={
+                currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate
+                  ? 'hidden'
+                  : 'visible'
+              }
               flex={1}
               mx={'auto'}
               w={'100%'}

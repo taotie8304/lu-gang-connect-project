@@ -26,7 +26,8 @@ export async function register() {
         { trackTimerProcess },
         { initBullMQWorkers },
         { initS3Buckets },
-        { initGeo }
+        { initGeo },
+        { initAutoUpdate } // 鲁港通 - 自动更新功能
       ] = await Promise.all([
         import('@fastgpt/service/common/mongo/init'),
         import('@fastgpt/service/common/mongo/index'),
@@ -44,7 +45,8 @@ export async function register() {
         import('@fastgpt/service/common/middle/tracks/processor'),
         import('@/service/common/bullmq'),
         import('@fastgpt/service/common/s3'),
-        import('@fastgpt/service/common/geo')
+        import('@fastgpt/service/common/geo'),
+        import('@fastgpt/service/core/dataset/autoUpdate') // 鲁港通 - 自动更新功能
       ]);
 
       // connect to signoz
@@ -87,6 +89,7 @@ export async function register() {
       startCron();
       startTrainingQueue(true);
       trackTimerProcess();
+      initAutoUpdate(); // 鲁港通 - 启动自动更新定时任务
 
       console.log('Init system success');
     }
