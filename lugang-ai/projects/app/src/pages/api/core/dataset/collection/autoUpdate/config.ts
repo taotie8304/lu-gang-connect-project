@@ -30,8 +30,9 @@ export type ConfigAutoUpdateParams = {
 };
 
 async function handler(req: ApiRequestProps<ConfigAutoUpdateParams>) {
-  const { collectionId, enabled, source, datasetUrl, fileFormat, api, detection, notification } =
-    req.body;
+  // 鲁港通 - GET 请求从 query 获取 collectionId，POST 请求从 body 获取
+  const collectionId = req.method === 'GET' ? (req.query.collectionId as string) : req.body.collectionId;
+  const { enabled, source, datasetUrl, fileFormat, api, detection, notification } = req.body;
 
   if (!collectionId) {
     return Promise.reject(CommonErrEnum.missingParams);
