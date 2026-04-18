@@ -31,7 +31,7 @@ const DetectModal = ({ isOpen, onClose, detectResult, onSelectFile }: DetectModa
   // 鲁港通 - 按格式分组文件
   const groupedFiles = React.useMemo(() => {
     const groups: Record<string, typeof detectResult.files> = {};
-    detectResult.files.forEach((file) => {
+    detectResult.files?.forEach((file) => {
       if (!groups[file.format]) {
         groups[file.format] = [];
       }
@@ -39,6 +39,9 @@ const DetectModal = ({ isOpen, onClose, detectResult, onSelectFile }: DetectModa
     });
     return groups;
   }, [detectResult.files]);
+
+  // 鲁港通 - 检查是否是 API 类型
+  const isApiType = detectResult.type === 'api';
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
@@ -49,44 +52,147 @@ const DetectModal = ({ isOpen, onClose, detectResult, onSelectFile }: DetectModa
         <ModalBody pb={6}>
           {detectResult.success ? (
             <VStack align="stretch" spacing={4}>
-              <Text fontSize={'sm'} color={'myGray.600'}>
-                {t('dataset:found_files', { count: detectResult.files.length })}
-              </Text>
-
-              {Object.entries(groupedFiles).map(([format, files]) => (
-                <Box key={format}>
+              {isApiType && detectResult.apiInfo ? (
+                // 鲁港通 - 显示 API 识别结果
+                <>
                   <Flex alignItems={'center'} mb={2}>
-                    <Badge colorScheme="blue" fontSize={'xs'}>
-                      {format.toUpperCase()}
+                    <Badge colorScheme="green" fontSize={'xs'}>
+                      API
                     </Badge>
                     <Text fontSize={'xs'} ml={2} color={'myGray.500'}>
-                      {files.length} {t('dataset:files')}
+                      {t('dataset:hk_gov_api_detected')}
                     </Text>
                   </Flex>
-                  <VStack align="stretch" spacing={2}>
-                    {files.map((file, index) => (
-                      <Flex
-                        key={index}
-                        p={3}
-                        borderRadius={'md'}
-                        border={'1px solid'}
-                        borderColor={'myGray.200'}
-                        _hover={{ borderColor: 'primary.300', bg: 'myGray.50' }}
-                        cursor={'pointer'}
-                        onClick={() => onSelectFile(file)}
-                      >
-                        <MyIcon name={'common/file/fill/csv'} w={'16px'} mr={2} />
-                        <Box flex={1}>
-                          <Text fontSize={'sm'} fontWeight={'500'}>
-                            {file.fileName}
+
+                  <Box
+                    p={4}
+                    borderRadius={'md'}
+                    border={'1px solid'}
+                    borderColor={'myGray.200'}
+                    bg={'myGray.50'}
+                  >
+                    <VStack align="stretch" spacing={3}>
+                      {/* API 端点 */}
+                      <Box>
+                        <Text fontSize={'xs'} color={'myGray.500'} mb={1}>
+                          {t('dataset:api_endpoint')}
+                        </Text>
+                        <Text fontSize={'sm'} fontWeight={'500'} wordBreak={'break-all'}>
+                          {detectResult.apiInfo.endpoint}
+                        </Text>
+                      </Box>
+
+                      {/* 数据格式 */}
+                      {detectResult.apiInfo.format && (
+                        <Box>
+                          <Text fontSize={'xs'} color={'myGray.500'} mb={1}>
+                            {t('dataset:data_format')}
                           </Text>
+                          <Badge colorScheme="blue" fontSize={'xs'}>
+                            {detectResult.apiInfo.format.toUpperCase()}
+                          </Badge>
                         </Box>
-                        <MyIcon name={'common/rightArrowLight'} w={'14px'} color={'myGray.500'} />
+                      )}
+
+                      {/* 元数据 */}
+                      {detectResult.apiInfo.metadata && (
+                        <>
+                          {detectResult.apiInfo.metadata.title && (
+                            <Box>
+                              <Text fontSize={'xs'} color={'myGray.500'} mb={1}>
+                                {t('dataset:title')}
+                              </Text>
+                              <Text fontSize={'sm'}>{detectResult.apiInfo.metadata.title}</Text>
+                            </Box>
+                          )}
+
+                          {detectResult.apiInfo.metadata.description && (
+                            <Box>
+                              <Text fontSize={'xs'} color={'myGray.500'} mb={1}>
+                                {t('dataset:description')}
+                              </Text>
+                              <Text fontSize={'sm'} noOfLines={3}>
+                                {detectResult.apiInfo.metadata.description}
+                              </Text>
+                            </Box>
+                          )}
+
+                          {detectResult.apiInfo.metadata.updateFrequency && (
+                            <Box>
+                              <Text fontSize={'xs'} color={'myGray.500'} mb={1}>
+                                {t('dataset:update_frequency')}
+                              </Text>
+                              <Text fontSize={'sm'}>
+                                {detectResult.apiInfo.metadata.updateFrequency}
+                              </Text>
+                            </Box>
+                          )}
+                        </>
+                      )}
+                    </VStack>
+                  </Box>
+
+                  <Button
+                    variant={'primary'}
+                    size={'sm'}
+                    onClick={() => {
+                      onSelectFile({
+                        fileName: 'API Data',
+                        format: 'api',
+                        fileUrl: detectResult.apiInfo!.endpoint
+                      });
+                    }}
+                  >
+                    {t('dataset:use_this_api')}
+                  </Button>
+                </>
+              ) : (
+                // 鲁港通 - 显示文件识别结果
+                <>
+                  <Text fontSize={'sm'} color={'myGray.600'}>
+                    {t('dataset:found_files', { count: detectResult.files?.length || 0 })}
+                  </Text>
+
+                  {Object.entries(groupedFiles).map(([format, files]) => (
+                    <Box key={format}>
+                      <Flex alignItems={'center'} mb={2}>
+                        <Badge colorScheme="blue" fontSize={'xs'}>
+                          {format.toUpperCase()}
+                        </Badge>
+                        <Text fontSize={'xs'} ml={2} color={'myGray.500'}>
+                          {files.length} {t('dataset:files')}
+                        </Text>
                       </Flex>
-                    ))}
-                  </VStack>
-                </Box>
-              ))}
+                      <VStack align="stretch" spacing={2}>
+                        {files.map((file, index) => (
+                          <Flex
+                            key={index}
+                            p={3}
+                            borderRadius={'md'}
+                            border={'1px solid'}
+                            borderColor={'myGray.200'}
+                            _hover={{ borderColor: 'primary.300', bg: 'myGray.50' }}
+                            cursor={'pointer'}
+                            onClick={() => onSelectFile(file)}
+                          >
+                            <MyIcon name={'common/file/fill/csv'} w={'16px'} mr={2} />
+                            <Box flex={1}>
+                              <Text fontSize={'sm'} fontWeight={'500'}>
+                                {file.fileName}
+                              </Text>
+                            </Box>
+                            <MyIcon
+                              name={'common/rightArrowLight'}
+                              w={'14px'}
+                              color={'myGray.500'}
+                            />
+                          </Flex>
+                        ))}
+                      </VStack>
+                    </Box>
+                  ))}
+                </>
+              )}
             </VStack>
           ) : (
             <Flex

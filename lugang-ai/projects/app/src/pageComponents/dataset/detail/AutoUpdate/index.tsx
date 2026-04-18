@@ -293,12 +293,27 @@ const AutoUpdate = () => {
           onClose={onDetectModalClose}
           detectResult={detectResult}
           onSelectFile={(file) => {
-            // 鲁港通 - 用户选择文件后，更新配置
-            setConfig({
-              ...config,
-              datasetUrl: file.fileUrl,
-              fileFormat: file.format as any
-            });
+            // 鲁港通 - 用户选择文件或 API 后，更新配置
+            if (file.format === 'api' && detectResult.apiInfo) {
+              // API 类型
+              setConfig({
+                ...config,
+                fileFormat: 'api',
+                api: {
+                  endpoint: detectResult.apiInfo.endpoint,
+                  method: 'GET',
+                  format: detectResult.apiInfo.format || 'json',
+                  cacheKey: detectResult.apiInfo.cacheKey
+                }
+              });
+            } else {
+              // 文件类型
+              setConfig({
+                ...config,
+                datasetUrl: file.fileUrl,
+                fileFormat: file.format as any
+              });
+            }
             onDetectModalClose();
           }}
         />

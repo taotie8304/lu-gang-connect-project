@@ -5,6 +5,10 @@ import { WritePermissionVal } from '@fastgpt/global/support/permission/constant'
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
 import { type ApiRequestProps } from '@fastgpt/service/type/next';
 import { triggerAutoUpdate } from '@fastgpt/service/core/dataset/autoUpdate';
+import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection/schema';
+import { downloadHkGovApiData, checkApiDataUpdated } from '@fastgpt/service/core/dataset/autoUpdate/hkGovApiConverter';
+import { pushDataListToTrainingQueue } from '@fastgpt/service/core/dataset/training/controller';
+import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 
 export type TriggerAutoUpdateParams = {
   collectionId: string;
@@ -26,10 +30,129 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
     per: WritePermissionVal
   });
 
-  // 触发更新
-  await triggerAutoUpdate(collectionId);
+  // 鲁港通 - 获取集合配置
+  const collection = await MongoDatasetCollection.findById(collectionId);
+  if (!collection) {
+    return Promise.reject(CommonErrEnum.unExist);
+  }
 
-  return { success: true, message: '更新任务已触发' };
+  const config = collection.autoUpdateConfig;
+  if (!config || !config.enabled) {
+    return { success: false, message: '自动更新未启用' };
+  }
+
+  // 鲁港通 - 检查是否是香港政府 API
+  const isHkGovApi =
+    config.datasetUrl?.includes('portal.csdi.gov.hk') ||
+    config.datasetUrl?.includes('data.gov.hk') ||
+    config.api?.endpoint?.includes('api.data.gov.hk');
+
+  if (isHkGovApi && config.api?.endpoint) {
+    // 鲁港通 - 处理香港政府 API 更新
+    try {
+      // 1. 检查数据是否更新
+      const oldCacheKey = config.api.cacheKey || '';
+      const checkResult = await checkApiDataUpdated(config.api.endpoint, oldCacheKey);
+
+      if (!checkResult.updated) {
+        return {
+          success: true,
+          message: '数据未更新，无需导入',
+          updated: false
+        };
+      }
+
+      // 2. 下载 API 数据
+      const downloadResult = await downloadHkGovApiData(
+        config.api.endpoint,
+        config.api.format || 'json'
+      );
+
+      if (!downloadResult.success) {
+        return {
+          success: false,
+          message: downloadResult.error || '下载失败'
+        };
+      }
+
+      // 3. 导入到知识库
+      const dataset = await MongoDataset.findById(collection.datasetId);
+      if (!dataset) {
+        return Promise.reject(CommonErrEnum.unExist);
+      }
+
+      await pushDataListToTrainingQueue({
+        teamId: collection.teamId,
+        tmbId: collection.tmbId,
+        datasetId: collection.datasetId,
+        collectionId: collection._id,
+        agentModel: dataset.agentModel,
+        vectorModel: dataset.vectorModel,
+        vlmModel: dataset.vlmModel,
+        mode: collection.trainingType,
+        billId: undefined,
+        data: [
+          {
+            q: downloadResult.data || '',
+            a: '',
+            chunkIndex: 0
+          }
+        ]
+      });
+
+      // 4. 更新缓存键和历史记录
+      await MongoDatasetCollection.updateOne(
+        { _id: collectionId },
+        {
+          $set: {
+            'autoUpdateConfig.api.cacheKey': checkResult.newCacheKey,
+            'autoUpdateConfig.lastUpdateTime': new Date(),
+            'autoUpdateConfig.lastCheckTime': new Date()
+          },
+          $push: {
+            'autoUpdateConfig.history': {
+              timestamp: new Date(),
+              status: 'success',
+              message: '香港政府 API 数据已更新',
+              fileUrl: config.api.endpoint,
+              fileName: 'API Data',
+              fileSize: Buffer.byteLength(downloadResult.data || '', 'utf-8')
+            }
+          }
+        }
+      );
+
+      return {
+        success: true,
+        message: '香港政府 API 数据已成功导入',
+        updated: true
+      };
+    } catch (error: any) {
+      // 记录失败历史
+      await MongoDatasetCollection.updateOne(
+        { _id: collectionId },
+        {
+          $set: { 'autoUpdateConfig.lastCheckTime': new Date() },
+          $push: {
+            'autoUpdateConfig.history': {
+              timestamp: new Date(),
+              status: 'failed',
+              message: error.message
+            }
+          }
+        }
+      );
+
+      return {
+        success: false,
+        message: `更新失败: ${error.message}`
+      };
+    }
+  } else {
+    // 鲁港通 - 使用原有的文件更新逻辑
+    await triggerAutoUpdate(collectionId);
+    return { success: true, message: '更新任务已触发' };
+  }
 }
 
 export default NextAPI(handler);

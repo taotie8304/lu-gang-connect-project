@@ -59,6 +59,7 @@ export type AutoUpdateConfigType = {
   api?: {
     endpoint: string;
     method: string;
+    format?: string;
     headers?: Record<string, string>;
     cacheKey?: string;
   };
@@ -94,10 +95,23 @@ export type AutoUpdateHistoryResponseType = {
 // 鲁港通 - 数据集识别结果类型
 export type DetectResultType = {
   success: boolean;
+  type?: 'file' | 'api';
   message?: string;
-  files: Array<{
+  files?: Array<{
     fileName: string;
     format: string;
     fileUrl: string;
   }>;
+  apiInfo?: {
+    endpoint: string;
+    cacheKey: string;
+    datasetId?: string;
+    format?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      updateFrequency?: string;
+      lastModified?: string;
+    };
+  };
 };
