@@ -378,6 +378,10 @@
     border-collapse: separate;
     border-spacing: 0px;
     color: var(--chakra-colors-gray-700);
+    // 鲁港通 - 表格优化样式 (Requirements 4.4, 4.5, 4.6)
+    overflow-x: auto; // 宽表格提供横向滚动
+    display: block; // 使 overflow-x 生效
+    width: 100%;
 
     thead tr:first-child th {
       border-bottom-width: 1px;
@@ -396,10 +400,18 @@
       }
     }
 
+    th,
     td {
       border-bottom-width: 1px;
       border-left-width: 1px;
       border-color: #ccc;
+      // 鲁港通 - 表格单元格文本自动换行 (Requirements 4.5)
+      word-wrap: break-word;
+      word-break: break-word;
+      white-space: normal;
+      // 鲁港通 - 确保表格单元格内容正确对齐 (Requirements 4.4)
+      vertical-align: top;
+      text-align: left;
 
       &:last-of-type {
         border-right-width: 1px;
@@ -422,4 +434,29 @@
 
 .mermaid {
   overflow-x: auto;
+}
+
+// 鲁港通 - 移动端响应式优化 (Requirements 6.1)
+@media (max-width: 768px) {
+  .markdown {
+    table {
+      // 移动端表格最大宽度为屏幕宽度
+      max-width: 100%;
+      // 确保表格可以横向滚动
+      display: block;
+      overflow-x: auto;
+      // 添加滚动提示
+      -webkit-overflow-scrolling: touch;
+
+      th,
+      td {
+        // 移动端单元格最小宽度，防止内容过度压缩
+        min-width: 100px;
+        // 移动端字体稍小但保持可读性
+        font-size: 14px;
+        // 减少内边距以节省空间
+        padding: 8px 10px;
+      }
+    }
+  }
 }

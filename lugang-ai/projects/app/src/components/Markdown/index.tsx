@@ -11,9 +11,10 @@ import styles from './index.module.scss';
 import dynamic from 'next/dynamic';
 
 import { Box } from '@chakra-ui/react';
-import { CodeClassNameEnum, mdTextFormat } from './utils';
+import { CodeClassNameEnum, mdTextFormat, removeCitationMarks, preprocessTableMarkdown } from './utils';
 import { useCreation } from 'ahooks';
 import type { AProps } from './A';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 const CodeLight = dynamic(() => import('./codeBlock/CodeLight'), { ssr: false });
 const MermaidCodeBlock = dynamic(() => import('./img/MermaidCodeBlock'), { ssr: false });
@@ -52,6 +53,10 @@ const MarkdownRender = ({
   chatAuthData,
   onOpenCiteModal
 }: Props) => {
+  // 鲁港通 - 获取用户角色，用于判断是否移除引用标记
+  const { userInfo } = useUserStore();
+  const isRoot = userInfo?.username === 'root';
+
   const components = useCreation(() => {
     return {
       img: (props: any) => <Image {...props} alt={props.alt} chatAuthData={chatAuthData} />,
@@ -69,9 +74,19 @@ const MarkdownRender = ({
   }, [chatAuthData, onOpenCiteModal, showAnimation]);
 
   const formatSource = useMemo(() => {
-    if (showAnimation || forbidZhFormat) return source;
-    return mdTextFormat(source);
-  }, [forbidZhFormat, showAnimation, source]);
+    let result = source;
+    
+    // 鲁港通 - 预处理表格，移除 <br> 标签 (Requirements 4.2, 4.3)
+    result = preprocessTableMarkdown(result);
+    
+    // 鲁港通 - 对普通用户移除引用标记 (Requirements 5.5, 5.6)
+    if (!isRoot) {
+      result = removeCitationMarks(result);
+    }
+    
+    if (showAnimation || forbidZhFormat) return result;
+    return mdTextFormat(result);
+  }, [forbidZhFormat, showAnimation, source, isRoot]);
 
   const urlTransform = useCallback((val: string) => {
     return val;

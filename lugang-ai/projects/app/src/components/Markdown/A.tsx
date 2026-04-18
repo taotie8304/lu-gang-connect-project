@@ -65,7 +65,7 @@ const CiteLink = React.memo(function CiteLink({
   showAnimation
 }: { id: string; showAnimation?: boolean } & AProps) {
   const { t } = useTranslation();
-  // 鲁港通：获取用户角色
+  // 鲁港通 - 获取用户角色
   const { userInfo } = useUserStore();
   const isRoot = userInfo?.username === 'root';
 
@@ -73,6 +73,11 @@ const CiteLink = React.memo(function CiteLink({
 
   if (!isObjectId(id)) {
     return <></>;
+  }
+
+  // 鲁港通 - 普通用户完全隐藏引用内容（Requirements 5.1, 5.2, 5.3）
+  if (!isRoot) {
+    return null;
   }
 
   const {
@@ -93,77 +98,6 @@ const CiteLink = React.memo(function CiteLink({
 
   const isLinkType = datasetCiteData?.collection?.type === DatasetCollectionTypeEnum.link;
   const rawLink = datasetCiteData?.collection?.rawLink;
-
-  // 鲁港通：普通用户 - 数据加载完成后，如果不是网页链接类型则隐藏引用图标
-  if (!isRoot && datasetCiteData && !isLinkType) {
-    return <></>;
-  }
-
-  // 鲁港通：普通用户 - 简化的引用弹窗，只显示来源名称和跳转按钮
-  if (!isRoot) {
-    return (
-      <Popover
-        isLazy
-        direction="rtl"
-        placement="bottom"
-        strategy={'fixed'}
-        isOpen={isOpen}
-        onClose={onClose}
-        onOpen={() => {
-          onOpen();
-          if (showAnimation) return;
-          getQuoteDataById(id);
-        }}
-        trigger={'hover'}
-        gutter={4}
-      >
-        <PopoverTrigger>
-          <Button variant={'unstyled'} minH={0} minW={0} h={'auto'}>
-            <MyIcon
-              name={'core/chat/quoteSign'}
-              w={'1rem'}
-              color={'primary.700'}
-              cursor={'pointer'}
-            />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent boxShadow={'lg'} w={'400px'} maxW={'90vw'} py={3}>
-          <MyBox isLoading={loading || showAnimation}>
-            <PopoverArrow />
-            <PopoverBody py={0} px={0} fontSize={'sm'}>
-              <Flex px={4} alignItems={'center'} justifyContent={'space-between'}>
-                <Flex alignItems={'center'} flex={1} overflow={'hidden'} mr={2}>
-                  <MyIcon name={icon as any} mr={1} flexShrink={0} w={'12px'} />
-                  <Box
-                    className={'textEllipsis'}
-                    wordBreak={'break-all'}
-                    fontSize={'mini'}
-                    color={'myGray.900'}
-                  >
-                    {sourceData.sourceName}
-                  </Box>
-                </Flex>
-                {isLinkType && rawLink && (
-                  <Button
-                    variant={'ghost'}
-                    color={'primary.600'}
-                    size={'xs'}
-                    flexShrink={0}
-                    onClick={() => {
-                      onClose();
-                      window.open(rawLink, '_blank');
-                    }}
-                  >
-                    {t('common:open_link')}
-                  </Button>
-                )}
-              </Flex>
-            </PopoverBody>
-          </MyBox>
-        </PopoverContent>
-      </Popover>
-    );
-  }
 
   // 管理员：显示完整的引用预览（原始行为）
   return (

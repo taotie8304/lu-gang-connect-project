@@ -47,3 +47,67 @@ export const mdTextFormat = (text: string) => {
 
   return text;
 };
+
+/**
+ * 鲁港通 - 移除文本中的引用标记
+ * 移除 [1], [2] 等引用标记，确保移除后文本仍然连贯
+ * Requirements: 5.5, 5.6
+ * 
+ * @param text - 包含引用标记的文本
+ * @returns 移除引用标记后的文本
+ */
+export const removeCitationMarks = (text: string): string => {
+  if (!text) return text;
+
+  // 移除 [数字] 格式的引用标记
+  // 例如：[1], [2], [10] 等
+  let result = text.replace(/\[\d+\]/g, '');
+
+  // 处理移除后的多余空格（但保留换行符）
+  // 将多个连续空格（非换行符）替换为单个空格
+  result = result.replace(/[^\S\n]+/g, ' ');
+
+  // 移除行首和行尾的空格（但保留换行符）
+  result = result.replace(/^[ \t]+|[ \t]+$/gm, '');
+
+  // 处理标点符号前的多余空格
+  // 例如："文本 。" -> "文本。"
+  result = result.replace(/\s+([，。！？；：、])/g, '$1');
+
+  return result;
+};
+
+/**
+ * 鲁港通 - 预处理 Markdown 表格，移除表格单元格中的 <br> 标签
+ * 使用 CSS 控制换行而非 HTML 标签，确保表格正确渲染
+ * Requirements: 4.2, 4.3
+ * 
+ * @param text - 包含 Markdown 表格的文本
+ * @returns 处理后的文本
+ */
+export const preprocessTableMarkdown = (text: string): string => {
+  if (!text) return text;
+
+  // 检测是否包含 Markdown 表格（包含 | 和 --- 分隔符）
+  const hasTable = /\|.*\|/.test(text) && /\|[\s-:]+\|/.test(text);
+  
+  if (!hasTable) {
+    return text;
+  }
+
+  // 移除表格单元格中的 <br> 标签（包括 <br/> 和 <br />）
+  // 只在表格行中进行替换（包含 | 的行）
+  const lines = text.split('\n');
+  const processedLines = lines.map(line => {
+    // 如果这一行包含表格分隔符 |
+    if (line.includes('|')) {
+      // 移除所有 <br> 标签变体，替换为空格
+      return line
+        .replace(/<br\s*\/?>/gi, ' ')
+        .replace(/\s+/g, ' '); // 清理多余空格
+    }
+    return line;
+  });
+
+  return processedLines.join('\n');
+};

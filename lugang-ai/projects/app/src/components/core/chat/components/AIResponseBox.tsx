@@ -285,26 +285,53 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
     [content, isRoot]
   );
 
+  // 鲁港通 - 移动端响应式优化 (Requirements 6.2, 6.3)
+  // 检测是否为小屏幕设备（宽度 < 768px）
+  const [isMobile, setIsMobile] = React.useState(false);
+
+  React.useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    // 初始检测
+    checkMobile();
+    
+    // 监听窗口大小变化
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // 鲁港通 - 小屏幕设备上默认折叠思考模式，优先显示最终答案 (Requirements 6.3)
+  const defaultIndex = isLastResponseValue && !isMobile ? 0 : undefined;
+
   return (
-    <Accordion allowToggle defaultIndex={isLastResponseValue ? 0 : undefined}>
+    <Accordion allowToggle defaultIndex={defaultIndex}>
       <AccordionItem borderTop={'none'} borderBottom={'none'}>
         <AccordionButton {...accordionButtonStyle} py={1}>
           <HStack mr={2} spacing={1}>
             <MyIcon name={'core/chat/think'} w={'0.85rem'} />
-            <Box fontSize={'sm'}>{t('chat:ai_reasoning')}</Box>
+            {/* 鲁港通 - 移动端字体大小确保可读性（至少 14px）(Requirements 6.4) */}
+            <Box fontSize={{ base: '14px', md: 'sm' }}>{t('chat:ai_reasoning')}</Box>
           </HStack>
 
           {showAnimation && <MyIcon name={'common/loading'} w={'0.85rem'} />}
           <AccordionIcon color={'myGray.600'} ml={5} />
         </AccordionButton>
+        {/* 鲁港通 - 思考模式背景色修复：添加灰色背景 #F7F8FA，确保样式不污染最终答案 */}
         <AccordionPanel
-          py={0}
-          pr={0}
+          py={2}
+          pr={3}
           pl={3}
           mt={2}
+          mb={3}
+          bg={'#F7F8FA'}
+          borderRadius={'md'}
           borderLeft={'2px solid'}
           borderColor={'myGray.300'}
           color={'myGray.500'}
+          // 鲁港通 - 移动端字体大小确保可读性（至少 14px）(Requirements 6.4)
+          fontSize={{ base: '14px', md: 'sm' }}
         >
           <Markdown source={displayContent} showAnimation={showAnimation} />
         </AccordionPanel>
