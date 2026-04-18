@@ -5,6 +5,7 @@ import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
 import { type ApiRequestProps } from '@fastgpt/service/type/next';
 import { scrapeDatasetPage } from '@fastgpt/service/core/dataset/autoUpdate';
+import { convertHkGovDatasetToApi } from '@fastgpt/service/core/dataset/autoUpdate/hkGovApiConverter';
 
 export type DetectDatasetParams = {
   collectionId: string;
@@ -27,7 +28,33 @@ async function handler(req: ApiRequestProps<DetectDatasetParams>) {
     per: ReadPermissionVal
   });
 
-  // 爬取页面，识别数据集信息
+  // 鲁港通 - 检查是否是香港政府数据集页面
+  const isHkGovDataset =
+    datasetUrl.includes('portal.csdi.gov.hk') ||
+    datasetUrl.includes('data.gov.hk') ||
+    datasetUrl.includes('datasetId=');
+
+  if (isHkGovDataset) {
+    // 使用 API 转换器
+    const apiInfo = await convertHkGovDatasetToApi(datasetUrl);
+
+    if (apiInfo) {
+      return {
+        success: true,
+        type: 'api',
+        apiInfo: {
+          endpoint: apiInfo.apiEndpoint,
+          cacheKey: apiInfo.cacheKey,
+          datasetId: apiInfo.datasetId,
+          format: apiInfo.format,
+          metadata: apiInfo.metadata
+        },
+        message: '成功识别香港政府数据集 API'
+      };
+    }
+  }
+
+  // 如果不是香港政府数据集，或者 API 转换失败，使用原有的文件爬取逻辑
   const csvResult = await scrapeDatasetPage(datasetUrl, 'csv');
   const xlsxResult = await scrapeDatasetPage(datasetUrl, 'xlsx');
   const xmlResult = await scrapeDatasetPage(datasetUrl, 'xml');
@@ -49,6 +76,7 @@ async function handler(req: ApiRequestProps<DetectDatasetParams>) {
   // 返回识别结果
   return {
     success: true,
+    type: 'file',
     files: allFiles,
     message: `成功识别到 ${allFiles.length} 个数据文件`
   };
