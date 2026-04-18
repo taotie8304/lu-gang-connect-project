@@ -1,9 +1,9 @@
 // 鲁港通 - 文件下载和导入模块
 import axios from 'axios';
 import { ScrapedFileInfo } from './scraper';
-import { readCsvRawText } from '../../worker/readFile/extension/csv';
-import { readXlsxRawText } from '../../worker/readFile/extension/xlsx';
-import { readFileRawText } from '../../worker/readFile/extension/rawText';
+import { readCsvRawText } from '../../../worker/readFile/extension/csv';
+import { readXlsxRawText } from '../../../worker/readFile/extension/xlsx';
+import { readFileRawText } from '../../../worker/readFile/extension/rawText';
 
 // 鲁港通 - 性能优化：创建 axios 实例复用连接
 const axiosInstance = axios.create({

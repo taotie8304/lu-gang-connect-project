@@ -2,33 +2,59 @@
 inclusion: always
 ---
 
-# 自动行为规则
+# Session Management & Communication Rules
 
-> 以下规则在每一个 session 中自动生效，无需用户提醒。
+These rules apply automatically to every session. Follow them without requiring user prompts.
 
-## Session 开始时（自动执行）
+## Session Initialization
 
-1. 自动读取 `project-memory.md` 和 `session-handoff.md`
-2. 向用户汇报："我已恢复上下文，了解到以下内容：[简短总结]，现在可以继续工作。"
-3. 绝不假装记得之前的对话，如果文件为空或不存在，主动告知用户
-4. 检查待办任务列表，提醒用户当前进度
+When starting a new session:
 
-## Session 进行中（自动监控）
+1. **Load context files**: Read `.kiro/steering/project-memory.md` and `.kiro/steering/session-handoff.md`
+2. **Report status**: Provide a brief summary of loaded context: "我已恢复上下文，了解到以下内容：[简短总结]，现在可以继续工作。"
+3. **Be honest about memory**: Never pretend to remember previous conversations. If memory files are empty or missing, explicitly inform the user
+4. **Review pending tasks**: Check the task list in session-handoff.md and remind the user of current progress
 
-1. 每当完成一个重要功能或做出重要决策，主动提醒用户："建议现在更新 project-memory.md，是否需要我来更新？"
-2. 当上下文使用较多时，主动告知用户："上下文已较多，建议完成当前任务后保存交接并开启新 session"
-3. 不重复读取本 session 已读取过的文件
-4. 不在无必要时扫描整个代码库
+## During Session
 
-## Session 结束前（用户说"结束"或"切换 session"时自动执行）
+### Context Management
+- **Avoid redundant reads**: Do not re-read files already loaded in the current session
+- **Minimize codebase scans**: Only scan the entire codebase when explicitly necessary
+- **Monitor token usage**: When context usage exceeds 90%, proactively suggest ending the session
 
-1. 自动更新 `session-handoff.md`（本次完成内容、下一步任务、未解决问题）
-2. 自动更新 `project-memory.md`（补充新功能、新决策、长期记忆）
-3. 告知用户："交接文件已更新，可以安全切换新 session 了。"
+### Memory Updates
+- **Prompt for updates**: After completing significant features or making important decisions, ask: "建议现在更新 project-memory.md，是否需要我来更新？"
+- **Track progress**: Continuously update understanding of completed work for accurate handoff
 
-## 语言与沟通风格（永久生效）
+## Session Termination
 
-1. 始终用简体中文回复
-2. 用通俗语言解释技术问题，避免术语堆砌（用户没有编程背景）
-3. 每次新 session 开始时主动自我汇报，让用户感受到连续性
-4. 遇到不确定的问题，先问用户，不要自行猜测
+When the user says "结束" or "切换 session":
+
+1. **Update handoff file**: Write to `session-handoff.md`:
+   - Work completed this session
+   - Next steps and pending tasks
+   - Unresolved issues or bugs
+2. **Update memory file**: Write to `project-memory.md`:
+   - New features completed
+   - Important decisions made
+   - Long-term project knowledge
+3. **Confirm completion**: "交接文件已更新，可以安全切换新 session 了。"
+
+## Communication Style
+
+### Language
+- **Always use Simplified Chinese** for all responses
+- **Use plain language**: Explain technical concepts in simple terms (user has no programming background)
+- **Avoid jargon**: Replace technical terms with everyday language when possible
+
+### Interaction Patterns
+- **Self-report on start**: Begin each session with a context summary to establish continuity
+- **Ask before assuming**: When uncertain, ask the user rather than guessing
+- **Be transparent**: Clearly communicate what you're doing and why
+
+## Code Conventions
+
+- **Comment format**: Use `// 鲁港通 - xxx` for code comments
+- **Preserve imports**: Never modify `@fastgpt/*` import paths (these are dependency paths)
+- **Package manager**: Always use `pnpm` (this is a monorepo project)
+- **Test commands**: Use `pnpm vitest run --config vitest.simple.config.mts` (not npx)
