@@ -67,20 +67,62 @@ async function handler(req: ApiRequestProps<ConfigAutoUpdateParams>) {
   }
 
   // POST 请求 - 更新配置
-  await MongoDatasetCollection.updateOne(
-    { _id: collectionId },
-    {
-      $set: {
-        'autoUpdateConfig.enabled': enabled,
-        'autoUpdateConfig.source': source,
-        'autoUpdateConfig.datasetUrl': datasetUrl,
-        'autoUpdateConfig.fileFormat': fileFormat,
-        'autoUpdateConfig.api': api,
-        'autoUpdateConfig.detection': detection,
-        'autoUpdateConfig.notification': notification
+  // 鲁港通 - 先检查 autoUpdateConfig 是否存在
+  const collection = await MongoDatasetCollection.findById(collectionId);
+  if (!collection) {
+    return Promise.reject(CommonErrEnum.unExist);
+  }
+
+  // 鲁港通 - 如果 autoUpdateConfig 是 null 或不存在，先初始化整个对象
+  if (!collection.autoUpdateConfig) {
+    await MongoDatasetCollection.updateOne(
+      { _id: collectionId },
+      {
+        $set: {
+          autoUpdateConfig: {
+            enabled: enabled || false,
+            source: source || 'hk-gov-data',
+            datasetUrl: datasetUrl || '',
+            fileFormat: fileFormat || 'csv',
+            api: api || undefined,
+            detection: detection || {
+              yearPattern: [],
+              checkUpdateTime: true,
+              detailPageCheck: false
+            },
+            notification: notification || undefined,
+            history: []
+          }
+        }
       }
+    );
+  } else {
+    // 鲁港通 - 如果已存在，使用 $set 更新各个字段
+    const updateFields: any = {
+      'autoUpdateConfig.enabled': enabled,
+      'autoUpdateConfig.source': source,
+      'autoUpdateConfig.datasetUrl': datasetUrl,
+      'autoUpdateConfig.fileFormat': fileFormat,
+      'autoUpdateConfig.detection': detection,
+      'autoUpdateConfig.notification': notification
+    };
+
+    // 鲁港通 - 只有当 api 存在时才更新，否则删除该字段
+    if (api) {
+      updateFields['autoUpdateConfig.api'] = api;
+    } else if (fileFormat !== 'api') {
+      // 如果不是 API 格式，删除 api 字段
+      await MongoDatasetCollection.updateOne(
+        { _id: collectionId },
+        { $unset: { 'autoUpdateConfig.api': '' } }
+      );
     }
-  );
+
+    await MongoDatasetCollection.updateOne(
+      { _id: collectionId },
+      { $set: updateFields }
+    );
+  }
 
   return { success: true };
 }

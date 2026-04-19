@@ -295,9 +295,10 @@ const AutoUpdate = () => {
           onSelectFile={(file) => {
             // 鲁港通 - 用户选择文件或 API 后，更新配置
             if (file.format === 'api' && detectResult.apiInfo) {
-              // API 类型
+              // API 类型 - 同时更新 datasetUrl 和 api 配置
               setConfig({
                 ...config,
+                datasetUrl: detectResult.apiInfo.endpoint, // 鲁港通 - 填入 API 地址到 datasetUrl
                 fileFormat: 'api',
                 api: {
                   endpoint: detectResult.apiInfo.endpoint,
