@@ -37,8 +37,10 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
   }
 
   const config = collection.autoUpdateConfig;
-  if (!config || !config.enabled) {
-    return { success: false, message: '自动更新未启用' };
+  
+  // 鲁港通 - 如果没有配置，返回错误
+  if (!config) {
+    return { success: false, message: '请先配置自动更新' };
   }
 
   // 鲁港通 - 检查是否是香港政府 API
@@ -52,9 +54,20 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
     try {
       // 1. 检查数据是否更新
       const oldCacheKey = config.api.cacheKey || '';
-      const checkResult = await checkApiDataUpdated(config.api.endpoint, oldCacheKey);
+      
+      // 鲁港通 - 如果是首次导入（没有缓存键），直接下载数据
+      const isFirstImport = !oldCacheKey;
+      
+      let shouldUpdate = isFirstImport;
+      let newCacheKey = oldCacheKey;
+      
+      if (!isFirstImport) {
+        const checkResult = await checkApiDataUpdated(config.api.endpoint, oldCacheKey);
+        shouldUpdate = checkResult.updated;
+        newCacheKey = checkResult.newCacheKey;
+      }
 
-      if (!checkResult.updated) {
+      if (!shouldUpdate && !isFirstImport) {
         return {
           success: true,
           message: '数据未更新，无需导入',
@@ -69,10 +82,16 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
       );
 
       if (!downloadResult.success) {
-        return {
-          success: false,
-          message: downloadResult.error || '下载失败'
-        };
+        throw new Error(downloadResult.error || '下载失败');
+      }
+
+      // 鲁港通 - 如果是首次导入，生成缓存键
+      if (isFirstImport) {
+        const crypto = require('crypto');
+        newCacheKey = crypto
+          .createHash('md5')
+          .update(downloadResult.data || '')
+          .digest('hex');
       }
 
       // 3. 导入到知识库
@@ -105,7 +124,7 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
         { _id: collectionId },
         {
           $set: {
-            'autoUpdateConfig.api.cacheKey': checkResult.newCacheKey,
+            'autoUpdateConfig.api.cacheKey': newCacheKey,
             'autoUpdateConfig.lastUpdateTime': new Date(),
             'autoUpdateConfig.lastCheckTime': new Date()
           },
@@ -113,7 +132,7 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
             'autoUpdateConfig.history': {
               timestamp: new Date(),
               status: 'success',
-              message: '香港政府 API 数据已更新',
+              message: isFirstImport ? '首次导入香港政府 API 数据' : '香港政府 API 数据已更新',
               fileUrl: config.api.endpoint,
               fileName: 'API Data',
               fileSize: Buffer.byteLength(downloadResult.data || '', 'utf-8')
@@ -124,7 +143,7 @@ async function handler(req: ApiRequestProps<TriggerAutoUpdateParams>) {
 
       return {
         success: true,
-        message: '香港政府 API 数据已成功导入',
+        message: isFirstImport ? '香港政府 API 数据首次导入成功' : '香港政府 API 数据已成功更新',
         updated: true
       };
     } catch (error: any) {

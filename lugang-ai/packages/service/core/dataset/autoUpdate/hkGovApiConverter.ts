@@ -55,7 +55,9 @@ export async function convertHkGovDatasetToApi(
     let format = 'json';
     const metadata: HkGovApiInfo['metadata'] = {};
 
-    // 查找 JSON API 链接
+    // 鲁港通 - 查找所有可能的 API 链接
+    const possibleApiLinks: string[] = [];
+
     $('a').each((_, element) => {
       const $link = $(element);
       const href = $link.attr('href');
@@ -63,34 +65,72 @@ export async function convertHkGovDatasetToApi(
 
       if (!href) return;
 
-      // 检查是否是 API 链接
+      // 鲁港通 - 收集所有可能的 API 链接
       if (
         href.includes('api.data.gov.hk') ||
         href.includes('/api/') ||
+        href.includes('.json') ||
+        href.includes('.csv') ||
+        href.includes('.xml') ||
         text.includes('api') ||
         text.includes('json') ||
+        text.includes('csv') ||
+        text.includes('xml') ||
         text.includes('数据接口') ||
-        text.includes('資料介面')
+        text.includes('資料介面') ||
+        text.includes('download') ||
+        text.includes('下载') ||
+        text.includes('下載')
       ) {
-        // 优先选择 JSON 格式的 API
-        if (href.includes('json') || href.includes('format=json')) {
-          apiEndpoint = href;
-          format = 'json';
-          return false; // 找到后停止遍历
-        } else if (!apiEndpoint) {
-          apiEndpoint = href;
-        }
+        possibleApiLinks.push(href);
       }
     });
 
-    // 4. 如果没有找到 API 链接，尝试构建标准的 API 地址
-    if (!apiEndpoint) {
-      // 香港政府开放数据平台的标准 API 格式
-      // https://api.data.gov.hk/v2/filter?q={datasetId}
-      apiEndpoint = `https://api.data.gov.hk/v2/filter?q=${encodeURIComponent(
-        JSON.stringify({ datasetId })
-      )}`;
+    // 鲁港通 - 优先选择 JSON API
+    for (const link of possibleApiLinks) {
+      if (link.includes('.json') || link.includes('format=json') || link.includes('api.data.gov.hk')) {
+        apiEndpoint = link;
+        format = 'json';
+        break;
+      }
     }
+
+    // 鲁港通 - 如果没有 JSON，选择 CSV
+    if (!apiEndpoint) {
+      for (const link of possibleApiLinks) {
+        if (link.includes('.csv') || link.includes('format=csv')) {
+          apiEndpoint = link;
+          format = 'csv';
+          break;
+        }
+      }
+    }
+
+    // 鲁港通 - 如果还是没有，选择第一个可能的链接
+    if (!apiEndpoint && possibleApiLinks.length > 0) {
+      apiEndpoint = possibleApiLinks[0];
+      // 根据链接判断格式
+      if (apiEndpoint.includes('.json')) format = 'json';
+      else if (apiEndpoint.includes('.csv')) format = 'csv';
+      else if (apiEndpoint.includes('.xml')) format = 'xml';
+    }
+
+    // 4. 如果还是没有找到，返回 null
+    if (!apiEndpoint) {
+      console.error('鲁港通 - 未能在页面中找到任何 API 或数据链接');
+      console.error('鲁港通 - 页面 URL:', datasetPageUrl);
+      console.error('鲁港通 - 找到的链接数量:', possibleApiLinks.length);
+      return null;
+    }
+
+    // 鲁港通 - 确保 API 端点是完整的 URL
+    if (!apiEndpoint.startsWith('http')) {
+      const baseUrl = new URL(datasetPageUrl);
+      apiEndpoint = new URL(apiEndpoint, baseUrl.origin).href;
+    }
+
+    console.log('鲁港通 - 找到 API 端点:', apiEndpoint);
+    console.log('鲁港通 - 数据格式:', format);
 
     // 5. 提取元数据
     // 标题
