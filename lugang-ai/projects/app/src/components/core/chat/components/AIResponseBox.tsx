@@ -377,13 +377,16 @@ const RenderText = React.memo(function RenderText({
     return { appId, chatId, chatItemDataId, ...outLinkAuthData };
   }, [appId, chatId, chatItemDataId, outLinkAuthData]);
 
+  // 鲁港通 - 最终答案背景色修复：确保白色/透明背景，不继承思考模式的灰色背景
   return (
-    <Markdown
-      source={source}
-      showAnimation={showAnimation}
-      chatAuthData={chatAuthData}
-      onOpenCiteModal={onOpenCiteModal}
-    />
+    <Box bg={'white'} borderRadius={'md'}>
+      <Markdown
+        source={source}
+        showAnimation={showAnimation}
+        chatAuthData={chatAuthData}
+        onOpenCiteModal={onOpenCiteModal}
+      />
+    </Box>
   );
 });
 

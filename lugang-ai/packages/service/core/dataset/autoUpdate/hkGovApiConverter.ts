@@ -18,6 +18,7 @@ export interface HkGovApiInfo {
   apiEndpoint: string; // 可调用的 API 地址
   cacheKey: string; // 用于判断数据是否更新的缓存键
   datasetId?: string; // 数据集 ID
+  resourceUrl?: string; // 资源 URL（用于 v2/filter API）
   format?: string; // 数据格式 (json, csv, xml)
   metadata?: {
     title?: string;
@@ -41,153 +42,112 @@ export async function convertHkGovDatasetToApi(
     const datasetId = url.searchParams.get('datasetId');
 
     if (!datasetId) {
-      console.error('无法从 URL 中提取 datasetId');
+      console.error('鲁港通 - 无法从 URL 中提取 datasetId');
       return null;
     }
 
-    // 2. 爬取页面，查找 API 端点
-    const response = await axiosInstance.get(datasetPageUrl);
-    const $ = cheerio.load(response.data);
+    console.log('鲁港通 - 数据集 ID:', datasetId);
 
-    // 3. 查找 API 链接
-    // 香港政府数据集通常提供多种格式的 API
-    let apiEndpoint: string | null = null;
-    let format = 'json';
-    const metadata: HkGovApiInfo['metadata'] = {};
+    // 2. 使用 CKAN API 获取数据集元数据
+    const ckanApiUrl = `https://data.gov.hk/tc-data/api/3/action/package_show?id=${datasetId}`;
+    console.log('鲁港通 - 调用 CKAN API:', ckanApiUrl);
 
-    // 鲁港通 - 查找所有可能的 API 链接
-    const possibleApiLinks: string[] = [];
+    const ckanResponse = await axiosInstance.get(ckanApiUrl);
 
-    $('a').each((_, element) => {
-      const $link = $(element);
-      const href = $link.attr('href');
-      const text = $link.text().trim().toLowerCase();
+    if (!ckanResponse.data.success) {
+      console.error('鲁港通 - CKAN API 调用失败');
+      return null;
+    }
 
-      if (!href) return;
+    const packageData = ckanResponse.data.result;
+    console.log('鲁港通 - 数据集名称:', packageData.title || packageData.name);
 
-      // 鲁港通 - 收集所有可能的 API 链接
-      if (
-        href.includes('api.data.gov.hk') ||
-        href.includes('/api/') ||
-        href.includes('.json') ||
-        href.includes('.csv') ||
-        href.includes('.xml') ||
-        text.includes('api') ||
-        text.includes('json') ||
-        text.includes('csv') ||
-        text.includes('xml') ||
-        text.includes('数据接口') ||
-        text.includes('資料介面') ||
-        text.includes('download') ||
-        text.includes('下载') ||
-        text.includes('下載')
-      ) {
-        possibleApiLinks.push(href);
-      }
-    });
+    // 3. 提取元数据
+    const metadata: HkGovApiInfo['metadata'] = {
+      title: packageData.title || packageData.name,
+      description: packageData.notes || packageData.description,
+      updateFrequency: packageData.update_frequency,
+      lastModified: packageData.metadata_modified || packageData.last_modified
+    };
 
-    // 鲁港通 - 优先选择 JSON API
-    for (const link of possibleApiLinks) {
-      if (link.includes('.json') || link.includes('format=json') || link.includes('api.data.gov.hk')) {
-        apiEndpoint = link;
-        format = 'json';
+    // 4. 查找资源（resources）
+    const resources = packageData.resources || [];
+    if (resources.length === 0) {
+      console.error('鲁港通 - 数据集没有资源');
+      return null;
+    }
+
+    // 鲁港通 - 优先选择 CSV 或 JSON 格式的资源
+    let selectedResource = null;
+    let format = 'csv';
+
+    // 优先选择 CSV
+    for (const resource of resources) {
+      const resourceFormat = (resource.format || '').toLowerCase();
+      const resourceUrl = resource.url || '';
+
+      if (resourceFormat === 'csv' || resourceUrl.endsWith('.csv')) {
+        selectedResource = resource;
+        format = 'csv';
         break;
       }
     }
 
-    // 鲁港通 - 如果没有 JSON，选择 CSV
-    if (!apiEndpoint) {
-      for (const link of possibleApiLinks) {
-        if (link.includes('.csv') || link.includes('format=csv')) {
-          apiEndpoint = link;
-          format = 'csv';
+    // 如果没有 CSV，选择 JSON
+    if (!selectedResource) {
+      for (const resource of resources) {
+        const resourceFormat = (resource.format || '').toLowerCase();
+        const resourceUrl = resource.url || '';
+
+        if (resourceFormat === 'json' || resourceUrl.endsWith('.json')) {
+          selectedResource = resource;
+          format = 'json';
           break;
         }
       }
     }
 
-    // 鲁港通 - 如果还是没有，选择第一个可能的链接
-    if (!apiEndpoint && possibleApiLinks.length > 0) {
-      apiEndpoint = possibleApiLinks[0];
-      // 根据链接判断格式
-      if (apiEndpoint.includes('.json')) format = 'json';
-      else if (apiEndpoint.includes('.csv')) format = 'csv';
-      else if (apiEndpoint.includes('.xml')) format = 'xml';
+    // 如果还是没有，选择第一个资源
+    if (!selectedResource) {
+      selectedResource = resources[0];
+      format = (selectedResource.format || 'csv').toLowerCase();
     }
 
-    // 4. 如果还是没有找到，返回 null
-    if (!apiEndpoint) {
-      console.error('鲁港通 - 未能在页面中找到任何 API 或数据链接');
-      console.error('鲁港通 - 页面 URL:', datasetPageUrl);
-      console.error('鲁港通 - 找到的链接数量:', possibleApiLinks.length);
-      return null;
-    }
+    const resourceUrl = selectedResource.url;
+    console.log('鲁港通 - 选择的资源 URL:', resourceUrl);
+    console.log('鲁港通 - 资源格式:', format);
 
-    // 鲁港通 - 确保 API 端点是完整的 URL
-    if (!apiEndpoint.startsWith('http')) {
-      const baseUrl = new URL(datasetPageUrl);
-      apiEndpoint = new URL(apiEndpoint, baseUrl.origin).href;
-    }
+    // 5. 构建数据筛选 API 地址
+    // 根据香港政府 API 规范，使用 v2/filter API
+    const filterQuery = {
+      resource: resourceUrl,
+      section: 1,
+      format: 'json' // 始终请求 JSON 格式，便于处理
+    };
 
-    console.log('鲁港通 - 找到 API 端点:', apiEndpoint);
-    console.log('鲁港通 - 数据格式:', format);
+    const apiEndpoint = `https://api.data.gov.hk/v2/filter?q=${encodeURIComponent(
+      JSON.stringify(filterQuery)
+    )}`;
 
-    // 5. 提取元数据
-    // 标题
-    const title = $('h1').first().text().trim() || $('title').text().trim();
-    if (title) metadata.title = title;
-
-    // 描述
-    const description =
-      $('meta[name="description"]').attr('content') ||
-      $('.description').first().text().trim();
-    if (description) metadata.description = description;
-
-    // 更新频率
-    $('*').each((_, element) => {
-      const $el = $(element);
-      const text = $el.text().trim();
-      if (
-        text.includes('更新頻率') ||
-        text.includes('更新频率') ||
-        text.includes('Update Frequency')
-      ) {
-        const $next = $el.next();
-        const frequency = $next.text().trim();
-        if (frequency) metadata.updateFrequency = frequency;
-        return false;
-      }
-    });
-
-    // 最后修改时间
-    $('*').each((_, element) => {
-      const $el = $(element);
-      const text = $el.text().trim();
-      if (
-        text.includes('最後修改') ||
-        text.includes('最后修改') ||
-        text.includes('Last Modified')
-      ) {
-        const $next = $el.next();
-        const lastModified = $next.text().trim();
-        if (lastModified) metadata.lastModified = lastModified;
-        return false;
-      }
-    });
+    console.log('鲁港通 - 生成的 API 端点:', apiEndpoint);
 
     // 6. 生成缓存键
-    // 缓存键用于判断数据是否更新，基于 API 响应的内容生成
     const cacheKey = await generateCacheKey(apiEndpoint);
 
     return {
       apiEndpoint,
       cacheKey,
       datasetId,
+      resourceUrl,
       format,
       metadata
     };
   } catch (error: any) {
-    console.error('转换香港政府数据集 URL 失败:', error.message);
+    console.error('鲁港通 - 转换香港政府数据集 URL 失败:', error.message);
+    if (error.response) {
+      console.error('鲁港通 - 响应状态:', error.response.status);
+      console.error('鲁港通 - 响应数据:', error.response.data);
+    }
     return null;
   }
 }
@@ -212,7 +172,7 @@ async function generateCacheKey(apiEndpoint: string): Promise<string> {
 
     return hash;
   } catch (error: any) {
-    console.error('生成缓存键失败:', error.message);
+    console.error('鲁港通 - 生成缓存键失败:', error.message);
     // 如果 API 调用失败，使用时间戳作为缓存键
     return Date.now().toString();
   }
@@ -236,7 +196,7 @@ export async function checkApiDataUpdated(
       newCacheKey
     };
   } catch (error: any) {
-    console.error('检查 API 数据更新失败:', error.message);
+    console.error('鲁港通 - 检查 API 数据更新失败:', error.message);
     return {
       updated: false,
       newCacheKey: oldCacheKey
@@ -259,22 +219,15 @@ export async function downloadHkGovApiData(
 
     let formattedData: string;
 
-    if (format === 'json') {
-      // JSON 格式：转换为易读的文本
-      const jsonData = response.data;
+    // 鲁港通 - v2/filter API 始终返回 JSON 格式
+    const jsonData = response.data;
 
-      if (Array.isArray(jsonData)) {
-        // 如果是数组，转换为表格格式
-        formattedData = convertJsonArrayToText(jsonData);
-      } else {
-        // 如果是对象，转换为键值对格式
-        formattedData = JSON.stringify(jsonData, null, 2);
-      }
+    if (Array.isArray(jsonData)) {
+      // 如果是数组，转换为表格格式
+      formattedData = convertJsonArrayToText(jsonData);
     } else {
-      // 其他格式直接返回
-      formattedData = typeof response.data === 'string' 
-        ? response.data 
-        : JSON.stringify(response.data, null, 2);
+      // 如果是对象，转换为键值对格式
+      formattedData = JSON.stringify(jsonData, null, 2);
     }
 
     return {

@@ -191,10 +191,13 @@ const ResponseTags = ({
 
   const notEmptyTags = notSharePage || quoteList.length > 0 || (isPc && durationSeconds > 0);
 
+  // 鲁港通 - 普通用户完全隐藏引用列表（Requirements 5.1, 5.2, 5.3）
+  const shouldShowCitations = isRoot && citationRenderList.length > 0;
+
   return !showTags ? null : (
     <>
       {/* quote */}
-      {citationRenderList.length > 0 && (
+      {shouldShowCitations && (
         <>
           <Flex justifyContent={'space-between'} alignItems={'center'}>
             <Box width={'100%'}>
