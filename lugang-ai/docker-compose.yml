@@ -75,7 +75,7 @@ services:
       - mongo
       - pg
       - redis
-      # - minio  # 已禁用可选服务
+      - plugin
     env_file:
       - ./projects/app/.env.local
     networks:
@@ -94,15 +94,17 @@ services:
   #   networks:
   #     - lugang-ai-network
 
-  # ===== 插件服务（可选，已禁用） =====
-  # plugin:
-  #   image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-plugin:v0.3.4
-  #   container_name: lugang-ai-plugin
-  #   restart: always
-  #   environment:
-  #     PLUGIN_TOKEN: lugangplugin
-  #   networks:
-  #     - lugang-ai-network
+  # ===== 插件服务 =====
+  plugin:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-plugin:v0.3.4
+    container_name: lugang-ai-plugin
+    restart: always
+    ports:
+      - "8088:8080"
+    environment:
+      PLUGIN_TOKEN: lugangplugin2025
+    networks:
+      - lugang-ai-network
 
 networks:
   lugang-ai-network:

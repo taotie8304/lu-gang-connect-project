@@ -3,6 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
+# Node.js
+node_modules/
+package-lock.json
+
 # C extensions
 *.so
 
