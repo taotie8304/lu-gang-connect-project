@@ -6,73 +6,65 @@ inclusion: always
 
 > 本文件记录 session 间的工作交接信息，每次 session 结束时自动更新。
 
-## 本次 Session 完成的工作
+## ⚠️ 当前最重要的背景信息（新 Session 必读）
 
-### 1. ✅ 项目文档整理
-- **创建主文档**：创建 `PROJECT-MASTER.md`，整合所有重要信息
-  - 包含所有账号密码、服务器配置、数据库信息
-  - 包含完整部署指南和常见问题解答
-  - 包含命名规范和技术架构说明
-- **删除冗余文档**：删除 13 个临时文档（已整合到主文档）
-- **修复 .gitignore**：删除错误的 `*.md` 规则
-- **创建整理说明**：创建 `文档整理说明.md` 记录整理过程
+### 开发工具变更
+- **Kiro IDE 已停止使用**（2026年4月，由于 Claude API 访问问题）。
+- **当前开发工具：Cursor IDE**，通过 **OpenRouter** 接入 `anthropic/claude-opus-4.6` 模型。
+- OpenRouter 配置方式：Cursor Settings → Models → Override OpenAI Base URL 填入 `https://openrouter.ai/api/v1`，API Key 填入 OpenRouter Key。
 
-### 2. ✅ 临时测试文件清理
-- **删除测试文件**：删除 47 个临时测试和检查文件
-  - 测试文件：6 个（test_*.js）
-  - 检查文件：14 个（check_*.js, check_*.sh, check_*.sql）
-  - 修复文件：3 个（fix_*.js）
-  - 生成文件：5 个（generate_*.js）
-  - 临时 SQL：10 个（*.sql）
-  - 临时 Shell：8 个（*.sh）
-  - 其他临时文件：8 个
-- **保留实用工具**：保留 16 个实用工具脚本
-  - 系统内容管理工具（add_*.js, convert_*.js, update_*.js）
-  - 批量操作工具（update_all_system_contents.sh, reset_root_password.js）
-- **创建清理总结**：创建 `清理总结.md` 记录清理详情
+### 未完成的核心功能
+- **订阅功能（Subscription）**：当前**完全未完成**，是平台商业化的关键阻塞点。用户无法订阅付费套餐。这是下一阶段的最高优先级任务。
 
-### 3. ✅ Steering 文件整合
-- **整合命名规范**：将 `lugang-naming.md` 的内容整合到 `PROJECT-MASTER.md`
-- **更新主文档**：添加"命名规范"章节到主文档
-- **更新交接文件**：更新本文件反映最新工作状态
+## 上一次 Session 完成的工作
+
+### 1. ✅ Cursor 规则体系补全
+- **新增 4 个专项规则文件**（`.cursor/rules/`）：
+  - `07-lugang-backend.mdc`：Go / One API 后端开发规范
+  - `08-lugang-frontend.mdc`：Next.js / FastGPT 前端开发规范
+  - `09-lugang-rag-ai.mdc`：RAG 知识库与 AI 工作流规范
+  - `10-lugang-testing.mdc`：测试规范与质量保证标准
+- **更新 `session-handoff.md`**：记录 Kiro → Cursor 迁移信息和订阅功能待完成状态。
+
+### 2. ✅ 历史已完成功能（参考 project-memory.md）
+- CJK 简繁搜索规范化（opencc-js）
+- 联网搜索引用修复（前端 Citation Parser + 后端 search_info 透传）
+- 前端使用条款功能（SystemContentModal）
+- 多语言系统内容支持（简体/繁体/英文）
+- 用户设置面板多语言支持
+- 临时测试文件清理（47 个）
 
 ## 当前待办任务（按优先级）
 
-1. **项目文档维护**：
-   - 定期更新 `PROJECT-MASTER.md` 中的信息
-   - 有新功能完成时更新"已完成功能"章节
-   - 有重要决策时更新"重要决策记录"章节
+### 🔴 P0 - 最高优先级
+1. **订阅功能开发**：
+   - 研究 FastGPT 上游仓库的 `support/user/team/` 团队/配额体系
+   - 设计鲁港通的订阅套餐（免费版 / 专业版 / 企业版）
+   - 实现支付集成（微信支付 / 支付宝 / Stripe）
+   - 实现套餐到期/自动续费逻辑
 
-2. **用户设置多语言功能验证**：
-   - 清除浏览器缓存或使用新的无痕窗口
-   - 访问 https://www.airscend.com
-   - 测试语言切换功能
-   - 验证用户设置面板的多语言显示
+### 🟡 P1 - 次高优先级
+2. **联网搜索引用修复验证**：
+   - internet 模型已切换到原生 DashScope 协议，待在生产环境验证引用是否正常显示。
+3. **用户设置多语言功能验证**：
+   - 需清除浏览器缓存后访问 https://www.airscend.com 测试语言切换。
 
-3. **联网搜索引用修复验证**：
-   - 等待 GitHub Actions 构建后端镜像
-   - 服务器上拉取新镜像并重启后端容器
-   - 用联网搜索模型测试引用是否正常显示
+### 🟢 P2 - 常规优化
+4. **香港政府 API 数据同步**：建立定期同步机制，确保知识库数据时效性。
+5. **知识库准确度提升**：针对用户反馈的瑕疵问题持续优化分块策略和检索参数。
 
 ## 未解决的问题或 Bug
 
-- 联网搜索引用修复正在验证中（已切换 internet 模型到原生协议，待测试）
+- 订阅功能完全未开始开发（P0 阻塞）
+- 联网搜索引用修复正在验证中（已切换 internet 模型到原生协议，待生产验证）
 - 用户设置多语言功能已部署，待用户验证（需清除浏览器缓存）
-
-## 已解决的问题
-
-- ✅ 前端使用条款功能 - 数据库内容更新和组件修复
-- ✅ 后端 root 密码重置 - 使用标准 bcrypt 哈希
-- ✅ 项目文档混乱 - 已整理并创建主文档
-- ✅ 临时测试文件过多 - 已清理 47 个临时文件
-- ✅ .gitignore 错误配置 - 已修复 `*.md` 规则
 
 ## 重要文件路径
 
-### 主文档
-- **项目主文档**：`PROJECT-MASTER.md` - 包含所有重要信息的统一文档
-- **文档整理说明**：`文档整理说明.md` - 记录文档整理过程
-- **清理总结**：`清理总结.md` - 记录文件清理详情
+### 核心配置文件
+- **项目主文档**：`PROJECT-MASTER.md`（包含所有账号密码、服务器配置）
+- **长期记忆**：`project-memory.md`
+- **Cursor 规则目录**：`.cursor/rules/`（共 10 个规则文件）
 
 ### 前端关键文件
 - 系统内容组件：`lugang-ai/projects/app/src/components/SystemContentModal/index.tsx`
@@ -105,3 +97,4 @@ inclusion: always
 - fast-check v4 没有 `stringOf` 方法，用 `fc.array(...).map(chars => chars.join(''))` 替代
 - 项目使用 pnpm workspace monorepo 结构，fast-check 安装在根目录 devDependencies
 - opencc-js 没有 TypeScript 类型声明，已手动创建在 `packages/service/common/string/opencc-js.d.ts`
+- 服务器 IP：156.225.30.134（宝塔面板），项目目录：`/www/wwwroot/lugang-ai`
