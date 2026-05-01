@@ -1,6 +1,6 @@
 // 鲁港通 - 香港政府数据集 API 地址转换器
+// 根据官方 CKAN API 开发指南实现：https://data.gov.hk/sc/help/ckan-api-development-guide
 import axios from 'axios';
-import * as cheerio from 'cheerio';
 import crypto from 'crypto';
 
 // 鲁港通 - 性能优化：创建 axios 实例复用连接
@@ -15,22 +15,26 @@ const axiosInstance = axios.create({
 });
 
 export interface HkGovApiInfo {
-  apiEndpoint: string; // 可调用的 API 地址
+  apiEndpoint: string; // 可调用的 API 地址（直接下载链接或 v2/filter API）
   cacheKey: string; // 用于判断数据是否更新的缓存键
   datasetId?: string; // 数据集 ID
-  resourceUrl?: string; // 资源 URL（用于 v2/filter API）
+  resourceId?: string; // 资源 ID
+  resourceUrl?: string; // 原始资源 URL
   format?: string; // 数据格式 (json, csv, xml)
+  isDirectDownload?: boolean; // 是否为直接下载链接
   metadata?: {
     title?: string;
     description?: string;
     updateFrequency?: string;
     lastModified?: string;
+    resourceName?: string; // 资源名称
   };
 }
 
 /**
  * 将香港政府数据集页面 URL 转换为可调用的 API 地址
- * @param datasetPageUrl 数据集页面 URL (如 https://portal.csdi.gov.hk/geoportal/?datasetId=xxx)
+ * 根据官方 CKAN API 开发指南实现
+ * @param datasetPageUrl 数据集页面 URL (如 https://data.gov.hk/tc/dataset/xxx 或 https://portal.csdi.gov.hk/geoportal/?datasetId=xxx)
  * @returns API 信息
  */
 export async function convertHkGovDatasetToApi(
@@ -38,8 +42,18 @@ export async function convertHkGovDatasetToApi(
 ): Promise<HkGovApiInfo | null> {
   try {
     // 1. 从 URL 中提取 datasetId
+    let datasetId: string | null = null;
     const url = new URL(datasetPageUrl);
-    const datasetId = url.searchParams.get('datasetId');
+
+    // 支持多种 URL 格式
+    if (url.hostname === 'data.gov.hk') {
+      // 格式：https://data.gov.hk/tc/dataset/hk-td-tis_2-traffic-snapshot-images
+      const pathParts = url.pathname.split('/');
+      datasetId = pathParts[pathParts.length - 1];
+    } else if (url.hostname.includes('csdi.gov.hk') || url.hostname.includes('portal')) {
+      // 格式：https://portal.csdi.gov.hk/geoportal/?datasetId=xxx
+      datasetId = url.searchParams.get('datasetId');
+    }
 
     if (!datasetId) {
       console.error('鲁港通 - 无法从 URL 中提取 datasetId');
@@ -48,7 +62,8 @@ export async function convertHkGovDatasetToApi(
 
     console.log('鲁港通 - 数据集 ID:', datasetId);
 
-    // 2. 使用 CKAN API 获取数据集元数据
+    // 2. 使用 CKAN API 的 package_show 获取数据集元数据
+    // 官方文档：https://data.gov.hk/sc/help/ckan-api-development-guide
     const ckanApiUrl = `https://data.gov.hk/tc-data/api/3/action/package_show?id=${datasetId}`;
     console.log('鲁港通 - 调用 CKAN API:', ckanApiUrl);
 
@@ -77,19 +92,33 @@ export async function convertHkGovDatasetToApi(
       return null;
     }
 
-    // 鲁港通 - 优先选择 CSV 或 JSON 格式的资源
+    // 鲁港通 - 优先选择 API 类型的资源，然后是 CSV/JSON 格式
     let selectedResource = null;
     let format = 'csv';
 
-    // 优先选择 CSV
+    // 优先选择 API 类型
     for (const resource of resources) {
       const resourceFormat = (resource.format || '').toLowerCase();
       const resourceUrl = resource.url || '';
 
-      if (resourceFormat === 'csv' || resourceUrl.endsWith('.csv')) {
+      if (resourceFormat === 'api' || resourceUrl.includes('/api/')) {
         selectedResource = resource;
-        format = 'csv';
+        format = 'api';
         break;
+      }
+    }
+
+    // 如果没有 API，选择 CSV
+    if (!selectedResource) {
+      for (const resource of resources) {
+        const resourceFormat = (resource.format || '').toLowerCase();
+        const resourceUrl = resource.url || '';
+
+        if (resourceFormat === 'csv' || resourceUrl.endsWith('.csv')) {
+          selectedResource = resource;
+          format = 'csv';
+          break;
+        }
       }
     }
 
@@ -114,22 +143,53 @@ export async function convertHkGovDatasetToApi(
     }
 
     const resourceUrl = selectedResource.url;
+    const resourceId = selectedResource.id;
+    const resourceName = selectedResource.name || selectedResource.description;
+
     console.log('鲁港通 - 选择的资源 URL:', resourceUrl);
+    console.log('鲁港通 - 资源 ID:', resourceId);
     console.log('鲁港通 - 资源格式:', format);
+    console.log('鲁港通 - 资源名称:', resourceName);
 
-    // 5. 构建数据筛选 API 地址
-    // 根据香港政府 API 规范，使用 v2/filter API
-    const filterQuery = {
-      resource: resourceUrl,
-      section: 1,
-      format: 'json' // 始终请求 JSON 格式，便于处理
-    };
+    // 更新元数据
+    metadata.resourceName = resourceName;
 
-    const apiEndpoint = `https://api.data.gov.hk/v2/filter?q=${encodeURIComponent(
-      JSON.stringify(filterQuery)
-    )}`;
+    // 5. 判断资源类型并构建 API 地址
+    let apiEndpoint: string;
+    let isDirectDownload = false;
 
-    console.log('鲁港通 - 生成的 API 端点:', apiEndpoint);
+    // 检查是否为直接下载链接（优先使用直接下载）
+    if (
+      resourceUrl.startsWith('http') &&
+      (resourceUrl.endsWith('.csv') ||
+        resourceUrl.endsWith('.json') ||
+        resourceUrl.endsWith('.xml') ||
+        resourceUrl.includes('/download/') ||
+        resourceUrl.includes('data.one.gov.hk') || // 香港政府静态文件服务器
+        resourceUrl.includes('file-manager'))
+    ) {
+      // 直接下载链接，无需转换
+      apiEndpoint = resourceUrl;
+      isDirectDownload = true;
+      console.log('鲁港通 - 检测到直接下载链接');
+    } else if (resourceUrl.includes('api.data.gov.hk')) {
+      // 已经是 API 地址，无需转换
+      apiEndpoint = resourceUrl;
+      isDirectDownload = false;
+      console.log('鲁港通 - 检测到 API 地址');
+    } else {
+      // 尝试使用 v2/filter API 构建查询
+      // 注意：v2/filter API 只支持某些格式的资源
+      console.log('鲁港通 - 尝试使用 v2/filter API');
+      
+      // 不使用 v2/filter API，直接使用原始 URL
+      // 原因：v2/filter API 对很多资源格式支持不好，经常返回 422 错误
+      console.log('鲁港通 - 使用原始资源 URL');
+      apiEndpoint = resourceUrl;
+      isDirectDownload = true;
+    }
+
+    console.log('鲁港通 - 最终 API 端点:', apiEndpoint);
 
     // 6. 生成缓存键
     const cacheKey = await generateCacheKey(apiEndpoint);
@@ -138,8 +198,10 @@ export async function convertHkGovDatasetToApi(
       apiEndpoint,
       cacheKey,
       datasetId,
+      resourceId,
       resourceUrl,
       format,
+      isDirectDownload,
       metadata
     };
   } catch (error: any) {
