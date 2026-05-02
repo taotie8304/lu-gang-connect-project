@@ -180,6 +180,17 @@ ONE_API_TOKEN=sk-your-token
 # 未配置时，商业版功能将被禁用，应用仍可正常运行
 # PRO_URL=https://pro.fastgpt.com
 
+# 插件服务配置（系统插件 .pkg 上传必填）
+# 若为空，前端上传系统插件会报错：Plugin service is not configured
+# docker-compose / docker-compose.prod.yml 已为 lugang-ai 容器注入 PLUGIN_BASE_URL / PLUGIN_TOKEN；
+# 仍建议在 .env.local 保留下列两项，便于本地与非 Compose 启动一致；TOKEN 须与 plugin 的 AUTH_TOKEN 相同
+PLUGIN_BASE_URL=http://plugin:8080
+PLUGIN_TOKEN=lugangplugin2025
+
+# MinIO 公网基址（可选；plugin 容器内连 S3 使用 compose 中的 S3_ENDPOINT=minio）
+# 有公网域名访问文件时，可设为 https://你的域名:9000 或独立 MinIO 对外地址
+# S3_EXTERNAL_BASE_URL=https://www.airscend.com
+
 # 域名配置
 FE_DOMAIN=https://www.airscend.com
 FILE_DOMAIN=https://www.airscend.com
@@ -221,12 +232,21 @@ curl http://localhost:3210/api/health
 # 检查鲁港通后端健康状态
 curl http://localhost:8080/api/status
 
+# 系统插件链：确认 plugin 不再 Restarting，且主应用能拿到插件环境变量
+docker ps --filter name=lugang-ai-plugin
+docker exec lugang-ai-app /bin/sh -c 'printenv | grep -E "^PLUGIN_"'
+
 # 查看鲁港通前端日志
 docker logs -f lugang-ai-app
 
 # 查看鲁港通后端日志
 docker logs -f lugang-enterprise
+
+# 查看插件服务日志（.pkg 上传依赖）
+docker logs -f lugang-ai-plugin
 ```
+
+**MinIO 与插件：** `docker-compose.prod.yml` 已包含 `minio` 与 `plugin` 服务；`plugin` 会读取与同目录下 `projects/app/.env.local` 中一致的 `MONGODB_URI`、`REDIS_URL`。请首次登录 MinIO 控制台（默认 `:9001`）确认或创建存储桶 `lugang-public`、`lugang-private`（名称须与 compose 中 `S3_PUBLIC_BUCKET` / `S3_PRIVATE_BUCKET` 一致，默认即为二者）。若服务器已有独立 MinIO，可改 `S3_ENDPOINT` 等变量并避免重复映射 `9000` 端口冲突。
 
 ---
 

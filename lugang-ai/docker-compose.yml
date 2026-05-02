@@ -47,22 +47,27 @@ services:
     networks:
       - lugang-ai-network
 
-  # ===== MinIO对象存储（可选，已禁用） =====
-  # minio:
-  #   image: minio/minio:RELEASE.2024-09-07T16-13-09Z
-  #   container_name: lugang-ai-minio
-  #   restart: always
-  #   ports:
-  #     - "9000:9000"
-  #     - "9001:9001"
-  #   environment:
-  #     MINIO_ROOT_USER: minioadmin
-  #     MINIO_ROOT_PASSWORD: minioadmin
-  #   command: server /data --console-address ":9001"
-  #   volumes:
-  #     - ./data/minio:/data
-  #   networks:
-  #     - lugang-ai-network
+  # ===== MinIO 对象存储（系统插件 fastgpt-plugin 依赖 S3，请勿禁用）=====
+  minio:
+    image: minio/minio:RELEASE.2024-09-07T16-13-09Z
+    container_name: lugang-ai-minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - lugang-ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
 
   # ===== 鲁港通AI主应用 =====
   lugang-ai:
@@ -78,6 +83,10 @@ services:
       - plugin
     env_file:
       - ./projects/app/.env.local
+    environment:
+      # 与 plugin 服务 AUTH_TOKEN 保持一致；避免仅依赖 .env.local 漏配导致上传 .pkg 失败
+      PLUGIN_BASE_URL: http://plugin:8080
+      PLUGIN_TOKEN: lugangplugin2025
     networks:
       - lugang-ai-network
     healthcheck:
@@ -101,8 +110,31 @@ services:
     restart: always
     ports:
       - "8088:8080"
+    env_file:
+      - ./projects/app/.env.local
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
     environment:
-      PLUGIN_TOKEN: lugangplugin2025
+      AUTH_TOKEN: lugangplugin2025
+      DB_MAX_LINK: 10
+      SERVICE_REQUEST_MAX_CONTENT_LENGTH: 10
+      MAX_API_SIZE: 10
+      # MONGODB_URI / REDIS_URL 与主应用一致，从 .env.local 继承，避免与 mongo 实际密码不一致
+      # 公网访问 MinIO 的地址（浏览器/外链场景）；容器互通关键为 S3_ENDPOINT=minio
+      S3_EXTERNAL_BASE_URL: ${S3_EXTERNAL_BASE_URL:-http://127.0.0.1:9000}
+      S3_ENDPOINT: minio
+      S3_PORT: 9000
+      S3_USE_SSL: "false"
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      S3_PUBLIC_BUCKET: lugang-public
+      S3_PRIVATE_BUCKET: lugang-private
+      S3_PATH_STYLE: "true"
     networks:
       - lugang-ai-network
 

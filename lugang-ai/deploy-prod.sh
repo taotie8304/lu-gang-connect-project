@@ -116,8 +116,10 @@ echo -e "${GREEN}✓ 旧容器已停止${NC}"
 # 步骤 5: 启动新容器
 echo ""
 echo -e "${YELLOW}[5/6] 启动服务${NC}"
-docker-compose -f docker-compose.prod.yml up -d
+# --remove-orphans：避免历史残留容器与当前编排不一致；minio/plugin 随本仓库 compose 一并拉起
+docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 echo -e "${GREEN}✓ 服务已启动${NC}"
+echo -e "${YELLOW}若曾手动改过 plugin/minio，建议首次验证：docker compose -f docker-compose.prod.yml up -d --force-recreate plugin minio lugang-ai${NC}"
 
 # 步骤 6: 检查服务状态
 echo ""

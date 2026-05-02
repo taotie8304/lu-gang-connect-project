@@ -52,6 +52,28 @@ services:
     networks:
       - lugang-ai-network
 
+  # ===== MinIO（fastgpt-plugin 依赖；与 deploy 规范中的 Minio 一致）=====
+  minio:
+    image: minio/minio:RELEASE.2024-09-07T16-13-09Z
+    container_name: lugang-ai-minio
+    restart: always
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./data/minio:/data
+    networks:
+      - lugang-ai-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
   # ===== 鲁港通前端（鲁港通跨境AI智能服务助手）=====
   # 域名: www.airscend.com
   # 端口: 3210
@@ -65,8 +87,12 @@ services:
       - mongo
       - pg
       - redis
+      - plugin
     env_file:
       - ./projects/app/.env.local
+    environment:
+      PLUGIN_BASE_URL: http://plugin:8080
+      PLUGIN_TOKEN: ${PLUGIN_AUTH_TOKEN:-lugangplugin2025}
     networks:
       - lugang-ai-network
     healthcheck:
@@ -74,6 +100,40 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  # ===== 插件服务（系统插件上传/执行）=====
+  plugin:
+    image: registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-plugin:v0.3.4
+    container_name: lugang-ai-plugin
+    restart: always
+    ports:
+      - "8088:8080"
+    env_file:
+      - ./projects/app/.env.local
+    depends_on:
+      mongo:
+        condition: service_started
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
+    environment:
+      AUTH_TOKEN: ${PLUGIN_AUTH_TOKEN:-lugangplugin2025}
+      DB_MAX_LINK: 10
+      SERVICE_REQUEST_MAX_CONTENT_LENGTH: 10
+      MAX_API_SIZE: 10
+      # MONGODB_URI / REDIS_URL 与 lugang-ai 共用 .env.local，避免 compose 默认值与库密码不一致
+      S3_EXTERNAL_BASE_URL: ${S3_EXTERNAL_BASE_URL:-http://127.0.0.1:9000}
+      S3_ENDPOINT: minio
+      S3_PORT: 9000
+      S3_USE_SSL: "false"
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      S3_PUBLIC_BUCKET: ${S3_PUBLIC_BUCKET:-lugang-public}
+      S3_PRIVATE_BUCKET: ${S3_PRIVATE_BUCKET:-lugang-private}
+      S3_PATH_STYLE: "true"
+    networks:
+      - lugang-ai-network
 
   # ===== 鲁港通后端（鲁港通跨境AI智能服务后端）=====
   # 域名: api.airscend.com
