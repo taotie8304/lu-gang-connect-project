@@ -172,6 +172,25 @@ export interface KMBRoute {
   dest_en: string;
 }
 
+// KMB stop data（全港站点列表项）
+export interface KMBStop {
+  stop: string;      // 16 位站点 ID
+  name_en: string;
+  name_tc: string;
+  name_sc: string;
+  lat: string;       // 纬度字符串
+  long: string;      // 经度字符串
+}
+
+// KMB route-stop data（每路线每站的关系）
+export interface KMBRouteStop {
+  route: string;
+  bound: 'I' | 'O';
+  service_type: string;
+  seq: string;       // 站序（字符串格式，需要 parseInt）
+  stop: string;      // 对应 KMBStop.stop
+}
+
 // CTB route data
 export interface CTBRoute {
   co: string;
@@ -247,4 +266,41 @@ export interface ResponseMetadata {
   dataTimestamp: string;
   apisCalled: string[];
   apiStatus?: Record<string, 'success' | 'failed' | 'skipped'>;
+}
+
+// ============================================================
+// 公交规划相关类型（planner.ts 使用）
+// ============================================================
+
+/** 搜索半径内的一个巴士站（含距离） */
+export interface NearbyStop {
+  stopId: string;
+  stopName: string;
+  lat: number;
+  lng: number;
+  distanceM: number;  // 距离查询坐标的米数
+  company: 'KMB' | 'CTB';
+}
+
+/** 一个候选直达路线方案 */
+export interface TransitCandidate {
+  /** 运营公司/品牌：KMB/CTB/NLB/LWB/GMB/MTR/TRAM/FERRY/PTRAM */
+  company: string;
+  /** 交通方式：bus/gmb/tram/ferry/ptram/mtr */
+  mode?: string;
+  route: string;
+  bound: string;              // KMB: 'I'/'O'；CTB: 'inbound'/'outbound'
+  serviceType: string;
+  boardStopId: string;
+  boardStopName: string;
+  boardSeq: number;
+  alightStopId: string;
+  alightStopName: string;
+  alightSeq: number;
+  numStops: number;           // 乘坐站数 = alightSeq - boardSeq
+  walkInMeters: number;       // 起点到上车站步行距离
+  walkOutMeters: number;      // 下车站到终点步行距离
+  destination: string;        // 路线终点站名
+  fare?: number | null;       // 票价（HKD）
+  score: number;              // 综合评分（越小越优）
 }

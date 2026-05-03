@@ -21,3 +21,4 @@ alwaysApply: true
   - 将对应任务从 `[ ]` 改为 `[x]` 写回 `tasks.md`。
   - 在 `session-handoff.md` 的“本次完成的工作”小节中记录该任务及相关文件。
   - 如有重要架构决策变化，追加到 `project-memory.md` 的“重要决策记录”。
+- **香港交通系统工具**相关实现与部署步骤：同步维护 `hk-transport-plugin/DEVELOPMENT.md` 与 `hk-transport-plugin/deploy.md`；专项约定见 `.cursor/rules/13-lugang-hk-transport-plugin.mdc`。

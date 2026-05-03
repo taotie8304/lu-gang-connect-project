@@ -28,7 +28,7 @@ alwaysApply: true
 - 多语言系统内容：
   - 数据库 key 命名：`{base_key}`（繁体）、`{base_key}_zh-CN`（简体）、`{base_key}_en`（英文）。
   - API 根据 Cookie(`NEXT_LOCALE`) 自动选择语言版本。
-- 项目文档管理：所有重要信息整合在 `PROJECT-MASTER.md` 中。
+- 项目文档管理：所有重要信息整合在 `PROJECT-MASTER.md` 中；**香港交通系统工具**详见 `hk-transport-plugin/DEVELOPMENT.md`。
 
 # 通用开发要求
 

@@ -135,6 +135,10 @@ services:
       S3_PUBLIC_BUCKET: lugang-public
       S3_PRIVATE_BUCKET: lugang-private
       S3_PATH_STYLE: "true"
+    volumes:
+      # 持久化 pkgs 目录并保留 package.json（{"type":"module"}），
+      # 确保 Node.js 能以 ESM 方式 import 无扩展名的 .pkg 文件
+      - ./data/plugin-pkgs:/tmp/fastgpt-plugin/pkgs
     networks:
       - lugang-ai-network
 

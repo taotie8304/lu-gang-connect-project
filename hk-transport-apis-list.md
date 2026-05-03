@@ -1,5 +1,7 @@
 # 香港交通 API 完整列表
 
+> **插件落地进度**：静态路网已优先通过 data.gov.hk **JSON_BUS / JSON_GMB / JSON_TRAM / JSON_FERRY / JSON_PTRAM** 纳入 `hk-transport-plugin`（见 `hk-transport-plugin/DEVELOPMENT.md`、`scripts/prepare-data.mjs`）。本文件列出更广义的 API 清单，供后续接入实时 ETA、换乘等迭代参考。
+
 ## 基础设施数据
 
 ### 1. 交通探测器位置 (空间数据共享平台)

@@ -12,6 +12,7 @@ import type {
   StopETAItem,
   NextBusInfo,
   PaymentInfo,
+  TransitCandidate,
 } from './types';
 import type { BatchFetchResult } from './fetcher';
 
@@ -79,24 +80,64 @@ function classifyRouteType(steps: RouteStep[]): 'direct' | 'transfer' {
 }
 
 /**
- * 将 TDAS 响应数组转换为 RouteOption 列表
+ * 将 TDAS 响应转换为 RouteOption 列表
+ *
+ * 容错说明：
+ * - TDAS 实际返回可能是单个对象 { eta, distM, route: [...] } 而非数组
+ * - route[] 内元素结构可能为 { start, end, segment } 而非 { mode, routeNo, ... }
+ * - 两种情况都降级为简化的"驾车参考路线"展示，避免崩溃
  */
-export function parseTDASRoutes(tdasResults: TDASRouteResult[]): RouteOption[] {
-  if (!tdasResults || tdasResults.length === 0) return [];
+export function parseTDASRoutes(
+  tdasResults: TDASRouteResult | TDASRouteResult[] | null | undefined
+): RouteOption[] {
+  if (!tdasResults) return [];
+  const arr: TDASRouteResult[] = Array.isArray(tdasResults) ? tdasResults : [tdasResults];
+  if (arr.length === 0) return [];
 
-  return tdasResults.map((result, index) => {
-    const steps = (result.route || []).map(parseTDASSegment);
-    const totalTime = result.eta ? parseTDASETA(result.eta) : steps.reduce((sum, s) => sum + s.duration, 0);
-    const distKm = result.distM ? (result.distM / 1000).toFixed(1) : result.distU || '0';
-    const totalDistance = typeof distKm === 'string' && distKm.includes('km') ? distKm : `${distKm}公里`;
+  return arr.map((result, index) => {
+    const rawRoute = Array.isArray((result as any).route) ? (result as any).route : [];
+
+    const steps: RouteStep[] = rawRoute
+      .filter((s: any) => s && typeof s === 'object')
+      .map((seg: any): RouteStep => {
+        if (seg.mode) {
+          return parseTDASSegment(seg as TDASSegment);
+        }
+        return {
+          type: 'walk',
+          description: '参考路径段（来自 TDAS 驾车导航）',
+          duration: 0,
+        };
+      });
+
+    const totalTime = result.eta
+      ? parseTDASETA(result.eta)
+      : steps.reduce((sum, s) => sum + (s.duration || 0), 0);
+
+    let totalDistance: string;
+    if (typeof (result as any).distU === 'string' && (result as any).distU) {
+      totalDistance = (result as any).distU;
+    } else if (result.distM) {
+      totalDistance = `${(result.distM / 1000).toFixed(1)}公里`;
+    } else {
+      totalDistance = '未知';
+    }
+
+    const finalSteps: RouteStep[] = steps.length > 0 ? steps : [
+      {
+        type: 'walk',
+        description: `参考驾车路径（${totalDistance}，预计 ${totalTime} 分钟）。实际公交乘车信息请参考下方站点 ETA。`,
+        duration: totalTime,
+      },
+    ];
 
     return {
       id: `route-${index + 1}`,
       totalTime,
       totalDistance,
-      type: classifyRouteType(steps),
-      steps,
-      estimatedCost: 0, // 费用在后续步骤中填充
+      type: classifyRouteType(finalSteps),
+      steps: finalSteps,
+      estimatedCost: 0,
     };
   });
 }
@@ -400,6 +441,90 @@ export interface IntegratedResult {
   stopETAs?: StopETAList;
   paymentInfo: PaymentInfo;
   tips: string[];
+}
+
+/**
+ * 把公交规划候选方案转成 RouteOption，用于前端/AI 展示
+ * 估算原则：
+ * - 步行速度 80 米/分钟
+ * - 巴士每站约 1.5 分钟（含停站）
+ * - 费用暂填 0（真实费用需查 JSON_BUS.json，本版先不做）
+ */
+export function transitCandidateToRouteOption(
+  cand: TransitCandidate,
+  nextBusInfo?: { minutesAway: number; eta: string | null }
+): RouteOption {
+  const walkInMin = Math.max(1, Math.ceil(cand.walkInMeters / 80));
+  const walkOutMin = Math.max(1, Math.ceil(cand.walkOutMeters / 80));
+
+  const mode = cand.mode || 'bus';
+  // 每 mode 的每站平均耗时（分钟）
+  const perStopMin = mode === 'mtr' ? 2.5
+                  : mode === 'ferry' ? 5
+                  : mode === 'tram' ? 2
+                  : mode === 'ptram' ? 3
+                  : mode === 'gmb' ? 1.2
+                  : 1.5;  // 巴士默认
+
+  const rideMin = Math.max(2, Math.ceil(cand.numStops * perStopMin));
+  const waitMin = nextBusInfo?.minutesAway && nextBusInfo.minutesAway > 0
+    ? nextBusInfo.minutesAway : 0;
+  const totalTime = walkInMin + waitMin + rideMin + walkOutMin;
+
+  // 中文标签：巴士/小巴/电车/渡轮/山顶缆车/港铁
+  const modeLabel = mode === 'mtr' ? '港铁'
+                 : mode === 'ferry' ? '渡轮'
+                 : mode === 'tram' ? '电车'
+                 : mode === 'ptram' ? '山顶缆车'
+                 : mode === 'gmb' ? '小巴'
+                 : `${cand.company} 巴士`;
+
+  // RouteStep 的 type 约束：walk/bus/mtr/gmb/tram/ferry
+  const stepType: RouteStep['type'] =
+    mode === 'mtr' ? 'mtr'
+    : mode === 'ferry' ? 'ferry'
+    : mode === 'tram' || mode === 'ptram' ? 'tram'
+    : mode === 'gmb' ? 'gmb'
+    : 'bus';
+
+  const rideDesc = nextBusInfo
+    ? `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
+    : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
+
+  const steps: RouteStep[] = [
+    {
+      type: 'walk',
+      description: `步行 ${walkInMin} 分钟（约 ${cand.walkInMeters} 米）到"${cand.boardStopName}"`,
+      duration: walkInMin,
+    },
+    {
+      type: stepType,
+      description: rideDesc,
+      route: cand.route,
+      routeDetail: `${cand.company} ${cand.route} ${cand.bound === 'O' ? '去程' : '回程'}`,
+      from: cand.boardStopName,
+      to: cand.alightStopName,
+      duration: rideMin + waitMin,
+      stops: cand.numStops,
+      cost: typeof cand.fare === 'number' ? cand.fare : undefined,
+    },
+    {
+      type: 'walk',
+      description: `步行 ${walkOutMin} 分钟（约 ${cand.walkOutMeters} 米）到达终点`,
+      duration: walkOutMin,
+    },
+  ];
+
+  const totalWalkKm = ((cand.walkInMeters + cand.walkOutMeters) / 1000).toFixed(2);
+
+  return {
+    id: `${mode}-${cand.company}-${cand.route}-${cand.bound}`.toLowerCase().replace(/\s+/g, '_'),
+    totalTime,
+    totalDistance: `${cand.numStops} 站 + 步行 ${totalWalkKm} 公里`,
+    type: 'direct',
+    steps,
+    estimatedCost: typeof cand.fare === 'number' ? cand.fare : 0,
+  };
 }
 
 /**

@@ -114,10 +114,12 @@ const TIME_KEYWORDS: Record<string, string[]> = {
 export function extractLocations(question: string): { origin?: string; destination?: string } {
   const q = question.trim();
 
-  // 模式1：从/從 A 到 B / 由 A 到 B / 由 A 去 B
+  // 模式1：从/從 A 到 B / 由 A 到 B / 由 A 去 B / A 到 B / A 去 B
   const zhPatterns = [
     /[从從]\s*(.+?)\s*到\s*(.+?)(?:\s*怎么走|\s*怎麼走|\s*怎么去|\s*怎麼去|\s*坐什么|\s*坐什麼|\s*搭什么|\s*搭什麼|\s*路线|\s*路線|\s*$)/,
     /由\s*(.+?)\s*(?:到|去)\s*(.+?)(?:\s*怎么走|\s*怎麼走|\s*怎么去|\s*怎麼去|\s*坐什么|\s*坐什麼|\s*搭什么|\s*搭什麼|\s*路线|\s*路線|\s*$)/,
+    // "A 到 B" 不带前置词，要求 A 和 B 非空、A 至少 1 字；末尾可选怎么走/路线
+    /^([^到去从由]+?)\s*(?:到|去)\s*([^到去从由]+?)(?:\s*怎么走|\s*怎麼走|\s*怎么去|\s*怎麼去|\s*坐什么|\s*坐什麼|\s*搭什么|\s*搭什麼|\s*路线|\s*路線|\s*$)/,
   ];
 
   // 模式2：英文 from A to B

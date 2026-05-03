@@ -7,8 +7,14 @@ import { parseQuestion } from './parser';
 import { geocodeRoute } from './geocoder';
 import { createAPICallPlan } from './router';
 import { executeBatchFetch } from './fetcher';
-import { integrateData } from './integrator';
-import type { ResponseMetadata } from './types';
+import {
+  integrateData,
+  transitCandidateToRouteOption,
+  generatePaymentInfo,
+  generateTips,
+} from './integrator';
+import { planPublicTransit } from './planner';
+import type { ResponseMetadata, RouteOption } from './types';
 
 // ============================================================
 // InputType - 插件输入参数（Zod Schema）
@@ -103,87 +109,120 @@ export async function tool(
     // 2. 地理编码
     const { originCoord, destCoord } = geocodeRoute(parsed.origin, parsed.destination);
 
-    // 验证：无法识别起点或终点时返回错误提示（Requirements 13.3）
     if (!parsed.origin && !parsed.destination) {
       return buildErrorResponse(
         '无法识别起点或终点，请提供更具体的地点名称',
-        apisCalled,
-        apiStatus
+        apisCalled, apiStatus
       );
     }
 
-    // 3. 智能路由 - 生成 API 调用计划
-    const plan = createAPICallPlan(parsed, originCoord, destCoord);
+    // ========================================================
+    // 3. 多模态公交规划器（使用内置的香港政府官方 GeoJSON 数据）
+    //    覆盖 KMB/CTB/NLB/LWB 巴士 + 专线小巴 + 电车 + 渡轮 + 山顶缆车 + 港铁
+    //    要求：起终点都有坐标
+    // ========================================================
+    const routeOptions: RouteOption[] = [];
+    let plannerErrorDetail: string | undefined;
 
-    // 4. 并发调用 API（Promise.allSettled）
-    const fetchResult = await executeBatchFetch(plan);
+    if (originCoord && destCoord) {
+      const planResult = await planPublicTransit(
+        originCoord.lat, originCoord.lng,
+        destCoord.lat, destCoord.lng
+      );
 
-    // 收集 API 调用状态
-    for (const [api, status] of Object.entries(fetchResult.apiStatus)) {
-      apisCalled.push(api);
-      apiStatus[api] = status;
+      apisCalled.push('transit-planner');
+      if (planResult.indexError) {
+        apiStatus['transit-planner'] = 'failed';
+        plannerErrorDetail = planResult.indexError;
+      } else if (planResult.candidates.length === 0) {
+        apiStatus['transit-planner'] = planResult.noNearbyStops ? 'skipped' : 'failed';
+        plannerErrorDetail = planResult.noNearbyStops
+          ? `起终点 800 米内无任何公交站点`
+          : `找到附近站点但无直达路线（可能需要换乘）`;
+      } else {
+        apiStatus['transit-planner'] = 'success';
+        // 转换为 RouteOption（不含实时 ETA，Phase 2 再对接）
+        for (const cand of planResult.candidates) {
+          routeOptions.push(transitCandidateToRouteOption(cand));
+        }
+      }
+    } else {
+      apisCalled.push('transit-planner');
+      apiStatus['transit-planner'] = 'skipped';
     }
 
-    // 检查是否所有 API 都失败了
-    const allFailed = Object.values(fetchResult.apiStatus)
-      .filter(s => s !== 'skipped')
-      .every(s => s === 'failed');
+    // ========================================================
+    // 4. 如果公交规划没有结果，尝试旧的 TDAS 作为降级参考
+    //    （不再作为唯一路径来源）
+    // ========================================================
+    let stopETAs: z.infer<typeof OutputType>['stopETAs'] | undefined;
+    if (routeOptions.length === 0) {
+      const plan = createAPICallPlan(parsed, originCoord, destCoord);
+      const fetchResult = await executeBatchFetch(plan);
 
-    // 5. 数据整合
-    const integrated = integrateData(fetchResult, {
-      origin: parsed.origin,
-      destination: parsed.destination,
-      currentTime: new Date(),
-    });
+      for (const [api, status] of Object.entries(fetchResult.apiStatus)) {
+        apisCalled.push(api);
+        apiStatus[api] = status;
+      }
 
-    // 构建元数据
+      const integrated = integrateData(fetchResult, {
+        origin: parsed.origin, destination: parsed.destination,
+        currentTime: new Date(),
+      });
+      routeOptions.push(...integrated.routes);
+      stopETAs = integrated.stopETAs;
+    }
+
+    // 5. 付款信息 & tips
+    const paymentInfo = generatePaymentInfo(routeOptions);
+    const baseTips = generateTips(routeOptions, parsed.origin, parsed.destination, new Date());
+
     const metadata: ResponseMetadata = {
       dataTimestamp: new Date().toISOString(),
       apisCalled,
       apiStatus,
     };
 
-    // 没有找到路线时的提示（Requirements 13.4）
-    if (integrated.routes.length === 0 && !integrated.stopETAs) {
-      const errorMsg = allFailed
-        ? '所有 API 调用失败，请稍后重试'
-        : parsed.origin && parsed.destination
-          ? `未找到从 ${parsed.origin} 到 ${parsed.destination} 的公共交通路线`
-          : '未找到匹配的路线信息';
-
+    // 都没找到路线时的提示
+    if (routeOptions.length === 0) {
+      const errorMsg = apiStatus['transit-planner'] === 'skipped' && !originCoord
+        ? `起点"${parsed.origin || '未知'}"不在已知地点词典中，暂无法规划路线`
+        : apiStatus['transit-planner'] === 'skipped' && !destCoord
+        ? `终点"${parsed.destination || '未知'}"不在已知地点词典中，暂无法规划路线`
+        : '附近没有找到可直达的公交路线，建议尝试港铁或换乘方案';
       return {
         routes: [],
-        paymentInfo: integrated.paymentInfo,
-        tips: [errorMsg, ...integrated.tips],
+        paymentInfo,
+        tips: [errorMsg, ...baseTips],
         metadata,
         error: errorMsg,
       };
     }
 
-    // 标注失败的数据源（Requirements 13.5）
     const failedAPIs = Object.entries(apiStatus)
       .filter(([, s]) => s === 'failed')
       .map(([api]) => api);
 
-    const tips = [...integrated.tips];
+    const tips = [...baseTips];
     if (failedAPIs.length > 0) {
-      tips.push(`部分数据源暂不可用: ${failedAPIs.join(', ')}，已使用其他可用数据`);
+      tips.push(`部分数据源暂不可用: ${failedAPIs.join(', ')}`);
+    }
+    if (plannerErrorDetail) {
+      tips.push(`[诊断] 交通规划器: ${plannerErrorDetail}`);
     }
 
     return {
-      routes: integrated.routes,
-      stopETAs: integrated.stopETAs,
-      paymentInfo: integrated.paymentInfo,
+      routes: routeOptions,
+      stopETAs,
+      paymentInfo,
       tips,
       metadata,
     };
   } catch (error) {
-    // 顶层错误捕获 - 确保不会崩溃（Requirements 13.1, 13.2）
     const errorMsg = error instanceof Error ? error.message : '未知错误';
     return buildErrorResponse(
       `查询失败: ${errorMsg}`,
-      apisCalled,
-      apiStatus
+      apisCalled, apiStatus
     );
   }
 }

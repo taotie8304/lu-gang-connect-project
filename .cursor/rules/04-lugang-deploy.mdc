@@ -18,7 +18,13 @@ alwaysApply: false
 
 - 前端容器：`lugang-ai-app`，镜像：`ghcr.io/taotie8304/lugang-ai:latest`。
 - 后端容器：`lugang-enterprise`，镜像：`ghcr.io/taotie8304/lugang-enterprise:latest`。
+- **FastGPT 系统工具（插件服务）**：常见名 `lugang-ai-plugin`，镜像依仓库 compose（fastgpt-plugin）；主应用需 `PLUGIN_BASE_URL`、`PLUGIN_TOKEN`；插件 `.pkg` 上传常依赖 **MinIO**（S3 兼容）与反向代理 CORS。
 - 其他依赖容器：Mongo、PostgreSQL(pgvector)、Redis、Minio、fastgpt-sandbox 等。
+
+# 系统工具与主应用版本
+
+- 若工作流调试中系统工具 **「工具运行结果」为空 `{}」**，在确认插件已返回 JSON 的前提下，检查 **lugang-ai 服务端**是否已包含 **`runTool.ts`** 中对 SSE 终包的 **`parseSystemToolStreamResult`**（无 `{ output }` 包裹时的兼容）。**仅更新前端静态资源不能修复**。
+- 插件包更新：本地 `hk-transport-plugin` 执行 `node build.mjs` 后在 FastGPT 管理端覆盖上传 `.pkg`；细节见 `hk-transport-plugin/deploy.md`。
 
 # 部署操作约定
 

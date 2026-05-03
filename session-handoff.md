@@ -18,7 +18,12 @@ inclusion: always
 
 ## 上一次 Session 完成的工作
 
-### 1. ✅ Cursor 规则体系补全
+### 1. ✅ 香港智能交通助手（hk-transport-plugin）与主应用联调文档化
+- **插件包**：`build.mjs` 生成 `dist/hk_transport_assistant.pkg`；数据脚本 `scripts/prepare-data.mjs` → `src/data/transit.ts`；多模式规划 `src/planner.ts`；问法 `src/parser.ts`。
+- **主应用修复**：`lugang-ai/.../child/runTool.ts` 增加 `parseSystemToolStreamResult` / `isSystemToolEnvelopeError`，修复系统工具调试结果 `toolRes` 为 `{}`（SSE 终包无 `output` 包裹时）。
+- **文档与规则**：新增 `hk-transport-plugin/DEVELOPMENT.md`、重写 `deploy.md`；新增 `.cursor/rules/13-lugang-hk-transport-plugin.mdc`；更新 `02-lugang-docs.mdc` globs；同步 `project-memory.md`、本文件、`PROJECT-MASTER.md`、`04-lugang-deploy.mdc`。
+
+### 2. ✅ Cursor 规则体系补全（历史）
 - **新增 4 个专项规则文件**（`.cursor/rules/`）：
   - `07-lugang-backend.mdc`：Go / One API 后端开发规范
   - `08-lugang-frontend.mdc`：Next.js / FastGPT 前端开发规范
@@ -26,7 +31,7 @@ inclusion: always
   - `10-lugang-testing.mdc`：测试规范与质量保证标准
 - **更新 `session-handoff.md`**：记录 Kiro → Cursor 迁移信息和订阅功能待完成状态。
 
-### 2. ✅ 历史已完成功能（参考 project-memory.md）
+### 3. ✅ 历史已完成功能（参考 project-memory.md）
 - CJK 简繁搜索规范化（opencc-js）
 - 联网搜索引用修复（前端 Citation Parser + 后端 search_info 透传）
 - 前端使用条款功能（SystemContentModal）
@@ -44,9 +49,12 @@ inclusion: always
    - 实现套餐到期/自动续费逻辑
 
 ### 🟡 P1 - 次高优先级
-2. **联网搜索引用修复验证**：
+2. **交通插件生产验证**：
+   - 确认服务器 **lugang-ai 镜像** 已包含 **`runTool.ts` SSE 解析修复** 后再验收工作流调试/UI。
+   - 按需执行 `prepare-data.mjs` 更新政府静态数据并重新 `node build.mjs`、覆盖上传 `.pkg`。
+3. **联网搜索引用修复验证**：
    - internet 模型已切换到原生 DashScope 协议，待在生产环境验证引用是否正常显示。
-3. **用户设置多语言功能验证**：
+4. **用户设置多语言功能验证**：
    - 需清除浏览器缓存后访问 https://www.airscend.com 测试语言切换。
 
 ### 🟢 P2 - 常规优化
@@ -55,16 +63,23 @@ inclusion: always
 
 ## 未解决的问题或 Bug
 
+- **系统工具调试 `toolRes` 为空 `{}`**：若插件服务已返回完整 JSON 而界面仍为空，多为 **主应用未部署** 含 `parseSystemToolStreamResult` 的 `runTool.ts`（需更新 **lugang-ai 服务端镜像**，非仅前端静态资源）。
 - 订阅功能完全未开始开发（P0 阻塞）
 - 联网搜索引用修复正在验证中（已切换 internet 模型到原生协议，待生产验证）
 - 用户设置多语言功能已部署，待用户验证（需清除浏览器缓存）
 
 ## 重要文件路径
 
+### 香港交通系统工具（hk-transport-plugin）
+- **进度与契约**：`hk-transport-plugin/DEVELOPMENT.md`
+- **上传步骤**：`hk-transport-plugin/deploy.md`
+- **专项 Cursor 规则**：`.cursor/rules/13-lugang-hk-transport-plugin.mdc`
+- **主应用解析修复**：`lugang-ai/packages/service/core/workflow/dispatch/child/runTool.ts`
+
 ### 核心配置文件
 - **项目主文档**：`PROJECT-MASTER.md`（包含所有账号密码、服务器配置）
 - **长期记忆**：`project-memory.md`
-- **Cursor 规则目录**：`.cursor/rules/`（共 10 个规则文件）
+- **Cursor 规则目录**：`.cursor/rules/`（含 `00`–`13` 等规则文件，其中 **`13-lugang-hk-transport-plugin.mdc`** 对应交通插件）
 
 ### 前端关键文件
 - 系统内容组件：`lugang-ai/projects/app/src/components/SystemContentModal/index.tsx`

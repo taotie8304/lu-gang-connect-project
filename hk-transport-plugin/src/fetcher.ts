@@ -11,6 +11,8 @@ import type {
   TDASRouteResult,
   KMBRoute,
   CTBRoute,
+  KMBStop,
+  KMBRouteStop,
 } from './types';
 
 // ============================================================
@@ -113,7 +115,8 @@ export async function fetchTDASRoute(
   options?: { tunnel?: 'cht' | 'eht' | 'wht' }
 ): Promise<FetchResult<TDASRouteResult[]>> {
   const url = 'https://tdas-api.hkemobility.gov.hk/tdas/api/route';
-  return fetchWithTimeout<TDASRouteResult[]>(url, TDAS_TIMEOUT, {
+  // TDAS 实际返回单个对象而非数组，用 any 接收后包装成数组以兼容下游逻辑
+  const raw = await fetchWithTimeout<any>(url, TDAS_TIMEOUT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -124,6 +127,16 @@ export async function fetchTDASRoute(
       ...options,
     }),
   });
+
+  if (!raw.success) return { success: false, error: raw.error };
+
+  // 若 API 返回 { Message: "..." } 也视为失败（如"距離起點位置75米以內沒有街路"）
+  if (raw.data && typeof raw.data === 'object' && 'Message' in raw.data && !('route' in raw.data)) {
+    return { success: false, error: String(raw.data.Message) };
+  }
+
+  const arr: TDASRouteResult[] = Array.isArray(raw.data) ? raw.data : [raw.data];
+  return { success: true, data: arr };
 }
 
 // ============================================================
@@ -175,6 +188,60 @@ export async function fetchKMBRoutes(): Promise<FetchResult<KMBRoute[]>> {
     return { success: true, data: result.data.data };
   }
   return { success: false, error: result.error };
+}
+
+/** KMB 全港站点列表（约 7000 个站，约 1MB，缓存 24 小时） */
+export async function fetchKMBStops(): Promise<FetchResult<KMBStop[]>> {
+  const cacheKey = 'kmb:stops';
+  const cached = cache.get<KMBStop[]>(cacheKey);
+  if (cached) return { success: true, data: cached };
+
+  const url = 'https://data.etabus.gov.hk/v1/transport/kmb/stop';
+  // 这个端点数据量大，给 30 秒超时
+  const result = await fetchWithTimeout<KMBAPIResponse<KMBStop[]>>(url, 30_000);
+  if (result.success && result.data) {
+    cache.set(cacheKey, result.data.data, STATIC_TTL);
+    return { success: true, data: result.data.data };
+  }
+  return { success: false, error: result.error };
+}
+
+/** KMB 路线-站点对应关系（约 40 万条记录，约 15MB，缓存 24 小时） */
+export async function fetchKMBRouteStops(): Promise<FetchResult<KMBRouteStop[]>> {
+  const cacheKey = 'kmb:route-stops';
+  const cached = cache.get<KMBRouteStop[]>(cacheKey);
+  if (cached) return { success: true, data: cached };
+
+  const url = 'https://data.etabus.gov.hk/v1/transport/kmb/route-stop';
+  const result = await fetchWithTimeout<KMBAPIResponse<KMBRouteStop[]>>(url, 30_000);
+  if (result.success && result.data) {
+    cache.set(cacheKey, result.data.data, STATIC_TTL);
+    return { success: true, data: result.data.data };
+  }
+  return { success: false, error: result.error };
+}
+
+// ============================================================
+// 地理距离工具：Haversine 公式（单位：米）
+// ============================================================
+
+/**
+ * 计算两点之间的球面距离（单位：米）
+ * 用于判断"某坐标附近的巴士站"
+ */
+export function haversineDistanceM(
+  lat1: number, lng1: number,
+  lat2: number, lng2: number
+): number {
+  const R = 6371000; // 地球半径（米）
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 // ============================================================

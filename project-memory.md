@@ -39,6 +39,7 @@ inclusion: always
 - [x] 用户设置面板多语言支持 - 菜单项自动根据语言切换
 - [x] 项目文档整理 - 创建统一主文档 PROJECT-MASTER.md
 - [x] 临时测试文件清理 - 删除 47 个临时测试和检查文件
+- [x] **香港智能交通助手（FastGPT 系统工具）** — `hk-transport-plugin`：`.pkg` ZIP+IIFE 打包、`hk_transport_assistant` toolId、政府 GeoJSON 预处理多模式规划（巴士/小巴/港铁/渡轮/电车/缆车）、`planner` 坐标匹配站点、`parser`「A 到 B」问法、主应用 `runTool.ts` 兼容无 `output` 包裹的 SSE 终包（修复调试界面 `toolRes` 为 `{}`）
 
 ## 重要决策记录
 
@@ -55,12 +56,12 @@ inclusion: always
   - API 根据 Cookie (`NEXT_LOCALE`) 自动选择对应语言版本
   - 繁简转换使用 opencc-js (hk→cn)，转换准确率 >99%
   - 简体版本可通过 `convert_to_simplified.js` 脚本自动生成，无需人工翻译
-- **项目文档管理**：
-  - 所有重要信息整合到 `PROJECT-MASTER.md` 统一文档
-  - 临时测试文件定期清理，只保留实用工具脚本
-  - 命名规范统一使用"鲁港通"品牌名称
-
-## 服务器部署信息
+- **FastGPT 系统工具 / 香港交通插件**：
+  - 工具包为标准 **ZIP**（`index.js` + `logo.svg`），入口 **`cb`** 绑定 IIFE 导出之 `tool`。
+  - **toolId** 使用 **`hk_transport_assistant`**（下划线），避免主应用历史逻辑 `split('-')[1]` 截断。
+  - 路网数据来自 **data.gov.hk** 官方 GeoJSON，经 `prepare-data.mjs` 紧凑化后 **打入插件 bundle**，运行时规划不依赖外网拉全量路网。
+  - **站点匹配**以坐标邻近为主，不能仅依赖 `stopId`（跨运营公司同一物理站 ID 不同）。
+  - **系统工具 SSE 返回值**：`@fastgpt-sdk/plugin` 的 `RunToolWithStream` 可能返回 **`{ output, error }` 信封**，也可能 **`data` 直接为工具体**；主应用须 **`parseSystemToolStreamResult`** 兼容，否则 `res.output || {}` 显示为空。
 
 - 服务器 IP：156.225.30.134（宝塔面板）
 - 项目目录：`/www/wwwroot/lugang-ai`

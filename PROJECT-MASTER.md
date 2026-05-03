@@ -1,7 +1,7 @@
 # 鲁港通项目 - 主文档
 
 > 本文档整合了所有重要的项目信息、配置、密码和部署指南。
-> 最后更新：2026-04-14
+> 最后更新：2026-05-03
 
 ---
 
@@ -148,11 +148,13 @@
 | lugang-ai-mongo | mongo:5.0.18 | 27017:27017 | MongoDB 数据库 |
 | lugang-ai-pg | pgvector/pgvector:pg15 | 5432:5432 | PostgreSQL 向量数据库 |
 | lugang-ai-redis | redis:7.2-alpine | 6379:6379 | Redis 缓存 |
-| lugang-ai-minio | minio | 9000:9000 | 对象存储 |
+| lugang-ai-plugin | （自建 fastgpt-plugin 镜像） | 视 compose | FastGPT **系统工具**；主应用 `PLUGIN_BASE_URL` / `PLUGIN_TOKEN` 指向此服务 |
+| lugang-ai-minio | minio | 9000:9000 | 对象存储（插件包 S3 兼容上传等） |
 | lugang-ai-sandbox | fastgpt-sandbox:v4.14.4 | - | 代码沙箱 |
 
 **重要提示**：
-- 前端容器在 docker-compose.yml 中，使用 `docker-compose` 命令管理
+- 表内容器名以生产 `docker ps` 为准；插件与 MinIO 是否启用取决于 `docker-compose.yml`。
+- 前端主业务容器在 compose 中常用名 **`lugang-ai`** 或 **`lugang-ai-app`**（以实际 compose 为准）；一般用 `docker-compose` 管理。
 - 后端容器**不在** docker-compose.yml 中，必须用 `docker run` 单独部署
 - 后端容器网络：`lugang-connect-enterprise_default`
 
@@ -295,6 +297,7 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 - ✅ 多语言系统内容支持 - 使用条款、隐私政策、个人资料收集声明（简体/繁体/英文）
 - ✅ 自动繁简转换功能 - 使用 opencc-js 自动将繁体内容转换为简体
 - ✅ 用户设置面板多语言支持 - 菜单项自动根据语言切换
+- ✅ **香港智能交通助手** - FastGPT 系统工具：`hk-transport-plugin` 多模式公交/港铁/渡轮等规划；主应用 `runTool` 兼容插件 SSE 终包无 `output` 包裹（详见 `hk-transport-plugin/DEVELOPMENT.md`）
 
 ---
 
@@ -347,6 +350,11 @@ docker ps --format "table {{.Names}}\t{{.Image}}\t{{.Status}}"
 - `-internet` 后缀模型必须走原生 DashScope 协议（不走兼容模式）
 - 原因：兼容模式 SSE 流不返回 `search_info`
 - 非联网的 Qwen3.5/QwQ/Qwen3 系列继续走兼容模式以支持 `reasoning_content`
+
+### FastGPT 系统工具 / 香港交通插件
+- 独立 **`lugang-ai-plugin`**（fastgpt-plugin）容器；主应用配置 **`PLUGIN_BASE_URL`、`PLUGIN_TOKEN`**；插件包走 **MinIO/S3** 时还需完整 **S3 与 DB 相关变量**（以实际 `docker-compose` 为准）。
+- 插件 **`dist/hk_transport_assistant.pkg`** 为 ZIP； **`toolId`：`hk_transport_assistant`**（下划线）。
+- 详情：`hk-transport-plugin/DEVELOPMENT.md`、`hk-transport-plugin/deploy.md`、`.cursor/rules/13-lugang-hk-transport-plugin.mdc`。
 
 ### 数据库设计
 - 前端连接的是 `lugang_ai` 数据库（不是 `fastgpt`）

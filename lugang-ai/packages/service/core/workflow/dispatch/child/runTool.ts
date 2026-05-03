@@ -42,6 +42,35 @@ type RunToolResponse = DispatchNodeResultType<
   Record<string, any>
 >;
 
+/**
+ * 解析 fastgpt-plugin /tool/runstream 终包。
+ * SDK 将 SSE data 整段作为 run() 的 resolve 值：
+ * - 信封：{ output: 工具返回值, error?: ... } —— 仅在此结构下顶层 error 表示服务/执行失败
+ * - 部分版本：data 即工具返回值本身（无 output），不得用 res.output || {} 否则得到 {}
+ */
+function parseSystemToolStreamResult(res: unknown): Record<string, any> {
+  if (res == null || typeof res !== 'object' || Array.isArray(res)) return {};
+  const r = res as Record<string, any>;
+  if ('output' in r) {
+    if (r.error) return {};
+    if (r.output != null && typeof r.output === 'object') {
+      return r.output as Record<string, any>;
+    }
+    return {};
+  }
+  return { ...r };
+}
+
+function isSystemToolEnvelopeError(res: unknown): res is { error: unknown; output?: unknown } {
+  return (
+    res != null &&
+    typeof res === 'object' &&
+    !Array.isArray(res) &&
+    'output' in res &&
+    !!(res as Record<string, unknown>).error
+  );
+}
+
 export const dispatchRunTool = async (props: RunToolProps): Promise<RunToolResponse> => {
   const {
     params,
@@ -126,36 +155,37 @@ export const dispatchRunTool = async (props: RunToolProps): Promise<RunToolRespo
         }
       });
 
-      let result = res.output || {};
+      let result = parseSystemToolStreamResult(res);
 
-      if (res.error) {
+      if (isSystemToolEnvelopeError(res)) {
+        const resErr = (res as { error: unknown }).error;
         // 适配旧版：旧版本没有catchError，部分工具会正常返回 error 字段作为响应。
-        if (catchError === undefined && typeof res.error === 'object') {
+        if (catchError === undefined && typeof resErr === 'object') {
           return {
-            data: res.error,
+            data: resErr,
             [DispatchNodeResponseKeyEnum.nodeResponse]: {
               toolInput,
-              toolRes: res.error,
+              toolRes: resErr,
               moduleLogo: avatar
             },
-            [DispatchNodeResponseKeyEnum.toolResponses]: res.error
+            [DispatchNodeResponseKeyEnum.toolResponses]: resErr
           };
         }
 
         // String error(Common error, not custom)
-        if (typeof res.error === 'string') {
-          throw new Error(res.error);
+        if (typeof resErr === 'string') {
+          throw new Error(resErr);
         }
 
         // Custom error field
         return {
-          error: res.error,
+          error: resErr,
           [DispatchNodeResponseKeyEnum.nodeResponse]: {
             toolInput,
-            error: res.error,
+            error: resErr,
             moduleLogo: avatar
           },
-          [DispatchNodeResponseKeyEnum.toolResponses]: res.error
+          [DispatchNodeResponseKeyEnum.toolResponses]: resErr
         };
       }
 

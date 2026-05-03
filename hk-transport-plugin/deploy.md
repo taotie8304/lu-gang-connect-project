@@ -1,39 +1,55 @@
 # 香港智能交通助手 - 部署指南
 
+> 详细开发进度见同目录 `DEVELOPMENT.md`。
+
+## 环境准备
+
+- **静态路网数据**（首次或需更新政府数据时）：
+  ```bash
+  node scripts/prepare-data.mjs
+  ```
+  生成 `src/data/transit.ts`（体积约数 MB，已纳入 bundle）。
+
 ## 打包
 
 ```bash
-# 方式 1: 使用 Bun（生产环境推荐）
-bun run build:pkg
-
-# 方式 2: 使用 Node.js + esbuild（开发环境备用）
-npm run build:pkg:node
-# 或
+# 推荐：Node 执行 build.mjs（根目录）
 node build.mjs
 ```
 
-打包成功后，输出文件在 `dist/hk-transport-assistant.pkg`。
+打包成功后输出：
+
+- **`dist/hk_transport_assistant.pkg`** — 上传 FastGPT 的插件包（ZIP，内含 `index.js`、`logo.svg`）
+
+> 旧文档中的 `hk-transport-assistant.pkg` 已更名；**toolId 与文件名**与 `build.mjs` 中 `PKG_NAME` 一致。
 
 ## 上传到 FastGPT
 
-1. 使用 root 用户登录 FastGPT（https://www.airscend.com）
-2. 进入「配置页面」→「系统插件」→「导入/更新」
-3. 上传 `dist/hk-transport-assistant.pkg` 文件
-4. 等待插件热加载完成（通常几秒钟）
-5. 在插件列表中确认「香港智能交通助手」已出现
+1. 使用 root 登录 FastGPT 管理端（如 https://www.airscend.com）
+2. **配置 → 系统插件 → 导入/更新**
+3. 上传 **`dist/hk_transport_assistant.pkg`**
+4. 等待插件服务热加载（数秒级）
+5. 确认列表中出现「香港智能交通助手」，且工具 ID 与主应用侧配置一致
 
-## 验证
+## 主应用（lugang-ai）依赖
 
-上传后在 FastGPT 工作流中：
-1. 添加「工具调用」节点
-2. 选择「香港智能交通助手」
-3. 输入测试问题：`从落马洲口岸到香港立法会怎么走`
-4. 确认返回路线方案、ETA、付款信息等数据
+- 需配置 **`PLUGIN_BASE_URL`、`PLUGIN_TOKEN`**（及插件容器、MinIO/S3 等），否则系统工具不可用。
+- 若工作流调试中 **「工具运行结果」为空对象 `{}」** 但插件日志正常：请部署包含 **`runTool.ts` 中 `parseSystemToolStreamResult`** 的 **lugang-ai 服务端镜像**（见 `DEVELOPMENT.md`），**仅更新前端静态资源无法修复**。
+
+## 验证用例
+
+1. 工作流中添加「工具调用」节点，选择本插件  
+2. 输入示例：
+   - `从中环到尖沙咀怎么走`
+   - `旺角到铜锣湾`
+   - `从落马洲口岸到香港立法会怎么走`
+3. 期望：`routes`、`paymentInfo`、`tips`、`metadata` 等字段非空；`metadata.apiStatus` 含 `transit-planner` 等
 
 ## 文件说明
 
-| 文件 | 说明 |
-|------|------|
-| `dist/hk-transport-assistant.pkg` | 插件包（上传此文件） |
-| `dist/index.js` | 打包后的 JS bundle |
-| `dist/hk-transport-assistant.config.json` | 插件配置（调试用） |
+| 文件/目录 | 说明 |
+|-----------|------|
+| `dist/hk_transport_assistant.pkg` | 上传用插件包 |
+| `build.mjs` | esbuild IIFE + JSZip 打包 |
+| `scripts/prepare-data.mjs` | 官方 GeoJSON → `src/data/transit.ts` |
+| `DEVELOPMENT.md` | 实现进度与关键约定 |
