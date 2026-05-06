@@ -65,13 +65,13 @@ const config = {
     en: 'HK Smart Transport Assistant'
   },
   description: {
-    'zh-CN': '根据用户问题智能查询香港公共交通路线、实时到站时间、费用和付款方式。支持巴士（KMB/CTB/NLB）、小巴（GMB）、港铁（MTR）等。',
-    'zh-Hant': '根據用戶問題智能查詢香港公共交通路線、實時到站時間、費用和付款方式。支持巴士（KMB/CTB/NLB）、小巴（GMB）、港鐵（MTR）等。',
-    en: 'Intelligently query HK public transport routes, real-time ETA, fares and payment. Supports KMB, CTB, NLB, GMB, MTR.'
+    'zh-CN': '【必须对任何香港交通问题调用此工具】处理所有香港公共交通需求——从A到B怎么走、乘车路线规划、实时到站时间、末班车查询、费用和付款方式。覆盖巴士(KMB/CTB/NLB/LWB)、小巴(GMB)、港铁(MTR)、渡轮、电车、山顶缆车。当用户问"怎么走""怎么去""坐什么车""路线""几时到""末班车"等问题时必须调用。',
+    'zh-Hant': '【必須對任何香港交通問題調用此工具】處理所有香港公共交通需求——從A到B怎麼走、乘車路線規劃、實時到站時間、末班車查詢、費用和付款方式。覆蓋巴士(KMB/CTB/NLB/LWB)、小巴(GMB)、港鐵(MTR)、渡輪、電車、山頂纜車。當用戶問"怎麼走""怎麼去""坐什麼車""路線""幾時到""末班車"等問題時必須調用。',
+    en: '[MUST invoke for ALL HK transport questions] Handles all HK public transport needs — route planning from A to B, real-time ETA, last train/bus, fares, payment. Covers KMB/CTB/NLB/LWB bus, GMB minibus, MTR, ferry, tram, Peak Tram. Invoke when user asks about getting from one place to another, which bus/train to take, schedules, directions.'
   },
   toolDescription: {
-    'zh-CN': '查询香港公共交通路线和实时到站时间的工具，输入交通问题即可获得路线方案、到站时间、费用和出行建议',
-    en: 'Tool for querying HK public transport routes and real-time ETA. Input a transport question to get route options, arrival times, fares and travel tips.'
+    'zh-CN': '香港公共交通万能查询工具。当用户问"从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价"等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。',
+    en: 'Universal HK public transport query tool. MUST invoke when user asks route planning (how to get from X to Y), schedules (ETA, first/last bus), fares, or any HK transport question. Pass origin/destination for direct route planning, or pass the user question text for auto-parsing. Covers all HK bus, minibus, MTR, ferry, tram.'
   },
   versionList: [
     {
@@ -82,11 +82,50 @@ const config = {
           renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.input],
           selectedTypeIndex: 0,
           valueType: WorkflowIOValueTypeEnum.string,
+          key: 'origin',
+          label: '起点',
+          description: '起点名称（由上层 LLM 提取），如"落马洲口岸"、"尖沙咀"',
+          required: false,
+          toolDescription: '起点/出发地点名称，如"落马洲口岸"、"尖沙咀"、"中环"'
+        },
+        {
+          renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.input],
+          selectedTypeIndex: 0,
+          valueType: WorkflowIOValueTypeEnum.string,
+          key: 'destination',
+          label: '终点',
+          description: '终点名称（由上层 LLM 提取），如"铜锣湾"、"中环"',
+          required: false,
+          toolDescription: '终点/目的地点名称，如"铜锣湾"、"旺角"、"元朗"'
+        },
+        {
+          renderTypeList: [FlowNodeInputTypeEnum.select],
+          selectedTypeIndex: 0,
+          valueType: WorkflowIOValueTypeEnum.string,
+          key: 'transportMode',
+          label: '交通方式',
+          description: '交通方式偏好（由上层 LLM 提取）',
+          required: false,
+          enumList: [
+            { label: '不限定', value: '' },
+            { label: '巴士', value: 'bus' },
+            { label: '港铁', value: 'mtr' },
+            { label: '小巴', value: 'gmb' },
+            { label: '大屿山巴士', value: 'nlb' },
+            { label: '渡轮', value: 'ferry' },
+            { label: '电车', value: 'tram' },
+          ],
+          toolDescription: '用户偏好的交通方式：bus(巴士)/mtr(港铁)/gmb(小巴)/ferry(渡轮)/tram(电车)。不填则自动选择'
+        },
+        {
+          renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.input],
+          selectedTypeIndex: 0,
+          valueType: WorkflowIOValueTypeEnum.string,
           key: 'question',
-          label: '用户问题',
-          description: '用户的交通问题，如"从落马洲口岸到香港立法会怎么走"',
-          required: true,
-          toolDescription: '用户询问的香港交通路线问题'
+          label: '用户问题（兜底）',
+          description: '当起点/终点未提供时，从此问题文本中解析',
+          required: false,
+          toolDescription: '用户的原始问题文本，如"从落马洲到尖沙咀怎么走"。当未提取origin/destination时由插件自动解析'
         },
         {
           renderTypeList: [FlowNodeInputTypeEnum.select],

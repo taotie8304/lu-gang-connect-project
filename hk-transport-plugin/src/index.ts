@@ -14,16 +14,25 @@ import {
   generateTips,
 } from './integrator';
 import { planPublicTransit } from './planner';
-import type { ResponseMetadata, RouteOption } from './types';
+import type { ResponseMetadata, RouteOption, ParsedQuestion } from './types';
 
 // ============================================================
 // InputType - 插件输入参数（Zod Schema）
+// 支持两种模式：
+//   1. 结构化模式：LLM 直接传 origin/destination/transportMode（推荐）
+//   2. 自然语言模式：传 question，插件自行解析（兜底）
 // ============================================================
 
 export const InputType = z.object({
-  question: z.string().min(1, '问题不能为空').describe('用户的交通问题'),
+  question: z.string().optional().describe('用户的交通问题（当 origin/destination 未提供时使用）'),
+  origin: z.string().optional().describe('起点（由上层 LLM 提取，如"落马洲口岸"）'),
+  destination: z.string().optional().describe('终点（由上层 LLM 提取，如"尖沙咀"）'),
+  transportMode: z.string().optional().describe('交通方式偏好：bus/mtr/gmb/nlb/ferry/tram'),
   language: z.enum(['zh-CN', 'zh-HK', 'en']).default('zh-CN').describe('返回数据的语言'),
-});
+}).refine(
+  (data) => !!(data.question || data.origin || data.destination),
+  { message: '至少需要提供 question 或 origin/destination 中的一个' }
+);
 
 // ============================================================
 // OutputType - 插件输出参数（Zod Schema）
@@ -103,15 +112,48 @@ export async function tool(
   const apiStatus: Record<string, 'success' | 'failed' | 'skipped'> = {};
 
   try {
-    // 1. 解析用户问题
-    const parsed = parseQuestion(input.question, input.language);
+    // ===== 诊断：记录输入参数 =====
+    const diagLines: string[] = [];
+    diagLines.push(`[诊断] 收到参数: question="${input.question || '(空)'}", origin="${input.origin || '(空)'}", destination="${input.destination || '(空)'}", transportMode="${input.transportMode || '(空)'}"`);
+
+    // 1. 解析用户问题（优先使用上层 LLM 传入的结构化参数）
+    let origin = input.origin;
+    let destination = input.destination;
+    let transportPreference: string[] | undefined = input.transportMode
+      ? [input.transportMode]
+      : undefined;
+
+    // 结构化参数不完整时，从 question 文本中解析补充
+    if (!origin || !destination) {
+      const parsed = parseQuestion(input.question || '', input.language);
+      origin = origin || parsed.origin;
+      destination = destination || parsed.destination;
+      if (!transportPreference) {
+        transportPreference = parsed.transportPreference;
+      }
+    }
+
+    diagLines.push(`[诊断] 解析结果: origin="${origin || '(未识别)'}", destination="${destination || '(未识别)'}"`);
+
+    // 统一 parsed 接口供下游使用
+    const parsed: ParsedQuestion = {
+      origin,
+      destination,
+      transportPreference,
+      keywords: input.question ? input.question.split(/[\s,，。.!！?？]+/).filter(Boolean) : [],
+    };
 
     // 2. 地理编码
     const { originCoord, destCoord } = geocodeRoute(parsed.origin, parsed.destination);
 
+    if (originCoord) diagLines.push(`[诊断] 起点坐标: ${originCoord.name} (${originCoord.lat.toFixed(4)}, ${originCoord.lng.toFixed(4)})`);
+    else if (origin) diagLines.push(`[诊断] 起点"${origin}"未找到坐标`);
+    if (destCoord) diagLines.push(`[诊断] 终点坐标: ${destCoord.name} (${destCoord.lat.toFixed(4)}, ${destCoord.lng.toFixed(4)})`);
+    else if (destination) diagLines.push(`[诊断] 终点"${destination}"未找到坐标`);
+
     if (!parsed.origin && !parsed.destination) {
       return buildErrorResponse(
-        '无法识别起点或终点，请提供更具体的地点名称',
+        `无法识别起点或终点，请直接告诉我要从哪里到哪里。例如"从尖沙咀到铜锣湾怎么走"。${diagLines.join(' | ')}`,
         apisCalled, apiStatus
       );
     }
@@ -183,17 +225,21 @@ export async function tool(
       apiStatus,
     };
 
-    // 都没找到路线时的提示
+    // 都没找到路线时的提示 — 加上诊断信息
     if (routeOptions.length === 0) {
-      const errorMsg = apiStatus['transit-planner'] === 'skipped' && !originCoord
-        ? `起点"${parsed.origin || '未知'}"不在已知地点词典中，暂无法规划路线`
-        : apiStatus['transit-planner'] === 'skipped' && !destCoord
-        ? `终点"${parsed.destination || '未知'}"不在已知地点词典中，暂无法规划路线`
-        : '附近没有找到可直达的公交路线，建议尝试港铁或换乘方案';
+      let errorMsg: string;
+      if (apiStatus['transit-planner'] === 'skipped' && !originCoord) {
+        errorMsg = `起点"${parsed.origin || '未知'}"不在已知地点词典中。`;
+      } else if (apiStatus['transit-planner'] === 'skipped' && !destCoord) {
+        errorMsg = `终点"${parsed.destination || '未知'}"不在已知地点词典中。`;
+      } else {
+        errorMsg = '附近没有找到可直达的公交路线。';
+      }
+      errorMsg += ' 请勿重试——这是最终结果。';
       return {
         routes: [],
         paymentInfo,
-        tips: [errorMsg, ...baseTips],
+        tips: [...diagLines, ...baseTips, errorMsg],
         metadata,
         error: errorMsg,
       };
@@ -203,7 +249,7 @@ export async function tool(
       .filter(([, s]) => s === 'failed')
       .map(([api]) => api);
 
-    const tips = [...baseTips];
+    const tips = [...diagLines, ...baseTips];
     if (failedAPIs.length > 0) {
       tips.push(`部分数据源暂不可用: ${failedAPIs.join(', ')}`);
     }

@@ -24,11 +24,16 @@ describe('FastGPT plugin export', () => {
     expect(version.inputs.length).toBeGreaterThan(0);
     expect(version.outputs.length).toBeGreaterThan(0);
 
-    // Check question input
+    // 检查结构化参数已注册（origin/destination 替代了 question 的 required 地位）
+    const originInput = version.inputs.find((i: { key: string }) => i.key === 'origin');
+    const destInput = version.inputs.find((i: { key: string }) => i.key === 'destination');
+    expect(originInput).toBeDefined();
+    expect(destInput).toBeDefined();
+
     const questionInput = version.inputs.find((i: { key: string }) => i.key === 'question');
     expect(questionInput).toBeDefined();
-    expect(questionInput?.required).toBe(true);
-    expect(questionInput?.toolDescription).toBeDefined();
+    // question 现在为可选（可由 origin/destination 替代）
+    expect(questionInput?.required).toBeFalsy();
   });
 });
 

@@ -1,6 +1,7 @@
 // 鲁港通 - 问题解析模块
 
 import { ParsedQuestion } from './types';
+import { findKnownLocationsInText } from './stop-db';
 
 // ============================================================
 // 地点名称词典（口岸、地标、车站等常见地点）
@@ -16,32 +17,58 @@ const LOCATION_ALIASES: Record<string, string[]> = {
   '西九龙站': ['西九龙站', '西九龙', '西九龍站', '西九龍', 'west kowloon'],
   '莲塘口岸': ['莲塘口岸', '莲塘', '蓮塘口岸', '蓮塘', 'heung yuen wai'],
 
-  // 地标
+  // 地标 / 商圈 / 景点
   '香港立法会': ['香港立法会', '立法会', '香港立法會', '立法會', 'legco', 'legislative council'],
   '维多利亚港': ['维多利亚港', '维港', '維多利亞港', '維港', 'victoria harbour'],
   '太平山顶': ['太平山顶', '山顶', '太平山頂', '山頂', 'the peak', 'victoria peak'],
   '星光大道': ['星光大道', '星光大道', 'avenue of stars'],
   '迪士尼乐园': ['迪士尼乐园', '迪士尼', '迪士尼樂園', 'disneyland'],
   '海洋公园': ['海洋公园', '海洋公園', 'ocean park'],
+  '海港城': ['海港城', 'harbour city', 'harbor city'],
+  '时代广场': ['时代广场', '時代廣場', 'times square'],
+  '太古广场': ['太古广场', '太古廣場', 'pacific place'],
+  '朗豪坊': ['朗豪坊', 'langham place'],
+  '又一城': ['又一城', 'festival walk'],
+  '兰桂坊': ['兰桂坊', '蘭桂坊', 'lan kwai fong', 'lankwai fong'],
+  '庙街': ['庙街', '廟街', 'temple street'],
+  '女人街': ['女人街', 'ladies market', 'ladies street'],
+  '香港大学': ['香港大学', '香港大學', '港大', 'hku'],
+
+  // 港岛区
   '尖沙咀': ['尖沙咀', '尖沙嘴', 'tsim sha tsui', 'tst'],
-  '旺角': ['旺角', 'mong kok'],
   '铜锣湾': ['铜锣湾', '銅鑼灣', 'causeway bay'],
   '中环': ['中环', '中環', 'central'],
   '金钟': ['金钟', '金鐘', 'admiralty'],
   '湾仔': ['湾仔', '灣仔', 'wan chai'],
   '北角': ['北角', 'north point'],
   '香港机场': ['香港机场', '机场', '香港機場', '機場', 'hong kong airport', 'hk airport'],
+
+  // 九龙区
+  '旺角': ['旺角', 'mong kok'],
   '九龙塘': ['九龙塘', '九龍塘', 'kowloon tong'],
   '红磡': ['红磡', '紅磡', 'hung hom'],
+  '油麻地': ['油麻地', '油麻地', '油蔴地', 'yaumatei', 'yau ma tei'],
+  '佐敦': ['佐敦', 'jordan'],
+  '深水埗': ['深水埗', 'sham shui po', 'ssp'],
+  '太子': ['太子', 'prince edward'],
+  '观塘': ['观塘', '觀塘', 'kwun tong'],
+  '黄大仙': ['黄大仙', '黃大仙', 'wong tai sin'],
+
+  // 新界区
   '沙田': ['沙田', 'sha tin'],
   '大埔': ['大埔', 'tai po'],
   '元朗': ['元朗', 'yuen long'],
   '屯门': ['屯门', '屯門', 'tuen mun'],
   '荃湾': ['荃湾', '荃灣', 'tsuen wan'],
   '将军澳': ['将军澳', '將軍澳', 'tseung kwan o'],
-  '东涌': ['东涌', '東涌', 'tung chung'],
   '上水': ['上水', 'sheung shui'],
   '粉岭': ['粉岭', '粉嶺', 'fanling'],
+  '西贡': ['西贡', '西貢', 'sai kung'],
+
+  // 离岛区
+  '东涌': ['东涌', '東涌', 'tung chung'],
+  '赤柱': ['赤柱', 'stanley'],
+  '浅水湾': ['浅水湾', '淺水灣', 'repulse bay'],
 };
 
 /**
@@ -105,15 +132,114 @@ const TIME_KEYWORDS: Record<string, string[]> = {
 };
 
 // ============================================================
-// 地点名称提取
+// 地点名称提取（反向架构：全文扫描优先，正则兜底）
 // ============================================================
 
 /**
- * 使用正则表达式从用户问题中提取起点和终点
+ * 从用户问题中提取起点和终点
+ * 
+ * 策略（按优先级）：
+ * 1. 全文扫描 stop-db（9461站点）+ LOCATION_ALIASES 词典，找出所有命中地点
+ * 2. 根据命中数量和上下文关键词（"从""到""往""由"）判断起终点
+ * 3. 如果全文扫描无结果，降级到正则表达式模式匹配
  */
 export function extractLocations(question: string): { origin?: string; destination?: string } {
   const q = question.trim();
+  if (!q) return {};
 
+  // === 策略 1：全文扫描已知站点（优先） ===
+  
+  // 先扫描 LOCATION_ALIASES 词典（地标/商圈/口岸，优先级最高）
+  const aliasMatches: Array<{ pos: number; name: string; priority: number }> = [];
+  for (const [canonical, aliases] of Object.entries(LOCATION_ALIASES)) {
+    for (const alias of aliases) {
+      const pos = q.toLowerCase().indexOf(alias.toLowerCase());
+      if (pos >= 0) {
+        aliasMatches.push({ pos, name: canonical, priority: -1 }); // priority=-1 表示最高优先级
+        break; // 同一 canonical 只记录一次
+      }
+    }
+  }
+
+  // 再扫描 stop-db 全量站点索引（9461站点）
+  const foundLocs = findKnownLocationsInText(q);
+
+  // 合并两个来源，按位置排序
+  const allMatches = [
+    ...aliasMatches,
+    ...foundLocs.map(f => ({ pos: f.position, name: f.canonicalName, priority: f.priority })),
+  ].sort((a, b) => a.pos - b.pos);
+
+  // 去重：同一位置优先保留 LOCATION_ALIASES（priority=-1）
+  const uniqueMatches: Array<{ pos: number; name: string }> = [];
+  const seenPos = new Map<number, number>(); // pos → priority
+  for (const m of allMatches) {
+    const existing = seenPos.get(m.pos);
+    if (existing === undefined || m.priority < existing) {
+      // 新位置，或同位置但优先级更高
+      const idx = uniqueMatches.findIndex(u => u.pos === m.pos);
+      if (idx >= 0) {
+        uniqueMatches[idx] = { pos: m.pos, name: m.name };
+      } else {
+        uniqueMatches.push({ pos: m.pos, name: m.name });
+      }
+      seenPos.set(m.pos, m.priority);
+    }
+  }
+
+  // 根据命中数量判断
+  if (uniqueMatches.length >= 2) {
+    // 命中 ≥ 2 个地点：第 1 个=起点，第 2 个=终点
+    // 但需检查方向关键词（"到""往""去"在第2个地点前 → 第2个是终点；"从""由"在第1个地点前 → 第1个是起点）
+    const first = uniqueMatches[0];
+    const second = uniqueMatches[1];
+
+    // 检查第1个地点前是否有"从/由"
+    const beforeFirst = q.substring(0, first.pos);
+    const hasFromKeyword = /[从從由]/.test(beforeFirst);
+
+    // 检查第1和第2个地点之间是否有"到/往/去"
+    const between = q.substring(first.pos, second.pos);
+    const hasToKeyword = /[到往去]/.test(between);
+
+    if (hasFromKeyword || hasToKeyword) {
+      // 明确方向：第1个=起点，第2个=终点
+      return { origin: first.name, destination: second.name };
+    } else {
+      // 无明确方向词，按位置顺序：第1个=起点，第2个=终点
+      return { origin: first.name, destination: second.name };
+    }
+  } else if (uniqueMatches.length === 1) {
+    // 命中 = 1 个地点：根据上下文判断是起点还是终点
+    const loc = uniqueMatches[0];
+    const before = q.substring(0, loc.pos);
+    const after = q.substring(loc.pos + loc.name.length);
+
+    // "到/往/去 + 地点" → 终点
+    if (/[到往去]/.test(before)) {
+      return { destination: loc.name };
+    }
+    // "从/由 + 地点" → 起点
+    if (/[从從由]/.test(before)) {
+      return { origin: loc.name };
+    }
+    // "地点 + 开出/出发" → 起点
+    if (/(?:开出|開出|出发|出發)/.test(after)) {
+      return { origin: loc.name };
+    }
+    // 默认：单地点视为终点（"去尖沙咀"场景）
+    return { destination: loc.name };
+  }
+
+  // === 策略 2：全文扫描无结果，降级到正则模式匹配（兜底） ===
+  return extractLocationsByRegex(q);
+}
+
+/**
+ * 正则模式匹配（兜底策略）
+ * 当全文扫描无法命中已知站点时使用
+ */
+function extractLocationsByRegex(q: string): { origin?: string; destination?: string } {
   // 模式1：从/從 A 到 B / 由 A 到 B / 由 A 去 B / A 到 B / A 去 B
   const zhPatterns = [
     /[从從]\s*(.+?)\s*到\s*(.+?)(?:\s*怎么走|\s*怎麼走|\s*怎么去|\s*怎麼去|\s*坐什么|\s*坐什麼|\s*搭什么|\s*搭什麼|\s*路线|\s*路線|\s*$)/,
@@ -135,11 +261,9 @@ export function extractLocations(question: string): { origin?: string; destinati
   for (const pattern of implicitOriginPatterns) {
     const match = q.match(pattern);
     if (match) {
-      const origin = resolveLocation(match[1].trim());
-      const destination = resolveLocation(match[2].trim());
-      if (origin || destination) {
-        return { origin: origin || match[1].trim(), destination: destination || match[2].trim() };
-      }
+      const origin = resolveLocation(match[1].trim()) || match[1].trim();
+      const destination = resolveLocation(match[2].trim()) || match[2].trim();
+      return { origin, destination };
     }
   }
 
@@ -149,15 +273,13 @@ export function extractLocations(question: string): { origin?: string; destinati
     /(?:how to get to|go to|get to)\s+(.+?)(?:\s*$|\s*\?)/i,
   ];
 
-  // 尝试双地点模式
+  // 尝试双地点模式（从A到B / A到B / from A to B）
   for (const pattern of [...zhPatterns, ...enPatterns]) {
     const match = q.match(pattern);
     if (match) {
-      const origin = resolveLocation(match[1].trim());
-      const destination = resolveLocation(match[2].trim());
-      if (origin || destination) {
-        return { origin: origin || match[1].trim(), destination: destination || match[2].trim() };
-      }
+      const origin = resolveLocation(match[1].trim()) || match[1].trim();
+      const destination = resolveLocation(match[2].trim()) || match[2].trim();
+      return { origin, destination };
     }
   }
 
@@ -165,14 +287,12 @@ export function extractLocations(question: string): { origin?: string; destinati
   for (const pattern of destOnlyPatterns) {
     const match = q.match(pattern);
     if (match) {
-      const destination = resolveLocation(match[1].trim());
-      if (destination) {
-        return { destination };
-      }
+      const destination = resolveLocation(match[1].trim()) || match[1].trim();
+      return { destination };
     }
   }
 
-  // 最后尝试：在问题中搜索已知地点名称
+  // 最后尝试：在问题中搜索已知地点名称（LOCATION_ALIASES 词典）
   return extractKnownLocations(q);
 }
 

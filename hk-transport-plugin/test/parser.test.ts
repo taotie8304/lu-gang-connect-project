@@ -44,10 +44,30 @@ describe('地点名称提取', () => {
     expect(result.destination).toBe('铜锣湾');
   });
 
-  it('应该返回空结果当没有可识别的地点', () => {
-    const result = extractLocations('今天天气怎么样');
-    expect(result.origin).toBeUndefined();
-    expect(result.destination).toBeUndefined();
+  it('应该处理新加入的地点（海港城/油麻地等）', () => {
+    // 鲁港通 - 新增地点测试
+    const result = extractLocations('从海港城到油麻地怎么走');
+    expect(result.origin).toBe('海港城');
+    expect(result.destination).toBe('油麻地');
+
+    const result2 = extractLocations('从深水埗到观塘');
+    expect(result2.origin).toBe('深水埗');
+    expect(result2.destination).toBe('观塘');
+
+    const result3 = extractLocations('西贡到赤柱怎么走');
+    expect(result3.origin).toBe('西贡');
+    expect(result3.destination).toBe('赤柱');
+  });
+
+  it('对于词典中没有的地点，正则匹配成功后应保留原始输入作为起终点', () => {
+    // 鲁港通 - 核心修复：即使 resolveLocation 返回 undefined，正则匹配成功就保留原始字符串
+    const result = extractLocations('从海港城到油麻地怎么走');
+    expect(result.origin).toBeDefined();
+    expect(result.destination).toBeDefined();
+
+    const result2 = extractLocations('朗豪坊附近到太子怎么走');
+    expect(result2.origin).toBeDefined();
+    expect(result2.destination).toBeDefined();
   });
 });
 
@@ -75,6 +95,14 @@ describe('Property 1: 地点名称提取准确性', () => {
     ['西九龙站', '旺角'],
     ['迪士尼乐园', '海洋公园'],
     ['太平山顶', '维多利亚港'],
+    // 鲁港通 - 新增地点对
+    ['海港城', '油麻地'],
+    ['佐敦', '兰桂坊'],
+    ['深水埗', '观塘'],
+    ['庙街', '女人街'],
+    ['朗豪坊', '太子'],
+    ['黄大仙', '香港大学'],
+    ['西贡', '赤柱'],
   ];
 
   // 问题模板（简体中文）

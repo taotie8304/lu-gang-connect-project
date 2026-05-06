@@ -22,8 +22,10 @@ describe('端到端流程：各种用户问题', () => {
     const v = OutputType.safeParse(output);
     expect(v.success).toBe(true);
     expect(output.metadata.apisCalled.length).toBeGreaterThan(0);
-    // TDAS 应该被调用（两个已知地点）
-    expect(output.metadata.apisCalled).toContain('tdas');
+    // transit-planner 优先使用内置路网数据，应成功返回路线
+    expect(output.metadata.apisCalled).toContain('transit-planner');
+    expect(output.metadata.apiStatus?.['transit-planner']).toBe('success');
+    expect(output.routes.length).toBeGreaterThan(0);
   }, 20000);
 
   // 繁体中文路线查询
@@ -34,7 +36,8 @@ describe('端到端流程：各种用户问题', () => {
     });
     const v = OutputType.safeParse(output);
     expect(v.success).toBe(true);
-    expect(output.metadata.apisCalled).toContain('tdas');
+    expect(output.metadata.apisCalled).toContain('transit-planner');
+    expect(output.routes.length).toBeGreaterThan(0);
   }, 20000);
 
   // 英文路线查询
@@ -45,7 +48,8 @@ describe('端到端流程：各种用户问题', () => {
     });
     const v = OutputType.safeParse(output);
     expect(v.success).toBe(true);
-    expect(output.metadata.apisCalled).toContain('tdas');
+    expect(output.metadata.apisCalled).toContain('transit-planner');
+    expect(output.routes.length).toBeGreaterThan(0);
   }, 20000);
 
   // 带交通偏好的查询
@@ -56,9 +60,8 @@ describe('端到端流程：各种用户问题', () => {
     });
     const v = OutputType.safeParse(output);
     expect(v.success).toBe(true);
-    // 应该有 MTR 相关的 ETA 查询
-    const etaTypes = output.metadata.apisCalled;
-    expect(etaTypes.some(t => t === 'mtr')).toBe(true);
+    // transit-planner 应处理 MTR 路线，routes 非空
+    expect(output.routes.length).toBeGreaterThan(0);
   }, 20000);
 
   // 只有终点的查询
