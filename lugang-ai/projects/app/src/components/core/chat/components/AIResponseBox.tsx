@@ -279,10 +279,19 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
   const isRoot = userInfo?.username === 'root';
   const showAnimation = isChatting && isLastResponseValue;
 
+  // 鲁港通 - 智能截断：流式输出时完整显示思考过程，完成后默认只显示前 500 字
+  // 避免模型在深度思考中输出的"草拟答案"污染用户视野（草拟答案通常长且含结构化 Markdown）
+  const MAX_PREVIEW_CHARS = 500;
+  const [isExpanded, setIsExpanded] = React.useState(false);
+  const needsTruncation = !showAnimation && content.length > MAX_PREVIEW_CHARS;
+  const previewContent = needsTruncation && !isExpanded
+    ? content.slice(0, MAX_PREVIEW_CHARS) + '…'
+    : content;
+
   // 鲁港通 - 非 root 用户过滤 reasoning 中的敏感内容
   const displayContent = useMemo(
-    () => (isRoot ? content : filterReasoningContent(content)),
-    [content, isRoot]
+    () => (isRoot ? previewContent : filterReasoningContent(previewContent)),
+    [previewContent, isRoot]
   );
 
   // 鲁港通 - 移动端响应式优化 (Requirements 6.2, 6.3)
@@ -334,6 +343,18 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
           fontSize={{ base: '14px', md: 'sm' }}
         >
           <Markdown source={displayContent} showAnimation={showAnimation} />
+          {/* 鲁港通 - 思考完成后显示展开/收起按钮，让用户可按需查看完整思考过程 */}
+          {needsTruncation && !showAnimation && (
+            <Button
+              variant={'link'}
+              size={'sm'}
+              color={'blue.500'}
+              mt={2}
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? '收起完整思考过程' : '展开完整思考过程'}
+            </Button>
+          )}
         </AccordionPanel>
       </AccordionItem>
     </Accordion>

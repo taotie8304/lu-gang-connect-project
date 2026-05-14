@@ -10,6 +10,8 @@ export interface ParsedQuestion {
   transportPreference?: string[];
   timeRequirement?: string;
   keywords: string[];
+  routeNumbers?: string[];
+  isETAQuery?: boolean;
 }
 
 // ============================================================
@@ -233,6 +235,12 @@ export interface RouteOption {
   type: 'direct' | 'transfer';
   steps: RouteStep[];
   estimatedCost: number;
+  recommended?: boolean;      // 是否为推荐路线（基于实时数据的最优选择）
+  realTimeData?: {
+    nextBusArrival: string;   // 下一班车到达时间（如 "3分钟后" 或 "15:30"）
+    totalTravelTime: number;  // 实时总时长（分钟）
+    dataTimestamp: string;    // 数据获取时间戳
+  };
 }
 
 export interface NextBusInfo {
@@ -303,4 +311,17 @@ export interface TransitCandidate {
   destination: string;        // 路线终点站名
   fare?: number | null;       // 票价（HKD）
   score: number;              // 综合评分（越小越优）
+  
+  // MTR 实时数据字段（由 buildMTRStationMap 填充）
+  stationCode?: string;       // MTR 车站代码，如 "HUH"（红磡）
+  mtrLine?: string;           // MTR 线路代码，如 "EAL"（东铁线）
+  
+  // 实时数据字段（由 enrichCandidateWithRealTimeETA 填充）
+  realTimeETA?: {
+    nextBusMinutes: number;   // 下一班车到达上车站的分钟数（-1 表示无数据）
+    estimatedTripMinutes: number; // 预估行程时间（基于站数和历史数据）
+    totalMinutes: number;     // 总时间 = 等待 + 行程 + 步行
+    dataSource: 'kmb' | 'ctb' | 'lwb' | 'nlb' | 'gmb' | 'mtr' | 'static'; // 数据来源
+    timestamp: string;        // ISO 时间戳
+  };
 }

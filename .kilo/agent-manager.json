@@ -1,9 +1,28 @@
 {
-  "worktrees": {},
+  "worktrees": {
+    "wt-1778075870684-1": {
+      "branch": "decisive-count",
+      "path": "d:\\lu-gang-connect-project\\.kilo\\worktrees\\decisive-count",
+      "parentBranch": "main",
+      "createdAt": "2026-05-06T13:57:50.684Z",
+      "remote": "origin"
+    },
+    "wt-1778075878945-2": {
+      "branch": "wax-height",
+      "path": "d:\\lu-gang-connect-project\\.kilo\\worktrees\\wax-height",
+      "parentBranch": "main",
+      "createdAt": "2026-05-06T13:57:58.945Z",
+      "remote": "origin"
+    }
+  },
   "sessions": {},
   "tabOrder": {
     "local": [
       "pending:1"
     ]
-  }
+  },
+  "worktreeOrder": [
+    "wt-1778075870684-1",
+    "wt-1778075878945-2"
+  ]
 }

@@ -503,3 +503,127 @@ export async function executeBatchFetch(plan: {
 
   return result;
 }
+
+// ============================================================
+// 实时数据注入：为 TransitCandidate 批量查询实时 ETA
+// ============================================================
+
+/**
+ * 为单个候选路线注入实时 ETA 数据
+ * @param candidate 静态路线候选
+ * @returns 填充了 realTimeETA 字段的候选路线
+ */
+export async function enrichCandidateWithRealTimeETA(
+  candidate: import('./types').TransitCandidate
+): Promise<import('./types').TransitCandidate> {
+  const { company, route, boardStopId, numStops, walkInMeters, walkOutMeters } = candidate;
+  
+  // 步行时间估算（80米/分钟）
+  const walkInMinutes = Math.ceil(walkInMeters / 80);
+  const walkOutMinutes = Math.ceil(walkOutMeters / 80);
+  
+  // 行程时间估算（每站 2 分钟，最少 3 分钟）
+  const estimatedTripMinutes = Math.max(3, numStops * 2);
+  
+  let nextBusMinutes = -1;
+  let dataSource: 'kmb' | 'ctb' | 'lwb' | 'nlb' | 'gmb' | 'mtr' | 'static' = 'static';
+  
+  try {
+    // 根据公司类型调用对应 API
+    if (company === 'KMB' || company === 'LWB') {
+      const result = await fetchKMBStopETA(boardStopId);
+      if (result.success && result.data) {
+        const matchingETAs = result.data.filter(
+          item => item.route.toUpperCase() === route.toUpperCase()
+        );
+        if (matchingETAs.length > 0 && matchingETAs[0].eta) {
+          const etaTime = new Date(matchingETAs[0].eta);
+          const diffMs = etaTime.getTime() - Date.now();
+          nextBusMinutes = Math.max(0, Math.round(diffMs / 60000));
+          dataSource = company === 'LWB' ? 'lwb' : 'kmb';
+        }
+      }
+    } else if (company === 'CTB' || company === 'NLB') {
+      const result = await fetchCTBStopETA(boardStopId, route);
+      if (result.success && result.data && result.data.length > 0) {
+        const firstETA = result.data[0];
+        if (firstETA.eta) {
+          const etaTime = new Date(firstETA.eta);
+          const diffMs = etaTime.getTime() - Date.now();
+          nextBusMinutes = Math.max(0, Math.round(diffMs / 60000));
+          dataSource = company === 'NLB' ? 'nlb' : 'ctb';
+        }
+      }
+    } else if (candidate.mode === 'mtr' && candidate.stationCode && candidate.mtrLine) {
+      // MTR 实时列车查询（新增）
+      const mtrResult = await fetchMTRSchedule(candidate.mtrLine, candidate.stationCode);
+      if (mtrResult.success && mtrResult.data) {
+        const stationData = mtrResult.data.data[candidate.stationCode];
+        if (stationData) {
+          // 取上下行中最早到达的列车
+          const allTrains: Array<{ time: string }> = [];
+          if (stationData.UP) allTrains.push(...stationData.UP);
+          if (stationData.DOWN) allTrains.push(...stationData.DOWN);
+          
+          if (allTrains.length > 0) {
+            // 找到最早于当前时间的列车
+            const now = new Date();
+            let minDiff = Infinity;
+            for (const train of allTrains) {
+              const trainTime = new Date(train.time);
+              const diffMs = trainTime.getTime() - now.getTime();
+              if (diffMs >= 0 && diffMs < minDiff) {
+                minDiff = diffMs;
+              }
+            }
+            if (minDiff < Infinity) {
+              nextBusMinutes = Math.max(0, Math.round(minDiff / 60000));
+              dataSource = 'mtr';
+            }
+          }
+        }
+      }
+    }
+    // GMB/TRAM/FERRY 暂用静态估算（Phase 3 可扩展）
+  } catch (err) {
+    // API 失败时静默降级到静态数据
+  }
+  
+  // 如果没有实时数据，使用静态估算（假设 5 分钟等待）
+  if (nextBusMinutes === -1) {
+    nextBusMinutes = 5;
+    dataSource = 'static';
+  }
+  
+  const totalMinutes = walkInMinutes + nextBusMinutes + estimatedTripMinutes + walkOutMinutes;
+  
+  return {
+    ...candidate,
+    realTimeETA: {
+      nextBusMinutes,
+      estimatedTripMinutes,
+      totalMinutes,
+      dataSource,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+/**
+ * 批量为候选路线注入实时数据（并发执行，最多 10 个）
+ * @param candidates 静态路线候选列表
+ * @returns 填充了实时数据的候选列表
+ */
+export async function enrichCandidatesWithRealTimeETA(
+  candidates: import('./types').TransitCandidate[]
+): Promise<import('./types').TransitCandidate[]> {
+  // 限制并发数量，避免 API 限流
+  const MAX_CONCURRENT = 10;
+  const toEnrich = candidates.slice(0, MAX_CONCURRENT);
+  
+  const enriched = await Promise.all(
+    toEnrich.map(c => enrichCandidateWithRealTimeETA(c))
+  );
+  
+  return enriched;
+}

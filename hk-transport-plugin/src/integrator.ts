@@ -397,6 +397,17 @@ export function generateTips(
 ): string[] {
   const tips: string[] = [];
 
+  // 实时数据标识（让 LLM 明确知道这是实时信息）
+  const hasRealTimeData = routes.some(r => r.realTimeData?.dataTimestamp);
+  if (hasRealTimeData) {
+    const timestamp = new Date().toLocaleString('zh-CN', { 
+      timeZone: 'Asia/Hong_Kong',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    tips.push(`✅ 以下路线已查询实时数据（更新时间：${timestamp}），包含实时到站时间和总时长`);
+  }
+
   // 高峰时段提示（Requirements 12.1）
   if (isPeakHour(currentTime)) {
     tips.push('当前为高峰时段（早 07:00-09:30 / 晚 17:00-19:30），交通可能较为拥挤，建议预留额外时间');
@@ -488,8 +499,12 @@ export function transitCandidateToRouteOption(
     : 'bus';
 
   const rideDesc = nextBusInfo
-    ? `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
-    : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
+    ? mode === 'mtr'
+      ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班约 ${nextBusInfo.minutesAway} 分钟后到达 🚇`
+      : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
+    : mode === 'mtr'
+      ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）`
+      : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
 
   const steps: RouteStep[] = [
     {

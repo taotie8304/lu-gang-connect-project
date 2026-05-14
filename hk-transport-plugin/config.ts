@@ -70,8 +70,8 @@ const config = {
     en: '[MUST invoke for ALL HK transport questions] Handles all HK public transport needs — route planning from A to B, real-time ETA, last train/bus, fares, payment. Covers KMB/CTB/NLB/LWB bus, GMB minibus, MTR, ferry, tram, Peak Tram. Invoke when user asks about getting from one place to another, which bus/train to take, schedules, directions.'
   },
   toolDescription: {
-    'zh-CN': '香港公共交通万能查询工具。当用户问"从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价"等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。',
-    en: 'Universal HK public transport query tool. MUST invoke when user asks route planning (how to get from X to Y), schedules (ETA, first/last bus), fares, or any HK transport question. Pass origin/destination for direct route planning, or pass the user question text for auto-parsing. Covers all HK bus, minibus, MTR, ferry, tram.'
+    'zh-CN': '香港公共交通万能查询工具。当用户问"从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价"等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。\n【重要】传入的地名必须是具体地理位置（如"尖沙咀""中环""落马洲口岸"）。如果用户提到的是组织/机构名称（如"联合会""协会""大厦""公司""学校""医院"），请先联网搜索该组织的具体地址，再将搜索到的最近地铁站或街道名称传入此工具，不要直接传入组织名称。\n【重要】如果此工具返回空路线(routes为空数组)，说明确实无直达公共交通方案，请直接告知用户而不要重复调用此工具——重复调用无法改变结果。',
+    en: 'Universal HK public transport query tool. MUST invoke when user asks route planning (how to get from X to Y), schedules (ETA, first/last bus), fares, or any HK transport question. Pass origin/destination for direct route planning, or pass the user question text for auto-parsing. Covers all HK bus, minibus, MTR, ferry, tram.\n[IMPORTANT] If this tool returns empty routes, it means no direct transit route exists. Do NOT call this tool again - just inform the user directly. Retrying will not change the result.'
   },
   versionList: [
     {

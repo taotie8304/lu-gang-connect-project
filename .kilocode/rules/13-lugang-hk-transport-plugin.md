@@ -1,30 +1,31 @@
 ---
-description: 香港智能交通助手插件（hk-transport-plugin）开发与联调约定
-globs:
-  - "hk-transport-plugin/**"
-  - "hk-transport-apis-list.md"
-alwaysApply: false
+inclusion: fileMatch: ["hk-transport-plugin/**"]
 ---
+# 香港交通插件规范
 
-# 范围
+## 关键约束
+- toolId：`hk_transport_assistant`（下划线，禁用连字符）
+- 包大小上限：1 MB（当前 629.4 KB）
+- 打包：esbuild，禁用 tree-shaking 和 minifyIdentifiers
+- 入口：`cb` 绑定 IIFE 导出的 `tool`
 
-- 目录：`hk-transport-plugin/`（FastGPT 系统工具，独立打包 `.pkg`）。
-- 相关：`lugang-ai` 中 `dispatch/child/runTool.ts`（系统工具返回值解析）、`docker-compose` 中 `plugin` / MinIO / 环境变量。
+## 地理编码优先级
+1. LOCATION_COORDS 硬编码坐标（最快）
+2. LOCATION_ALIASES 别名映射
+3. stop-db 9461 站点全文匹配
+4. expandNames 后缀扩展重试（站/巴士总站/巴士站/总站）
+5. Nominatim 联网回退（组织名，1.1s 速率限制）
 
-# 必读文档
+## 实时 ETA
+- 支持 KMB/CTB/LWB/NLB/MTR；失败降级 5 分钟静态估算
+- 路线按总时长排序，第一条标记 `recommended: true`
 
-- 实现进度与文件索引：`hk-transport-plugin/DEVELOPMENT.md`
-- 上传与验证步骤：`hk-transport-plugin/deploy.md`
-- 根目录交接：`project-memory.md`、`session-handoff.md`
+## 防重复调用
+- 空结果返回措辞：阻止 LLM 重试（"暂未查询到...建议改用其他方式"）
+- toolDescription 末尾加反重试说明
 
-# 硬约束（易踩坑）
-
-1. **`PKG_NAME`**：`hk_transport_assistant`（下划线）；不要用带连字符的 toolId，除非主应用已修复 `split('-')[1]` 截断问题。
-2. **`.pkg`**：ZIP，内含 `index.js` + `logo.svg`；`tool` 须能被 `build.mjs` 绑定到 `module.exports.cb`（推荐 IIFE + `__hkPlugin`）。
-3. **静态数据**：大流量官方数据经 `prepare-data.mjs` 生成 `src/data/transit.ts` 再随包发布；规划逻辑见 `planner.ts`，**按坐标匹配**路线站点，不要仅按 `stopId` 做跨公司直连。
-4. **主应用与插件包都要更新**：若调试里「工具运行结果」恒为 `{}`，除检查插件服务外，须确认主应用已包含 **`parseSystemToolStreamResult`**（无 `output` 包裹的 SSE 终包兼容）——见 `DEVELOPMENT.md` / `project-memory.md`。
-
-# 变更后检查
-
-- 修改 `src/` 或数据脚本后：`node build.mjs`，在 FastGPT 中覆盖上传 `.pkg`。
-- 修改 `runTool.ts` 后：重新构建 **lugang-ai** 镜像并部署（非仅前端静态资源）。
+## 构建
+```bash
+cd hk-transport-plugin && pnpm build
+# 输出：dist/hk_transport_assistant.pkg
+```

@@ -4,9 +4,9 @@
 
 import { z } from 'zod';
 import { parseQuestion } from './parser';
-import { geocodeRoute } from './geocoder';
+import { geocode, geocodeRoute, geocodeRouteWithFallback, isOrganizationName } from './geocoder';
 import { createAPICallPlan } from './router';
-import { executeBatchFetch } from './fetcher';
+import { executeBatchFetch, fetchKMBStopETA, enrichCandidatesWithRealTimeETA } from './fetcher';
 import {
   integrateData,
   transitCandidateToRouteOption,
@@ -14,6 +14,7 @@ import {
   generateTips,
 } from './integrator';
 import { planPublicTransit } from './planner';
+import { findStopByName } from './stop-db';
 import type { ResponseMetadata, RouteOption, ParsedQuestion } from './types';
 
 // ============================================================
@@ -99,6 +100,7 @@ export const OutputType = z.object({
   tips: z.array(z.string()).describe('出行建议和注意事项'),
   metadata: MetadataSchema.describe('元数据'),
   error: z.string().optional().describe('错误信息（部分失败时）'),
+  _debug: z.array(z.string()).optional().describe('调试诊断信息（仅管理员）'),
 });
 
 // ============================================================
@@ -112,9 +114,9 @@ export async function tool(
   const apiStatus: Record<string, 'success' | 'failed' | 'skipped'> = {};
 
   try {
-    // ===== 诊断：记录输入参数 =====
+    // ===== 诊断信息收集（不暴露给用户） =====
     const diagLines: string[] = [];
-    diagLines.push(`[诊断] 收到参数: question="${input.question || '(空)'}", origin="${input.origin || '(空)'}", destination="${input.destination || '(空)'}", transportMode="${input.transportMode || '(空)'}"`);
+    diagLines.push(`收到参数: question="${input.question || '(空)'}", origin="${input.origin || '(空)'}", destination="${input.destination || '(空)'}", transportMode="${input.transportMode || '(空)'}"`);
 
     // 1. 解析用户问题（优先使用上层 LLM 传入的结构化参数）
     let origin = input.origin;
@@ -123,38 +125,131 @@ export async function tool(
       ? [input.transportMode]
       : undefined;
 
-    // 结构化参数不完整时，从 question 文本中解析补充
-    if (!origin || !destination) {
-      const parsed = parseQuestion(input.question || '', input.language);
-      origin = origin || parsed.origin;
-      destination = destination || parsed.destination;
+    // 从 question 文本中解析（获取完整解析结果含 routeNumbers/isETAQuery）
+    let questionParsed = input.question
+      ? parseQuestion(input.question, input.language)
+      : null;
+
+    // 结构化参数不完整时，从文本解析结果中补充
+    if (questionParsed) {
+      origin = origin || questionParsed.origin;
+      destination = destination || questionParsed.destination;
       if (!transportPreference) {
-        transportPreference = parsed.transportPreference;
+        transportPreference = questionParsed.transportPreference;
       }
     }
 
-    diagLines.push(`[诊断] 解析结果: origin="${origin || '(未识别)'}", destination="${destination || '(未识别)'}"`);
+    diagLines.push(`解析结果: origin="${origin || '(未识别)'}", destination="${destination || '(未识别)'}"`);
 
-    // 统一 parsed 接口供下游使用
+    // 统一 parsed 接口供下游使用（保留 routeNumbers/isETAQuery）
     const parsed: ParsedQuestion = {
       origin,
       destination,
       transportPreference,
       keywords: input.question ? input.question.split(/[\s,，。.!！?？]+/).filter(Boolean) : [],
+      routeNumbers: questionParsed?.routeNumbers,
+      isETAQuery: questionParsed?.isETAQuery,
     };
 
-    // 2. 地理编码
-    const { originCoord, destCoord } = geocodeRoute(parsed.origin, parsed.destination);
+    // ===== ETA 查询：单地点 + 路线编号 + 到站时间关键词 =====
+    if (parsed.isETAQuery && parsed.routeNumbers && parsed.routeNumbers.length > 0) {
+      const stopName = parsed.origin || parsed.destination;
+      const routeNum = parsed.routeNumbers[0];
 
-    if (originCoord) diagLines.push(`[诊断] 起点坐标: ${originCoord.name} (${originCoord.lat.toFixed(4)}, ${originCoord.lng.toFixed(4)})`);
-    else if (origin) diagLines.push(`[诊断] 起点"${origin}"未找到坐标`);
-    if (destCoord) diagLines.push(`[诊断] 终点坐标: ${destCoord.name} (${destCoord.lat.toFixed(4)}, ${destCoord.lng.toFixed(4)})`);
-    else if (destination) diagLines.push(`[诊断] 终点"${destination}"未找到坐标`);
+      if (stopName && routeNum) {
+        diagLines.push(`ETA查询: stop="${stopName}", route="${routeNum}"`);
+        const stopEntry = findStopByName(stopName);
+
+        if (stopEntry) {
+          const stopId = String(stopEntry.sid);
+          diagLines.push(`找到站点: ${stopEntry.name} (sid=${stopId})`);
+          apisCalled.push('kmb');
+
+          try {
+            const kmbResult = await fetchKMBStopETA(stopId);
+            if (kmbResult.success && kmbResult.data) {
+              const matchingETAs = kmbResult.data.filter(
+                item => item.route.toUpperCase() === routeNum.toUpperCase()
+              );
+
+              if (matchingETAs.length > 0) {
+                const nextBuses = matchingETAs.map(item => {
+                  let minutesAway = -1;
+                  if (item.eta) {
+                    const etaTime = new Date(item.eta);
+                    const diffMs = etaTime.getTime() - Date.now();
+                    minutesAway = Math.max(0, Math.round(diffMs / 60000));
+                  }
+                  return { eta: item.eta, minutesAway, remarks: item.rmk_tc || undefined };
+                });
+
+                apiStatus['kmb'] = 'success';
+                return {
+                  routes: [],
+                  stopETAs: {
+                    stopId,
+                    stopName: stopEntry.name,
+                    etas: [{
+                      route: routeNum,
+                      destination: matchingETAs[0].dest_tc,
+                      company: matchingETAs[0].co,
+                      nextBuses,
+                    }],
+                  },
+                  paymentInfo: generatePaymentInfo([]),
+                  tips: [
+                    `${routeNum}路线：往${matchingETAs[0].dest_tc}方向`,
+                    ...nextBuses.map((b, i) =>
+                      b.eta
+                        ? `第${i + 1}班预计${b.minutesAway}分钟后到达`
+                        : `第${i + 1}班暂无预计到站时间`
+                    ),
+                  ],
+                  metadata: { dataTimestamp: new Date().toISOString(), apisCalled, apiStatus },
+                  _debug: diagLines,
+                };
+              }
+              diagLines.push(`路线${routeNum}在站点${stopId}无ETA数据`);
+            } else {
+              diagLines.push(`KMB ETA查询失败: ${kmbResult.error}`);
+              apiStatus['kmb'] = 'failed';
+            }
+          } catch (etaErr) {
+            diagLines.push(`ETA查询异常: ${etaErr}`);
+            apiStatus['kmb'] = 'failed';
+          }
+
+          return {
+            routes: [],
+            paymentInfo: generatePaymentInfo([]),
+            tips: [
+              `已识别车站"${stopEntry.name}"`,
+              `暂无法获取${routeNum}路线的实时到站信息，请稍后查询。`,
+            ],
+            metadata: { dataTimestamp: new Date().toISOString(), apisCalled, apiStatus },
+            _debug: diagLines,
+          };
+        }
+        diagLines.push(`未在数据库中匹配到站点"${stopName}"`);
+      }
+    }
+
+    // 2. 地理编码（带 OSM Nominatim 外网回退）
+    const { originCoord, destCoord } = await geocodeRouteWithFallback(parsed.origin, parsed.destination);
+
+    if (originCoord) {
+      const sourceNote = isOrganizationName(parsed.origin || '') ? ' [Nominatim联网搜索]' : '';
+      diagLines.push(`起点坐标: ${originCoord.name} (${originCoord.lat.toFixed(4)}, ${originCoord.lng.toFixed(4)})${sourceNote}`);
+    } else if (origin) diagLines.push(`起点"${origin}"未找到坐标`);
+    if (destCoord) {
+      const sourceNote = isOrganizationName(parsed.destination || '') ? ' [Nominatim联网搜索]' : '';
+      diagLines.push(`终点坐标: ${destCoord.name} (${destCoord.lat.toFixed(4)}, ${destCoord.lng.toFixed(4)})${sourceNote}`);
+    } else if (destination) diagLines.push(`终点"${destination}"未找到坐标`);
 
     if (!parsed.origin && !parsed.destination) {
       return buildErrorResponse(
-        `无法识别起点或终点，请直接告诉我要从哪里到哪里。例如"从尖沙咀到铜锣湾怎么走"。${diagLines.join(' | ')}`,
-        apisCalled, apiStatus
+        '无法识别您想去的地点，请直接告诉我起点和终点。例如"从中环到铜锣湾怎么走"。',
+        apisCalled, apiStatus, diagLines
       );
     }
 
@@ -183,10 +278,61 @@ export async function tool(
           : `找到附近站点但无直达路线（可能需要换乘）`;
       } else {
         apiStatus['transit-planner'] = 'success';
-        // 转换为 RouteOption（不含实时 ETA，Phase 2 再对接）
-        for (const cand of planResult.candidates) {
-          routeOptions.push(transitCandidateToRouteOption(cand));
+        
+        // ========================================================
+        // 3.1 实时数据注入：为候选路线查询实时 ETA
+        // ========================================================
+        diagLines.push(`开始为 ${planResult.candidates.length} 条路线注入实时数据`);
+        const enrichedCandidates = await enrichCandidatesWithRealTimeETA(planResult.candidates);
+        
+        // 记录实时数据获取情况
+        const realTimeCount = enrichedCandidates.filter(c => c.realTimeETA?.dataSource !== 'static').length;
+        diagLines.push(`实时数据获取成功: ${realTimeCount}/${enrichedCandidates.length} 条路线`);
+        
+        // ========================================================
+        // 3.2 智能排序：基于实时总时长重新排序
+        // ========================================================
+        enrichedCandidates.sort((a, b) => {
+          const timeA = a.realTimeETA?.totalMinutes ?? 999;
+          const timeB = b.realTimeETA?.totalMinutes ?? 999;
+          if (timeA !== timeB) return timeA - timeB;
+          // 时间相同时，优先实时数据
+          if (a.realTimeETA?.dataSource !== 'static' && b.realTimeETA?.dataSource === 'static') return -1;
+          if (a.realTimeETA?.dataSource === 'static' && b.realTimeETA?.dataSource !== 'static') return 1;
+          // 都相同时，按费用排序
+          return (a.fare ?? 999) - (b.fare ?? 999);
+        });
+        
+        // 转换为 RouteOption 并标记推荐路线
+        for (let i = 0; i < enrichedCandidates.length; i++) {
+          const cand = enrichedCandidates[i];
+          const routeOption = transitCandidateToRouteOption(cand);
+          
+          // 第一条路线标记为推荐
+          if (i === 0) {
+            routeOption.recommended = true;
+          }
+          
+          // 添加实时数据到输出
+          if (cand.realTimeETA) {
+            const { nextBusMinutes, totalMinutes, dataSource, timestamp } = cand.realTimeETA;
+            routeOption.realTimeData = {
+              nextBusArrival: nextBusMinutes === 0 
+                ? '即将到达' 
+                : nextBusMinutes === -1 
+                  ? '暂无数据' 
+                  : `${nextBusMinutes}分钟后`,
+              totalTravelTime: totalMinutes,
+              dataTimestamp: timestamp,
+            };
+            // 更新 totalTime 为实时计算值
+            routeOption.totalTime = totalMinutes;
+          }
+          
+          routeOptions.push(routeOption);
         }
+        
+        diagLines.push(`推荐路线: ${enrichedCandidates[0]?.route} (总时长 ${enrichedCandidates[0]?.realTimeETA?.totalMinutes}分钟)`);
       }
     } else {
       apisCalled.push('transit-planner');
@@ -194,8 +340,70 @@ export async function tool(
     }
 
     // ========================================================
-    // 4. 如果公交规划没有结果，尝试旧的 TDAS 作为降级参考
-    //    （不再作为唯一路径来源）
+    // 4. 智能地名扩展：当第一次规划无结果时，尝试用后缀变体重试 geocode + 规划
+    //    例："石门" → 尝试 "石门站""石門站""石门巴士总站" → 重新查坐标 → 重新规划
+    // ========================================================
+    if (routeOptions.length === 0 && originCoord && destCoord) {
+      const expandNames = (name: string): string[] => {
+        const base = name.replace(/(?:站|巴士站|巴士總站|巴士总站|地鐵站|地铁站|總站|总站)$/, '');
+        const isTC = /[門東島線頭馬廣車雲園碼會場樂蘭廟觀黃紅體區樓醫學長飛萬華國處點時機運動務號業發來説開間關裏過邊還進連聯鄉農總舊橋嶺嶼廈寶達榮豐興設舖鋪歷慶節藍綠錦銀銅鑽鐘鑼鵝鳳鶴雞魚蝦貓窩邨碩徑閣瀝匯薈]/.test(base);
+        if (isTC) {
+          return [`${base}站`, `${base}巴士總站`, `${base}巴士站`, `${base}總站`, base];
+        }
+        return [`${base}站`, `${base}巴士总站`, `${base}巴士站`, `${base}总站`, base];
+      };
+
+      for (const expandedOrigin of expandNames(parsed.origin || '')) {
+        if (expandedOrigin === (parsed.origin || '')) continue;
+        const newOriginCoord = geocode(expandedOrigin);
+        if (!newOriginCoord) continue;
+
+        for (const expandedDest of expandNames(parsed.destination || '')) {
+          if (expandedDest === (parsed.destination || '') && expandedOrigin === (parsed.origin || '')) continue;
+          const newDestCoord = geocode(expandedDest);
+          if (!newDestCoord) continue;
+
+          diagLines.push(`地名扩展重试: origin="${expandedOrigin}" → (${newOriginCoord.lat.toFixed(4)}, ${newOriginCoord.lng.toFixed(4)}), dest="${expandedDest}" → (${newDestCoord.lat.toFixed(4)}, ${newDestCoord.lng.toFixed(4)})`);
+          const retryResult = await planPublicTransit(
+            newOriginCoord.lat, newOriginCoord.lng,
+            newDestCoord.lat, newDestCoord.lng
+          );
+
+          if (retryResult.candidates.length > 0) {
+            apiStatus['transit-planner'] = 'success';
+            const enrichedRetry = await enrichCandidatesWithRealTimeETA(retryResult.candidates);
+            enrichedRetry.sort((a, b) => {
+              const timeA = a.realTimeETA?.totalMinutes ?? 999;
+              const timeB = b.realTimeETA?.totalMinutes ?? 999;
+              if (timeA !== timeB) return timeA - timeB;
+              if (a.realTimeETA?.dataSource !== 'static' && b.realTimeETA?.dataSource === 'static') return -1;
+              if (a.realTimeETA?.dataSource === 'static' && b.realTimeETA?.dataSource !== 'static') return 1;
+              return (a.fare ?? 999) - (b.fare ?? 999);
+            });
+            for (let i = 0; i < enrichedRetry.length; i++) {
+              const cand = enrichedRetry[i];
+              const ro = transitCandidateToRouteOption(cand);
+              if (i === 0) ro.recommended = true;
+              if (cand.realTimeETA) {
+                ro.realTimeData = {
+                  nextBusArrival: cand.realTimeETA.nextBusMinutes === 0 ? '即将到达' : `${cand.realTimeETA.nextBusMinutes}分钟后`,
+                  totalTravelTime: cand.realTimeETA.totalMinutes,
+                  dataTimestamp: cand.realTimeETA.timestamp,
+                };
+                ro.totalTime = cand.realTimeETA.totalMinutes;
+              }
+              routeOptions.push(ro);
+            }
+            diagLines.push(`地名扩展成功: 找到 ${routeOptions.length} 条路线`);
+            break;
+          }
+        }
+        if (routeOptions.length > 0) break;
+      }
+    }
+
+    // ========================================================
+    // 5. 如果公交规划 + 地名扩展都没有结果，尝试旧的 TDAS 作为降级参考
     // ========================================================
     let stopETAs: z.infer<typeof OutputType>['stopETAs'] | undefined;
     if (routeOptions.length === 0) {
@@ -225,23 +433,24 @@ export async function tool(
       apiStatus,
     };
 
-    // 都没找到路线时的提示 — 加上诊断信息
+    // 都没找到路线时的提示
     if (routeOptions.length === 0) {
       let errorMsg: string;
-      if (apiStatus['transit-planner'] === 'skipped' && !originCoord) {
-        errorMsg = `起点"${parsed.origin || '未知'}"不在已知地点词典中。`;
-      } else if (apiStatus['transit-planner'] === 'skipped' && !destCoord) {
-        errorMsg = `终点"${parsed.destination || '未知'}"不在已知地点词典中。`;
+      if (apiStatus['transit-planner'] === 'skipped' && !originCoord && origin) {
+        errorMsg = `未找到"${origin}"附近的公共交通站点。`;
+      } else if (apiStatus['transit-planner'] === 'skipped' && !destCoord && destination) {
+        errorMsg = `未找到"${destination}"附近的公共交通站点。`;
       } else {
-        errorMsg = '附近没有找到可直达的公交路线。';
+        // 不再建议"换更大范围查询"——该措辞会导致 LLM 反复调用工具
+        errorMsg = `暂未查询到从"${origin || '起点'}"到"${destination || '终点'}"的公共交通直达路线，建议改用其他出行方式或尝试分段查询不同路段。`;
       }
-      errorMsg += ' 请勿重试——这是最终结果。';
       return {
         routes: [],
         paymentInfo,
-        tips: [...diagLines, ...baseTips, errorMsg],
+        tips: [...baseTips, errorMsg],
         metadata,
         error: errorMsg,
+        _debug: diagLines,
       };
     }
 
@@ -249,12 +458,12 @@ export async function tool(
       .filter(([, s]) => s === 'failed')
       .map(([api]) => api);
 
-    const tips = [...diagLines, ...baseTips];
+    const tips = [...baseTips];
     if (failedAPIs.length > 0) {
-      tips.push(`部分数据源暂不可用: ${failedAPIs.join(', ')}`);
+      tips.push(`部分数据源暂不可用，可能影响实时信息的准确性。`);
     }
     if (plannerErrorDetail) {
-      tips.push(`[诊断] 交通规划器: ${plannerErrorDetail}`);
+      diagLines.push(`交通规划器: ${plannerErrorDetail}`);
     }
 
     return {
@@ -263,11 +472,12 @@ export async function tool(
       paymentInfo,
       tips,
       metadata,
+      _debug: diagLines,
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : '未知错误';
     return buildErrorResponse(
-      `查询失败: ${errorMsg}`,
+      '查询时遇到技术问题，请稍后重试。',
       apisCalled, apiStatus
     );
   }
@@ -279,7 +489,8 @@ export async function tool(
 function buildErrorResponse(
   errorMsg: string,
   apisCalled: string[],
-  apiStatus: Record<string, 'success' | 'failed' | 'skipped'>
+  apiStatus: Record<string, 'success' | 'failed' | 'skipped'>,
+  debugLines?: string[]
 ): z.infer<typeof OutputType> {
   return {
     routes: [],
@@ -297,5 +508,6 @@ function buildErrorResponse(
       apiStatus,
     },
     error: errorMsg,
+    _debug: debugLines,
   };
 }

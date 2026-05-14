@@ -36,6 +36,9 @@ const TRAD_TO_SIMP: Record<string, string> = {
   '鑽': '钻', '鐘': '钟', '鑼': '锣', '鵝': '鹅', '鳳': '凤',
   '鶴': '鹤', '雞': '鸡', '魚': '鱼', '蝦': '虾', '貓': '猫',
   '窩': '窝', '鰂': '鲗',
+  // 香港地名/屋邨/道路补充（繁→简有差异的字符）
+  '邨': '村', '碩': '硕', '徑': '径', '閣': '阁',
+  '瀝': '沥', '匯': '汇', '薈': '荟',
 };
 
 /**
@@ -80,6 +83,7 @@ interface StopEntry {
   lng: number;
   mode: string;    // bus / gmb / mtr / tram / ferry / ptram
   priority: number; // 越小越优先（MTR=0, 渡轮=1, 巴士=2, 小巴=3, 其他=4）
+  sid?: number;    // 站点 ID（用于 ETA API 查询）
 }
 
 const MODE_PRIORITY: Record<string, number> = {
@@ -116,6 +120,7 @@ function buildStopIndex(): Map<string, StopEntry[]> {
         lng: stop.lng,
         mode,
         priority,
+        sid: stop.sid,  // 保存站点 ID
       };
 
       // 繁体键
@@ -128,6 +133,19 @@ function buildStopIndex(): Map<string, StopEntry[]> {
         const simpKey = normalizeForMatch(simpName);
         if (simpKey && simpKey !== tradKey) {
           addToIndex(index, simpKey, entry);
+        }
+      }
+
+      // 逗号/斜杠分隔的部分各建索引（如 "廣東道,新港中心" → 同时索引 "新港中心"）
+      const commaParts = stop.name.split(/[，,、/]+/);
+      if (commaParts.length > 1) {
+        for (const part of commaParts) {
+          const partTrimmed = part.trim();
+          if (!partTrimmed) continue;
+          const partKey = normalizeForMatch(partTrimmed);
+          if (partKey && partKey !== tradKey && !index.has(partKey)) {
+            addToIndex(index, partKey, entry);
+          }
         }
       }
     }
@@ -155,6 +173,26 @@ function addToIndex(
   if (!arr.some(e => Math.abs(e.lat - entry.lat) < 0.00001 && Math.abs(e.lng - entry.lng) < 0.00001)) {
     arr.push(entry);
   }
+}
+
+/**
+ * 通过名称查找站点原始条目（含 sid）
+ * 供 ETA API 调用使用
+ */
+export function findStopByName(input: string): StopEntry | undefined {
+  if (!input?.trim()) return undefined;
+  const index = buildStopIndex();
+  const simpInput = toSimplified(input);
+  const queryKey = normalizeForMatch(simpInput);
+  const queryKeyTrad = normalizeForMatch(input);
+  
+  for (const key of [queryKey, queryKeyTrad]) {
+    if (key && index.has(key)) {
+      const entries = index.get(key)!;
+      return entries[0];
+    }
+  }
+  return undefined;
 }
 
 // ============================================================

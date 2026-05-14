@@ -18,6 +18,99 @@ const NEARBY_RADIUS_M = 1200;
 const MAX_NEARBY_STOPS = 15;
 const MAX_CANDIDATES = 10;
 
+// 步行路径校正系数（城市中直线距离 vs 实际道路距离的典型比例）
+const WALK_DETOUR_FACTOR = 1.4;
+
+// MTR 站点名 → { line(线路代码), code(车站代码) } 映射表
+// 数据来源: https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv (2025)
+// 换乘站取其主要线路
+const MTR_STATION_MAP: Record<string, { line: string; code: string }> = {
+  '坚尼地城': { line: 'ISL', code: 'KET' },
+  '香港大学': { line: 'ISL', code: 'HKU' },
+  '西营盘': { line: 'ISL', code: 'SYP' },
+  '上环': { line: 'ISL', code: 'SHW' },
+  '中环': { line: 'TWL', code: 'CEN' },
+  '金钟': { line: 'TWL', code: 'ADM' },
+  '湾仔': { line: 'ISL', code: 'WAC' },
+  '铜锣湾': { line: 'ISL', code: 'CAB' },
+  '天后': { line: 'ISL', code: 'TIH' },
+  '炮台山': { line: 'ISL', code: 'FOH' },
+  '北角': { line: 'ISL', code: 'NOP' },
+  '鲗鱼涌': { line: 'ISL', code: 'QUB' },
+  '太古': { line: 'ISL', code: 'TAK' },
+  '西湾河': { line: 'ISL', code: 'SWH' },
+  '筲箕湾': { line: 'ISL', code: 'SKW' },
+  '杏花邨': { line: 'ISL', code: 'HFC' },
+  '柴湾': { line: 'ISL', code: 'CHW' },
+  '尖沙咀': { line: 'TWL', code: 'TST' },
+  '佐敦': { line: 'TWL', code: 'JOR' },
+  '油麻地': { line: 'TWL', code: 'YMT' },
+  '旺角': { line: 'TWL', code: 'MOK' },
+  '太子': { line: 'TWL', code: 'PRE' },
+  '深水埗': { line: 'TWL', code: 'SSP' },
+  '长沙湾': { line: 'TWL', code: 'CSW' },
+  '荔枝角': { line: 'TWL', code: 'LCK' },
+  '美孚': { line: 'TWL', code: 'MEF' },
+  '荔景': { line: 'TWL', code: 'LAK' },
+  '葵芳': { line: 'TWL', code: 'KWF' },
+  '葵兴': { line: 'TWL', code: 'KWH' },
+  '大窝口': { line: 'TWL', code: 'TWH' },
+  '荃湾': { line: 'TWL', code: 'TSW' },
+  '油塘': { line: 'KTL', code: 'YAT' },
+  '调景岭': { line: 'KTL', code: 'TIK' },
+  '将军澳': { line: 'TKL', code: 'TKO' },
+  '坑口': { line: 'TKL', code: 'HAH' },
+  '宝琳': { line: 'TKL', code: 'POA' },
+  '九龙塘': { line: 'KTL', code: 'KOT' },
+  '乐富': { line: 'KTL', code: 'LOF' },
+  '黄大仙': { line: 'KTL', code: 'WTS' },
+  '钻石山': { line: 'KTL', code: 'DIH' },
+  '彩虹': { line: 'KTL', code: 'CHH' },
+  '九龙湾': { line: 'KTL', code: 'KOB' },
+  '牛头角': { line: 'KTL', code: 'NTK' },
+  '观塘': { line: 'KTL', code: 'KWT' },
+  '蓝田': { line: 'KTL', code: 'LAT' },
+  '何文田': { line: 'KTL', code: 'HOM' },
+  '黄埔': { line: 'KTL', code: 'WHA' },
+  '东涌': { line: 'TCL', code: 'TUC' },
+  '欣澳': { line: 'TCL', code: 'SUN' },
+  '青衣': { line: 'TCL', code: 'TSY' },
+  '南昌': { line: 'TCL', code: 'NAC' },
+  '奥运': { line: 'TCL', code: 'OLY' },
+  '九龙': { line: 'TCL', code: 'KOW' },
+  '香港机场': { line: 'AEL', code: 'AIR' },
+  '博览馆': { line: 'AEL', code: 'AWE' },
+  '红磡': { line: 'EAL', code: 'HUH' },
+  '旺角东': { line: 'EAL', code: 'MKK' },
+  '大围': { line: 'EAL', code: 'TAW' },
+  '沙田': { line: 'EAL', code: 'SHT' },
+  '火炭': { line: 'EAL', code: 'FOT' },
+  '马场': { line: 'EAL', code: 'RAC' },
+  '大学': { line: 'EAL', code: 'UNI' },
+  '大埔墟': { line: 'EAL', code: 'TAP' },
+  '太和': { line: 'EAL', code: 'TWO' },
+  '粉岭': { line: 'EAL', code: 'FAN' },
+  '上水': { line: 'EAL', code: 'SHS' },
+  '罗湖': { line: 'EAL', code: 'LOW' },
+  '落马洲': { line: 'EAL', code: 'LMC' },
+  '屯门': { line: 'TML', code: 'TUM' },
+  '兆康': { line: 'TML', code: 'SIH' },
+  '天水围': { line: 'TML', code: 'TIS' },
+  '朗屏': { line: 'TML', code: 'LOP' },
+  '元朗': { line: 'TML', code: 'YUL' },
+  '锦上路': { line: 'TML', code: 'KSR' },
+  '柯士甸': { line: 'TML', code: 'AUS' },
+  '宋皇臺': { line: 'TML', code: 'SUW' },
+  '土瓜湾': { line: 'TML', code: 'TKW' },
+  '石硖尾': { line: 'KTL', code: 'SKM' },
+  '海洋公园': { line: 'SIL', code: 'OCP' },
+  '黄竹坑': { line: 'SIL', code: 'WCH' },
+  '利东': { line: 'SIL', code: 'LET' },
+  '海怡半岛': { line: 'SIL', code: 'SOH' },
+  '西九龙站': { line: 'TML', code: 'AUS' },
+  '迪士尼': { line: 'DRL', code: 'DIS' },
+};
+
 // ============================================================
 // 索引（启动时构建一次，模块级单例）
 // ============================================================
@@ -247,7 +340,10 @@ function findDirectRoutes(
 
     const numStops = d.sseq - o.sseq;
     const modeW = modeScoreWeight(meta.mode);
-    const score = modeW * numStops + (o.distanceM + d.distanceM) / 100;
+    // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离）
+    const correctedWalkIn = o.distanceM === 0 ? 0 : Math.round(o.distanceM * WALK_DETOUR_FACTOR);
+    const correctedWalkOut = d.distanceM === 0 ? 0 : Math.round(d.distanceM * WALK_DETOUR_FACTOR);
+    const score = modeW * numStops + (correctedWalkIn + correctedWalkOut) / 100;
 
     candidates.push({
       company: modeToCompany(meta.mode, meta.co),
@@ -262,8 +358,8 @@ function findDirectRoutes(
       alightStopName: d.stopName,
       alightSeq: d.sseq,
       numStops,
-      walkInMeters: Math.round(o.distanceM),
-      walkOutMeters: Math.round(d.distanceM),
+      walkInMeters: correctedWalkIn,
+      walkOutMeters: correctedWalkOut,
       destination: meta.dest,
       fare: meta.fare,
       score,
@@ -311,6 +407,14 @@ function recommendMTR(
   // 港铁票价大致估算（单程约 HK$5-30，按距离线性估）
   const estFare = Math.min(30, Math.max(5, Math.round(distM / 1000 * 2.5)));
 
+  // MTR 站-线路映射（供实时 ETA 查询使用）
+  const boardMapping = MTR_STATION_MAP[nearA.stop.name];
+  const alightMapping = MTR_STATION_MAP[nearB.stop.name];
+
+  // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离，起点就在站内时不校正）
+  const walkInCorrected = nearA.d === 0 ? 0 : Math.round(nearA.d * WALK_DETOUR_FACTOR);
+  const walkOutCorrected = nearB.d === 0 ? 0 : Math.round(nearB.d * WALK_DETOUR_FACTOR);
+
   return {
     company: 'MTR',
     mode: 'mtr',
@@ -324,11 +428,13 @@ function recommendMTR(
     alightStopName: `${nearB.stop.name}站`,
     alightSeq: approxStations + 1,
     numStops: approxStations,
-    walkInMeters: Math.round(nearA.d),
-    walkOutMeters: Math.round(nearB.d),
+    walkInMeters: walkInCorrected,
+    walkOutMeters: walkOutCorrected,
     destination: `${nearB.stop.name}站方向`,
     fare: estFare,
-    score: 0.5 * approxStations + (nearA.d + nearB.d) / 100,
+    score: 0.5 * approxStations + (walkInCorrected + walkOutCorrected) / 100,
+    stationCode: boardMapping?.code,
+    mtrLine: boardMapping?.line,
   };
 }
 

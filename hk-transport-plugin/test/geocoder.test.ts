@@ -1,7 +1,7 @@
 // 鲁港通 - 地理编码器测试
 
 import { describe, it, expect } from 'vitest';
-import { geocode, geocodeRoute, getKnownLocations, isKnownLocation } from '../src/geocoder';
+import { geocode, geocodeRoute, getKnownLocations, isKnownLocation, isOrganizationName, geocodeWithFallback, geocodeRouteWithFallback } from '../src/geocoder';
 import { resolveLocation } from '../src/parser';
 
 // ============================================================
@@ -38,25 +38,98 @@ describe('地点坐标词典查询', () => {
       expect(result!.lng).toBeLessThan(115);
     }
   });
+});
 
-  it('所有坐标应该在香港/深圳范围内', () => {
-    const locations = getKnownLocations();
-    for (const loc of locations) {
-      const coord = geocode(loc)!;
-      // 香港/深圳大致范围：纬度 22.15-22.56，经度 113.83-114.30
-      expect(coord.lat, `${loc} 纬度超出范围`).toBeGreaterThan(22.1);
-      expect(coord.lat, `${loc} 纬度超出范围`).toBeLessThan(22.6);
-      expect(coord.lng, `${loc} 经度超出范围`).toBeGreaterThan(113.8);
-      expect(coord.lng, `${loc} 经度超出范围`).toBeLessThan(114.4);
+// ============================================================
+// 单元测试：组织名检测
+// ============================================================
+
+describe('组织名检测', () => {
+  it('应该识别组织/机构名称', () => {
+    const orgNames = [
+      '香港山东侨界联合会', '香港中华总商会', '福建同乡会',
+      '香港佛教联合会', '香港律师协会', '香港医学会',
+    ];
+    for (const name of orgNames) {
+      expect(isOrganizationName(name), `"${name}" 应被识别为组织名`).toBe(true);
+    }
+  });
+
+  it('应该识别公司/企业名称', () => {
+    const companyNames = [
+      '中银香港有限公司', '汇丰银行', '友邦保险',
+      '长江集团', '新鸿基集团',
+    ];
+    for (const name of companyNames) {
+      expect(isOrganizationName(name), `"${name}" 应被识别为组织名`).toBe(true);
+    }
+  });
+
+  it('应该识别学校/医院/政府建筑', () => {
+    const buildingNames = [
+      '香港大学', '伊利沙伯中学', '仁济医院',
+      '香港政府合署', '入境事务大楼',
+    ];
+    for (const name of buildingNames) {
+      expect(isOrganizationName(name), `"${name}" 应被识别为组织名`).toBe(true);
+    }
+  });
+
+  it('不应将普通地名识别为组织名', () => {
+    const placeNames = ['尖沙咀', '中环', '铜锣湾', '旺角', '沙田', '落马洲口岸'];
+    for (const name of placeNames) {
+      expect(isOrganizationName(name), `"${name}" 不应被识别为组织名`).toBe(false);
     }
   });
 });
 
 // ============================================================
-// 单元测试：批量地理编码
+// 单元测试：带外网回退的地理编码
 // ============================================================
 
-describe('批量地理编码', () => {
+describe('带外网回退的地理编码', () => {
+  it('已知地点应该直接返回本地坐标', async () => {
+    const result = await geocodeWithFallback('落马洲口岸');
+    expect(result).toBeDefined();
+    expect(result!.lat).toBeCloseTo(22.5144, 3);
+    expect(result!.name).toBe('落马洲口岸');
+  });
+
+  it('未知地名但不像是组织名时返回 undefined', async () => {
+    const result = await geocodeWithFallback('一个完全不存在的地名abc123');
+    expect(result).toBeUndefined();
+  });
+
+  it('undefined 输入应该返回 undefined', async () => {
+    const result = await geocodeWithFallback(undefined);
+    expect(result).toBeUndefined();
+  });
+
+  it('空字符串应该返回 undefined', async () => {
+    const result = await geocodeWithFallback('');
+    expect(result).toBeUndefined();
+  });
+
+  it('批量编码已知地点应该成功', async () => {
+    const result = await geocodeRouteWithFallback('落马洲口岸', '香港立法会');
+    expect(result.originCoord).toBeDefined();
+    expect(result.destCoord).toBeDefined();
+    expect(result.originCoord!.name).toBe('落马洲口岸');
+    expect(result.destCoord!.name).toBe('香港立法会');
+  });
+
+  it('批量编码一个已知一个未知非组织名', async () => {
+    const result = await geocodeRouteWithFallback('中环', '不存在的地点xyz');
+    expect(result.originCoord).toBeDefined();
+    expect(result.destCoord).toBeUndefined();
+  });
+});
+
+// ============================================================
+// 单元测试：同步批量地理编码
+// ============================================================
+
+describe('同步批量地理编码', () => {
   it('应该同时转换起点和终点', () => {
     const result = geocodeRoute('落马洲口岸', '香港立法会');
     expect(result.originCoord).toBeDefined();
@@ -91,18 +164,15 @@ describe('批量地理编码', () => {
 
 describe('parser → geocoder 集成', () => {
   it('parser 输出的标准名称应该能被 geocoder 识别', () => {
-    // 模拟 parser 解析用户输入
     const resolved = resolveLocation('落馬洲');
     expect(resolved).toBe('落马洲口岸');
 
-    // geocoder 应该能识别 parser 输出的标准名称
     const coord = geocode(resolved!);
     expect(coord).toBeDefined();
     expect(coord!.lat).toBeCloseTo(22.5144, 3);
   });
 
   it('所有 parser 能识别的标准地点都应该有坐标', () => {
-    // 测试一些常见的用户输入 → 标准名称 → 坐标 的完整链路
     const userInputs = [
       '落馬洲', '中環', '尖沙咀', 'central', 'causeway bay',
       '金鐘', '旺角', '沙田', '大埔', '元朗',

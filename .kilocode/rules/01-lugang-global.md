@@ -1,37 +1,18 @@
 ---
-description: 鲁港通项目总体说明与通用开发约束
-globs:
-  - "**/*.ts"
-  - "**/*.tsx"
-  - "**/*.js"
-  - "**/*.jsx"
-  - "**/*.go"
-alwaysApply: true
+inclusion: always
 ---
+# 全局代码规范
 
-# 鲁港通项目简介
+## TypeScript
+- 严格模式；禁用 `any`（用 `unknown` 替代）
+- 接口优于类型别名；枚举优于字符串常量
+- 工具函数加 JSDoc
 
-- 项目名称：鲁港通跨境AI智能平台。
-- 前端（lugang-ai）：基于 FastGPT 二开，技术栈为 Next.js 14 + React + TypeScript + Chakra UI，使用 MongoDB、Redis。
-- 后端（lugang-connect-enterprise）：基于 One API 二开，使用 Go + Gin，数据库为 MySQL / PostgreSQL。
-- 包管理器：pnpm（monorepo 结构）。
-- 测试框架：vitest + fast-check（属性测试）。
+## 错误处理
+- 异步操作必须 try/catch
+- 用户可见错误必须提供可操作的中文提示
+- 禁止 `console.log`（用 `logger` 模块）
 
-# 重要架构决策（摘要）
-
-- CJK 简繁转换使用 opencc-js，纯 JS，无原生依赖。
-- 知识库搜索的简繁兼容由 `feConfigs.enableCjkNormalization` 控制。
-- 前端数据库名为 `lugang_ai`（不是 `fastgpt`），通过 `MONGODB_URI` 指定。
-- 密码加密方式：
-  - 前端：双重 SHA256。
-  - 后端：标准 bcrypt。
-- 多语言系统内容：
-  - 数据库 key 命名：`{base_key}`（繁体）、`{base_key}_zh-CN`（简体）、`{base_key}_en`（英文）。
-  - API 根据 Cookie(`NEXT_LOCALE`) 自动选择语言版本。
-- 项目文档管理：所有重要信息整合在 `PROJECT-MASTER.md` 中；**香港交通系统工具**详见 `hk-transport-plugin/DEVELOPMENT.md`。
-
-# 通用开发要求
-
-- 任何修改应遵守上述架构决策，不得随意变更技术栈或密码/数据库方案。
-- 多语言文案新增时，应考虑简体、繁体、英文三种版本的扩展。
-- 涉及 CJK 搜索或内容展示的改动，应考虑简繁兼容，并在必要时使用 opencc-js。
+## Git
+- Commit 格式：`type(scope): 描述`（feat/fix/docs/refactor/test）
+- 不提交 `.env`、`node_modules`、构建产物

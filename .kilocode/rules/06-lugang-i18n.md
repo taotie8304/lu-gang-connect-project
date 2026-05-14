@@ -1,22 +1,17 @@
 ---
-description: 鲁港通多语言与简繁转换规则
-globs:
-  - "packages/web/i18n/**"
-  - "**/SystemContentModal/**"
-  - "**/system/content/**"
-alwaysApply: false
+inclusion: fileMatch: ["*i18n*", "*locale*", "*/lang/*"]
 ---
+# 国际化规范
 
-# 多语言与简繁架构
+## 支持语言：简体中文 / 繁体中文 / 英文
 
-- 系统内容 key 命名规则：
-  - 繁体：`{base_key}`
-  - 简体：`{base_key}_zh-CN`
-  - 英文：`{base_key}_en`
-- 新增或修改系统内容（使用条款、隐私政策、个人资料收集声明等）时，应同时考虑三种语言版本。
-- 简繁转换通过 opencc-js（hk→cn）实现，简体版本可以通过已有脚本自动生成，不能手工硬改结构。
+## Key 命名规则
+- 繁体（默认）：`{base_key}`
+- 简体：`{base_key}_zh-CN`
+- 英文：`{base_key}_en`
 
-# 修改约束
-
-- 不得擅自修改 key 命名规则，否则会导致多语言内容无法正确加载。
-- 如需新增一条中文文案，应说明三种语言的处理方式（是先添加繁体，再用脚本转简体，还是只添加英文等）。
+## 规则
+- 所有用户可见文字必须走 i18n key，禁止硬编码中文/英文字符串
+- 繁简转换使用 opencc-js（hk→cn），准确率 >99%
+- 简体版可通过 `convert_to_simplified.js` 自动生成
+- 根据 Cookie `NEXT_LOCALE` 自动选择语言版本

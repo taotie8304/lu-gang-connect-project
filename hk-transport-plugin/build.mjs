@@ -44,7 +44,10 @@ async function build() {
     platform: 'node',
     format: 'iife',
     globalName: '__hkPlugin',
-    minify: true,
+    minifySyntax: true,      // 只压缩语法
+    minifyWhitespace: true,  // 只压缩空白
+    minifyIdentifiers: false, // 不压缩标识符（保留函数名）
+    treeShaking: false,
     sourcemap: false,
     target: 'node18',
     external: [],
@@ -83,7 +86,7 @@ async function build() {
       'zh-Hant': '根據用戶問題智能查詢香港公共交通路線、實時到站時間、費用和付款方式。支持巴士（KMB/CTB/NLB）、小巴（GMB）、港鐵（MTR）等。',
       en: 'Intelligently query HK public transport routes, real-time ETA, fares and payment. Supports KMB, CTB, NLB, GMB, MTR.',
     },
-    toolDescription: '查询香港公共交通路线和实时到站时间的工具，输入交通问题即可获得路线方案、到站时间、费用和出行建议',
+    toolDescription: '【必须调用】当用户询问香港交通路线（如"从A到B怎么走"、"去某地坐什么车"、"某站下一班车几点到"）时，必须调用此工具查询实时数据。返回：多条路线对比（含实时到站时间、总时长、费用）、推荐路线、付款方式。支持巴士/小巴/港铁/渡轮/电车等所有公共交通。\n【重要】传入的地名必须是具体地理位置。如果用户提到的是组织/机构名称，请先联网搜索该组织的具体地址，再将地址传入此工具。',
     versionList: [{
       value: '0.1.0',
       description: 'Initial version',
@@ -94,9 +97,9 @@ async function build() {
           valueType: WorkflowIOValueTypeEnum.string,
           key: 'question',
           label: '用户问题',
-          description: '用户的交通问题，如"从落马洲口岸到香港立法会怎么走"',
+          description: '用户的交通问题，如"从落马洲口岸到香港立法会怎么走"、"中环到铜锣湾最快路线"、"新港中心站238X下一班几点到"',
           required: true,
-          toolDescription: '用户询问的香港交通路线问题',
+          toolDescription: '【必填】用户询问的香港交通路线问题。必须包含起点和终点，或单个地点+路线编号（查询到站时间）。工具会自动查询实时数据并返回多条路线对比。',
         },
         {
           renderTypeList: [FlowNodeInputTypeEnum.select],
@@ -110,11 +113,11 @@ async function build() {
         },
       ],
       outputs: [
-        { valueType: WorkflowIOValueTypeEnum.arrayObject, key: 'routes', label: '路线方案', description: '推荐的路线方案列表' },
-        { valueType: WorkflowIOValueTypeEnum.arrayObject, key: 'stopETAs', label: '站点到站时间', description: '站点实时到站时间列表' },
-        { valueType: WorkflowIOValueTypeEnum.object, key: 'paymentInfo', label: '付款信息', description: '付款方式和费用信息' },
-        { valueType: WorkflowIOValueTypeEnum.arrayString, key: 'tips', label: '注意事项', description: '出行建议和注意事项' },
-        { valueType: WorkflowIOValueTypeEnum.object, key: 'metadata', label: '元数据', description: '数据时间戳和 API 调用状态' },
+        { valueType: WorkflowIOValueTypeEnum.arrayObject, key: 'routes', label: '路线方案', description: '【实时数据】推荐的路线方案列表，已按实时总时长排序，第一条为推荐路线。包含：步骤、时间、费用、实时到站信息' },
+        { valueType: WorkflowIOValueTypeEnum.arrayObject, key: 'stopETAs', label: '站点到站时间', description: '【实时数据】站点实时到站时间列表（每2分钟更新）' },
+        { valueType: WorkflowIOValueTypeEnum.object, key: 'paymentInfo', label: '付款信息', description: '付款方式（八达通/现金/信用卡/移动支付）和费用信息' },
+        { valueType: WorkflowIOValueTypeEnum.arrayString, key: 'tips', label: '注意事项', description: '出行建议和注意事项（如换乘提示、高峰时段提醒等）' },
+        { valueType: WorkflowIOValueTypeEnum.object, key: 'metadata', label: '元数据', description: '数据时间戳和 API 调用状态（用于验证数据新鲜度）' },
       ],
     }],
   };
