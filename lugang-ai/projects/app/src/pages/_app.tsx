@@ -49,6 +49,38 @@ function App({ Component, pageProps }: AppPropsWithLayout) {
 
     // Initialize error logger
     errorLogger.init();
+    
+    // Virtual keyboard detection for mobile - listen for focus/blur on text inputs
+    const handleInputFocus = () => document.body.classList.add('keyboard-open');
+    const handleInputBlur = () => document.body.classList.remove('keyboard-open');
+    
+    // Only run on mobile devices
+    if (window.innerWidth <= 900) {
+      // Attach listeners to text inputs and textareas when they're available
+      const attachInputListeners = () => {
+        const inputs = document.querySelectorAll('input[type="text"], textarea, input[type="search"]');
+        inputs.forEach(input => {
+          input.addEventListener('focus', handleInputFocus);
+          input.addEventListener('blur', handleInputBlur);
+        });
+      };
+      
+      // Run initially and also after DOM content loads
+      attachInputListeners();
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attachInputListeners);
+      }
+    }
+
+    return () => {
+      // Clean up listeners
+      const inputs = document.querySelectorAll('input[type="text"], textarea, input[type="search"]');
+      inputs.forEach(input => {
+        input.removeEventListener('focus', handleInputFocus);
+        input.removeEventListener('blur', handleInputBlur);
+      });
+      document.body.classList.remove('keyboard-open');
+    };
   }, []);
 
   const setLayout = Component.setLayout || ((page) => <>{page}</>);

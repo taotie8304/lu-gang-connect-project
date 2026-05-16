@@ -1,6 +1,7 @@
 package model
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"github.com/lugang-connect/enterprise/common"
@@ -117,7 +118,10 @@ func DeleteUserById(id int) (err error) {
 func (user *User) Insert(inviterId int) error {
 	var err error
 	if user.Password != "" {
-		user.Password, err = common.Password2Hash(user.Password)
+		// 鲁港通 - 前端使用双重 SHA256 哈希，后端需要对双重 SHA256 后的密码进行 bcrypt 哈希
+		// 参考：https://github.com/taotie8304/lu-gang-connect-project/blob/main/.kilocode/rules/PROJECT-MASTER.md
+		doubleSHA256Password := common.DoubleSHA256Hash(user.Password)
+		user.Password, err = common.Password2Hash(doubleSHA256Password)
 		if err != nil {
 			return err
 		}
@@ -164,7 +168,10 @@ func (user *User) Insert(inviterId int) error {
 func (user *User) Update(updatePassword bool) error {
 	var err error
 	if updatePassword {
-		user.Password, err = common.Password2Hash(user.Password)
+		// 鲁港通 - 前端使用双重 SHA256 哈希，后端需要对双重 SHA256 后的密码进行 bcrypt 哈希
+		// 参考：https://github.com/taotie8304/lu-gang-connect-project/blob/main/.kilocode/rules/PROJECT-MASTER.md
+		doubleSHA256Password := common.DoubleSHA256Hash(user.Password)
+		user.Password, err = common.Password2Hash(doubleSHA256Password)
 		if err != nil {
 			return err
 		}
@@ -192,8 +199,8 @@ func (user *User) Delete() error {
 // ValidateAndFill check password & user status
 func (user *User) ValidateAndFill() (err error) {
 	// When querying with struct, GORM will only query with non-zero fields,
-	// that means if your field’s value is 0, '', false or other zero values,
-	// it won’t be used to build query conditions
+	// that means if your field's value is 0, '', false or other zero values,
+	// it won't be used to build query conditions
 	password := user.Password
 	if user.Username == "" || password == "" {
 		return errors.New("用户名或密码为空")
@@ -207,7 +214,25 @@ func (user *User) ValidateAndFill() (err error) {
 			return errors.New("用户名或密码错误，或用户已被封禁")
 		}
 	}
-	okay := common.ValidatePasswordAndHash(password, user.Password)
+	
+	// 鲁港通 - 前端使用双重 SHA256 哈希，所以这里需要先对输入的密码进行双重 SHA256 哈希
+	// 再与数据库中 bcrypt 哈希后的密码进行比较
+	// 参考：https://github.com/taotie8304/lu-gang-connect-project/blob/main/.kilocode/rules/PROJECT-MASTER.md
+	// 前端密码：双重 SHA256 -> 后端 bcrypt 存储
+	doubleSHA256Password := common.DoubleSHA256Hash(password)
+	
+	// 优先尝试双重 SHA256 验证（鲁港通标准）
+	okay := common.ValidatePasswordAndHash(doubleSHA256Password, user.Password)
+	if !okay {
+		// 如果双重 SHA256 验证失败，尝试常规验证（兼容之前未遵循双重 SHA256 的版本）
+		okay = common.ValidatePasswordAndHash(password, user.Password)
+		if !okay {
+			// 如果常规验证也失败，尝试对明文密码进行单次 SHA256 验证（中间版本可能存在的格式）
+			singleSHA256Password := fmt.Sprintf("%x", sha256.Sum256([]byte(password)))
+			okay = common.ValidatePasswordAndHash(singleSHA256Password, user.Password)
+		}
+	}
+	
 	if !okay || user.Status != UserStatusEnabled {
 		return errors.New("用户名或密码错误，或用户已被封禁")
 	}
@@ -298,7 +323,10 @@ func ResetUserPasswordByEmail(email string, password string) error {
 	if email == "" || password == "" {
 		return errors.New("邮箱地址或密码为空！")
 	}
-	hashedPassword, err := common.Password2Hash(password)
+	// 鲁港通 - 前端使用双重 SHA256 哈希，后端需要对双重 SHA256 后的密码进行 bcrypt 哈希
+	// 参考：https://github.com/taotie8304/lu-gang-connect-project/blob/main/.kilocode/rules/PROJECT-MASTER.md
+	doubleSHA256Password := common.DoubleSHA256Hash(password)
+	hashedPassword, err := common.Password2Hash(doubleSHA256Password)
 	if err != nil {
 		return err
 	}

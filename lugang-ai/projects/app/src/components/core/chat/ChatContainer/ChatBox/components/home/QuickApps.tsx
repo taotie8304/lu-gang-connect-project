@@ -10,7 +10,22 @@ const QuickApps = () => {
   const onSwitchQuickApp = useContextSelector(ChatBoxContext, (v) => v.onSwitchQuickApp);
 
   return quickAppList && quickAppList.length > 0 ? (
-    <Flex mb="2" alignItems="center" gap={2} flexWrap="wrap">
+    <Flex 
+      mb={[4, "2"]} 
+      alignItems="center" 
+      gap={2} 
+      flexWrap="wrap"
+      position={['fixed', 'relative']}
+      bottom={[10, 'auto']} // 为输入框留出空间
+      left={[0, 'auto']}
+      right={[0, 'auto']}
+      width={['100%', 'auto']}
+      bg={['white', 'transparent']}
+      px={[4, 0]}
+      zIndex={[9, 'auto']} // 略低于输入框的z-index
+      maxW={['100%', 'unset']}
+      justifyContent={['center', 'flex-start']}
+    >
       {quickAppList.map((q) => (
         <Flex
           key={q._id}

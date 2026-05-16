@@ -1170,45 +1170,67 @@ const ChatBox = ({
       flexDirection={'column'}
       h={'100%'}
       position={'relative'}
+      className={'chat-container'}
+      id="chat-container"
     >
       <Script src={getWebReqUrl('/js/html2pdf.bundle.min.js')} strategy="lazyOnload"></Script>
       {/* chat box container */}
       {isHomeRender ? (
-        <MyBox
-          isLoading={isLoadingRecords}
+        <Flex
+          direction={'column'}
           flex={'1 0 0'}
-          h={0}
-          px={[2, 4]}
-          w="100%"
-          maxW={['auto', 'min(820px, 100%)']}
+          w={'100%'}
+          maxW={['100%', 'min(820px, 100%)']}
           mx={'auto'}
+          position={'relative'}
+          h={['100%', 'auto']}
         >
-          <Flex h={'100%'} flexDir={'column'} justifyContent={'center'} w={'100%'}>
-            {HomeChatRenderBox}
-            {variableList.filter((item) => item.type !== VariableInputEnum.internal).length > 0 ? (
-              <Box w={'100%'}>
-                <ChatHomeVariablesForm chatForm={chatForm} />
-              </Box>
-            ) : (
-              <ChatInput
-                onSendMessage={sendPrompt}
-                onStop={() => chatController.current?.abort('stop')}
-                TextareaDom={TextareaDom}
-                resetInputVal={resetInputVal}
-                chatForm={chatForm}
-              />
-            )}
-          </Flex>
-        </MyBox>
+          <Box flex={1} pb={[16, 0]}>
+            <Flex h={'100%'} flexDir={'column'} w={'100%'}>
+              {HomeChatRenderBox}
+              {variableList.filter((item) => item.type !== VariableInputEnum.internal).length > 0 ? (
+                <Box w={'100%'}>
+                  <ChatHomeVariablesForm chatForm={chatForm} />
+                </Box>
+              ) : (
+                <ChatInput
+                  onSendMessage={sendPrompt}
+                  onStop={() => chatController.current?.abort('stop')}
+                  TextareaDom={TextareaDom}
+                  resetInputVal={resetInputVal}
+                  chatForm={chatForm}
+                />
+              )}
+            </Flex>
+          </Box>
+        </Flex>
       ) : (
-        <>
-          {AppChatRenderBox}
+        <Flex
+          direction={'column'}
+          flex={1}
+          w={'100%'}
+          maxW={['100%', 'min(820px, 100%)']}
+          mx={'auto'}
+          position={'relative'}
+        >
+          <Box flex={1} pb={[16, 0]}>
+            {AppChatRenderBox}
+          </Box>
           {canSendPrompt && (
             <Box
               px={[3, 5]}
-              m={['0 auto 10px', '10px auto']}
-              w={'100%'}
-              maxW={['auto', 'min(820px, 100%)']}
+              pb={[2, 3]}
+              pt={[1, 2]}
+              position={['fixed', 'static']}
+              bottom={[0, 'auto']}
+              left={[0, 'auto']}
+              right={[0, 'auto']}
+              width={['100%', 'auto']}
+              bg={['white', 'transparent']}
+              borderTop={['1px solid #eee', 'none']}
+              zIndex={[10, 'auto']}
+              maxW={['100%', 'min(820px, 100%)']}
+              alignSelf={'center'}
             >
               {showWorkorder && <WorkorderEntrance />}
 
@@ -1221,7 +1243,7 @@ const ChatBox = ({
               />
             </Box>
           )}
-        </>
+        </Flex>
       )}
 
       {/* user feedback modal */}

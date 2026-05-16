@@ -441,7 +441,11 @@ const HomeChatWindow = ({ myApps }: Props) => {
           />
         )}
 
-        <Box flex={'1 0 0'} bg={'white'}>
+        <Box 
+          flex={'1 0 0'} 
+          bg={'white'}
+          pb={[20, 0]} // 为移动端固定元素留出空间
+        >
           <ChatBox
             appId={appId}
             chatId={chatId}

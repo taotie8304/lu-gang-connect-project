@@ -52,11 +52,15 @@ const LoginModal = ({ onSuccess }: LoginModalProps) => {
       />
 
       {/* Language selector - login page */}
-      {isPc && (
-        <Box position="absolute" top="24px" right="24px" zIndex={10}>
-          <I18nLngSelector />
-        </Box>
-      )}
+      <Box 
+        position="absolute" 
+        top={['16px', '24px']} 
+        right={['16px', '24px']} 
+        zIndex={10}
+        display={['block', 'block']} // 在移动端也显示语言选择器
+      >
+        <I18nLngSelector />
+      </Box>
 
       <Flex
         flexDirection={'column'}

@@ -588,6 +588,7 @@ const ChatInput = ({
 
   return (
     <Box
+      className={'chat-input-container'}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -619,8 +620,13 @@ const ChatInput = ({
         minH={mobilePreSpeak ? '48px' : ['96px', '120px']}
         pt={fileList.length > 0 ? '0' : mobilePreSpeak ? [0, 4] : [3, 4]}
         pb={InputLeftComponent ? 2 : 3}
-        position={'relative'}
-        borderRadius={['xl', 'xxl']}
+        position={['fixed', 'relative']} // 在移动端固定定位
+        bottom={[0, 'auto']} // 在移动端固定在底部
+        left={[0, 'auto']}
+        right={[0, 'auto']}
+        width={['100%', 'auto']}
+        zIndex={[10, 'auto']} // 确保在移动端显示在最上层
+        borderRadius={['0', 'xxl']} // 移动端圆角设为0以占满屏幕宽度
         bg={'white'}
         overflow={'display'}
         {...(focusing
@@ -631,6 +637,36 @@ const ChatInput = ({
               boxShadow: `0px 5px 16px -4px rgba(19, 51, 107, 0.08)`
             })}
         onClick={() => TextareaDom?.current?.focus()}
+        mx={[0, 'auto']} // 移动端左右边距为0
+        borderTop={[isPc ? 'none' : '1px solid #f0f0f0', 'none']} // 移动端添加顶部边框
+      >
+      {/* Real Chat Input */}
+      <Flex
+        direction={'column'}
+        minH={mobilePreSpeak ? '48px' : ['96px', '120px']}
+        pt={fileList.length > 0 ? '0' : mobilePreSpeak ? [0, 4] : [3, 4]}
+        pb={InputLeftComponent ? 2 : 3}
+        position={['fixed', 'relative']} // 在移动端固定定位
+        bottom={[0, 'auto']} // 在移动端固定在底部
+        left={[0, 'auto']}
+        right={[0, 'auto']}
+        width={['100%', 'auto']}
+        zIndex={[10, 'auto']} // 确保在移动端显示在最上层
+        mx={[0, 'auto']} // 移动端左右边距为0
+        borderTop={[isPc ? 'none' : '1px solid #f0f0f0', 'none']} // 移动端添加顶部边框
+        borderRadius={['0', 'xxl']} // 移动端圆角设为0以占满屏幕宽度
+        bg={'white'}
+        overflow={'display'}
+        {...(focusing
+          ? activeStyles
+          : {
+              _hover: activeStyles,
+              border: '0.5px solid rgba(0, 0, 0, 0.18)',
+              boxShadow: `0px 5px 16px -4px rgba(19, 51, 107, 0.08)`
+            })}
+        onClick={() => TextareaDom?.current?.focus()}
+        mx={[0, 'auto']} // 移动端左右边距为0
+        borderTop={[isPc ? 'none' : '1px solid #f0f0f0', 'none']} // 移动端添加顶部边框
       >
         <Box flex={1}>
           {/* Chat input guide box */}
