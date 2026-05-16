@@ -26,10 +26,7 @@ func CreateRootAccountIfNeed() error {
 	//if user.Status != util.UserStatusEnabled {
 	if err := DB.First(&user).Error; err != nil {
 		logger.SysLog("no user exists, creating a root user for you: username is root, password is 123456")
-		// 鲁港通 - 前端使用双重 SHA256 哈希，后端需要对双重 SHA256 后的密码进行 bcrypt 哈希
-		// 参考：https://github.com/taotie8304/lu-gang-connect-project/blob/main/.kilocode/rules/PROJECT-MASTER.md
-		doubleSHA256Password := common.DoubleSHA256Hash("123456")
-		hashedPassword, err := common.Password2Hash(doubleSHA256Password)
+		hashedPassword, err := common.Password2Hash("123456")
 		if err != nil {
 			return err
 		}
