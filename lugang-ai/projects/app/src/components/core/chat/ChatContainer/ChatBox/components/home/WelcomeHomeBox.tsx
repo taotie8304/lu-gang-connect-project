@@ -84,7 +84,7 @@ const WelcomeHomeBox = () => {
   }, []);
 
   return (
-    <Flex flexDir="column" justifyContent={['flex-end', 'center']} alignItems="center" gap={4} position="relative" flex={['1', 'none']} minH={0}>
+    <Flex flexDir="column" justifyContent="flex-end" alignItems="center" gap={4} position="relative">
       {/* 淡蓝色光晕背景效果 - 仅在纯聊天模式下显示 */}
       {enableUserChatOnly && (
         <Box

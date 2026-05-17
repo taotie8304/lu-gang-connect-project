@@ -1126,6 +1126,44 @@ const ChatBox = ({
     onCloseCustomFeedback
   ]);
 
+  // 鲁港通 - 移动端虚拟键盘适配：动态调整底部间距
+  const [mobilePaddingBottom, setMobilePaddingBottom] = useState('200px');
+
+  useEffect(() => {
+    // 仅在移动端监听虚拟键盘变化
+    if (isPc) return;
+
+    const handleViewportResize = () => {
+      if (window.visualViewport) {
+        const viewportHeight = window.visualViewport.height;
+        const windowHeight = window.innerHeight;
+        const keyboardHeight = windowHeight - viewportHeight;
+        
+        // 如果键盘弹出（视口高度小于窗口高度），调整底部间距
+        if (keyboardHeight > 0) {
+          setMobilePaddingBottom(`${200 + keyboardHeight}px`);
+        } else {
+          setMobilePaddingBottom('200px');
+        }
+      }
+    };
+
+    // 监听 visualViewport resize 事件（iOS）
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', handleViewportResize);
+    }
+
+    // 监听 window resize 事件（Android）
+    window.addEventListener('resize', handleViewportResize);
+
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener('resize', handleViewportResize);
+      }
+      window.removeEventListener('resize', handleViewportResize);
+    };
+  }, [isPc]);
+
   // Child box
   const AppChatRenderBox = useMemo(() => {
     return (
@@ -1133,10 +1171,11 @@ const ChatBox = ({
         ScrollContainerRef={ScrollContainerRef}
         flex={'1 0 0'}
         h={0}
+        height={['100dvh', '100%']}
         w={'100%'}
         overflow={'overlay'}
         px={[4, 0]}
-        pb={6}
+        pb={[mobilePaddingBottom, 6]}
       >
         <Box maxW={['100%', '92%']} h={'100%'} mx={'auto'}>
           {!!welcomeText && <WelcomeBox welcomeText={welcomeText} />}
@@ -1150,7 +1189,7 @@ const ChatBox = ({
         </Box>
       </ScrollData>
     );
-  }, [ScrollData, welcomeText, chatStarted, chatForm, chatType, RecordsBox]);
+  }, [ScrollData, welcomeText, chatStarted, chatForm, chatType, RecordsBox, mobilePaddingBottom]);
   const HomeChatRenderBox = useMemo(() => {
     return (
       <>

@@ -6,6 +6,7 @@ import { OAuthEnum } from '@fastgpt/global/support/user/constant';
 import { useRouter } from 'next/router';
 import { type Dispatch, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'next-i18next';
+import I18nLngSelector from '@/components/Select/I18nLngSelector';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import { checkIsWecomTerminal } from '@fastgpt/global/support/user/login/constants';
@@ -35,7 +36,7 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
   const rootLogin = router.query.rootLogin === '1';
 
   const { setLoginStore, feConfigs } = useSystemStore();
-  useSystem();
+  const { isPc } = useSystem();
 
   const { lastRoute = '/dashboard/agent' } = router.query as { lastRoute: string };
   const computedLastRoute = useMemo(() => {
@@ -157,9 +158,8 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
   }, [rootLogin, feConfigs?.sso?.autoLogin, isWecomWorkTerminal, onClickOauth, oAuthList]);
 
   return (
-    <Flex flexDirection={'column'} h={'100%'} justifyContent={['center', 'flex-start']}>
-      {/* 鲁港通 - 移动端logo和标题居中排列 */}
-      <Flex alignItems={'center'} justifyContent={'center'}>
+    <Flex flexDirection={'column'} h={'100%'}>
+      <Flex alignItems={'center'} justifyContent={['space-between', 'center']}>
         <Flex alignItems={'center'} pr="4">
           <Flex
             w={['42px', '56px']}
@@ -177,10 +177,11 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
             {feConfigs?.systemTitle}
           </Box>
         </Flex>
+        {!isPc && <I18nLngSelector />}
       </Flex>
       {children}
       {show_oauth && (
-        <Box mt={[6, 9]}>
+        <Box mt={['80px', 9]}>
           <Box flex={1} />
 
           <Flex position={'relative'} mb={5} alignItems={'center'}>
