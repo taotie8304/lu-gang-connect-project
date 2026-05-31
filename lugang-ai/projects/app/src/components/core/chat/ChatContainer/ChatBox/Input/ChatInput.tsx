@@ -19,6 +19,7 @@ import { useFileUpload } from '../hooks/useFileUpload';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 // 鲁港通 - 深度思考开关 localStorage key
 const DEEP_THINKING_KEY = 'lugang_enable_thinking';
@@ -50,6 +51,10 @@ const ChatInput = ({
   const { t } = useTranslation();
   const { toast } = useToast();
   const { isPc } = useSystem();
+  // 鲁港通 - 获取用户角色，普通用户强制深度思考
+  const userInfo = useUserStore((s) => s.userInfo);
+  const isRoot = userInfo?.username === 'root';
+
   const VoiceInputRef = useRef<VoiceInputComponentRef>(null);
 
   const { setValue, watch, control } = chatForm;
@@ -60,11 +65,19 @@ const ChatInput = ({
   // Check voice input state
   const [mobilePreSpeak, setMobilePreSpeak] = useState(false);
 
-  // 鲁港通 - 深度思考开关状态，持久化到 localStorage
-  const [enableThinking, setEnableThinking] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem(DEEP_THINKING_KEY) === 'true';
-  });
+  // 鲁港通 - 深度思考开关状态（SSR 安全初始值，水合后同步）
+  const [enableThinking, setEnableThinking] = useState<boolean>(false);
+
+  // 鲁港通 - 用户信息水合后同步深度思考开关状态
+  useEffect(() => {
+    if (!userInfo) return;
+    if (isRoot) {
+      setEnableThinking(localStorage.getItem(DEEP_THINKING_KEY) === 'true');
+    } else {
+      // 鲁港通 - 普通用户强制启用深度思考
+      setEnableThinking(true);
+    }
+  }, [userInfo, isRoot]);
   const toggleThinking = useCallback(() => {
     setEnableThinking((prev) => {
       const next = !prev;
@@ -320,36 +333,38 @@ const ChatInput = ({
         {/* 左侧自定义按钮组 */}
         <Flex alignItems={'center'} gap={2} flex={'1 0 0'} w={0}>
           {InputLeftComponent}
-          {/* 鲁港通 - 深度思考开关 */}
-          <Flex
-            alignItems={'center'}
-            gap={1}
-            cursor={'pointer'}
-            onClick={toggleThinking}
-            px={2}
-            py={1}
-            borderRadius={'md'}
-            bg={enableThinking ? 'purple.50' : 'transparent'}
-            border={'1px solid'}
-            borderColor={enableThinking ? 'purple.300' : 'transparent'}
-            _hover={{ bg: enableThinking ? 'purple.100' : 'rgba(0,0,0,0.04)' }}
-            flexShrink={0}
-          >
-            <MyIcon
-              name={'core/app/aiLight'}
-              w={'14px'}
-              h={'14px'}
-              color={enableThinking ? 'purple.500' : '#707070'}
-            />
-            <Text
-              fontSize={'xs'}
-              color={enableThinking ? 'purple.600' : 'myGray.500'}
-              whiteSpace={'nowrap'}
-              display={['none', 'block']}
+          {/* 鲁港通 - 深度思考开关（仅 root 用户可见） */}
+          {isRoot && (
+            <Flex
+              alignItems={'center'}
+              gap={1}
+              cursor={'pointer'}
+              onClick={toggleThinking}
+              px={2}
+              py={1}
+              borderRadius={'md'}
+              bg={enableThinking ? 'purple.50' : 'transparent'}
+              border={'1px solid'}
+              borderColor={enableThinking ? 'purple.300' : 'transparent'}
+              _hover={{ bg: enableThinking ? 'purple.100' : 'rgba(0,0,0,0.04)' }}
+              flexShrink={0}
             >
-              深度思考
-            </Text>
-          </Flex>
+              <MyIcon
+                name={'core/app/aiLight'}
+                w={'14px'}
+                h={'14px'}
+                color={enableThinking ? 'purple.500' : '#707070'}
+              />
+              <Text
+                fontSize={'xs'}
+                color={enableThinking ? 'purple.600' : 'myGray.500'}
+                whiteSpace={'nowrap'}
+                display={['none', 'block']}
+              >
+                深度思考
+              </Text>
+            </Flex>
+          )}
 
           {/* 鲁港通 - 联网搜索三级开关 */}
           <Box position={'relative'} ref={searchMenuRef} flexShrink={0}>

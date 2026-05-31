@@ -392,7 +392,7 @@ const ResponseTags = ({
               </MyTag>
             </MyTooltip>
           )}
-          {llmModuleAccount === 1 && notSharePage && (
+          {llmModuleAccount === 1 && notSharePage && isRoot && (
             <>
               {historyPreviewLength > 0 && (
                 <MyTooltip label={t('chat:click_contextual_preview')}>
@@ -413,7 +413,7 @@ const ResponseTags = ({
               {t('chat:multiple_AI_conversations')}
             </MyTag>
           )}
-          {isPc && durationSeconds > 0 && (
+          {isPc && isRoot && durationSeconds > 0 && (
             <MyTooltip label={t('chat:module_runtime_and')}>
               <MyTag colorSchema="purple" type="borderSolid" cursor={'default'}>
                 {durationSeconds.toFixed(2)}s

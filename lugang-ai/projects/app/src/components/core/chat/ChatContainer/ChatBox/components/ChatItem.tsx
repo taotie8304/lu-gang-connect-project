@@ -38,6 +38,7 @@ import dynamic from 'next/dynamic';
 import { useMemoizedFn } from 'ahooks';
 import ChatBoxDivider from '../../../Divider';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 const ResponseTags = dynamic(() => import('./ResponseTags'));
 
@@ -134,6 +135,9 @@ const ChatItem = (props: Props) => {
 
   const { t } = useTranslation();
   const { isPc } = useSystem();
+  // 鲁港通 - 普通用户不显示灰色背景框
+  const userInfo = useUserStore((s) => s.userInfo);
+  const isRoot = userInfo?.username === 'root';
 
   const [showFeedbackContent, setShowFeedbackContent] = useState(false);
 
@@ -152,13 +156,14 @@ const ChatItem = (props: Props) => {
             borderRadius: '0 8px 8px 8px',
             justifyContent: 'flex-start',
             textAlign: 'left',
-            bg: 'myGray.50'
+            // 鲁港通 - 普通用户 AI 回答透明背景
+            bg: isRoot ? 'myGray.50' : 'transparent'
           }),
       fontSize: 'mini',
       fontWeight: '400',
       color: 'myGray.500'
     }),
-    [type]
+    [type, isRoot]
   );
 
   const isChatting = useContextSelector(ChatBoxContext, (v) => v.isChatting);

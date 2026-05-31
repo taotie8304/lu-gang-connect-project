@@ -275,8 +275,6 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
   isLastResponseValue: boolean;
 }) {
   const { t } = useTranslation();
-  const { userInfo } = useUserStore();
-  const isRoot = userInfo?.username === 'root';
   const showAnimation = isChatting && isLastResponseValue;
 
   // 鲁港通 - 智能截断：流式输出时完整显示思考过程，完成后默认只显示前 500 字
@@ -288,11 +286,8 @@ const RenderResoningContent = React.memo(function RenderResoningContent({
     ? content.slice(0, MAX_PREVIEW_CHARS) + '…'
     : content;
 
-  // 鲁港通 - 非 root 用户过滤 reasoning 中的敏感内容
-  const displayContent = useMemo(
-    () => (isRoot ? previewContent : filterReasoningContent(previewContent)),
-    [previewContent, isRoot]
-  );
+  // 鲁港通 - 智能截断完成后显示内容（父组件已确保仅 root 用户可见此组件）
+  const displayContent = previewContent;
 
   // 鲁港通 - 移动端响应式优化 (Requirements 6.2, 6.3)
   // 检测是否为小屏幕设备（宽度 < 768px）
@@ -616,6 +611,10 @@ const AIResponseBox = ({
   isChatting: boolean;
   onOpenCiteModal?: (e?: OnOpenCiteModalProps) => void;
 }) => {
+  // 鲁港通 - 普通用户不显示深度思考过程 UI（模型仍使用深度思考生成答案）
+  const userInfo = useUserStore((s) => s.userInfo);
+  const isRoot = userInfo?.username === 'root';
+
   if (value.type === ChatItemValueTypeEnum.text && value.text) {
     return (
       <RenderText
@@ -627,6 +626,7 @@ const AIResponseBox = ({
     );
   }
   if (value.type === ChatItemValueTypeEnum.reasoning && value.reasoning) {
+    if (!isRoot) return null;
     return (
       <RenderResoningContent
         isChatting={isChatting}

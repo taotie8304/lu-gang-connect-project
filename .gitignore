@@ -228,3 +228,6 @@ deploy-guide.md
 DEPLOYMENT-STEPS.md
 fix-deployment.sh
 .kilocode/steering/PROJECT-MASTER.md
+
+# 鲁港通 - 临时 SSH 远程调试脚本（含凭据，勿提交）
+ssh_*.py
