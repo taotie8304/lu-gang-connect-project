@@ -14,6 +14,11 @@ import {
   buildChatSourceQuery
 } from '@fastgpt/service/core/chat/source';
 import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
+// 鲁港通 - 引用内容权限：解析聊天访问者是否为 root 管理员
+import { authCert } from '@fastgpt/service/support/permission/auth/common';
+import { MongoUser } from '@fastgpt/service/support/user/schema';
+import { isAdminUser } from '@fastgpt/global/support/permission/citation';
+import type { NodeHttpRequest } from '@fastgpt/service/types/http';
 
 /* 
   检查chat的权限：
@@ -43,6 +48,23 @@ const buildAppChatAuthQuery = (appId: string) =>
     sourceType: ChatSourceTypeEnum.app,
     sourceId: appId
   });
+
+/**
+ * 鲁港通 - 判断当前聊天访问者是否为 root 管理员。
+ * 用于引用内容权限：仅 root 可查看知识库分块正文，普通用户/外链访客不可查看与下载。
+ * 通过登录 token 解析用户，未登录（如外链访客）或非 root 一律返回 false。
+ * @param req 请求对象
+ * @returns 访问者是否为 root 管理员
+ */
+export const isRootChatViewer = async (req: NodeHttpRequest): Promise<boolean> => {
+  try {
+    const { userId } = await authCert({ req, authToken: true });
+    const user = await MongoUser.findOne({ _id: userId }, 'username').lean();
+    return isAdminUser(user?.username);
+  } catch (error) {
+    return false;
+  }
+};
 
 export async function authChatCrud({
   appId,

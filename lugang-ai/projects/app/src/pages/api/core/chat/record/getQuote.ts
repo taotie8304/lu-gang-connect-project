@@ -1,6 +1,6 @@
 import { NextAPI } from '@/service/middleware/entry';
 import { authCollectionInChat } from '@/service/support/permission/auth/chat';
-import { authChatTargetCrud } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud, isRootChatViewer } from '@/service/support/permission/auth/chat';
 import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
 import { type ApiRequestProps } from '@fastgpt/next/type';
 import { quoteDataFieldSelector } from '@/service/core/chat/constants';
@@ -66,7 +66,20 @@ async function handler(req: ApiRequestProps): Promise<GetQuoteResponseType> {
   const formatPreviewUrlList = await getFormatDatasetCiteList(list);
   const quoteList = processChatTimeFilter(formatPreviewUrlList, chatItem.time);
 
-  return GetQuoteResponseSchema.parse(quoteList);
+  // 鲁港通 - 引用内容权限：仅 root 管理员可查看知识库分块正文；
+  // 普通用户/外链访客剥离 q/a 等正文，仅保留来源标识，确保无法查看与下载内容。
+  const isRoot = await isRootChatViewer(req);
+  const safeQuoteList = isRoot
+    ? quoteList
+    : quoteList.map((item) => ({
+        ...item,
+        q: '',
+        a: undefined,
+        imagePreivewUrl: undefined,
+        history: undefined
+      }));
+
+  return GetQuoteResponseSchema.parse(safeQuoteList);
 }
 
 export default NextAPI(handler);

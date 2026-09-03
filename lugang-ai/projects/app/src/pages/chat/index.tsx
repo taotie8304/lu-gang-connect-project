@@ -184,6 +184,9 @@ const ChatContent = (props: ChatPageProps) => {
     [setUserInfo]
   );
 
+  // 鲁港通 - 引用内容权限：仅 root 管理员可查看/下载知识库来源内容，普通用户只可见文件名与引用数字
+  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
+
   // Waiting for user info to be initialized
   if (!isInitedUser) {
     return (
@@ -213,9 +216,9 @@ const ChatContent = (props: ChatPageProps) => {
         showRouteToDatasetDetail={isStandalone !== '1'}
         showRunningStatus={props.showRunningStatus}
         showSkillReferences={props.showSkillReferences}
-        canDownloadSource={props.canDownloadSource}
+        canDownloadSource={isRoot ? props.canDownloadSource : false}
         isShowCite={props.showCite}
-        isShowFullText={props.showFullText}
+        isShowFullText={isRoot ? props.showFullText : false}
         showWholeResponse={props.showWholeResponse}
       >
         <ChatRecordContextProvider params={chatRecordProviderParams}>

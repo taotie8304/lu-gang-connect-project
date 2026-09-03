@@ -24,6 +24,8 @@ import Markdown from '.';
 import { getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
 import { isObjectId } from '@fastgpt/global/common/string/utils';
 import type { ChatAuthTargetInput } from '@/web/core/chat/utils';
+// 鲁港通 - 引用内容权限：普通用户不可查看知识库分块内容
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 type MarkdownChatAuthData = ChatAuthTargetInput & {
   chatId: string;
@@ -80,6 +82,8 @@ const CiteLink = React.memo(function CiteLink({
 }: { id: string; showAnimation?: boolean } & AProps) {
   const { t } = useTranslation();
   const { isPc } = useSystem();
+  // 鲁港通 - 引用内容权限：仅 root 管理员可查看知识库分块内容（与后端 getQuoteData 剥离口径一致）
+  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
 
   const { isOpen, onOpen, onClose } = useDisclosure();
   const {
@@ -122,9 +126,9 @@ const CiteLink = React.memo(function CiteLink({
       bg={'myGray.150'}
       alignItems={'center'}
       justifyContent={'center'}
-      cursor={'pointer'}
+      cursor={isRoot ? 'pointer' : 'default'}
       aria-label={t('common:chat.quote_detail_title')}
-      onClick={!isPc ? handleOpenMobileQuote : undefined}
+      onClick={!isPc && isRoot ? handleOpenMobileQuote : undefined}
       _hover={{
         '.cite-link-icon': {
           color: 'primary.600'
@@ -140,6 +144,11 @@ const CiteLink = React.memo(function CiteLink({
       />
     </Button>
   );
+
+  // 鲁港通 - 普通用户（非 root）不可查看知识库分块内容：内联引用标记仅作展示，不弹出内容、不可点击查看。
+  if (!isRoot) {
+    return citeButton;
+  }
 
   if (!isPc) {
     return onOpenCiteModal ? citeButton : null;

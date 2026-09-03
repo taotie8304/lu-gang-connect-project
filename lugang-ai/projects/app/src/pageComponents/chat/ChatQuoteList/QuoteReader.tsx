@@ -17,6 +17,12 @@ import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import FillRowTabs from '@fastgpt/web/components/common/Tabs/FillRowTabs';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { getChatAuthTargetInput } from '@/web/core/chat/utils';
+// 鲁港通 - 引用内容权限：普通用户仅可查看来源文件名，不可查看知识库分块正文
+import { useUserStore } from '@/web/support/user/useUserStore';
+import {
+  canUserViewCitationSource,
+  isAdminUser
+} from '@fastgpt/global/support/permission/citation';
 
 type MobileQuoteTab = 'detail' | 'source';
 
@@ -35,6 +41,9 @@ const QuoteReader = ({
 }) => {
   const { t } = useTranslation();
   const { isPc } = useSystem();
+  // 鲁港通 - 引用内容权限：仅 root 管理员可查看知识库分块正文；普通用户只显示来源文件名
+  const username = useUserStore((s) => s.userInfo?.username);
+  const isRoot = isAdminUser(username);
   const [mobileTab, setMobileTab] = useState<MobileQuoteTab>('detail');
 
   const filterRawSearch = useMemo(() => {
@@ -162,37 +171,49 @@ const QuoteReader = ({
   const quoteSourceList = (
     <Box flex={'1 0 0'} p={'12px'} overflow={'auto'}>
       <Flex flexDir={'column'} gap={'8px'}>
-        {sourceDataList.map((item) => (
-          <Flex
-            key={item.collectionId}
-            alignItems={'center'}
-            gap={'8px'}
-            minH={'40px'}
-            px={'12px'}
-            py={'10px'}
-            borderRadius={'6px'}
-            color={'myGray.900'}
-            fontSize={'14px'}
-            lineHeight={'20px'}
-            cursor={item.sourceId ? 'pointer' : 'default'}
-            _hover={
-              item.sourceId
-                ? {
-                    bg: 'rgba(51, 112, 255, 0.08)',
-                    color: 'primary.600'
-                  }
-                : undefined
-            }
-            onClick={() => openCollectionQuote(item)}
-          >
-            <MyIcon name={item.icon as any} flexShrink={0} w={'16px'} />
-            <MyTooltip label={item.sourceName} showOnlyWhenOverflow>
-              <Box className={'textEllipsis'} minW={0}>
-                {item.sourceName}
-              </Box>
-            </MyTooltip>
-          </Flex>
-        ))}
+        {sourceDataList.map((item) => {
+          // 鲁港通 - 引用内容权限：root 可下钻查看集合内容；普通用户仅 URL 类来源可点击（新窗口打开），知识库文件来源不可点击
+          const clickable = isRoot
+            ? !!item.sourceId
+            : canUserViewCitationSource(username, undefined, item.sourceId);
+          return (
+            <Flex
+              key={item.collectionId}
+              alignItems={'center'}
+              gap={'8px'}
+              minH={'40px'}
+              px={'12px'}
+              py={'10px'}
+              borderRadius={'6px'}
+              color={'myGray.900'}
+              fontSize={'14px'}
+              lineHeight={'20px'}
+              cursor={clickable ? 'pointer' : 'default'}
+              _hover={
+                clickable
+                  ? {
+                      bg: 'rgba(51, 112, 255, 0.08)',
+                      color: 'primary.600'
+                    }
+                  : undefined
+              }
+              onClick={() => {
+                if (isRoot) {
+                  openCollectionQuote(item);
+                } else if (clickable && item.sourceId) {
+                  window.open(item.sourceId, '_blank');
+                }
+              }}
+            >
+              <MyIcon name={item.icon as any} flexShrink={0} w={'16px'} />
+              <MyTooltip label={item.sourceName} showOnlyWhenOverflow>
+                <Box className={'textEllipsis'} minW={0}>
+                  {item.sourceName}
+                </Box>
+              </MyTooltip>
+            </Flex>
+          );
+        })}
       </Flex>
     </Box>
   );
@@ -241,17 +262,26 @@ const QuoteReader = ({
                 outerHeight="40px"
                 itemHeight="32px"
                 labelSize="16px"
-                list={[
-                  {
-                    label: t('common:chat.quote_detail_title'),
-                    value: 'detail'
-                  },
-                  {
-                    label: t('chat:quote_source_title'),
-                    value: 'source'
-                  }
-                ]}
-                value={mobileTab}
+                list={
+                  isRoot
+                    ? [
+                        {
+                          label: t('common:chat.quote_detail_title'),
+                          value: 'detail'
+                        },
+                        {
+                          label: t('chat:quote_source_title'),
+                          value: 'source'
+                        }
+                      ]
+                    : [
+                        {
+                          label: t('chat:quote_source_title'),
+                          value: 'source'
+                        }
+                      ]
+                }
+                value={isRoot ? mobileTab : 'source'}
                 onChange={setMobileTab}
               />
             </Box>
@@ -280,7 +310,10 @@ const QuoteReader = ({
       )}
 
       {/* quote list */}
-      {singleQuote || isPc || mobileTab === 'detail' ? quoteDetailList : quoteSourceList}
+      {/* 鲁港通 - 引用内容权限：非 root 用户强制只显示来源文件名，不显示分块正文 */}
+      {isRoot && (singleQuote || isPc || mobileTab === 'detail')
+        ? quoteDetailList
+        : quoteSourceList}
 
       {!singleQuote && (
         <Box px={5} py={3}>

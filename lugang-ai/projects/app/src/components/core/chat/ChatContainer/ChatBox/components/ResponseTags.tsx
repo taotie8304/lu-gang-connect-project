@@ -15,12 +15,20 @@ import { useSize } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
 import { ChatBoxContext } from '../Provider';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
+// 鲁港通 - 引用内容权限：按角色控制引用来源是否可点击查看（普通用户仅可见文件名，URL 类来源仍可打开）
+import { useUserStore } from '@/web/support/user/useUserStore';
+import {
+  canUserViewCitationSource,
+  isAdminUser
+} from '@fastgpt/global/support/permission/citation';
 
 export type CitationRenderItem = {
   type: 'dataset' | 'link';
   key: string;
   displayText: string;
   icon?: string;
+  // 鲁港通 - 引用内容权限：是否可点击查看；普通用户的知识库文件来源为 false，仅展示文件名
+  clickable?: boolean;
   onClick: () => any;
 };
 
@@ -28,10 +36,13 @@ const WholeResponseModal = dynamic(() => import('../../../components/WholeRespon
 
 const CitationListCard = React.memo(function CitationListCard({
   items,
-  onOpenAll
+  onOpenAll,
+  canOpenAll = true
 }: {
   items: CitationRenderItem[];
   onOpenAll: () => void;
+  // 鲁港通 - 引用内容权限：是否允许点击标题打开全部引用阅读器（仅 root 管理员）
+  canOpenAll?: boolean;
 }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState<boolean>(false);
@@ -65,7 +76,7 @@ const CitationListCard = React.memo(function CitationListCard({
         >
           <Box ref={cardContentRef}>
             <Flex h={'28px'} alignItems={'center'} justifyContent={'space-between'} px={'8px'}>
-              <MyTooltip label={t('chat:view_citations')}>
+              <MyTooltip label={canOpenAll ? t('chat:view_citations') : ''}>
                 <Flex
                   alignItems={'center'}
                   gap={'6px'}
@@ -73,20 +84,28 @@ const CitationListCard = React.memo(function CitationListCard({
                   fontSize={'14px'}
                   lineHeight={'20px'}
                   fontWeight={500}
-                  cursor={'pointer'}
-                  _hover={{
-                    color: 'primary.600',
-                    '.citation-count': {
-                      color: 'primary.600'
-                    },
-                    '.citation-arrow': {
-                      color: 'primary.600'
-                    }
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onOpenAll();
-                  }}
+                  cursor={canOpenAll ? 'pointer' : 'default'}
+                  _hover={
+                    canOpenAll
+                      ? {
+                          color: 'primary.600',
+                          '.citation-count': {
+                            color: 'primary.600'
+                          },
+                          '.citation-arrow': {
+                            color: 'primary.600'
+                          }
+                        }
+                      : undefined
+                  }
+                  onClick={
+                    canOpenAll
+                      ? (e) => {
+                          e.stopPropagation();
+                          onOpenAll();
+                        }
+                      : undefined
+                  }
                 >
                   <Box>
                     {t('chat:citation_card_prefix')}
@@ -119,7 +138,12 @@ const CitationListCard = React.memo(function CitationListCard({
 
             <Flex mt={'4px'} flexWrap={'wrap'} gap={'4px'}>
               {items.map((item) => (
-                <MyTooltip key={item.key} label={t('common:core.chat.quote.Read Quote')}>
+                <MyTooltip
+                  key={item.key}
+                  label={
+                    item.clickable ? t('common:core.chat.quote.Read Quote') : item.displayText
+                  }
+                >
                   <Flex
                     alignItems={'center'}
                     minW={0}
@@ -132,12 +156,16 @@ const CitationListCard = React.memo(function CitationListCard({
                     color={'myGray.900'}
                     fontSize={'14px'}
                     lineHeight={'20px'}
-                    cursor={'pointer'}
-                    _hover={{ bg: 'myGray.100' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      item.onClick?.();
-                    }}
+                    cursor={item.clickable ? 'pointer' : 'default'}
+                    _hover={item.clickable ? { bg: 'myGray.100' } : undefined}
+                    onClick={
+                      item.clickable
+                        ? (e) => {
+                            e.stopPropagation();
+                            item.onClick?.();
+                          }
+                        : undefined
+                    }
                   >
                     <MyIcon name={item.icon as any} mr={2} flexShrink={0} w={'14px'} />
                     <Box className={'textEllipsis'} minW={0}>
@@ -173,11 +201,15 @@ const CitationListCard = React.memo(function CitationListCard({
         fontSize={'14px'}
         lineHeight={'20px'}
         fontWeight={500}
-        cursor={'pointer'}
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpenAll();
-        }}
+        cursor={canOpenAll ? 'pointer' : 'default'}
+        onClick={
+          canOpenAll
+            ? (e) => {
+                e.stopPropagation();
+                onOpenAll();
+              }
+            : undefined
+        }
       >
         <MyIcon name={'common/link'} w={'16px'} h={'16px'} color={'primary.600'} />
         <Box>{t('chat:citation_card_title', { num: items.length })}</Box>
@@ -206,6 +238,10 @@ const ResponseTags = ({
   const { isPc } = useSystem();
   const { t } = useTranslation();
   const dataId = historyItem.dataId;
+
+  // 鲁港通 - 引用内容权限：仅 root 管理员可查看知识库分块内容；普通用户只可见文件名，URL 类来源仍可点击打开
+  const username = useUserStore((s) => s.userInfo?.username);
+  const isRoot = isAdminUser(username);
 
   const durationSeconds = historyItem.durationSeconds || 0;
   const isShowCite = useContextSelector(ChatItemContext, (v) => v.isShowCite);
@@ -245,24 +281,33 @@ const ResponseTags = ({
       }, {})
     )
       .flat()
-      .map((item) => ({
-        type: 'dataset' as const,
-        key: item.collectionId,
-        displayText: item.sourceName,
-        icon:
-          'imageId' in item && item.imageId
-            ? 'core/dataset/imageFill'
-            : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }) ||
-              'core/chat/quoteFill',
-        onClick: () => {
-          onOpenCiteModal({
-            collectionId: item.collectionId,
-            sourceId: item.sourceId,
-            sourceName: item.sourceName,
-            datasetId: item.datasetId
-          });
-        }
-      }));
+      .map((item) => {
+        // 鲁港通 - 引用内容权限：root 打开阅读器查看内容；普通用户仅 URL 类来源可点击（新窗口打开），知识库文件来源不可点击查看
+        const canView = canUserViewCitationSource(username, undefined, item.sourceId);
+        return {
+          type: 'dataset' as const,
+          key: item.collectionId,
+          displayText: item.sourceName,
+          icon:
+            'imageId' in item && item.imageId
+              ? 'core/dataset/imageFill'
+              : getSourceNameIcon({ sourceId: item.sourceId, sourceName: item.sourceName }) ||
+                'core/chat/quoteFill',
+          clickable: canView,
+          onClick: () => {
+            if (isRoot) {
+              onOpenCiteModal({
+                collectionId: item.collectionId,
+                sourceId: item.sourceId,
+                sourceName: item.sourceName,
+                datasetId: item.datasetId
+              });
+            } else if (canView && item.sourceId) {
+              window.open(item.sourceId, '_blank');
+            }
+          }
+        };
+      });
 
     // Link citations
     const linkItems = toolCiteLinks.map((r, index) => ({
@@ -270,13 +315,15 @@ const ResponseTags = ({
       key: `${r.url}-${index}`,
       displayText: r.name,
       icon: 'common/link',
+      // 鲁港通 - 互联网引用网址：所有用户均可点击打开（req3A）
+      clickable: true,
       onClick: () => {
         window.open(r.url, '_blank');
       }
     }));
 
     return [...datasetItems, ...linkItems];
-  }, [responseTags, onOpenCiteModal, isShowCite]);
+  }, [responseTags, onOpenCiteModal, isShowCite, username, isRoot]);
 
   const notEmptyTags =
     (showFooterMeta && notSharePage) || (showFooterMeta && isPc && durationSeconds > 0);
@@ -285,7 +332,11 @@ const ResponseTags = ({
     <>
       {/* quote */}
       {citationRenderList.length > 0 && (
-        <CitationListCard items={citationRenderList} onOpenAll={() => onOpenCiteModal()} />
+        <CitationListCard
+          items={citationRenderList}
+          canOpenAll={isRoot}
+          onOpenAll={() => onOpenCiteModal()}
+        />
       )}
 
       {notEmptyTags && (

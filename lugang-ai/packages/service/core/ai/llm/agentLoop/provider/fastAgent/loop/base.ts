@@ -435,7 +435,12 @@ export const runAgentLoop = async <TChildrenResponse = unknown>({
         messages: requestMessages,
         tool_choice: consecutiveSameToolRequestTimes >= 5 ? 'none' : 'auto',
         toolCallMode: modelData.toolChoice ? 'toolChoice' : 'prompt',
-        parallel_tool_calls: body.parallel_tool_calls ?? true
+        parallel_tool_calls: body.parallel_tool_calls ?? true,
+        // 鲁港通 - 深度思考常开：agent 流式请求 + 百炼风格模型（reasoning 且非 reasoningEffort）时强制开启 enable_thinking，
+        // 与 D5b dispatchChatCompletion 口径一致，保证 Agent 应用的深度思考与普通对话一致常开。
+        ...(body.stream && modelData.reasoning && !modelData.reasoningEffort
+          ? { enable_thinking: true }
+          : {})
       },
       userKey,
       teamId,

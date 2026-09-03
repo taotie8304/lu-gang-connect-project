@@ -1,5 +1,9 @@
 import { NextAPI } from '@/service/middleware/entry';
-import { authChatTargetCrud, authCollectionInChat } from '@/service/support/permission/auth/chat';
+import {
+  authChatTargetCrud,
+  authCollectionInChat,
+  isRootChatViewer
+} from '@/service/support/permission/auth/chat';
 import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { authDatasetData } from '@fastgpt/service/support/permission/dataset/auth';
@@ -55,13 +59,18 @@ async function handler(req: ApiRequestProps): Promise<GetQuoteDataResponse> {
         return Promise.reject(new UserError(ChatErrEnum.unAuthChat));
       }
 
+      // 鲁港通 - 引用内容权限：仅 root 管理员可查看知识库分块正文；
+      // 普通用户/外链访客只返回集合信息（含文件名），剥离 q/a 正文，确保无法查看与下载内容。
+      const isRoot = await isRootChatViewer(req);
       return {
         collection,
-        ...(await formatDatasetDataValue({
-          q: datasetData.q,
-          a: datasetData.a,
-          imageId: datasetData.imageId
-        }))
+        ...(isRoot
+          ? await formatDatasetDataValue({
+              q: datasetData.q,
+              a: datasetData.a,
+              imageId: datasetData.imageId
+            })
+          : { q: '', a: undefined })
       };
     } else {
       const { datasetData, collection } = await authDatasetData({
