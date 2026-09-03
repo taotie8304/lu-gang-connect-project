@@ -4,7 +4,8 @@ export enum SystemConfigsTypeEnum {
   systemMsgModal = 'systemMsgModal',
   license = 'license',
   operationalAd = 'operationalAd',
-  activityAd = 'activityAd'
+  activityAd = 'activityAd',
+  lugangRegister = 'lugangRegister' // 鲁港通 - 注册配置（邮箱注册开关 + SMTP）
 }
 
 export const SystemConfigsTypeMap = {
@@ -25,5 +26,9 @@ export const SystemConfigsTypeMap = {
   },
   [SystemConfigsTypeEnum.activityAd]: {
     label: 'activityAd'
+  },
+  // 鲁港通 - 注册配置类型
+  [SystemConfigsTypeEnum.lugangRegister]: {
+    label: 'lugangRegister'
   }
 };

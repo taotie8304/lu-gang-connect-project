@@ -60,6 +60,20 @@ const UserSchema = new Schema({
     enum: UserTagsSchema.enum
   },
   meta: Object,
+
+  // 鲁港通 - 用户信息扩展字段（注册 / 用户设置使用）
+  inviterId: {
+    // 谁邀请注册的
+    type: Schema.Types.ObjectId,
+    ref: userCollectionName
+  },
+  nickname: { type: String, required: false },
+  email: { type: String, required: false },
+  phone: { type: String, required: false },
+  birth_date: { type: Date, required: false },
+  address: { type: String, required: false },
+  google_account: { type: String, required: false },
+
   /** @deprecated */
   avatar: String
 });

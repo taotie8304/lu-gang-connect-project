@@ -30,6 +30,14 @@ export type UserModelSchema = {
   contact?: string | null;
   tags: UserTagsType[];
   meta?: UserMetaType;
+  // 鲁港通 - 用户信息扩展字段（注册 / 用户设置使用；4.16.2 官方 schema 无这些字段，此处按需扩展）
+  inviterId?: string;
+  nickname?: string;
+  email?: string;
+  phone?: string;
+  birth_date?: Date;
+  address?: string;
+  google_account?: string;
 };
 
 export const UserSchema = z.object({

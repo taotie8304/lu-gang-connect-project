@@ -91,14 +91,28 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     }
   };
 
+  // 鲁港通 - 淡蓝色输入框样式
+  const inputStyles = {
+    bg: 'white',
+    borderColor: 'blue.200',
+    _hover: { borderColor: 'blue.300' },
+    _focus: { borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }
+  };
+
   return (
     <>
+      {/* 鲁港通 - 淡蓝色渐变标题 */}
       <Box
-        fontWeight={'medium'}
-        fontSize={'lg'}
+        fontWeight={'semibold'}
+        fontSize={'xl'}
         lineHeight={'30px'}
         textAlign={'center'}
-        color={'myGray.900'}
+        background="linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)"
+        backgroundClip="text"
+        sx={{
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}
       >
         {t('user:password.retrieved_account', { account: feConfigs?.systemTitle })}
       </Box>
@@ -118,7 +132,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
       >
         <FormControl isInvalid={!!errors.username}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             placeholder={placeholder}
             {...register('username', {
@@ -139,7 +153,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           position={'relative'}
         >
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             flex={1}
             maxLength={8}
@@ -152,7 +166,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         </FormControl>
         <FormControl mt={6} isInvalid={!!errors.password}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             type={'password'}
             size={'lg'}
             placeholder={t('common:support.user.login.Password')}
@@ -184,7 +198,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         </FormControl>
         <FormControl mt={6} isInvalid={!!errors.password2}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             type={'password'}
             size={'lg'}
             placeholder={t('user:password.confirm')}
@@ -195,6 +209,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
         </FormControl>
 
+        {/* 鲁港通 - 蓝色渐变按钮 */}
         <Button
           type="submit"
           mt={12}
@@ -202,8 +217,11 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           size={['md', 'md']}
           rounded={['sm', 'md']}
           h={['34px', '40px']}
-          fontWeight={['medium', 'medium']}
-          colorScheme="blue"
+          fontWeight={'semibold'}
+          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
+          color={'white'}
+          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
+          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
           isLoading={requesting}
           onClick={handleSubmit(onclickFindPassword, onSubmitErr)}
         >

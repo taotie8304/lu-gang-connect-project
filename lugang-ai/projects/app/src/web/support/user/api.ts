@@ -28,12 +28,14 @@ import type { CaptchaVerificationPurpose } from '@fastgpt/global/support/user/ac
 export type UserVerificationPurpose = CaptchaVerificationPurpose;
 
 /* ===== Auth code ===== */
+// 鲁港通 - 使用本地验证码发送 API（nodemailer 邮箱验证码），替代官方 proApi
 export const sendAuthCode = (data: SendAuthCodeBodyType) =>
-  POST<SendAuthCodeResponseType>('/proApi/support/user/inform/sendAuthCode', data);
+  POST<SendAuthCodeResponseType>('/support/user/inform/sendAuthCode', data);
+// 鲁港通 - 使用本地图片验证码 API（SVG），替代官方 proApi
 export const getCaptchaPic = (username: string, purpose: UserVerificationPurpose) =>
   GET<{
     captchaImage: string;
-  }>('/proApi/support/user/account/captcha/getImgCaptcha', { username, purpose });
+  }>('/support/user/account/captcha/getImgCaptcha', { username, purpose });
 
 /* ===== login ===== */
 export const getPreLogin = (username: string) =>
@@ -61,6 +63,8 @@ export const getWXLoginResult = (params: WxLoginBodyType) =>
 export const loginOut = () => GET('/support/user/account/loginout');
 
 /* ===== register ===== */
+// 鲁港通 - 使用本地注册 API（邮箱验证码 + 加入管理员团队 + 同步后端）；
+// 密码发送原文，由后端 hashStr 一次（与 schema set 合计双重哈希，与官方登录兼容）
 export const postRegister = ({
   username,
   password,
@@ -68,16 +72,20 @@ export const postRegister = ({
   bd_vid,
   msclkid,
   fastgpt_sem,
-  language
-}: AccountRegisterBodyType) =>
-  POST<LoginSuccessResponseType>(`/proApi/support/user/account/register/emailAndPhone`, {
+  language,
+  email,
+  phone
+}: AccountRegisterBodyType & { email?: string; phone?: string }) =>
+  POST<LoginSuccessResponseType>(`/support/user/account/register`, {
     username,
     code,
     bd_vid,
     msclkid,
     fastgpt_sem,
     language,
-    password: hashStr(password)
+    password,
+    email,
+    phone
   });
 
 /* =====  password ===== */

@@ -1,5 +1,14 @@
-import React, { type Dispatch } from 'react';
-import { FormControl, Flex, Input, Button, Box } from '@chakra-ui/react';
+import React, { useState, type Dispatch } from 'react';
+import {
+  FormControl,
+  Flex,
+  Input,
+  Button,
+  Box,
+  InputGroup,
+  InputRightElement,
+  IconButton
+} from '@chakra-ui/react';
 import { useForm } from 'react-hook-form';
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
 import { postLogin, getPreLogin } from '@/web/support/user/api';
@@ -16,6 +25,7 @@ import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/u
 import PolicyTip from './PolicyTip';
 import { getRegisterMethods } from '@/web/common/system/utils';
 import { getFastGPTSem, onFastGPTLoginSuccess } from '@/web/support/marketing/utils';
+import MyIcon from '@fastgpt/web/components/common/Icon';
 
 type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<void>;
 
@@ -43,6 +53,9 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
     handleSubmit,
     formState: { errors }
   } = useForm<LoginFormType>();
+
+  // 鲁港通 - 密码显示/隐藏状态
+  const [showPassword, setShowPassword] = useState(false);
 
   const { runAsync: onclickLogin, loading: requesting } = useRequest(
     async ({ username, password }: LoginFormType) => {
@@ -80,25 +93,19 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
     }
   );
 
-  const isCommunityVersion = hasRegisterMethod && !feConfigs?.isPlus;
-
-  const placeholder = (() => {
-    if (isCommunityVersion) {
-      return t('login:use_root_login');
-    }
-    return [t('common:support.user.login.Username')]
-      .concat(
-        feConfigs?.login_method?.map((item) => {
-          switch (item) {
-            case 'email':
-              return t('common:support.user.login.Email');
-            case 'phone':
-              return t('common:support.user.login.Phone number');
-          }
-        }) ?? []
-      )
-      .join('/');
-  })();
+  // 鲁港通 - 移除社区版 root 登录提示，统一使用完整登录提示（本项目已开放注册）
+  const placeholder = [t('common:support.user.login.Username')]
+    .concat(
+      feConfigs?.login_method?.map((item) => {
+        switch (item) {
+          case 'email':
+            return t('common:support.user.login.Email');
+          case 'phone':
+            return t('common:support.user.login.Phone number');
+        }
+      }) ?? []
+    )
+    .join('/');
 
   useMount(() => {
     const username = query.get('u');
@@ -122,42 +129,61 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
         }}
       >
         <FormControl isInvalid={!!errors.username}>
+          {/* 鲁港通 - 淡蓝色边框输入框 */}
           <Input
             bg={'white'}
             size={'lg'}
             placeholder={placeholder}
+            borderColor={'blue.200'}
+            _hover={{ borderColor: 'blue.300' }}
+            _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }}
             {...register('username', {
               required: true
             })}
           ></Input>
         </FormControl>
         <FormControl mt={6} isInvalid={!!errors.password}>
-          <Input
-            bg={'white'}
-            size={'lg'}
-            type={'password'}
-            placeholder={
-              isCommunityVersion
-                ? t('login:root_password_placeholder')
-                : t('common:support.user.login.Password')
-            }
-            {...register('password', {
-              required: true,
-              maxLength: {
-                value: 60,
-                message: t('login:password_condition')
-              }
-            })}
-          ></Input>
+          {/* 鲁港通 - 淡蓝色边框输入框，带密码显示/隐藏功能 */}
+          <InputGroup size={'lg'}>
+            <Input
+              bg={'white'}
+              type={showPassword ? 'text' : 'password'}
+              borderColor={'blue.200'}
+              _hover={{ borderColor: 'blue.300' }}
+              _focus={{ borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }}
+              placeholder={t('common:support.user.login.Password')}
+              {...register('password', {
+                required: true,
+                maxLength: {
+                  value: 60,
+                  message: t('login:password_condition')
+                }
+              })}
+            />
+            <InputRightElement>
+              <IconButton
+                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                variant="ghost"
+                size="sm"
+                icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w="18px" />}
+                onClick={() => setShowPassword(!showPassword)}
+                _hover={{ bg: 'transparent' }}
+              />
+            </InputRightElement>
+          </InputGroup>
         </FormControl>
         <PolicyTip />
+        {/* 鲁港通 - 蓝色渐变登录按钮 */}
         <Button
           type="submit"
           mt={6}
           w={'100%'}
           size={'lg'}
-          fontWeight={['medium', 'medium']}
-          colorScheme="blue"
+          fontWeight={'semibold'}
+          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
+          color={'white'}
+          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
+          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
           isLoading={requesting}
           onClick={handleSubmit(onclickLogin)}
         >
@@ -170,7 +196,7 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
             align={'center'}
             justifyContent={'center'}
             gap={0}
-            color={'primary.700'}
+            color={'blue.600'}
             fontWeight={'medium'}
             h={'16px'}
             lineHeight={'16px'}

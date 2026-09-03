@@ -1,5 +1,13 @@
-import React, { type Dispatch } from 'react';
-import { FormControl, Box, Input, Button } from '@chakra-ui/react';
+import React, { useState, type Dispatch } from 'react';
+import {
+  FormControl,
+  Box,
+  Input,
+  Button,
+  InputGroup,
+  InputRightElement,
+  IconButton
+} from '@chakra-ui/react';
 import { useForm } from 'react-hook-form';
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
 import { postRegister } from '@/web/support/user/api';
@@ -15,6 +23,9 @@ import {
   onFastGPTLoginSuccess
 } from '@/web/support/marketing/utils';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+// 鲁港通 - 手机号判断（复用注册校验工具）
+import { isPhone } from '@fastgpt/global/support/user/validation';
 import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 import { getRegisterMethods } from '@/web/common/system/utils';
@@ -36,11 +47,18 @@ interface RegisterType {
   password: string;
   password2: string;
   code: string;
+  // 鲁港通 - 邮箱注册时必填手机号（同步后端，不发验证码）；手机号注册时必填邮箱（接收验证码）
+  phone?: string;
+  email?: string;
 }
 
 const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   const { toast } = useToast();
   const { t, i18n } = useTranslation();
+
+  // 鲁港通 - 密码显示/隐藏状态
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword2, setShowPassword2] = useState(false);
 
   const { feConfigs } = useSystemStore();
   const {
@@ -53,7 +71,12 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     mode: 'onBlur'
   });
   const username = watch('username');
+  const email = watch('email');
   const registerMethods = getRegisterMethods(feConfigs);
+
+  // 鲁港通 - 手机号注册时验证码发到邮箱；邮箱注册时发到邮箱本身
+  const isPhoneInput = isPhone(username || '');
+  const codeTargetUsername = isPhoneInput ? email || '' : username || '';
 
   const validateUsername = (value: string) => {
     const method = (() => {
@@ -72,7 +95,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   });
 
   const { runAsync: onclickRegister, loading: requesting } = useRequest(
-    async ({ username, password, code }: RegisterType) => {
+    async ({ username, password, code, email, phone }: RegisterType) => {
       const loginResponse = await postRegister({
         username,
         code,
@@ -80,7 +103,10 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         bd_vid: getBdVId(),
         msclkid: getMsclkid(),
         fastgpt_sem: getFastGPTSem(),
-        language: i18n.language as LangEnum
+        language: i18n.language as LangEnum,
+        // 鲁港通 - 手机号注册传邮箱；邮箱注册传手机号
+        ...(isPhone(username) && email ? { email } : {}),
+        ...(!isPhone(username) && phone ? { phone } : {})
       });
       await onFastGPTLoginSuccess(loginSuccess, loginResponse);
 
@@ -117,14 +143,28 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     })
     .join('/');
 
+  // 鲁港通 - 淡蓝色输入框样式
+  const inputStyles = {
+    bg: 'white',
+    borderColor: 'blue.200',
+    _hover: { borderColor: 'blue.300' },
+    _focus: { borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }
+  };
+
   return (
     <>
+      {/* 鲁港通 - 淡蓝色渐变标题 */}
       <Box
-        fontWeight={'medium'}
-        fontSize={'lg'}
+        fontWeight={'semibold'}
+        fontSize={'xl'}
         lineHeight={'30px'}
         textAlign={'center'}
-        color={'myGray.900'}
+        background="linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)"
+        backgroundClip="text"
+        sx={{
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent'
+        }}
       >
         {t('user:register.register_account', { account: feConfigs?.systemTitle })}
       </Box>
@@ -145,7 +185,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
       >
         <FormControl isInvalid={!!errors.username}>
           <Input
-            bg={'myGray.50'}
+            {...inputStyles}
             size={'lg'}
             placeholder={placeholder}
             {...register('username', {
@@ -154,6 +194,43 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             })}
           ></Input>
         </FormControl>
+
+        {/* 鲁港通 - 手机号注册时显示邮箱输入框（用于接收验证码） */}
+        {isPhoneInput && (
+          <FormControl mt={6} isInvalid={!!errors.email}>
+            <Input
+              {...inputStyles}
+              size={'lg'}
+              placeholder="请输入邮箱（用于接收验证码）"
+              {...register('email', {
+                required: '手机号注册需要提供邮箱',
+                pattern: {
+                  value: /^[A-Za-z0-9]+([_\.][A-Za-z0-9]+)*@([A-Za-z0-9\-]+\.)+[A-Za-z]{2,6}$/,
+                  message: '请输入正确的邮箱地址'
+                }
+              })}
+            />
+          </FormControl>
+        )}
+
+        {/* 鲁港通 - 邮箱注册时显示手机号输入框（必填，同步后端，不发验证码） */}
+        {!isPhoneInput && (
+          <FormControl mt={6} isInvalid={!!errors.phone}>
+            <Input
+              {...inputStyles}
+              size={'lg'}
+              placeholder="请输入手机号"
+              {...register('phone', {
+                required: '手机号为必填项',
+                pattern: {
+                  value: /^1[3-9]\d{9}$/,
+                  message: '请输入正确的手机号'
+                }
+              })}
+            />
+          </FormControl>
+        )}
+
         <FormControl
           mt={6}
           isInvalid={!!errors.code}
@@ -163,7 +240,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         >
           <Input
             size={'lg'}
-            bg={'myGray.50'}
+            {...inputStyles}
             flex={1}
             maxLength={8}
             placeholder={t('user:password.verification_code')}
@@ -171,28 +248,40 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
               required: t('user:password.code_required')
             })}
           ></Input>
-          <SendCodeBox username={username} />
+          <SendCodeBox username={codeTargetUsername} />
         </FormControl>
         <FormControl mt={6} isInvalid={!!errors.password}>
-          <Input
-            bg={'myGray.50'}
-            size={'lg'}
-            type={'password'}
-            placeholder={t('common:support.user.login.Password')}
-            _invalid={{
-              borderColor: 'red.500',
-              boxShadow: '0 0 0 1px #F04438'
-            }}
-            {...register('password', {
-              required: true,
-              validate: (val) => {
-                if (!checkPasswordRule(val)) {
-                  return t('login:password_tip');
+          {/* 鲁港通 - 密码显示/隐藏 */}
+          <InputGroup size={'lg'}>
+            <Input
+              {...inputStyles}
+              type={showPassword ? 'text' : 'password'}
+              placeholder={t('common:support.user.login.Password')}
+              _invalid={{
+                borderColor: 'red.500',
+                boxShadow: '0 0 0 1px #F04438'
+              }}
+              {...register('password', {
+                required: true,
+                validate: (val) => {
+                  if (!checkPasswordRule(val)) {
+                    return t('login:password_tip');
+                  }
+                  return true;
                 }
-                return true;
-              }
-            })}
-          />
+              })}
+            />
+            <InputRightElement>
+              <IconButton
+                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                variant="ghost"
+                size="sm"
+                icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w="18px" />}
+                onClick={() => setShowPassword(!showPassword)}
+                _hover={{ bg: 'transparent' }}
+              />
+            </InputRightElement>
+          </InputGroup>
           <Box
             mt={2}
             fontSize={'mini'}
@@ -206,16 +295,28 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           </Box>
         </FormControl>
         <FormControl mt={6} isInvalid={!!errors.password2}>
-          <Input
-            bg={'myGray.50'}
-            size={'lg'}
-            type={'password'}
-            placeholder={t('user:password.confirm')}
-            {...register('password2', {
-              validate: (val) =>
-                getValues('password') === val ? true : t('user:password.not_match')
-            })}
-          />
+          {/* 鲁港通 - 确认密码显示/隐藏 */}
+          <InputGroup size={'lg'}>
+            <Input
+              {...inputStyles}
+              type={showPassword2 ? 'text' : 'password'}
+              placeholder={t('user:password.confirm')}
+              {...register('password2', {
+                validate: (val) =>
+                  getValues('password') === val ? true : t('user:password.not_match')
+              })}
+            />
+            <InputRightElement>
+              <IconButton
+                aria-label={showPassword2 ? '隐藏密码' : '显示密码'}
+                variant="ghost"
+                size="sm"
+                icon={<MyIcon name={showPassword2 ? 'visible' : 'invisible'} w="18px" />}
+                onClick={() => setShowPassword2(!showPassword2)}
+                _hover={{ bg: 'transparent' }}
+              />
+            </InputRightElement>
+          </InputGroup>
         </FormControl>
         <Button
           type="submit"
@@ -224,8 +325,11 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           size={['md', 'md']}
           rounded={['sm', 'md']}
           h={['34px', '40px']}
-          fontWeight={['medium', 'medium']}
-          colorScheme="blue"
+          fontWeight={'semibold'}
+          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
+          color={'white'}
+          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
+          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
           isLoading={requesting}
           onClick={handleSubmit(onclickRegister, onSubmitErr)}
         >
