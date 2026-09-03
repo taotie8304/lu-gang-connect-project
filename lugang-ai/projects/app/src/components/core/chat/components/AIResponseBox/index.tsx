@@ -10,6 +10,8 @@ import {
   ChatItemContext,
   type OnOpenCiteModalProps
 } from '@/web/core/chat/context/chatItemContext';
+// 鲁港通 - 深度思考仅对 root 用户展示
+import { useUserStore } from '@/web/support/user/useUserStore';
 import RenderAgentAskInteractive from './RenderAgentAskInteractive';
 import RenderPaymentPauseInteractive from './RenderPaymentPauseInteractive';
 import RenderPlan from './RenderPlan';
@@ -58,6 +60,8 @@ const AIResponseBox = ({
 }) => {
   const showRunningStatus = useContextSelector(ChatItemContext, (v) => v.showRunningStatus);
   const showSkillReferences = useContextSelector(ChatItemContext, (v) => v.showSkillReferences);
+  // 鲁港通 - 深度思考仅对 root 展示：普通用户看不到思考过程（模型仍强制开启思考生成答案）
+  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
   const tools = value.tools || (value.tool ? [value.tool] : undefined);
   const disableStreamingInteraction = isChatting && isLastChild;
   const skills = value.skills;
@@ -73,7 +77,7 @@ const AIResponseBox = ({
   const showFoldableProcessing = showProcessing && showFoldableProcessingProp;
   const showStandaloneProcessing = showProcessing && showStandaloneProcessingProp;
 
-  if (showFoldableProcessing && reasoningContent && !value.hideReason) {
+  if (showFoldableProcessing && reasoningContent && !value.hideReason && isRoot) {
     foldableProcessingBlocks.push(
       <RenderReasoningContent
         key="reasoning"

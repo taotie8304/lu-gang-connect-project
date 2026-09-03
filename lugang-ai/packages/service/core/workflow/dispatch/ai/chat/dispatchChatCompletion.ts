@@ -163,7 +163,12 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         useAudio: aiChatAudio,
         useVideo: aiChatVideo,
         extractFiles: aiChatExtractFiles,
-        requestOrigin
+        requestOrigin,
+        // 鲁港通 - 深度思考常开：流式请求 + 模型以 enable_thinking 控制思考（reasoning 且非 reasoningEffort 的百炼风格）时强制开启，
+        // 保证深度思考一直打开；模型 defaultConfig 仍可在配置层覆盖此开关。
+        ...(stream && modelConstantsData.reasoning && !modelConstantsData.reasoningEffort
+          ? { enable_thinking: true }
+          : {})
       },
       userKey: externalProvider.openaiAccount,
       teamId: runningUserInfo.teamId,

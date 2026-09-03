@@ -53,6 +53,8 @@ export type LLMRequestBodyType<T> = Omit<
   useVideo?: boolean;
   extractFiles?: boolean;
   requestOrigin?: string;
+  // 鲁港通 - 深度思考常开：透传给以 enable_thinking 控制思考的模型（阿里百炼 Qwen 等）
+  enable_thinking?: boolean;
 };
 
 export type CreateLLMResponseProps<
