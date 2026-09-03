@@ -1,29 +1,32 @@
-import type { NextApiResponse } from 'next';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { getHTTPToolSetRuntimeNode } from '@fastgpt/global/core/app/tool/httpTool/utils';
 import { NextAPI } from '@/service/middleware/entry';
-import type { HttpToolConfigType } from '@fastgpt/global/core/app/type';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { authApp } from '@fastgpt/service/support/permission/app/auth';
 import { ManagePermissionVal } from '@fastgpt/global/support/permission/constant';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
-import type { StoreSecretValueType } from '@fastgpt/global/common/secret/type';
 import { storeSecretValue } from '@fastgpt/service/common/secret/utils';
 import { MongoAppVersion } from '@fastgpt/service/core/app/version/schema';
+import { updateParentFoldersUpdateTime } from '@fastgpt/service/core/app/controller';
+import { beforeUpdateAppFormat } from '@fastgpt/service/core/app/controller';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  UpdateHttpToolsBodySchema,
+  UpdateHttpToolsResponseSchema,
+  type UpdateHttpToolsBodyType,
+  type UpdateHttpToolsResponseType
+} from '@fastgpt/global/openapi/core/app/httpTools/api';
+import { encodeHttpToolSetNodesForStorage } from '@fastgpt/service/core/app/jsonSchemaStorage';
 
-export type UpdateHttpPluginBody = {
-  appId: string;
-  toolList: HttpToolConfigType[];
-  baseUrl?: string;
-  apiSchemaStr?: string;
-  headerSecret?: StoreSecretValueType;
-  customHeaders?: string;
-};
+async function handler(
+  req: ApiRequestProps<UpdateHttpToolsBodyType>
+): Promise<UpdateHttpToolsResponseType> {
+  const { appId, baseUrl, apiSchemaStr, toolList, headerSecret, customHeaders } = parseApiInput({
+    req,
+    bodySchema: UpdateHttpToolsBodySchema
+  }).body;
 
-async function handler(req: ApiRequestProps<UpdateHttpPluginBody>, res: NextApiResponse<any>) {
-  const { appId, baseUrl, apiSchemaStr, toolList, headerSecret, customHeaders } = req.body;
-
-  const { app } = await authApp({ req, authToken: true, appId, per: ManagePermissionVal });
+  const { app, teamId } = await authApp({ req, authToken: true, appId, per: ManagePermissionVal });
 
   const formatedHeaderAuth = storeSecretValue(headerSecret);
 
@@ -34,32 +37,41 @@ async function handler(req: ApiRequestProps<UpdateHttpPluginBody>, res: NextApiR
 
   const toolSetRuntimeNode = getHTTPToolSetRuntimeNode({
     name: app.name,
-    avatar: app.avatar,
+    avatar: app.avatar ?? undefined,
     baseUrl,
     apiSchemaStr,
     toolList: formattedToolList,
     headerSecret: formatedHeaderAuth,
     customHeaders
   });
+  const storageNodes = encodeHttpToolSetNodesForStorage([toolSetRuntimeNode]);
+
+  await beforeUpdateAppFormat({ nodes: [toolSetRuntimeNode], teamId });
 
   await mongoSessionRun(async (session) => {
     await MongoApp.findByIdAndUpdate(
       appId,
       {
-        modules: [toolSetRuntimeNode]
+        modules: storageNodes
       },
       { session }
     );
+
     await MongoAppVersion.updateOne(
       { appId },
       {
         $set: {
-          nodes: [toolSetRuntimeNode]
+          nodes: storageNodes
         }
       },
       { session }
     );
   });
+  updateParentFoldersUpdateTime({
+    parentId: app.parentId
+  });
+
+  return UpdateHttpToolsResponseSchema.parse(undefined);
 }
 
 export default NextAPI(handler);

@@ -1,98 +1,78 @@
 /* vector crud */
+import { TeamVectorCountCache } from '@fastgpt/dal/redis/caches';
 import { PgVectorCtrl } from './pg';
 import { ObVectorCtrl } from './oceanbase';
-import { getVectorsByText } from '../../core/ai/embedding';
-import type { EmbeddingRecallCtrlProps } from './controller.d';
-import { type DelDatasetVectorCtrlProps, type InsertVectorProps } from './controller.d';
-import { type EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.d';
-import { MILVUS_ADDRESS, PG_ADDRESS, OCEANBASE_ADDRESS } from './constants';
+import { SeekVectorCtrl } from './seekdb';
+import { OpenGaussVectorCtrl } from './opengauss';
+import { getVectors } from '../../core/ai/embedding';
+import type { GetVectorsProps } from '../../core/ai/embedding';
+import type { VectorControllerType, InsertVectorControllerPropsType } from './type';
+import { type EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.schema';
+import { getVectorType } from './constants';
 import { MilvusCtrl } from './milvus';
-import {
-  setRedisCache,
-  getRedisCache,
-  delRedisCache,
-  incrValueToCache,
-  CacheKeyEnum,
-  CacheKeyEnumTime
-} from '../redis/cache';
-import { throttle } from 'lodash';
 import { retryFn } from '@fastgpt/global/common/system/utils';
+import { getLogger, LogCategories } from '../logger';
 
-const getVectorObj = () => {
-  if (PG_ADDRESS) return new PgVectorCtrl();
-  if (OCEANBASE_ADDRESS) return new ObVectorCtrl();
-  if (MILVUS_ADDRESS) return new MilvusCtrl();
-
-  return new PgVectorCtrl();
-};
-
-const teamVectorCache = {
-  getKey: function (teamId: string) {
-    return `${CacheKeyEnum.team_vector_count}:${teamId}`;
-  },
-  get: async function (teamId: string) {
-    const countStr = await getRedisCache(teamVectorCache.getKey(teamId));
-    if (countStr) {
-      return Number(countStr);
-    }
-    return undefined;
-  },
-  set: function ({ teamId, count }: { teamId: string; count: number }) {
-    retryFn(() =>
-      setRedisCache(teamVectorCache.getKey(teamId), count, CacheKeyEnumTime.team_vector_count)
-    ).catch();
-  },
-  delete: throttle(
-    function (teamId: string) {
-      return retryFn(() => delRedisCache(teamVectorCache.getKey(teamId))).catch();
-    },
-    30000,
-    {
-      leading: true,
-      trailing: true
-    }
-  ),
-  incr: function (teamId: string, count: number) {
-    retryFn(() => incrValueToCache(teamVectorCache.getKey(teamId), count)).catch();
+const getVectorObj = (): VectorControllerType => {
+  switch (getVectorType()) {
+    case 'seekdb':
+      return new SeekVectorCtrl({ type: 'seekdb' });
+    case 'oceanbase':
+      return new ObVectorCtrl({ type: 'oceanbase' });
+    case 'milvus':
+      return new MilvusCtrl();
+    case 'opengauss':
+      return new OpenGaussVectorCtrl();
+    case 'pg':
+    default:
+      return new PgVectorCtrl();
   }
 };
 
 const Vector = getVectorObj();
+const teamVectorCountCache = new TeamVectorCountCache({
+  logger: getLogger(LogCategories.INFRA.REDIS)
+});
 
 export const initVectorStore = Vector.init;
-export const recallFromVectorStore = (props: EmbeddingRecallCtrlProps) =>
+export const recallFromVectorStore: VectorControllerType['embRecall'] = (props) =>
   retryFn(() => Vector.embRecall(props));
-export const getVectorDataByTime = Vector.getVectorDataByTime;
 
-// Count vector
-export const getVectorCountByTeamId = async (teamId: string) => {
-  const cacheCount = await teamVectorCache.get(teamId);
-  if (cacheCount !== undefined) {
-    return cacheCount;
-  }
+type DatasetVectorInput = string | GetVectorsProps['inputs'][number];
 
-  const count = await Vector.getVectorCount({ teamId });
-
-  teamVectorCache.set({
-    teamId,
-    count
-  });
-
-  return count;
-};
-export const getVectorCount = Vector.getVectorCount;
-
+/**
+ * 统一写入知识库索引向量。
+ *
+ * `inputs` 的 text/image 类型只用于告诉 embedding 模型如何生成向量；
+ * 进入向量库时已经统一成 number[][]，向量库本身不区分文本向量或图片向量。
+ * 传入 string 时保持旧行为，默认按文本生成 embedding。
+ */
 export const insertDatasetDataVector = async ({
   model,
   inputs,
   ...props
-}: InsertVectorProps & {
-  inputs: string[];
+}: Omit<InsertVectorControllerPropsType, 'vectors'> & {
+  inputs: DatasetVectorInput[];
   model: EmbeddingModelItemType;
 }) => {
-  const { vectors, tokens } = await getVectorsByText({
+  if (inputs.length === 0) {
+    return {
+      tokens: 0,
+      insertIds: []
+    };
+  }
+
+  const embeddingInputs = inputs.map((input) =>
+    typeof input === 'string'
+      ? {
+          type: 'text' as const,
+          input
+        }
+      : input
+  );
+  const { vectors, tokens } = await getVectors({
     model,
-    input: inputs,
+    inputs: embeddingInputs,
     type: 'db'
   });
   const { insertIds } = await retryFn(() =>
@@ -102,7 +82,7 @@ export const insertDatasetDataVector = async ({
     })
   );
 
-  teamVectorCache.incr(props.teamId, insertIds.length);
+  await teamVectorCountCache.invalidate(props.teamId);
 
   return {
     tokens,
@@ -110,8 +90,28 @@ export const insertDatasetDataVector = async ({
   };
 };
 
-export const deleteDatasetDataVector = async (props: DelDatasetVectorCtrlProps) => {
+export const deleteDatasetDataVector: VectorControllerType['delete'] = async (props) => {
   const result = await retryFn(() => Vector.delete(props));
-  teamVectorCache.delete(props.teamId);
+  await teamVectorCountCache.invalidate(props.teamId);
   return result;
 };
+
+export const getVectorDataByTime = Vector.getVectorDataByTime;
+
+// Count vector
+export const getVectorCountByTeamId = async (teamId: string) => {
+  const cacheCount = await teamVectorCountCache.get(teamId);
+  if (cacheCount !== undefined) {
+    return cacheCount;
+  }
+
+  const count = await Vector.getVectorCount({ teamId });
+
+  void teamVectorCountCache.set({
+    teamId,
+    count
+  });
+
+  return count;
+};
+export const getVectorCount = Vector.getVectorCount;

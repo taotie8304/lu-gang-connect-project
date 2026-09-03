@@ -1,27 +1,24 @@
 /* pg vector crud */
-import { DatasetVectorTableName } from '../constants';
-import { delay, retryFn } from '@fastgpt/global/common/system/utils';
+import { DatasetVectorTableName, VectorVQ } from '../constants';
 import { PgClient, connectPg } from './controller';
-import { type PgSearchRawType } from '@fastgpt/global/core/dataset/api';
-import type {
-  DelDatasetVectorCtrlProps,
-  EmbeddingRecallCtrlProps,
-  EmbeddingRecallResponse,
-  InsertVectorControllerProps
-} from '../controller.d';
+import type { VectorControllerType } from '../type';
 import dayjs from 'dayjs';
-import { addLog } from '../../system/log';
+import { getLogger, LogCategories } from '../../logger';
 
-export class PgVectorCtrl {
+const logger = getLogger(LogCategories.INFRA.POSTGRES);
+
+export class PgVectorCtrl implements VectorControllerType {
   constructor() {}
   init = async () => {
+    const isHalfVec = VectorVQ === 16;
+
     try {
       await connectPg();
       await PgClient.query(`
         CREATE EXTENSION IF NOT EXISTS vector;
         CREATE TABLE IF NOT EXISTS ${DatasetVectorTableName} (
             id BIGSERIAL PRIMARY KEY,
-            vector VECTOR(1536) NOT NULL,
+            vector ${isHalfVec ? 'HALFVEC(1536)' : 'VECTOR(1536)'} NOT NULL,
             team_id VARCHAR(50) NOT NULL,
             dataset_id VARCHAR(50) NOT NULL,
             collection_id VARCHAR(50) NOT NULL,
@@ -30,7 +27,7 @@ export class PgVectorCtrl {
       `);
 
       await PgClient.query(
-        `CREATE INDEX CONCURRENTLY IF NOT EXISTS vector_index ON ${DatasetVectorTableName} USING hnsw (vector vector_ip_ops) WITH (m = 32, ef_construction = 128);`
+        `CREATE INDEX CONCURRENTLY IF NOT EXISTS vector_index ON ${DatasetVectorTableName} USING hnsw (vector ${isHalfVec ? 'halfvec_ip_ops' : 'vector_ip_ops'}) WITH (m = 32, ef_construction = 128);`
       );
       await PgClient.query(
         `CREATE INDEX CONCURRENTLY IF NOT EXISTS team_dataset_collection_index ON ${DatasetVectorTableName} USING btree(team_id, dataset_id, collection_id);`
@@ -60,12 +57,12 @@ export class PgVectorCtrl {
       //   autovacuum_vacuum_cost_limit = 2000
       // );`)
 
-      addLog.info('init pg successful');
+      logger.info('Postgres vector initialization completed');
     } catch (error) {
-      addLog.error('init pg error', error);
+      logger.error('Postgres vector initialization failed', { error });
     }
   };
-  insert = async (props: InsertVectorControllerProps): Promise<{ insertIds: string[] }> => {
+  insert: VectorControllerType['insert'] = async (props) => {
     const { teamId, datasetId, collectionId, vectors } = props;
 
     const values = vectors.map((vector) => [
@@ -87,7 +84,7 @@ export class PgVectorCtrl {
       insertIds: rows.map((row) => row.id)
     };
   };
-  delete = async (props: DelDatasetVectorCtrlProps): Promise<any> => {
+  delete: VectorControllerType['delete'] = async (props) => {
     const { teamId } = props;
 
     const teamIdWhere = `team_id='${String(teamId)}' AND`;
@@ -122,7 +119,7 @@ export class PgVectorCtrl {
       where: [where]
     });
   };
-  embRecall = async (props: EmbeddingRecallCtrlProps): Promise<EmbeddingRecallResponse> => {
+  embRecall: VectorControllerType['embRecall'] = async (props) => {
     const { teamId, datasetIds, vector, limit, forbidCollectionIdList, filterCollectionIdList } =
       props;
 
@@ -170,7 +167,11 @@ export class PgVectorCtrl {
           ) SELECT id, collection_id, score FROM relaxed_results ORDER BY score;
         COMMIT;`
     );
-    const rows = results?.[results.length - 2]?.rows as PgSearchRawType[];
+    const rows = results?.[results.length - 2]?.rows as {
+      id: string;
+      collection_id: string;
+      score: number;
+    }[];
 
     if (!Array.isArray(rows)) {
       return {
@@ -186,7 +187,8 @@ export class PgVectorCtrl {
       }))
     };
   };
-  getVectorDataByTime = async (start: Date, end: Date) => {
+
+  getVectorDataByTime: VectorControllerType['getVectorDataByTime'] = async (start, end) => {
     const { rows } = await PgClient.query<{
       id: string;
       team_id: string;
@@ -204,12 +206,7 @@ export class PgVectorCtrl {
       datasetId: item.dataset_id
     }));
   };
-
-  getVectorCount = async (props: {
-    teamId?: string;
-    datasetId?: string;
-    collectionId?: string;
-  }) => {
+  getVectorCount: VectorControllerType['getVectorCount'] = async (props) => {
     const { teamId, datasetId, collectionId } = props;
 
     // Build where conditions dynamically

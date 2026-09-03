@@ -1,13 +1,30 @@
 import { isTestEnv } from '@fastgpt/global/common/system/constants';
-import { addLog } from '../../common/system/log';
-import type { Model } from 'mongoose';
+import { getLogger, LogCategories } from '../logger';
+import type {
+  AnyBulkWriteOperation,
+  ClientSession,
+  Model,
+  Mongoose as MongooseType,
+  PipelineStage
+} from 'mongoose';
 import mongoose, { Mongoose } from 'mongoose';
+import { serviceEnv } from '../../env';
+import { MongoIndexManager } from './indexManager';
+
+const logger = getLogger(LogCategories.INFRA.MONGO);
 
 export default mongoose;
-export * from 'mongoose';
+export { Schema, Types } from 'mongoose';
+export type {
+  AnyBulkWriteOperation,
+  ClientSession,
+  Model,
+  MongooseType as Mongoose,
+  PipelineStage
+};
 
-export const MONGO_URL = process.env.MONGODB_URI as string;
-export const MONGO_LOG_URL = (process.env.MONGODB_LOG_URI ?? process.env.MONGODB_URI) as string;
+export const MONGO_URL = serviceEnv.MONGODB_URI;
+export const MONGO_LOG_URL = serviceEnv.MONGODB_LOG_URI ?? serviceEnv.MONGODB_URI;
 
 export const connectionMongo = (() => {
   if (!global.mongodb) {
@@ -74,9 +91,9 @@ const addCommonMiddleware = (schema: mongoose.Schema) => {
         };
 
         if (duration > 2000) {
-          addLog.warn(`[Mongo Slow] Level2`, getLogData());
+          logger.warn('MongoDB slow query (>2s)', getLogData());
         } else if (duration > 500) {
-          addLog.warn(`[Mongo Slow] Level1`, getLogData());
+          logger.warn('MongoDB slow query (>500ms)', getLogData());
         }
       }
       next();
@@ -113,46 +130,67 @@ const addCommonMiddleware = (schema: mongoose.Schema) => {
   return schema;
 };
 
-export const getMongoModel = <T>(name: string, schema: mongoose.Schema) => {
+export const getMongoModel = <T>(name: string, schema: mongoose.Schema): Model<T> => {
   if (connectionMongo.models[name]) return connectionMongo.models[name] as Model<T>;
-  if (!isTestEnv) console.log('Load model======', name);
+  if (!isTestEnv) logger.debug('Loading MongoDB model', { modelName: name });
   addCommonMiddleware(schema);
 
-  const model = connectionMongo.model<T>(name, schema);
+  const model = connectionMongo.model(name, schema) as Model<T>;
 
-  // Sync index
   syncMongoIndex(model);
 
   return model;
 };
 
-export const getMongoLogModel = <T>(name: string, schema: mongoose.Schema) => {
+export const getMongoLogModel = <T>(name: string, schema: mongoose.Schema): Model<T> => {
   if (connectionLogMongo.models[name]) return connectionLogMongo.models[name] as Model<T>;
-  console.log('Load model======', name);
+  logger.debug('Loading MongoDB log model', { modelName: name });
 
-  const model = connectionLogMongo.model<T>(name, schema);
+  const model = connectionLogMongo.model(name, schema) as Model<T>;
 
-  // Sync index
   syncMongoIndex(model);
 
   return model;
 };
 
-const syncMongoIndex = async (model: Model<any>) => {
+const syncMongoIndex = (model: Model<any>) => {
   if (
     process.env.NODE_ENV === 'test' ||
-    process.env.SYNC_INDEX === '0' ||
     process.env.NEXT_PHASE === 'phase-production-build' ||
+    !serviceEnv.SYNC_INDEX ||
     !MONGO_URL
   ) {
     return;
   }
 
-  try {
-    await model.syncIndexes({ background: true });
-  } catch (error) {
-    addLog.error('Create index error', error);
-  }
+  void MongoIndexManager.syncModelIndexes({
+    model,
+    logger
+  }).catch((error) => {
+    logger.error('Failed to ensure MongoDB indexes', {
+      modelName: model.modelName,
+      collectionName: model.collection.collectionName,
+      error
+    });
+  });
 };
 
 export const ReadPreference = connectionMongo.mongo.ReadPreference;
+
+export { MongoIndexManager } from './indexManager';
+export {
+  getDeprecatedIndexes as getSchemaDeprecatedMongoIndexes,
+  defineIndex
+} from './schemaIndexes';
+export type {
+  MongoIndexCleanupAction,
+  MongoIndexCleanupReport,
+  MongoIndexCleanupReportItem,
+  MongoIndexCleanupSummary,
+  MongoIndexSyncResult
+} from './indexManager';
+export type {
+  DefineMongoIndexOptions,
+  DeprecatedMongoIndexDefinition,
+  DeprecatedMongoIndexOptions
+} from './schemaIndexes';

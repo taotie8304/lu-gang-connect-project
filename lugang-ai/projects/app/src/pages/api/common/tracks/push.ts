@@ -1,25 +1,14 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { addLog } from '@fastgpt/service/common/system/log';
-import type { TrackEnum } from '@fastgpt/global/common/middle/tracks/constants';
 import { TrackModel } from '@fastgpt/service/common/middle/tracks/schema';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
-import { useIPFrequencyLimit } from '@fastgpt/service/common/middle/reqFrequencyLimit';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { PushTrackBodySchema } from '@fastgpt/global/openapi/common/other/api';
 
-export type pushQuery = {};
+async function handler(req: ApiRequestProps): Promise<undefined> {
+  if (!global.feConfigs?.isPlus) return;
 
-export type pushBody = {
-  event: TrackEnum;
-  data: any;
-};
-
-export type pushResponse = {};
-
-// 鲁港通 - 启用数据追踪API
-async function handler(
-  req: ApiRequestProps<pushBody, pushQuery>,
-  res: ApiResponseType<any>
-): Promise<pushResponse> {
+  const body = parseApiInput({ req, bodySchema: PushTrackBodySchema }).body;
   const { teamId, tmbId, userId } = await authCert({
     req,
     authToken: true
@@ -29,12 +18,11 @@ async function handler(
     teamId,
     tmbId,
     uid: userId,
-    event: req.body.event,
-    data: req.body.data
+    event: body.event,
+    data: body.data
   };
 
-  addLog.info('Push tracks', data);
-  return TrackModel.create(data);
+  await TrackModel.create(data);
 }
 
-export default NextAPI(useIPFrequencyLimit({ id: 'push-tracks', seconds: 1, limit: 5 }), handler);
+export default NextAPI(handler);

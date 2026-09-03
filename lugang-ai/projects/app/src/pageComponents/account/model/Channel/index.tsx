@@ -5,7 +5,7 @@ import {
   putChannel,
   putChannelStatus
 } from '@/web/core/ai/channel';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import React, { useState } from 'react';
 import {
   Table,
@@ -16,11 +16,10 @@ import {
   Td,
   TableContainer,
   Box,
-  Flex,
   Button,
   HStack
 } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import MyIconButton from '@fastgpt/web/components/common/Icon/button';
 import { useUserStore } from '@/web/support/user/useUserStore';
@@ -34,17 +33,16 @@ import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import MyNumberInput from '@fastgpt/web/components/common/Input/NumberInput';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { parseI18nString } from '@fastgpt/global/common/i18n/utils';
-import type { localeType } from '@fastgpt/global/common/i18n/type';
 import Avatar from '@fastgpt/web/components/common/Avatar';
+import ModelTabHeader from '../ModelTabHeader';
 
 const EditChannelModal = dynamic(() => import('./EditChannelModal'), { ssr: false });
 const ModelTest = dynamic(() => import('./ModelTest'), { ssr: false });
 
 const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
-  const { t, i18n } = useTranslation();
-  const language = i18n.language as localeType;
+  const { t, i18n } = useClientTranslation('config_model');
   const { userInfo } = useUserStore();
-  const { aiproxyIdMap, getModelProvider } = useSystemStore();
+  const { aiproxyChannels } = useSystemStore();
 
   const isRoot = userInfo?.username === 'root';
 
@@ -52,23 +50,23 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
     data: channelList = [],
     runAsync: refreshChannelList,
     loading: loadingChannelList
-  } = useRequest2(getChannelList, {
+  } = useRequest(getChannelList, {
     manual: false
   });
 
-  const { data: channelProviders = {} } = useRequest2(getChannelProviders, {
+  const { data: _channelProviders = {} } = useRequest(getChannelProviders, {
     manual: false
   });
 
   const [editChannel, setEditChannel] = useState<ChannelInfoType>();
 
-  const { runAsync: updateChannel, loading: loadingUpdateChannel } = useRequest2(putChannel, {
+  const { runAsync: updateChannel, loading: loadingUpdateChannel } = useRequest(putChannel, {
     manual: true,
     onSuccess: () => {
       refreshChannelList();
     }
   });
-  const { runAsync: updateChannelStatus, loading: loadingUpdateChannelStatus } = useRequest2(
+  const { runAsync: updateChannelStatus, loading: loadingUpdateChannelStatus } = useRequest(
     putChannelStatus,
     {
       onSuccess: () => {
@@ -80,7 +78,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
   const { openConfirm, ConfirmModal } = useConfirm({
     type: 'delete'
   });
-  const { runAsync: onDeleteChannel, loading: loadingDeleteChannel } = useRequest2(deleteChannel, {
+  const { runAsync: onDeleteChannel, loading: loadingDeleteChannel } = useRequest(deleteChannel, {
     manual: true,
     onSuccess: () => {
       refreshChannelList();
@@ -98,44 +96,53 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
   return (
     <>
       {isRoot && (
-        <Flex alignItems={'center'}>
-          {Tab}
-          <Box flex={1} />
-          <Button variant={'whiteBase'} mr={2} onClick={() => setEditChannel(defaultChannel)}>
-            {t('account_model:create_channel')}
+        <ModelTabHeader Tab={Tab}>
+          <Button
+            w={['100%', 'auto']}
+            variant={'primary'}
+            onClick={() => setEditChannel(defaultChannel)}
+          >
+            {t('config_model:create_channel')}
           </Button>
-        </Flex>
+        </ModelTabHeader>
       )}
-      <MyBox flex={'1 0 0'} h={0} isLoading={isLoading}>
-        <TableContainer h={'100%'} overflowY={'auto'} fontSize={'sm'}>
+      <MyBox flex={'1 0 0'} h={0} minH={0} isLoading={isLoading}>
+        <TableContainer
+          h={['auto', '100%']}
+          minH={0}
+          overflowY={['visible', 'auto']}
+          px={6}
+          fontSize={'sm'}
+        >
           <Table>
             <Thead>
               <Tr>
                 <Th>ID</Th>
-                <Th>{t('account_model:channel_name')}</Th>
-                <Th>{t('account_model:channel_type')}</Th>
-                <Th>{t('account_model:channel_status')}</Th>
+                <Th>{t('config_model:channel_name')}</Th>
+                <Th>{t('config_model:channel_type')}</Th>
+                <Th>{t('config_model:channel_status')}</Th>
                 <Th>
-                  {t('account_model:channel_priority')}
-                  <QuestionTip label={t('account_model:channel_priority_tip')} />
+                  {t('config_model:channel_priority')}
+                  <QuestionTip label={t('config_model:channel_priority_tip')} />
                 </Th>
                 <Th></Th>
               </Tr>
             </Thead>
             <Tbody>
               {channelList.map((item) => {
-                const providerData = aiproxyIdMap[item.type] || {
-                  name: channelProviders[item.type]?.name || 'Invalid provider',
-                  provider: 'Other'
+                const providerData = aiproxyChannels.find(
+                  (channel) => channel.channelId === item.type
+                ) || {
+                  name: 'Invalid provider',
+                  avatar: 'model/huggingface'
                 };
-                const provider = getModelProvider(providerData?.provider, i18n.language);
                 return (
                   <Tr key={item.id} _hover={{ bg: 'myGray.100' }}>
                     <Td>{item.id}</Td>
                     <Td>{item.name}</Td>
                     <Td>
                       <HStack>
-                        <Avatar src={provider?.avatar} w={'1rem'} />
+                        <Avatar src={providerData.avatar} w={'1rem'} />
                         <Box>{parseI18nString(providerData.name, i18n.language)}</Box>
                       </HStack>
                     </Td>
@@ -145,7 +152,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                         type="borderFill"
                       >
                         {t(ChannelStautsMap[item.status]?.label as any) ||
-                          t('account_model:channel_status_unknown')}
+                          t('config_model:channel_status_unknown')}
                       </MyTag>
                     </Td>
                     <Td>
@@ -175,7 +182,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                             children: [
                               {
                                 icon: 'core/chat/sendLight',
-                                label: t('account_model:model_test'),
+                                label: t('config_model:model_test'),
                                 onClick: () =>
                                   setTestModelData({
                                     channelId: item.id,
@@ -186,7 +193,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                                 ? [
                                     {
                                       icon: 'common/disable',
-                                      label: t('account_model:forbid_channel'),
+                                      label: t('config_model:forbid_channel'),
                                       onClick: () =>
                                         updateChannelStatus(
                                           item.id,
@@ -197,7 +204,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                                 : [
                                     {
                                       icon: 'common/enable',
-                                      label: t('account_model:enable_channel'),
+                                      label: t('config_model:enable_channel'),
                                       onClick: () =>
                                         updateChannelStatus(
                                           item.id,
@@ -207,7 +214,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                                   ]),
                               {
                                 icon: 'common/settingLight',
-                                label: t('account_model:edit'),
+                                label: t('config_model:edit'),
                                 onClick: () => setEditChannel(item)
                               },
                               {
@@ -217,7 +224,7 @@ const ChannelTable = ({ Tab }: { Tab: React.ReactNode }) => {
                                 onClick: () =>
                                   openConfirm({
                                     onConfirm: () => onDeleteChannel(item.id),
-                                    customContent: t('account_model:confirm_delete_channel', {
+                                    customContent: t('config_model:confirm_delete_channel', {
                                       name: item.name
                                     })
                                   })()

@@ -1,11 +1,12 @@
 import React, { useMemo } from 'react';
-import { Box, Link } from '@chakra-ui/react';
+import { Link } from '@chakra-ui/react';
 import ReactMarkdown from 'react-markdown';
 import RemarkGfm from 'remark-gfm';
 import RemarkMath from 'remark-math';
 import RehypeKatex from 'rehype-katex';
 import RemarkBreaks from 'remark-breaks';
 import { EventNameEnum, eventBus } from '@/web/common/utils/eventbus';
+import QuickQuestionButton from '@/components/core/chat/QuickQuestionButton';
 
 import 'katex/dist/katex.min.css';
 import styles from '../index.module.scss';
@@ -20,23 +21,13 @@ function MyLink(e: any) {
       {text}
     </Link>
   ) : (
-    <Box as={'li'} mb={1}>
-      <Box
-        as={'span'}
-        color={'primary.700'}
-        textDecoration={'underline'}
-        cursor={'pointer'}
-        onClick={() => {
-          eventBus.emit(EventNameEnum.sendQuestion, { text });
-        }}
-      >
-        {text}
-      </Box>
-    </Box>
+    <QuickQuestionButton mb={2} onClick={() => eventBus.emit(EventNameEnum.sendQuestion, { text })}>
+      {text}
+    </QuickQuestionButton>
   );
 }
 
-const Guide = ({ text }: { text: string }) => {
+const Guide = ({ text, className }: { text: string; className?: string }) => {
   const formatText = useMemo(
     () => text.replace(/\[(.*?)\]($|\n)/g, '[$1]()').replace(/\\n/g, '\n&nbsp;'),
     [text]
@@ -44,7 +35,7 @@ const Guide = ({ text }: { text: string }) => {
 
   return (
     <ReactMarkdown
-      className={`markdown ${styles.markdown}`}
+      className={`markdown ${styles.markdown} ${className || ''}`}
       remarkPlugins={[RemarkGfm, RemarkMath, RemarkBreaks]}
       rehypePlugins={[RehypeKatex]}
       components={{

@@ -1,41 +1,49 @@
 import { NextAPI } from '@/service/middleware/entry';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { MongoSystemTool } from '@fastgpt/service/core/plugin/tool/systemToolSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
-import { refreshVersionKey } from '@fastgpt/service/common/cache';
-import { SystemCacheKeyEnum } from '@fastgpt/service/common/cache/type';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { PluginStatusEnum } from '@fastgpt/global/core/plugin/type';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { CreateAppToolBodyType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import {
+  CreateAppToolBodySchema,
+  type CreateAppToolBodyType
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
 import { AppToolSourceEnum } from '@fastgpt/global/core/app/tool/constants';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { validateSystemToolWorkflowAssociation } from '@fastgpt/service/core/app/tool/workflowTool/service';
 
-export type createPluginQuery = {};
+export type createPluginQuery = Record<string, never>;
 
 export type createPluginBody = CreateAppToolBodyType;
 
-export type createPluginResponse = {};
+export type createPluginResponse = Record<string, never>;
 
-async function handler(
+export async function handler(
   req: ApiRequestProps<createPluginBody, createPluginQuery>,
-  res: ApiResponseType<any>
+  _res: ApiResponseType<any>
 ): Promise<createPluginResponse> {
   await authSystemAdmin({ req });
+  const { body } = parseApiInput({
+    req,
+    bodySchema: CreateAppToolBodySchema
+  });
   const {
     name,
     avatar,
     intro,
-    tagIds,
-    inputListVal,
+    tags,
+    secretsVal,
     originCost,
     currentCost,
     systemKeyCost,
     hasTokenFee,
     status,
-    defaultInstalled,
     associatedPluginId,
     userGuide,
     author
-  } = req.body;
+  } = body;
+
+  await validateSystemToolWorkflowAssociation(associatedPluginId);
 
   const pluginId = `${AppToolSourceEnum.commercial}-${getNanoid(12)}`;
 
@@ -45,8 +53,7 @@ async function handler(
   await MongoSystemTool.create({
     pluginId,
     status: status ?? PluginStatusEnum.Normal,
-    defaultInstalled: defaultInstalled ?? false,
-    inputListVal,
+    secretsVal,
     originCost,
     currentCost,
     systemKeyCost,
@@ -57,15 +64,12 @@ async function handler(
       avatar,
       intro,
       version: getNanoid(),
-      tags: tagIds,
+      tags,
       associatedPluginId,
       userGuide,
       author
     }
   });
-
-  await refreshVersionKey(SystemCacheKeyEnum.systemTool);
-
   return {};
 }
 

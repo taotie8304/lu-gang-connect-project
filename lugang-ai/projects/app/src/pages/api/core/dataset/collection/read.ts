@@ -1,44 +1,35 @@
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authDatasetCollection } from '@fastgpt/service/support/permission/dataset/auth';
 import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
-import { type OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
 import { DatasetErrEnum } from '@fastgpt/global/common/error/code/dataset';
-import { authChatCrud, authCollectionInChat } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud, authCollectionInChat } from '@/service/support/permission/auth/chat';
 import { getCollectionWithDataset } from '@fastgpt/service/core/dataset/controller';
 import { getApiDatasetRequest } from '@fastgpt/service/core/dataset/apiDataset';
 import { isS3ObjectKey } from '@fastgpt/service/common/s3/utils';
 import { getS3DatasetSource } from '@fastgpt/service/common/s3/sources/dataset';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  ReadCollectionSourceBodySchema,
+  ReadCollectionSourceResponseSchema,
+  type ReadCollectionSourceResponseType
+} from '@fastgpt/global/openapi/core/dataset/collection/api';
 
-export type readCollectionSourceQuery = {};
-
-export type readCollectionSourceBody = {
-  collectionId: string;
-
-  appId?: string;
-  chatId?: string;
-  chatItemDataId?: string;
-} & OutLinkChatAuthProps;
-
-export type readCollectionSourceResponse = {
-  type: 'url';
-  value: string;
-};
-
-async function handler(
-  req: ApiRequestProps<readCollectionSourceBody, readCollectionSourceQuery>
-): Promise<readCollectionSourceResponse> {
-  const { collectionId, appId, chatId, chatItemDataId, shareId, outLinkUid, teamId, teamToken } =
-    req.body;
+async function handler(req: ApiRequestProps): Promise<ReadCollectionSourceResponseType> {
+  const { collectionId, sourceType, sourceId, chatId, chatItemDataId, outLinkAuthData } =
+    parseApiInput({
+      req,
+      bodySchema: ReadCollectionSourceBodySchema
+    }).body;
 
   const { collection } = await (async () => {
-    if (!appId || !chatId || !chatItemDataId) {
+    if (!sourceType || !chatId || !chatItemDataId) {
       return authDatasetCollection({
         req,
         authToken: true,
         authApiKey: true,
-        collectionId: req.body.collectionId,
+        collectionId,
         per: ReadPermissionVal
       });
     }
@@ -48,22 +39,25 @@ async function handler(
       2. auth collection quote in chat
       3. auth outlink open show quote
     */
-    const [authRes, collection] = await Promise.all([
-      authChatCrud({
-        req,
-        authToken: true,
-        appId,
-        chatId,
-        shareId,
-        outLinkUid,
-        teamId,
-        teamToken
-      }),
-      getCollectionWithDataset(collectionId),
-      authCollectionInChat({ appId, chatId, chatItemDataId, collectionIds: [collectionId] })
-    ]);
+    const authRes = await authChatTargetCrud({
+      req,
+      authToken: true,
+      sourceType,
+      sourceId,
+      chatId,
+      outLinkAuthData
+    });
+    const resolvedSourceId = authRes.sourceId;
 
-    if (!authRes.showRawSource) {
+    const collection = await getCollectionWithDataset(collectionId);
+    await authCollectionInChat({
+      sourceType,
+      sourceId: resolvedSourceId,
+      chatId,
+      collectionIds: [collectionId]
+    });
+
+    if (!authRes.canDownloadSource) {
       return Promise.reject(DatasetErrEnum.unAuthDatasetFile);
     }
 
@@ -79,11 +73,13 @@ async function handler(
       collection.fileId &&
       isS3ObjectKey(collection.fileId, 'dataset')
     ) {
-      return getS3DatasetSource().createGetDatasetFileURL({
-        key: collection.fileId,
-        expiredHours: 1,
-        external: true
-      });
+      return (
+        await getS3DatasetSource().createGetDatasetFileURL({
+          key: collection.fileId,
+          expiredHours: 1,
+          external: true
+        })
+      ).url;
     }
     if (collection.type === DatasetCollectionTypeEnum.link && collection.rawLink) {
       return collection.rawLink;
@@ -105,10 +101,7 @@ async function handler(
     return '';
   })();
 
-  return {
-    type: 'url',
-    value: sourceUrl
-  };
+  return ReadCollectionSourceResponseSchema.parse({ type: 'url', value: sourceUrl });
 }
 
 export default NextAPI(handler);

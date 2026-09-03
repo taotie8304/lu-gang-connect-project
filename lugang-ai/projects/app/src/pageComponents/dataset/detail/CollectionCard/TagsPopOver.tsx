@@ -2,7 +2,7 @@ import { Box, Checkbox, Flex, Input } from '@chakra-ui/react';
 import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { putDatasetCollectionById } from '@/web/core/dataset/api';
+import { putDatasetCollectionById } from '@/web/core/dataset/api/collection';
 import { useContextSelector } from 'use-context-selector';
 import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContext';
 import { useTranslation } from 'next-i18next';
@@ -12,8 +12,8 @@ import {
   type DatasetCollectionItemType,
   type DatasetTagType
 } from '@fastgpt/global/core/dataset/type';
-import { isEqual } from 'lodash';
-import { type DatasetCollectionsListItemType } from '@/global/core/dataset/type';
+import { isEqual } from 'lodash-es';
+import { type DatasetCollectionsListItemType } from '@fastgpt/global/openapi/core/dataset/collection/api';
 
 const TagsPopOver = ({
   currentCollection,
@@ -37,12 +37,11 @@ const TagsPopOver = ({
   const [showTagManage, setShowTagManage] = useState(false);
   const [isUpdateLoading, setIsUpdateLoading] = useState(false);
 
-  // 鲁港通 - 防御性检查，避免 allDatasetTags 未加载时报错
   const tagList = useMemo(
     () =>
       (collectionTags
         ?.map((item) => {
-          const tagObject = (allDatasetTags ?? []).find((tag) => tag.tag === item);
+          const tagObject = allDatasetTags.find((tag) => tag.tag === item);
           return tagObject ? { _id: tagObject._id, tag: tagObject.tag } : null;
         })
         .filter((tag) => tag !== null) as {
@@ -171,7 +170,7 @@ const TagsPopOver = ({
               </Box>
               <Box my={1} px={1.5} maxH={'200px'} overflow={'auto'}>
                 {searchTagKey &&
-                  !(searchDatasetTagsResult ?? []).map((item) => item.tag).includes(searchTagKey) && (
+                  !searchDatasetTagsResult.map((item) => item.tag).includes(searchTagKey) && (
                     <Flex
                       alignItems={'center'}
                       fontSize={'xs'}

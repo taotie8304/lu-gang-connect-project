@@ -1,19 +1,30 @@
 import React, { useMemo } from 'react';
 import { Box, Flex, Button } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { getDatasetCollectionById } from '@/web/core/dataset/api';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { getDatasetCollectionById } from '@/web/core/dataset/api/collection';
 import { useRouter } from 'next/router';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import { formatTime2YMDHM } from '@fastgpt/global/common/string/time';
 import {
   DatasetCollectionDataProcessModeMap,
+  DatasetCollectionDataProcessModeEnum,
   DatasetCollectionTypeMap,
   DatasetCollectionTypeEnum
 } from '@fastgpt/global/core/dataset/constants';
 import { getCollectionSourceAndOpen } from '@/web/core/dataset/hooks/readCollectionSource';
 import MyIcon from '@fastgpt/web/components/common/Icon';
+
+// 后端返回的 file.filename/name 已是解码后的纯文件名，但仍可能包含字面 %（如 `¥%……`）。
+// 直接 decodeURIComponent 会抛 URIError；这里安全解码，兼容历史百分号编码数据且不崩溃。
+const safeDecodeURIComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
 
 const MetaDataCard = ({ datasetId }: { datasetId: string }) => {
   const { t } = useTranslation();
@@ -26,7 +37,7 @@ const MetaDataCard = ({ datasetId }: { datasetId: string }) => {
   const readSource = getCollectionSourceAndOpen({
     collectionId
   });
-  const { data: collection, loading: isLoading } = useRequest2(
+  const { data: collection, loading: isLoading } = useRequest(
     () => getDatasetCollectionById(collectionId),
     {
       onError: () => {
@@ -44,6 +55,8 @@ const MetaDataCard = ({ datasetId }: { datasetId: string }) => {
     if (!collection) return [];
 
     const webSelector = collection?.metadata?.webPageSelector;
+    const trainingType = collection.trainingType ?? DatasetCollectionDataProcessModeEnum.chunk;
+    const trainingTypeConfig = DatasetCollectionDataProcessModeMap[trainingType];
 
     return [
       {
@@ -56,7 +69,7 @@ const MetaDataCard = ({ datasetId }: { datasetId: string }) => {
       },
       {
         label: t('dataset:collection_name'),
-        value: decodeURIComponent(
+        value: safeDecodeURIComponent(
           collection.file?.filename || collection?.rawLink || collection?.name
         )
       },
@@ -92,11 +105,11 @@ const MetaDataCard = ({ datasetId }: { datasetId: string }) => {
             }
           ]
         : []),
-      ...(DatasetCollectionDataProcessModeMap[collection.trainingType]
+      ...(collection.trainingType && DatasetCollectionDataProcessModeMap[collection.trainingType]
         ? [
             {
               label: t('dataset:collection.training_type'),
-              value: t(DatasetCollectionDataProcessModeMap[collection.trainingType]?.label as any)
+              value: t(trainingTypeConfig.label as any)
             }
           ]
         : []),

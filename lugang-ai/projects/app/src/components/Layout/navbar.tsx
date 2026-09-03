@@ -44,107 +44,80 @@ const Navbar = ({ unread }: { unread: number }) => {
   const { gitStar, feConfigs } = useSystemStore();
   const { lastChatAppId, lastPane } = useChatStore();
 
-  // 鲁港通：判断是否为管理员（团队所有者）
-  const isOwner = userInfo?.permission?.isOwner ?? false;
-  // 是否启用纯聊天模式
-  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
-  // 普通用户在纯聊天模式下隐藏管理功能
-  const showAdminFeatures = isOwner || !enableUserChatOnly;
-
   const navbarList = useMemo(
-    () => {
-      const baseList = [
-        {
-          label: t('common:navbar.Chat'),
-          icon: 'navbar/chatLight',
-          activeIcon: 'navbar/chatFill',
-          link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
-          activeLink: ['/chat'],
-          showForUser: true // 普通用户可见
-        },
-        {
-          label: t('common:navbar.Studio'),
-          icon: 'navbar/dashboardLight',
-          activeIcon: 'navbar/dashboardFill',
-          link: `/dashboard/agent`,
-          activeLink: [
-            '/dashboard/agent',
-            '/dashboard/create',
-            '/app/detail',
-            '/dashboard/tool',
-            '/dashboard/systemTool',
-            '/dashboard/templateMarket',
-            '/dashboard/mcpServer',
-            '/dashboard/evaluation',
-            '/dashboard/evaluation/create'
-          ],
-          showForUser: false // 仅管理员可见
-        },
-        {
-          label: t('common:navbar.Datasets'),
-          icon: 'navbar/datasetLight',
-          activeIcon: 'navbar/datasetFill',
-          link: `/dataset/list`,
-          activeLink: ['/dataset/list', '/dataset/detail'],
-          showForUser: false // 仅管理员可见
-        },
-        {
-          label: t('common:navbar.Account'),
-          icon: 'navbar/userLight',
-          activeIcon: 'navbar/userFill',
-          link: '/account/info',
-          activeLink: [
-            '/account/bill',
-            '/account/info',
-            '/account/customDomain',
-            '/account/team',
-            '/account/usage',
-            '/account/thirdParty',
-            '/account/apikey',
-            '/account/setting',
-            '/account/inform',
-            '/account/promotion',
-            '/account/model'
-          ],
-          showForUser: true // 普通用户可见
-        }
-      ];
-
-      // 根据用户角色过滤导航项
-      let filteredList = showAdminFeatures 
-        ? baseList 
-        : baseList.filter(item => item.showForUser);
-
-      // root 用户添加配置入口和用户管理入口
-      if (userInfo?.username === 'root') {
-        filteredList = [
-          ...filteredList,
-          {
-            label: '用户管理',
-            icon: 'support/team/memberLight',
-            activeIcon: 'support/team/memberFill',
-            link: '/admin/users',
-            activeLink: ['/admin/users'],
-            showForUser: false
-          },
-          {
-            label: t('common:navbar.Config'),
-            icon: 'support/config/configLight',
-            activeIcon: 'support/config/configFill',
-            link: '/config/tool',
-            activeLink: ['/config/tool', '/config/tool/marketplace'],
-            showForUser: false
-          }
-        ];
-      }
-
-      return filteredList;
-    },
-    [lastChatAppId, lastPane, t, userInfo?.username, showAdminFeatures]
+    () => [
+      {
+        label: t('common:navbar.Chat'),
+        icon: 'navbar/chatLight',
+        activeIcon: 'navbar/chatFill',
+        link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
+        activeLink: ['/chat']
+      },
+      {
+        label: t('common:navbar.Studio'),
+        icon: 'navbar/dashboardLight',
+        activeIcon: 'navbar/dashboardFill',
+        link: `/dashboard/agent`,
+        activeLink: [
+          '/dashboard/agent',
+          '/dashboard/create',
+          '/app/detail',
+          '/dashboard/skill',
+          '/skill/detail',
+          '/dashboard/tool',
+          '/dashboard/tool/marketplace',
+          '/dashboard/systemTool',
+          '/dashboard/templateMarket',
+          '/dashboard/mcpServer',
+          '/dashboard/evaluation',
+          '/dashboard/evaluation/create'
+        ]
+      },
+      {
+        label: t('common:navbar.Datasets'),
+        icon: 'navbar/datasetLight',
+        activeIcon: 'navbar/datasetFill',
+        link: `/dataset/list`,
+        activeLink: ['/dataset/list', '/dataset/detail']
+      },
+      {
+        label: t('common:navbar.Account'),
+        icon: 'navbar/userLight',
+        activeIcon: 'navbar/userFill',
+        link: '/account/info',
+        activeLink: [
+          '/account/bill',
+          '/account/info',
+          '/account/customDomain',
+          '/account/team',
+          '/account/usage',
+          '/account/thirdParty',
+          '/account/apikey',
+          '/account/setting',
+          '/account/inform',
+          '/account/model'
+        ]
+      },
+      ...(userInfo?.username === 'root'
+        ? [
+            {
+              label: t('common:navbar.Config'),
+              icon: 'support/config/configLight',
+              activeIcon: 'support/config/configFill',
+              link: '/config/plugin/tool',
+              activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model']
+            }
+          ]
+        : [])
+    ],
+    [lastChatAppId, lastPane, t, userInfo?.username]
   );
 
   const isDashboardPage = useMemo(() => {
     return router.pathname.startsWith('/dashboard');
+  }, [router.pathname]);
+  const isDetailPage = useMemo(() => {
+    return router.pathname.startsWith('/app/detail') || router.pathname.startsWith('/skill/detail');
   }, [router.pathname]);
 
   return (
@@ -156,7 +129,7 @@ const Navbar = ({ unread }: { unread: number }) => {
       w={'100%'}
       userSelect={'none'}
       pb={2}
-      bg={isDashboardPage ? 'myGray.50' : 'transparent'}
+      bg={isDashboardPage ? 'myGray.50' : isDetailPage ? 'myGray.25' : 'transparent'}
     >
       {/* logo */}
       <Box flex={'0 0 auto'} mb={3}>
@@ -180,7 +153,7 @@ const Navbar = ({ unread }: { unread: number }) => {
                 : {
                     bg: 'transparent',
                     _hover: {
-                      bg: isDashboardPage ? 'white' : 'rgba(255,255,255,0.9)'
+                      bg: isDashboardPage || isDetailPage ? 'white' : 'rgba(255,255,255,0.9)'
                     }
                   })}
               {...(item.link !== router.asPath
@@ -264,7 +237,7 @@ const Navbar = ({ unread }: { unread: number }) => {
         <MyTooltip label={`Git Star: ${gitStar}`} placement={'right-end'}>
           <Link
             as={NextLink}
-            href="#"
+            href="https://github.com/labring/FastGPT"
             target={'_blank'}
             {...itemStyles}
             {...hoverStyle}

@@ -1,13 +1,13 @@
 import { ModalBody, Box, Input, Button, ModalFooter, Grid } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useTranslation } from 'next-i18next';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { updateCustomDomainVerifyFile } from '@/web/support/customDomain/api';
 import { useForm } from 'react-hook-form';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 
 function domainVerifyModal({ onClose, domain }: { onClose: () => void; domain: string }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_custom_domain');
   const { watch, handleSubmit, register } = useForm({
     defaultValues: {
       path: '',
@@ -18,7 +18,7 @@ function domainVerifyModal({ onClose, domain }: { onClose: () => void; domain: s
   const path = watch('path');
   const content = watch('content');
 
-  const { runAsync: updateVerifyFile, loading: isUpdating } = useRequest2(
+  const { runAsync: updateVerifyFile, loading: isUpdating } = useRequest(
     updateCustomDomainVerifyFile,
     {
       manual: true,
@@ -30,19 +30,19 @@ function domainVerifyModal({ onClose, domain }: { onClose: () => void; domain: s
   );
 
   return (
-    <MyModal isOpen onClose={onClose} title={t('account:custom_domain.domain_verify')} minW="800px">
+    <MyModal isOpen onClose={onClose} title={t('account_custom_domain:domain_verify')} minW="800px">
       <ModalBody>
         <Grid gridTemplateColumns="1fr 1fr" gap="16px">
           <Box>
-            <FormLabel required>{t('account:custom_domain.domain_verify.path')}</FormLabel>
+            <FormLabel required>{t('account_custom_domain:domain_verify.path')}</FormLabel>
             <Input {...register('path')} />
           </Box>
           <Box>
-            <FormLabel required>{t('account:custom_domain.domain_verify.content')}</FormLabel>
+            <FormLabel required>{t('account_custom_domain:domain_verify.content')}</FormLabel>
             <Input {...register('content')} />
           </Box>
         </Grid>
-        <Box mt="2">{t('account:custom_domain.domain_verify.desc', { domain, path, content })}</Box>
+        <Box mt="2">{t('account_custom_domain:domain_verify.desc', { domain, path, content })}</Box>
       </ModalBody>
       <ModalFooter>
         <Button

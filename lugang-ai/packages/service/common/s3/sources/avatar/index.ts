@@ -1,0 +1,95 @@
+import { imageBaseUrl } from '@fastgpt/global/common/file/image/constants';
+import type { ClientSession } from 'mongoose';
+import { getFileS3Key } from '../../utils';
+import { MongoS3TTL } from '../../models/ttl';
+import { S3PublicBucket } from '../../buckets/public';
+import { avatarAllowedExtensions, createUploadConstraints } from '../../utils/uploadConstraints';
+
+class S3AvatarSource extends S3PublicBucket {
+  constructor() {
+    super();
+  }
+
+  get prefix(): string {
+    return imageBaseUrl;
+  }
+
+  async createUploadAvatarURL({
+    filename,
+    teamId,
+    size,
+    autoExpired = true
+  }: {
+    filename: string;
+    teamId: string;
+    size?: number;
+    autoExpired?: boolean;
+  }) {
+    const { fileKey } = getFileS3Key.avatar({ teamId, filename });
+    const uploadPolicy = createUploadConstraints({
+      filename,
+      uploadConstraints: {
+        allowedExtensions: avatarAllowedExtensions
+      }
+    });
+
+    return this.createUploadAccessUrl(
+      { filename, rawKey: fileKey, ...(size !== undefined ? { size } : {}) },
+      {
+        expiredHours: autoExpired ? 1 : undefined, // 1 Hours
+        maxFileSize: 5, // 5MB
+        uploadPolicy
+      }
+    );
+  }
+
+  async removeAvatarTTL(avatar: string, session?: ClientSession): Promise<void> {
+    const key = avatar.slice(this.prefix.length);
+    await MongoS3TTL.deleteOne({ minioKey: key, bucketName: this.bucketName }, session);
+  }
+
+  async deleteAvatar(avatar: string, session?: ClientSession): Promise<void> {
+    const key = avatar.slice(this.prefix.length);
+    await MongoS3TTL.deleteOne({ minioKey: key, bucketName: this.bucketName }, session);
+    await this.removeObject(key);
+  }
+
+  async refreshAvatar(newAvatar?: string, oldAvatar?: string, session?: ClientSession) {
+    if (!newAvatar || newAvatar === oldAvatar) return;
+
+    // remove the TTL for the new avatar
+    await this.removeAvatarTTL(newAvatar, session);
+
+    if (oldAvatar) {
+      // delete the old avatar
+      // 1. delete the TTL record if it exists
+      // 2. delete the avatar in S3
+      await this.deleteAvatar(oldAvatar, session);
+    }
+  }
+
+  async copyAvatar({
+    key,
+    teamId,
+    filename,
+    temporary = false
+  }: {
+    key: string;
+    teamId: string;
+    filename: string;
+    temporary: boolean;
+  }) {
+    const from = key.slice(this.prefix.length);
+    const to = getFileS3Key.avatar({ teamId, filename }).fileKey;
+    await this.copy({ from, to, options: { temporary } });
+    return this.prefix.concat(to);
+  }
+}
+
+export function getS3AvatarSource() {
+  if (global.avatarBucket) {
+    return global.avatarBucket;
+  }
+  global.avatarBucket = new S3AvatarSource();
+  return global.avatarBucket;
+}

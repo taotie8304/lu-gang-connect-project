@@ -5,7 +5,7 @@ import { Box, Button, Flex, Input, VStack } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import AIModelSelector from '@/components/Select/AIModelSelector';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import AppSelect from '@/components/Select/AppSelect';
@@ -13,18 +13,19 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import FileSelector, { type SelectFileItemType } from '@/components/Select/FileSelectorBox';
 import { Trans } from 'next-i18next';
 import MyIconButton from '@fastgpt/web/components/common/Icon/button';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getAppDetailById } from '@/web/core/app/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import { fileDownload } from '@/web/common/file/utils';
 import { postCreateEvaluation } from '@/web/core/app/api/evaluation';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Markdown from '@/components/Markdown';
 import { getEvaluationFileHeader } from '@fastgpt/global/core/app/evaluation/utils';
 import { evaluationFileErrors } from '@fastgpt/global/core/app/evaluation/constants';
 import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import { getErrText } from '@fastgpt/global/common/error/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 type EvaluationFormType = {
   name: string;
@@ -41,26 +42,23 @@ const EvaluationCreating = () => {
   const [percent, setPercent] = useState(0);
   const [error, setError] = useState<string>();
 
-  const { llmModelList, feConfigs } = useSystemStore();
+  const { llmModelList } = useSystemStore();
 
-  const evalModelList = useMemo(() => {
-    return llmModelList.filter((item) => item.useInEvaluation);
-  }, [llmModelList]);
-  const { register, setValue, watch, handleSubmit } = useForm<EvaluationFormType>({
+  const { register, setValue, control, handleSubmit } = useForm<EvaluationFormType>({
     defaultValues: {
       name: '',
-      evalModel: evalModelList[0]?.model,
+      evalModel: llmModelList[0]?.model,
       appId: '',
       evaluationFiles: [] as SelectFileItemType[]
     }
   });
 
-  const name = watch('name');
-  const evalModel = watch('evalModel');
-  const appId = watch('appId');
-  const evaluationFiles = watch('evaluationFiles');
+  const name = useWatch({ control, name: 'name' });
+  const evalModel = useWatch({ control, name: 'evalModel' });
+  const appId = useWatch({ control, name: 'appId' });
+  const evaluationFiles = useWatch({ control, name: 'evaluationFiles' });
 
-  const { runAsync: getAppDetail, loading: isLoadingAppDetail } = useRequest2(() => {
+  const { runAsync: getAppDetail, loading: isLoadingAppDetail } = useRequest(() => {
     if (appId) return getAppDetailById(appId);
     return Promise.resolve(null);
   });
@@ -77,7 +75,7 @@ const EvaluationCreating = () => {
     });
   };
 
-  const { runAsync: createEvaluation, loading: isCreating } = useRequest2(
+  const { runAsync: createEvaluation, loading: isCreating } = useRequest(
     async (data: EvaluationFormType) => {
       await postCreateEvaluation({
         file: data.evaluationFiles[0].file,
@@ -182,7 +180,7 @@ const EvaluationCreating = () => {
                 w={'406px'}
                 bg={'myGray.50'}
                 value={evalModel}
-                list={evalModelList.map((item) => ({
+                list={llmModelList.map((item) => ({
                   label: item.name,
                   value: item.model
                 }))}
@@ -249,9 +247,6 @@ const EvaluationCreating = () => {
                   <FileSelector
                     w={'full'}
                     maxCount={1}
-                    maxSize={t('dashboard_evaluation:evaluation_file_max_size', {
-                      count: feConfigs?.evalFileMaxLines || 1000
-                    })}
                     fileType=".csv"
                     selectFiles={evaluationFiles}
                     setSelectFiles={(e) => {
@@ -260,7 +255,7 @@ const EvaluationCreating = () => {
                     FileTypeNode={
                       <Box fontSize={'xs'}>
                         <Trans
-                          i18nKey="dashboard_evaluation:template_csv_file_select_tip"
+                          i18nKey={i18nT('dashboard_evaluation:template_csv_file_select_tip')}
                           values={{
                             fileType: '.csv'
                           }}

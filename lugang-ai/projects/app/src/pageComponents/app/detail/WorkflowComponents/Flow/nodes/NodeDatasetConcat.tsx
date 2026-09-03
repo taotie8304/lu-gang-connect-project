@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo } from 'react';
 import { type NodeProps } from 'reactflow';
 import NodeCard from './render/NodeCard';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import Container from '../components/Container';
 import RenderInput from './render/RenderInput';
 import { Box, Button, Flex, HStack } from '@chakra-ui/react';
@@ -12,7 +12,7 @@ import { getOneQuoteInputTemplate } from '@fastgpt/global/core/workflow/template
 import {
   type FlowNodeInputItemType,
   type ReferenceItemValueType
-} from '@fastgpt/global/core/workflow/type/io.d';
+} from '@fastgpt/global/core/workflow/type/io';
 import RenderOutput from './render/RenderOutput';
 import IOTitle from '../components/IOTitle';
 import { useContextSelector } from 'use-context-selector';
@@ -87,13 +87,13 @@ const NodeDatasetConcat = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
             }}
           />
         ),
-      [NodeInputKeyEnum.datasetQuoteList]: (item: FlowNodeInputItemType) => {
+      [NodeInputKeyEnum.datasetQuoteList]: () => {
         return (
           <>
             <HStack className="nodrag" cursor={'default'} position={'relative'}>
-              <HStack spacing={1} position={'relative'} fontWeight={'medium'} color={'myGray.600'}>
-                <Box>{t('common:core.workflow.Dataset quote')}</Box>
-              </HStack>
+              <FormLabel required color={'myGray.600'} fontWeight={'medium'}>
+                {t('common:core.workflow.Dataset quote')}
+              </FormLabel>
               <Box flex={'1 0 0'} />
               <Button
                 variant={'whiteBase'}

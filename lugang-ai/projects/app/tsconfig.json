@@ -1,9 +1,15 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
+      "@fastgpt-sdk/storage/access-link": ["../../sdk/storage/src/access-link/index.ts"],
+      "@fastgpt-sdk/storage": ["../../sdk/storage/src/index.ts"],
+      "@fastgpt-sdk/otel": ["../../sdk/otel/src/index.ts"],
+      "@fastgpt-sdk/otel/logger": ["../../sdk/otel/src/logger-entry.ts"],
+      "@fastgpt-sdk/otel/metrics": ["../../sdk/otel/src/metrics-entry.ts"],
+      "@fastgpt-sdk/otel/tracing": ["../../sdk/otel/src/tracing-entry.ts"],
       "@/*": ["./src/*"],
+      "#fastgpt/app/test/*": ["./test/*"],
       "@test/*": ["../../test/*"]
     }
   },
@@ -11,9 +17,17 @@
     "next-env.d.ts",
     "**/*.ts",
     "**/*.tsx",
-    "**/*.d.ts",
-    "../../packages/**/*.d.ts",
-    "../../test/list.test.ts"
+    "../../packages/**/*.ts",
+    "../../packages/**/*.tsx",
+    "../../packages/**/*.d.ts"
   ],
-  "exclude": ["**/*.test.ts"]
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "../../packages/**/vitest*.config.ts",
+    "../../packages/**/test/**",
+    ".next",
+    "dist",
+    "coverage"
+  ]
 }

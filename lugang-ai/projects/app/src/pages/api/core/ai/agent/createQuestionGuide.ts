@@ -1,75 +1,63 @@
 import type { NextApiResponse } from 'next';
-import { jsonRes } from '@fastgpt/service/common/response';
 
 import { pushQuestionGuideUsage } from '@/service/support/wallet/usage/push';
 import { createQuestionGuide } from '@fastgpt/service/core/ai/functions/createQuestionGuide';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { type OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
-import { type ChatCompletionMessageParam } from '@fastgpt/global/core/ai/type';
 import { type AuthModeType } from '@fastgpt/service/support/permission/type';
 import { AuthUserTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { authOutLinkValid } from '@fastgpt/service/support/permission/publish/authLink';
-import { authOutLinkInit } from '@/service/support/permission/auth/outLink';
-import { authTeamSpaceToken } from '@/service/support/permission/auth/team';
-import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
-import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
-import { ChatErrEnum } from '@fastgpt/global/common/error/code/chat';
+import { authOutLinkInit } from '@fastgpt/service/support/outLink/runtime/auth';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { getDefaultLLMModel } from '@fastgpt/service/core/ai/model';
+import {
+  CreateQuestionGuideBodySchema,
+  CreateQuestionGuideResponseSchema,
+  type CreateQuestionGuideResponseType
+} from '@fastgpt/global/openapi/core/ai/agent/api';
+import { type OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
+import { type ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
 async function handler(
-  req: ApiRequestProps<
-    OutLinkChatAuthProps & {
-      messages: ChatCompletionMessageParam[];
-    }
-  >,
-  res: NextApiResponse<any>
-) {
-  try {
-    const { messages } = req.body;
+  req: ApiRequestProps,
+  _res: NextApiResponse
+): Promise<CreateQuestionGuideResponseType> {
+  const { messages } = parseApiInput({ req, bodySchema: CreateQuestionGuideBodySchema }).body;
 
-    const { tmbId, teamId } = await authChatCert({
-      req,
-      authToken: true,
-      authApiKey: true
-    });
+  const { tmbId, teamId } = await authChatCert({
+    req,
+    authToken: true,
+    authApiKey: true
+  });
 
-    const qgModel = getDefaultLLMModel();
+  const qgModel = getDefaultLLMModel();
 
-    const { result, inputTokens, outputTokens } = await createQuestionGuide({
-      messages,
-      model: qgModel.model
-    });
+  const { result, inputTokens, outputTokens } = await createQuestionGuide({
+    messages: messages as ChatCompletionMessageParam[],
+    model: qgModel.model,
+    teamId
+  });
 
-    jsonRes(res, {
-      data: result
-    });
+  pushQuestionGuideUsage({
+    model: qgModel.model,
+    inputTokens,
+    outputTokens,
+    teamId,
+    tmbId
+  });
 
-    pushQuestionGuideUsage({
-      model: qgModel.model,
-      inputTokens,
-      outputTokens,
-      teamId,
-      tmbId
-    });
-  } catch (err) {
-    jsonRes(res, {
-      code: 500,
-      error: err
-    });
-  }
+  return CreateQuestionGuideResponseSchema.parse(result);
 }
 
 export default NextAPI(handler);
 
-/* 
+/*
   Abandoned
   Different chat source
   1. token (header)
   2. apikey (header)
-  3. share page (body: shareId outLinkUid)
-  4. team chat page (body: teamId teamToken)
+  3. share page (body: outLinkAuthData)
 */
 async function authChatCert(props: AuthModeType): Promise<{
   teamId: string;
@@ -80,7 +68,9 @@ async function authChatCert(props: AuthModeType): Promise<{
   canWrite: boolean;
   outLinkUid?: string;
 }> {
-  const { teamId, teamToken, shareId, outLinkUid } = props.req.body as OutLinkChatAuthProps;
+  const { shareId, outLinkUid } =
+    ((props.req as ApiRequestProps).body as { outLinkAuthData?: OutLinkChatAuthProps })
+      .outLinkAuthData || {};
 
   if (shareId && outLinkUid) {
     const { outLinkConfig } = await authOutLinkValid({ shareId });
@@ -99,25 +89,5 @@ async function authChatCert(props: AuthModeType): Promise<{
       outLinkUid: uid
     };
   }
-  if (teamId && teamToken) {
-    const { uid } = await authTeamSpaceToken({ teamId, teamToken });
-    const tmb = await MongoTeamMember.findOne(
-      { teamId, role: TeamMemberRoleEnum.owner },
-      'tmbId'
-    ).lean();
-
-    if (!tmb) return Promise.reject(ChatErrEnum.unAuthChat);
-
-    return {
-      teamId,
-      tmbId: String(tmb._id),
-      authType: AuthUserTypeEnum.teamDomain,
-      apikey: '',
-      isOwner: false,
-      canWrite: false,
-      outLinkUid: uid
-    };
-  }
-
   return authCert(props);
 }

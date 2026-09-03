@@ -1,15 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { type NodeProps } from 'reactflow';
 import NodeCard from '../render/NodeCard';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import { Box, Button, HStack } from '@chakra-ui/react';
 import { SmallAddIcon } from '@chakra-ui/icons';
 import {
   type FlowNodeInputItemType,
   type FlowNodeOutputItemType
-} from '@fastgpt/global/core/workflow/type/io.d';
+} from '@fastgpt/global/core/workflow/type/io';
 import Container from '../../components/Container';
-import { useTranslation } from 'next-i18next';
+import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
 import {
   FlowNodeInputMap,
   FlowNodeInputTypeEnum,
@@ -33,11 +33,10 @@ const FieldEditModal = dynamic(() => import('./InputEditModal'));
 */
 
 const NodePluginInput = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
-  const { t } = useTranslation();
+  const { t } = useSafeTranslation();
   const { nodeId, inputs = [], outputs } = data;
 
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
-
   const [editField, setEditField] = useState<FlowNodeInputItemType>();
 
   const onSubmit = useCallback(
@@ -121,7 +120,6 @@ const NodePluginInput = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
                 icon: FlowNodeInputMap[inputType]?.icon as string,
                 label: t(input.label as any),
                 type: input.valueType ? t(FlowValueTypeMap[input.valueType]?.label as any) : '-',
-                isTool: !!input.toolDescription,
                 key: input.key
               };
             })}
@@ -168,6 +166,7 @@ const NodePluginInput = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
                 input.renderTypeList.includes(FlowNodeInputTypeEnum.addInputParam)
             )
           }
+          showAgentGenerated={false}
           onClose={() => setEditField(undefined)}
           onSubmit={onSubmit}
         />

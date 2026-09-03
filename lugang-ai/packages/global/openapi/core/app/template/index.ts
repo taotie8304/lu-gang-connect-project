@@ -1,0 +1,73 @@
+import type { OpenAPIPath } from '../../../type';
+import { DevApiTagsMap } from '../../../tag';
+import {
+  GetAppTemplateDetailQuerySchema,
+  GetAppTemplateDetailResponseSchema,
+  GetTemplateTypesQuerySchema,
+  GetTemplateTypesResponseSchema,
+  ListAppTemplateQuerySchema,
+  ListAppTemplateResponseSchema
+} from './api';
+
+export const AppTemplatePath: OpenAPIPath = {
+  '/core/app/template/list': {
+    get: {
+      summary: '获取应用模板列表',
+      description: '获取应用模板市场列表，列表项不返回完整 workflow 内容',
+      tags: [DevApiTagsMap.appTemplate],
+      requestParams: {
+        query: ListAppTemplateQuerySchema
+      },
+      responses: {
+        200: {
+          description: '成功获取应用模板列表',
+          content: {
+            'application/json': {
+              schema: ListAppTemplateResponseSchema
+            }
+          }
+        }
+      }
+    }
+  },
+  '/core/app/template/detail': {
+    get: {
+      summary: '获取应用模板详情',
+      description: '获取应用模板详情',
+      tags: [DevApiTagsMap.appTemplate],
+      requestParams: {
+        query: GetAppTemplateDetailQuerySchema
+      },
+      responses: {
+        200: {
+          description: '成功获取应用模板详情',
+          content: {
+            'application/json': {
+              schema: GetAppTemplateDetailResponseSchema
+            }
+          }
+        }
+      }
+    }
+  },
+  '/proApi/core/app/template/getTemplateTypes': {
+    get: {
+      summary: '获取应用模板类型',
+      description: '获取应用模板分类列表，用于模板市场筛选',
+      tags: [DevApiTagsMap.appTemplate],
+      requestParams: {
+        query: GetTemplateTypesQuerySchema
+      },
+      responses: {
+        200: {
+          description: '成功获取应用模板类型',
+          content: {
+            'application/json': {
+              schema: GetTemplateTypesResponseSchema
+            }
+          }
+        }
+      }
+    }
+  }
+};

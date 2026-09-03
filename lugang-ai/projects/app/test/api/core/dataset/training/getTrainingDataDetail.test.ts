@@ -1,11 +1,12 @@
-import handler, {
-  type getTrainingDataDetailBody,
-  type getTrainingDataDetailResponse
-} from '@/pages/api/core/dataset/training/getTrainingDataDetail';
+import handler from '@/pages/api/core/dataset/training/getTrainingDataDetail';
 import {
   DatasetCollectionTypeEnum,
   TrainingModeEnum
 } from '@fastgpt/global/core/dataset/constants';
+import type {
+  GetTrainingDataDetailBody,
+  GetTrainingDataDetailResponse
+} from '@fastgpt/global/openapi/core/dataset/training/api';
 import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection/schema';
 import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
@@ -35,15 +36,19 @@ describe('get training data detail test', () => {
       tmbId: root.tmbId,
       datasetId: dataset._id,
       collectionId: collection._id,
+      billId: 'test',
       mode: TrainingModeEnum.chunk,
       q: 'test',
       a: 'test'
     });
 
-    const res = await Call<getTrainingDataDetailBody, {}, getTrainingDataDetailResponse>(handler, {
+    const res = await Call<
+      GetTrainingDataDetailBody,
+      Record<string, never>,
+      GetTrainingDataDetailResponse
+    >(handler, {
       auth: root,
       body: {
-        datasetId: dataset._id,
         collectionId: collection._id,
         dataId: trainingData._id
       }
@@ -56,5 +61,67 @@ describe('get training data detail test', () => {
     expect(res.data?.mode).toBe(TrainingModeEnum.chunk);
     expect(res.data?.q).toBe('test');
     expect(res.data?.a).toBe('test');
+  });
+
+  it('should ignore legacy datasetId and only read data from the authorized collection', async () => {
+    const root = await getRootUser();
+    const [dataset, foreignDataset] = await Promise.all([
+      MongoDataset.create({
+        name: 'test',
+        teamId: root.teamId,
+        tmbId: root.tmbId,
+        vectorModel: 'test',
+        agentModel: 'test'
+      }),
+      MongoDataset.create({
+        name: 'foreign',
+        teamId: root.teamId,
+        tmbId: root.tmbId,
+        vectorModel: 'test',
+        agentModel: 'test'
+      })
+    ]);
+    const [collection, foreignCollection] = await Promise.all([
+      MongoDatasetCollection.create({
+        name: 'test',
+        type: DatasetCollectionTypeEnum.file,
+        teamId: root.teamId,
+        tmbId: root.tmbId,
+        datasetId: dataset._id
+      }),
+      MongoDatasetCollection.create({
+        name: 'foreign',
+        type: DatasetCollectionTypeEnum.file,
+        teamId: root.teamId,
+        tmbId: root.tmbId,
+        datasetId: foreignDataset._id
+      })
+    ]);
+    const foreignTrainingData = await MongoDatasetTraining.create({
+      teamId: root.teamId,
+      tmbId: root.tmbId,
+      datasetId: foreignDataset._id,
+      collectionId: foreignCollection._id,
+      billId: 'test',
+      mode: TrainingModeEnum.chunk,
+      q: 'foreign',
+      a: 'foreign'
+    });
+
+    const res = await Call<
+      GetTrainingDataDetailBody,
+      Record<string, never>,
+      GetTrainingDataDetailResponse
+    >(handler, {
+      auth: root,
+      body: {
+        datasetId: foreignDataset._id,
+        collectionId: collection._id,
+        dataId: foreignTrainingData._id
+      } as any
+    });
+
+    expect(res.code).toBe(200);
+    expect(res.data).toBeNull();
   });
 });

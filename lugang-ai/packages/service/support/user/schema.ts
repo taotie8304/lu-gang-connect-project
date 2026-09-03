@@ -1,7 +1,7 @@
-import { connectionMongo, getMongoModel } from '../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../common/mongo';
 const { Schema } = connectionMongo;
 import { hashStr } from '@fastgpt/global/common/string/tools';
-import type { UserModelSchema } from '@fastgpt/global/support/user/type';
+import { UserTagsSchema, type UserModelSchema } from '@fastgpt/global/support/user/type';
 import { UserStatusEnum, userStatusMap } from '@fastgpt/global/support/user/constant';
 import { TeamMemberCollectionName } from '@fastgpt/global/support/user/team/constant';
 import { LangEnum } from '@fastgpt/global/common/i18n/type';
@@ -17,8 +17,7 @@ const UserSchema = new Schema({
   username: {
     // 可以是手机/邮箱，新的验证都只用手机
     type: String,
-    required: true,
-    unique: true // 唯一
+    required: true
   },
   password: {
     type: String,
@@ -31,10 +30,6 @@ const UserSchema = new Schema({
   createTime: {
     type: Date,
     default: () => new Date()
-  },
-  promotionRate: {
-    type: Number,
-    default: 0
   },
   openaiAccount: {
     type: {
@@ -55,52 +50,26 @@ const UserSchema = new Schema({
     ref: TeamMemberCollectionName
   },
 
-  inviterId: {
-    // 谁邀请注册的
-    type: Schema.Types.ObjectId,
-    ref: userCollectionName
-  },
   fastgpt_sem: Object,
-  sourceDomain: String,
 
   phonePrefix: Number,
   contact: String,
 
-  // 鲁港通：用户信息扩展字段 (Requirement 6.1)
-  nickname: {
-    type: String,
-    required: false
+  tags: {
+    type: [String],
+    enum: UserTagsSchema.enum
   },
-  email: {
-    type: String,
-    required: false // 邮箱注册时自动填充，手机号注册时必填
-  },
-  phone: {
-    type: String,
-    required: false // 手机号注册时自动填充，邮箱注册时必填
-  },
-  birth_date: {
-    type: Date,
-    required: false
-  },
-  address: {
-    type: String,
-    required: false
-  },
-  google_account: {
-    type: String,
-    required: false
-  },
-
+  meta: Object,
   /** @deprecated */
   avatar: String
 });
 
-try {
-  // Admin charts
-  UserSchema.index({ createTime: -1 });
-} catch (error) {
-  console.log(error);
-}
+// username 唯一。
+defineIndex(UserSchema, {
+  key: { username: 1 },
+  options: { unique: true }
+});
+// Admin charts
+defineIndex(UserSchema, { key: { createTime: -1 } });
 
 export const MongoUser = getMongoModel<UserModelSchema>(userCollectionName, UserSchema);

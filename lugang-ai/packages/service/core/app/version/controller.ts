@@ -1,8 +1,13 @@
-import { type AppSchema } from '@fastgpt/global/core/app/type';
+import { type AppSchemaType } from '@fastgpt/global/core/app/type';
+import { MongoApp } from '../schema';
 import { MongoAppVersion } from './schema';
 import { Types } from '../../../common/mongo';
+import { migrateWorkflowToCurrent } from '@fastgpt/global/core/workflow/migration';
+import { decodeToolSetNodesFromStorage } from '../jsonSchemaStorage';
 
-export const getAppLatestVersion = async (appId: string, app?: AppSchema) => {
+export const getAppLatestVersion = async (appId: string, app?: AppSchemaType) => {
+  const migrationApp =
+    app ?? ((await MongoApp.findById(appId).lean()) as AppSchemaType | null | undefined);
   const version = await MongoAppVersion.findOne({
     appId,
     isPublish: true
@@ -13,20 +18,28 @@ export const getAppLatestVersion = async (appId: string, app?: AppSchema) => {
     .lean();
 
   if (version) {
-    return {
-      versionId: version._id,
-      versionName: version.versionName,
-      nodes: version.nodes,
+    // 历史版本只迁移该版本自身的系统配置节点，不继承当前应用 chatConfig，
+    // 避免当前配置占位导致该版本中的欢迎语、定时任务等旧值被丢弃。
+    const normalizedWorkflow = migrateWorkflowToCurrent({
+      nodes: decodeToolSetNodesFromStorage(version.nodes),
       edges: version.edges,
-      chatConfig: version.chatConfig || app?.chatConfig || {}
+      chatConfig: version.chatConfig
+    });
+    return {
+      versionId: String(version._id),
+      versionName: version.versionName,
+      ...normalizedWorkflow
     };
   }
+  const normalizedWorkflow = migrateWorkflowToCurrent({
+    nodes: decodeToolSetNodesFromStorage(migrationApp?.modules ?? []),
+    edges: migrationApp?.edges ?? [],
+    chatConfig: migrationApp?.chatConfig
+  });
   return {
-    versionId: app?.pluginData?.nodeVersion,
-    versionName: app?.name,
-    nodes: app?.modules || [],
-    edges: app?.edges || [],
-    chatConfig: app?.chatConfig || {}
+    versionId: migrationApp?.pluginData?.nodeVersion,
+    versionName: migrationApp?.name,
+    ...normalizedWorkflow
   };
 };
 
@@ -37,7 +50,7 @@ export const getAppVersionById = async ({
 }: {
   appId: string;
   versionId?: string;
-  app?: AppSchema;
+  app?: AppSchemaType;
 }) => {
   // 检查 versionId 是否符合 ObjectId 格式
   if (versionId && Types.ObjectId.isValid(versionId)) {
@@ -47,12 +60,15 @@ export const getAppVersionById = async ({
     }).lean();
 
     if (version) {
-      return {
-        versionId: version._id,
-        versionName: version.versionName,
-        nodes: version.nodes,
+      const normalizedWorkflow = migrateWorkflowToCurrent({
+        nodes: decodeToolSetNodesFromStorage(version.nodes),
         edges: version.edges,
-        chatConfig: version.chatConfig || app?.chatConfig || {}
+        chatConfig: version.chatConfig
+      });
+      return {
+        versionId: String(version._id),
+        versionName: version.versionName,
+        ...normalizedWorkflow
       };
     }
   }

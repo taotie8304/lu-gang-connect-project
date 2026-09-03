@@ -1,17 +1,14 @@
 import { getDatasets, getDatasetPaths } from '@/web/core/dataset/api';
-import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useQuery } from '@tanstack/react-query';
-import React, { type Dispatch, useMemo, useState } from 'react';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
+import React, { type Dispatch, useState } from 'react';
 import { useTranslation } from 'next-i18next';
 import { Box } from '@chakra-ui/react';
 import FolderPath from '@/components/common/folder/Path';
-import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-
-type PathItemType = {
-  parentId: string;
-  parentName: string;
-};
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import type {
+  ParentIdType,
+  ParentTreePathItemType
+} from '@fastgpt/global/common/parentFolder/type';
 
 const DatasetSelectContainer = ({
   isOpen,
@@ -23,8 +20,8 @@ const DatasetSelectContainer = ({
   children
 }: {
   isOpen: boolean;
-  setParentId: Dispatch<string>;
-  paths: PathItemType[];
+  setParentId: Dispatch<ParentIdType>;
+  paths: ParentTreePathItemType[];
   onClose: () => void;
   tips?: string | null;
   isLoading?: boolean;
@@ -34,7 +31,6 @@ const DatasetSelectContainer = ({
 
   return (
     <MyModal
-      iconSrc="/imgs/workflow/db.png"
       title={
         <Box fontWeight={'normal'}>
           <FolderPath
@@ -60,16 +56,15 @@ const DatasetSelectContainer = ({
       w={'100%'}
       maxW={['90vw', '900px']}
       isCentered
+      isLoading={isLoading}
     >
-      <MyBox isLoading={isLoading} h={'100%'}>
-        {children}
-      </MyBox>
+      {children}
     </MyModal>
   );
 };
 
 export function useDatasetSelect() {
-  const [parentId, setParentId] = useState('');
+  const [parentId, setParentId] = useState<ParentIdType>('');
   const [searchKey, setSearchKey] = useState('');
 
   const {
@@ -79,7 +74,7 @@ export function useDatasetSelect() {
     },
     loading: isFetching,
     runAsync: loadDatasets
-  } = useRequest2(
+  } = useRequest(
     async () => {
       const result = await Promise.all([
         getDatasets({ parentId, searchKey }),

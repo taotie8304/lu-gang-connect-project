@@ -1,8 +1,8 @@
 import json5 from 'json5';
-import { replaceVariable, valToStr } from '../../../common/string/tools';
-import { ChatItemValueTypeEnum, ChatRoleEnum } from '../../../core/chat/constants';
-import type { ChatItemType, NodeOutputItemType } from '../../../core/chat/type';
-import { ChatCompletionRequestMessageRoleEnum } from '../../ai/constants';
+import { ChatRoleEnum } from '../../../core/chat/constants';
+import type { ChatItemMiniType } from '../../../core/chat/type';
+import type { NodeOutputItemType } from './type';
+import { createChatCompletionDeltaResponse } from '../../ai/llm/utils';
 import {
   NodeInputKeyEnum,
   NodeOutputKeyEnum,
@@ -10,15 +10,12 @@ import {
   WorkflowIOValueTypeEnum
 } from '../constants';
 import { FlowNodeTypeEnum } from '../node/constant';
-import {
-  type InteractiveNodeResponseType,
-  type WorkflowInteractiveResponseType
-} from '../template/system/interactive/type';
-import type { StoreEdgeItemType } from '../type/edge';
+import { type WorkflowInteractiveResponseType } from '../template/system/interactive/type';
+import type { RuntimeEdgeItemType, StoreEdgeItemType } from '../type/edge';
 import type { FlowNodeOutputItemType, ReferenceValueType } from '../type/io';
 import type { StoreNodeItemType } from '../type/node';
 import { isValidReferenceValueFormat } from '../utils';
-import type { RuntimeEdgeItemType, RuntimeNodeItemType } from './type';
+import type { RuntimeNodeItemType } from './type';
 import { isSecretValue } from '../../../common/secret/utils';
 import { isChildInteractive } from '../template/system/interactive/constants';
 
@@ -29,7 +26,7 @@ export const extractDeepestInteractive = (
   let current = interactive;
   let depth = 0;
 
-  while (depth < MAX_DEPTH && 'childrenResponse' in current.params) {
+  while (depth < MAX_DEPTH && current?.params && 'childrenResponse' in current.params) {
     current = current.params.childrenResponse;
     depth++;
   }
@@ -111,7 +108,7 @@ export const valueTypeFormat = (value: any, valueType?: WorkflowIOValueTypeEnum)
       const trimmedValue = value.trim();
       try {
         return json5.parse(trimmedValue);
-      } catch (error) {}
+      } catch {}
     }
     return {};
   }
@@ -121,7 +118,7 @@ export const valueTypeFormat = (value: any, valueType?: WorkflowIOValueTypeEnum)
     if (isObjectString(value)) {
       try {
         return json5.parse(value);
-      } catch (error) {}
+      } catch {}
     }
     return [value];
   }
@@ -137,7 +134,7 @@ export const valueTypeFormat = (value: any, valueType?: WorkflowIOValueTypeEnum)
     if (isObjectString(value)) {
       try {
         return json5.parse(value);
-      } catch (error) {}
+      } catch {}
     }
     return [];
   }
@@ -147,7 +144,7 @@ export const valueTypeFormat = (value: any, valueType?: WorkflowIOValueTypeEnum)
     if (isObjectString(value)) {
       try {
         return json5.parse(value);
-      } catch (error) {}
+      } catch {}
     }
     return [];
   }
@@ -163,18 +160,44 @@ export const valueTypeFormat = (value: any, valueType?: WorkflowIOValueTypeEnum)
   2. Check that the workflow starts at the interaction node
 */
 export const getLastInteractiveValue = (
-  histories: ChatItemType[]
+  histories: ChatItemMiniType[]
 ): WorkflowInteractiveResponseType | undefined => {
   const lastAIMessage = [...histories].reverse().find((item) => item.obj === ChatRoleEnum.AI);
 
   if (lastAIMessage) {
     const lastValue = lastAIMessage.value[lastAIMessage.value.length - 1];
 
-    if (
-      !lastValue ||
-      lastValue.type !== ChatItemValueTypeEnum.interactive ||
-      !lastValue.interactive
-    ) {
+    if (!lastValue || !lastValue.interactive) {
+      return;
+    }
+
+    // Convert legacy ask_user call to the new one.
+    if (lastValue.interactive.type === 'agentPlanAskQuery') {
+      if (lastValue.interactive.params.answer) {
+        return;
+      }
+
+      return {
+        ...lastValue.interactive,
+        type: 'agentAsk',
+        params: {
+          description: lastValue.interactive.params.reason ?? '',
+          questions: [
+            {
+              question: lastValue.interactive.params.content,
+              options: lastValue.interactive.params.options.map((option) => ({
+                summary: option,
+                value: option
+              })),
+              answer: ''
+            }
+          ]
+        }
+      };
+    }
+
+    const finalInteractive = extractDeepestInteractive(lastValue.interactive);
+    if (finalInteractive.type === 'agentPlanAskQuery') {
       return;
     }
 
@@ -185,13 +208,17 @@ export const getLastInteractiveValue = (
     // Check is user select
     if (
       lastValue.interactive.type === 'userSelect' &&
-      !lastValue.interactive.params.userSelectedVal
+      !lastValue.interactive?.params?.userSelectedVal
     ) {
       return lastValue.interactive;
     }
 
     // Check is user input
-    if (lastValue.interactive.type === 'userInput' && !lastValue.interactive.params.submitted) {
+    if (lastValue.interactive.type === 'userInput' && !lastValue.interactive?.params?.submitted) {
+      return lastValue.interactive;
+    }
+
+    if (lastValue.interactive.type === 'agentAsk' && !lastValue.interactive.params.submitted) {
       return lastValue.interactive;
     }
 
@@ -210,7 +237,7 @@ export const storeEdges2RuntimeEdges = (
   if (lastInteractive) {
     const memoryEdges = lastInteractive.memoryEdges || [];
     if (memoryEdges && memoryEdges.length > 0) {
-      return memoryEdges;
+      return memoryEdges.map((edge) => ({ ...edge }));
     }
   }
 
@@ -228,11 +255,7 @@ export const getWorkflowEntryNodeIds = (
     }
   }
 
-  const entryList = [
-    FlowNodeTypeEnum.systemConfig,
-    FlowNodeTypeEnum.workflowStart,
-    FlowNodeTypeEnum.pluginInput
-  ];
+  const entryList = [FlowNodeTypeEnum.workflowStart, FlowNodeTypeEnum.pluginInput];
   return nodes
     .filter(
       (node) =>
@@ -278,147 +301,24 @@ export const filterWorkflowEdges = (edges: RuntimeEdgeItemType[]) => {
 };
 
 /*
-  1. 输入线分类：普通线(实际上就是从 start 直接过来的分支）和递归线（可以追溯到自身的分支）
-  2. 递归线，会根据最近的一个 target 分支进行分类，同一个分支的属于一组
-  2. 起始线全部非 waiting 执行，或递归线任意一组全部非 waiting 执行
-*/
-export const checkNodeRunStatus = ({
-  nodesMap,
-  node,
-  runtimeEdges
-}: {
-  nodesMap: Map<string, RuntimeNodeItemType>;
-  node: RuntimeNodeItemType;
-  runtimeEdges: RuntimeEdgeItemType[];
-}) => {
-  const isStartNode = (nodeType: string) => {
-    const map: Record<any, boolean> = {
-      [FlowNodeTypeEnum.workflowStart]: true,
-      [FlowNodeTypeEnum.pluginInput]: true,
-      [FlowNodeTypeEnum.loopStart]: true
-    };
-    return !!map[nodeType];
-  };
-  const splitNodeEdges = (targetNode: RuntimeNodeItemType) => {
-    const commonEdges: RuntimeEdgeItemType[] = [];
-    const recursiveEdgeGroupsMap = new Map<string, RuntimeEdgeItemType[]>();
-
-    const sourceEdges = runtimeEdges.filter((item) => item.target === targetNode.nodeId);
-
-    sourceEdges.forEach((sourceEdge) => {
-      const stack: Array<{
-        edge: RuntimeEdgeItemType;
-        visited: Set<string>;
-      }> = [
-        {
-          edge: sourceEdge,
-          visited: new Set([targetNode.nodeId])
-        }
-      ];
-      const MAX_DEPTH = 3000;
-      let iterations = 0;
-
-      while (stack.length > 0 && iterations < MAX_DEPTH) {
-        iterations++;
-        const { edge, visited } = stack.pop()!;
-
-        // Start node
-        const sourceNode = nodesMap.get(edge.source);
-        if (!sourceNode) continue;
-
-        if (isStartNode(sourceNode.flowNodeType) || sourceEdge.sourceHandle === 'selectedTools') {
-          commonEdges.push(sourceEdge);
-          continue;
-        }
-
-        // Circle detected
-        if (edge.source === targetNode.nodeId) {
-          recursiveEdgeGroupsMap.set(edge.target, [
-            ...(recursiveEdgeGroupsMap.get(edge.target) || []),
-            sourceEdge
-          ]);
-          continue;
-        }
-
-        if (visited.has(edge.source)) {
-          continue; // 已访问过此节点，跳过（避免子环干扰）
-        }
-
-        const newVisited = new Set(visited);
-        newVisited.add(edge.source);
-
-        // 查找目标节点的 source edges 并加入栈中
-        const nextEdges = runtimeEdges.filter((item) => item.target === edge.source);
-
-        for (const nextEdge of nextEdges) {
-          stack.push({
-            edge: nextEdge,
-            visited: newVisited
-          });
-        }
-      }
-    });
-
-    return { commonEdges, recursiveEdgeGroups: Array.from(recursiveEdgeGroupsMap.values()) };
-  };
-
-  // Classify edges
-  const { commonEdges, recursiveEdgeGroups } = splitNodeEdges(node);
-
-  // Entry
-  if (commonEdges.length === 0 && recursiveEdgeGroups.length === 0) {
-    return 'run';
-  }
-
-  // check active（其中一组边，至少有一个 active，且没有 waiting 即可运行）
-  if (
-    commonEdges.some((item) => item.status === 'active') &&
-    commonEdges.every((item) => item.status !== 'waiting')
-  ) {
-    return 'run';
-  }
-  if (
-    recursiveEdgeGroups.some(
-      (item) =>
-        item.some((item) => item.status === 'active') &&
-        item.every((item) => item.status !== 'waiting')
-    )
-  ) {
-    return 'run';
-  }
-
-  // check skip（其中一组边，全是 skiped 则跳过运行）
-  if (commonEdges.length > 0 && commonEdges.every((item) => item.status === 'skipped')) {
-    return 'skip';
-  }
-  if (
-    recursiveEdgeGroups.length > 0 &&
-    recursiveEdgeGroups.some((item) => item.every((item) => item.status === 'skipped'))
-  ) {
-    return 'skip';
-  }
-
-  return 'wait';
-};
-
-/*
   Get the value of the reference variable/node output
   1. [string,string]
   2. [string,string][]
 */
 export const getReferenceVariableValue = ({
   value,
-  nodes,
-  variables
+  nodesMap,
+  variables,
+  isReferenceVal = true
 }: {
   value?: ReferenceValueType;
-  nodes: RuntimeNodeItemType[];
-  variables: Record<string, any>;
+  nodesMap: Record<string, RuntimeNodeItemType> | Map<string, RuntimeNodeItemType>;
+  variables: Record<string, unknown>;
+  isReferenceVal?: boolean;
 }) => {
-  if (!value) return value;
+  if (!value || !isReferenceVal) return value;
 
-  // handle single reference value
-  if (isValidReferenceValueFormat(value)) {
+  const resoleValue = (value: [string, string | undefined]) => {
     const sourceNodeId = value[0];
     const outputId = value[1];
 
@@ -428,29 +328,31 @@ export const getReferenceVariableValue = ({
     }
 
     // 避免 value 刚好就是二个元素的字符串数组
-    const node = nodes.find((node) => node.nodeId === sourceNodeId);
+    const node = nodesMap instanceof Map ? nodesMap.get(sourceNodeId) : nodesMap[sourceNodeId];
     if (!node) {
       return value;
     }
 
     return node.outputs.find((output) => output.id === outputId)?.value;
+  };
+
+  // handle single reference value
+  if (isValidReferenceValueFormat(value)) {
+    return resoleValue(value as [string, string | undefined]);
   }
 
   // handle reference array
   if (
     Array.isArray(value) &&
     value.length > 0 &&
-    value.every((item) => isValidReferenceValueFormat(item))
+    value.every((item) => isValidReferenceValueFormat(item, nodesMap))
   ) {
-    const result = value.map<any>((val) => {
-      return getReferenceVariableValue({
-        value: val,
-        nodes,
-        variables
-      });
-    });
-
-    return result.flat().filter((item) => item !== undefined);
+    return value
+      .map<any>((val) => {
+        return resoleValue(val as [string, string | undefined]);
+      })
+      .flat()
+      .filter((item) => item !== undefined);
   }
 
   return value;
@@ -480,110 +382,6 @@ export const formatVariableValByType = (val: any, valueType?: WorkflowIOValueTyp
   return val;
 };
 
-// replace {{$xx.xx$}} variables for text
-export function replaceEditorVariable({
-  text,
-  nodes,
-  variables,
-  depth = 0
-}: {
-  text: any;
-  nodes: RuntimeNodeItemType[];
-  variables: Record<string, any>; // global variables
-  depth?: number;
-}) {
-  if (typeof text !== 'string') return text;
-  if (text === '') return text;
-
-  const MAX_REPLACEMENT_DEPTH = 10;
-  const processedVariables = new Set<string>();
-
-  // Prevent infinite recursion
-  if (depth > MAX_REPLACEMENT_DEPTH) {
-    return text;
-  }
-
-  text = replaceVariable(text, variables);
-
-  // Check for circular references in variable values
-  const hasCircularReference = (value: any, targetKey: string): boolean => {
-    if (typeof value !== 'string') return false;
-
-    // Check if the value contains the target variable pattern (direct self-reference)
-    const selfRefPattern = new RegExp(
-      `\\{\\{\\$${targetKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\$\\}\\}`,
-      'g'
-    );
-    return selfRefPattern.test(value);
-  };
-
-  const variablePattern = /\{\{\$([^.]+)\.([^$]+)\$\}\}/g;
-  const matches = [...text.matchAll(variablePattern)];
-  if (matches.length === 0) return text;
-
-  let result = text;
-  let hasReplacements = false;
-
-  // Build replacement map first to avoid modifying string during iteration
-  const replacements: Array<{ pattern: string; replacement: string }> = [];
-
-  for (const match of matches) {
-    const nodeId = match[1];
-    const id = match[2];
-    const variableKey = `${nodeId}.${id}`;
-
-    // Skip if already processed to avoid immediate circular reference
-    if (processedVariables.has(variableKey)) {
-      continue;
-    }
-
-    const variableVal = (() => {
-      if (nodeId === VARIABLE_NODE_ID) {
-        return variables[id];
-      }
-      // Find upstream node input/output
-      const node = nodes.find((node) => node.nodeId === nodeId);
-      if (!node) return;
-
-      const output = node.outputs.find((output) => output.id === id);
-      if (output) return formatVariableValByType(output.value, output.valueType);
-
-      // Use the node's input as the variable value(Example: HTTP data will reference its own dynamic input)
-      const input = node.inputs.find((input) => input.key === id);
-      if (input) return getReferenceVariableValue({ value: input.value, nodes, variables });
-    })();
-
-    // Check for direct circular reference
-    if (hasCircularReference(String(variableVal), variableKey)) {
-      continue;
-    }
-
-    const formatVal = valToStr(variableVal);
-    const escapedNodeId = nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const escapedId = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-    replacements.push({
-      pattern: `\\{\\{\\$(${escapedNodeId}\\.${escapedId})\\$\\}\\}`,
-      replacement: formatVal
-    });
-
-    processedVariables.add(variableKey);
-    hasReplacements = true;
-  }
-
-  // Apply all replacements
-  replacements.forEach(({ pattern, replacement }) => {
-    result = result.replace(new RegExp(pattern, 'g'), replacement);
-  });
-
-  // If we made replacements and there might be nested variables, recursively process
-  if (hasReplacements && /\{\{\$[^.]+\.[^$]+\$\}\}/.test(result)) {
-    result = replaceEditorVariable({ text: result, nodes, variables, depth: depth + 1 });
-  }
-
-  return result || '';
-}
-
 export const textAdaptGptResponse = ({
   text,
   reasoning_content,
@@ -595,32 +393,21 @@ export const textAdaptGptResponse = ({
   text?: string | null;
   reasoning_content?: string | null;
   finish_reason?: null | 'stop';
-  extraData?: Object;
+  extraData?: object;
 }) => {
-  return {
-    ...extraData,
-    id: '',
-    object: '',
-    created: 0,
+  return createChatCompletionDeltaResponse({
+    text,
+    reasoningContent: reasoning_content,
     model,
-    choices: [
-      {
-        delta: {
-          role: ChatCompletionRequestMessageRoleEnum.Assistant,
-          content: text,
-          ...(reasoning_content && { reasoning_content })
-        },
-        index: 0,
-        finish_reason
-      }
-    ]
-  };
+    finishReason: finish_reason,
+    extraData
+  });
 };
 
 /* Update runtimeNode's outputs with interactive data from history */
 export function rewriteNodeOutputByHistories(
   runtimeNodes: RuntimeNodeItemType[],
-  lastInteractive?: InteractiveNodeResponseType
+  lastInteractive?: WorkflowInteractiveResponseType
 ) {
   const interactive = lastInteractive;
   if (!interactive?.nodeOutputs) {

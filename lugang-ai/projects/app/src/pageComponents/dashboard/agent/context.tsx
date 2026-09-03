@@ -1,7 +1,7 @@
 import React, { type ReactNode, useCallback, useEffect, useState } from 'react';
 import { createContext } from 'use-context-selector';
 import { useRouter } from 'next/router';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getAppDetailById, getMyApps, putAppById } from '@/web/core/app/api';
 import { type AppDetailType, type AppListItemType } from '@fastgpt/global/core/app/type';
 import { getAppFolderPath } from '@/web/core/app/api/app';
@@ -10,11 +10,12 @@ import {
   type ParentIdType,
   type ParentTreePathItemType
 } from '@fastgpt/global/common/parentFolder/type';
-import { type AppUpdateParams } from '@/global/core/app/api';
+import { type UpdateAppBodyType } from '@fastgpt/global/openapi/core/app/common/api';
 import dynamic from 'next/dynamic';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useTranslation } from 'next-i18next';
+import { resolveDashboardAppListTypes } from './utils/appListTypes';
 const MoveModal = dynamic(() => import('@/components/common/folder/MoveModal'));
 
 type AppListContextType = {
@@ -25,7 +26,7 @@ type AppListContextType = {
   isFetchingApps: boolean;
   folderDetail: AppDetailType | undefined | null;
   paths: ParentTreePathItemType[];
-  onUpdateApp: (id: string, data: AppUpdateParams) => Promise<any>;
+  onUpdateApp: (id: string, data: UpdateAppBodyType) => Promise<any>;
   setMoveAppId: React.Dispatch<React.SetStateAction<string | undefined>>;
   refetchFolderDetail: () => Promise<AppDetailType | null>;
   searchKey: string;
@@ -41,7 +42,7 @@ export const AppListContext = createContext<AppListContextType>({
   isFetchingApps: false,
   folderDetail: undefined,
   paths: [],
-  onUpdateApp: function (id: string, data: AppUpdateParams): Promise<any> {
+  onUpdateApp: function (id: string, data: UpdateAppBodyType): Promise<any> {
     throw new Error('Function not implemented.');
   },
   setMoveAppId: function (value: React.SetStateAction<string | undefined>): void {
@@ -70,37 +71,12 @@ const AppListContextProvider = ({ children }: { children: ReactNode }) => {
     data = [],
     runAsync: loadMyApps,
     loading: isFetchingApps
-  } = useRequest2(
+  } = useRequest(
     () => {
-      const formatType = (() => {
-        // chat page show all apps
-        if (router.pathname.includes('/chat')) {
-          return [
-            AppTypeEnum.folder,
-            AppTypeEnum.toolFolder,
-            AppTypeEnum.simple,
-            AppTypeEnum.workflow,
-            AppTypeEnum.workflowTool
-          ];
-        }
-
-        // agent page
-        if (router.pathname.includes('/agent')) {
-          return !type || type === 'all'
-            ? [AppTypeEnum.folder, AppTypeEnum.simple, AppTypeEnum.workflow]
-            : [AppTypeEnum.folder, type];
-        }
-
-        // tool page
-        return !type || type === 'all'
-          ? [
-              AppTypeEnum.toolFolder,
-              AppTypeEnum.workflowTool,
-              AppTypeEnum.mcpToolSet,
-              AppTypeEnum.httpToolSet
-            ]
-          : [AppTypeEnum.toolFolder, type];
-      })();
+      const formatType = resolveDashboardAppListTypes({
+        pathname: router.pathname,
+        type
+      });
 
       return getMyApps({ parentId, type: formatType, searchKey });
     },
@@ -112,7 +88,7 @@ const AppListContextProvider = ({ children }: { children: ReactNode }) => {
     }
   );
 
-  const { data: paths = [], runAsync: refetchPaths } = useRequest2(
+  const { data: paths = [], runAsync: refetchPaths } = useRequest(
     () => getAppFolderPath({ sourceId: parentId, type: 'current' }),
     {
       manual: false,
@@ -120,7 +96,7 @@ const AppListContextProvider = ({ children }: { children: ReactNode }) => {
     }
   );
 
-  const { data: folderDetail, runAsync: refetchFolderDetail } = useRequest2(
+  const { data: folderDetail, runAsync: refetchFolderDetail } = useRequest(
     () => {
       if (parentId) return getAppDetailById(parentId);
       return Promise.resolve(null);
@@ -131,7 +107,7 @@ const AppListContextProvider = ({ children }: { children: ReactNode }) => {
     }
   );
 
-  const { runAsync: onUpdateApp } = useRequest2((id: string, data: AppUpdateParams) =>
+  const { runAsync: onUpdateApp } = useRequest((id: string, data: UpdateAppBodyType) =>
     putAppById(id, data).then(async (res) => {
       await Promise.all([refetchFolderDetail(), refetchPaths(), loadMyApps()]);
       return res;

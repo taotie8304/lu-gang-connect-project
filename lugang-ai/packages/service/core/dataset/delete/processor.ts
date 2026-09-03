@@ -1,47 +1,88 @@
-import type { Processor } from 'bullmq';
-import type { DatasetDeleteJobData } from './index';
+import type { Processor } from '@fastgpt/dal/redis/bullmq';
+import { addDatasetDeleteJob, type DatasetDeleteJobData } from './index';
 import { delDatasetRelevantData, findDatasetAndAllChildren } from '../controller';
-import { addLog } from '../../../common/system/log';
-import type { DatasetSchemaType } from '@fastgpt/global/core/dataset/type';
 import { MongoDatasetCollectionTags } from '../tag/schema';
 import { removeDatasetSyncJobScheduler } from '../datasetSync';
 import { mongoSessionRun } from '../../../common/mongo/sessionRun';
 import { MongoDataset } from '../schema';
 import { removeImageByPath } from '../../../common/file/image/controller';
 import { MongoDatasetTraining } from '../training/schema';
+import { getLogger, LogCategories } from '../../../common/logger';
+import { resourcePermissionRepo } from '../../../support/permission/repository/resourcePermissionRepo';
+import { PerResourceTypeEnum } from '@fastgpt/global/support/permission/constant';
+
+const logger = getLogger(LogCategories.MODULE.DATASET.COLLECTION);
 
 export const deleteDatasetsImmediate = async ({
   teamId,
-  datasets
+  datasetIds
 }: {
   teamId: string;
-  datasets: DatasetSchemaType[];
+  datasetIds: string[];
 }) => {
-  const datasetIds = datasets.map((d) => d._id);
-
   // delete training data
-  MongoDatasetTraining.deleteMany({
+  await MongoDatasetTraining.deleteMany({
     teamId,
     datasetId: { $in: datasetIds }
   });
 
   // Remove cron job
   await Promise.all(
-    datasets.map((dataset) => {
-      // 只处理已标记删除的数据集
-      if (datasetIds.includes(dataset._id)) {
-        return removeDatasetSyncJobScheduler(dataset._id);
-      }
+    datasetIds.map((id) => {
+      return removeDatasetSyncJobScheduler(id);
     })
   );
 };
+// Clear a team datasets
+export const deleteTeamAllDatasets = async (teamId: string) => {
+  const datasets = await MongoDataset.find(
+    {
+      teamId
+    },
+    { _id: 1, parentId: 1 }
+  );
+  await deleteDatasetsImmediate({
+    teamId,
+    datasetIds: datasets.map((d) => d._id)
+  });
 
-export const deleteDatasets = async ({
+  const datasetIdSet = new Set(datasets.map((dataset) => String(dataset._id)));
+  const deleteRootDatasets = datasets.filter(
+    (dataset) => !dataset.parentId || !datasetIdSet.has(String(dataset.parentId))
+  );
+
+  await mongoSessionRun(async (session) => {
+    await MongoDataset.updateMany(
+      {
+        teamId
+      },
+      {
+        $set: {
+          deleteTime: new Date()
+        }
+      },
+      {
+        session
+      }
+    );
+    await Promise.all(
+      deleteRootDatasets.map((dataset) => {
+        return addDatasetDeleteJob({
+          teamId,
+          datasetId: dataset._id
+        });
+      })
+    );
+  });
+};
+
+// 批量删除函数
+const deleteDatasets = async ({
   teamId,
   datasets
 }: {
   teamId: string;
-  datasets: DatasetSchemaType[];
+  datasets: { _id: string; avatar: string; teamId: string }[];
 }) => {
   const datasetIds = datasets.map((d) => d._id);
 
@@ -63,11 +104,22 @@ export const deleteDatasets = async ({
       datasets,
       session
     });
-  });
 
-  // delete dataset
-  await MongoDataset.deleteMany({
-    _id: { $in: datasetIds }
+    // 权限与知识库本体同步删除，避免留下无法回收的孤立权限记录。
+    await resourcePermissionRepo.deleteByResources({
+      teamId,
+      resourceType: PerResourceTypeEnum.dataset,
+      resourceIds: datasetIds,
+      session
+    });
+
+    await MongoDataset.deleteMany(
+      {
+        teamId,
+        _id: { $in: datasetIds }
+      },
+      { session }
+    );
   });
 };
 
@@ -75,17 +127,18 @@ export const datasetDeleteProcessor: Processor<DatasetDeleteJobData> = async (jo
   const { teamId, datasetId } = job.data;
   const startTime = Date.now();
 
-  addLog.info(`[Dataset Delete] Start deleting dataset: ${datasetId} for team: ${teamId}`);
+  logger.info('Dataset delete started', { teamId, datasetId });
 
   try {
     // 1. 查找知识库及其所有子知识库
     const datasets = await findDatasetAndAllChildren({
       teamId,
-      datasetId
+      datasetId,
+      fields: '_id teamId avatar'
     });
 
     if (!datasets || datasets.length === 0) {
-      addLog.warn(`[Dataset Delete] Dataset not found: ${datasetId}`);
+      logger.warn('Dataset not found for deletion', { teamId, datasetId });
       return;
     }
 
@@ -100,13 +153,12 @@ export const datasetDeleteProcessor: Processor<DatasetDeleteJobData> = async (jo
     ).lean();
 
     if (markedForDelete.length !== datasets.length) {
-      addLog.warn(
-        `[Dataset Delete] Safety check: ${markedForDelete.length}/${datasets.length} datasets marked for deletion`,
-        {
-          markedDatasetIds: markedForDelete.map((d) => d._id),
-          totalDatasetIds: datasets.map((d) => d._id)
-        }
-      );
+      logger.warn('Dataset delete safety check mismatch', {
+        markedCount: markedForDelete.length,
+        totalCount: datasets.length,
+        markedDatasetIds: markedForDelete.map((d) => d._id),
+        totalDatasetIds: datasets.map((d) => d._id)
+      });
     }
 
     // 3. 执行真正的删除操作（只删除已经标记为 deleteTime 的数据）
@@ -115,16 +167,15 @@ export const datasetDeleteProcessor: Processor<DatasetDeleteJobData> = async (jo
       datasets
     });
 
-    addLog.info(
-      `[Dataset Delete] Successfully deleted dataset: ${datasetId} and ${datasets.length - 1} children`,
-      {
-        duration: Date.now() - startTime,
-        totalDatasets: datasets.length,
-        datasetIds: datasets.map((d) => d._id)
-      }
-    );
+    logger.info('Dataset delete completed', {
+      datasetId,
+      teamId,
+      durationMs: Date.now() - startTime,
+      totalDatasets: datasets.length,
+      datasetIds: datasets.map((d) => d._id)
+    });
   } catch (error: any) {
-    addLog.error(`[Dataset Delete] Failed to delete dataset: ${datasetId}`, error);
+    logger.error('Dataset delete failed', { teamId, datasetId, error });
     throw error;
   }
 };

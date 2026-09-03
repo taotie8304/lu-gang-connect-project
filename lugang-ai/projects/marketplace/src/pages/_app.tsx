@@ -19,7 +19,7 @@ function App({ Component, pageProps }: AppProps) {
   return (
     <>
       <Head>
-        <title>鲁港通插件市场</title>
+        <title>FastGPT Marketplace</title>
       </Head>
       <ChakraProvider theme={safeTheme}>
         <I18nInitializer />

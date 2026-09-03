@@ -1,6 +1,6 @@
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
-import { Schema, getMongoModel } from '../../common/mongo';
-import type { AppSchema as AppType } from '@fastgpt/global/core/app/type.d';
+import { defineIndex, Schema, getMongoModel } from '../../common/mongo';
+import type { AppSchemaType as AppType } from '@fastgpt/global/core/app/type';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
@@ -10,6 +10,7 @@ export const AppCollectionName = 'apps';
 
 export const chatConfigType = {
   welcomeText: String,
+  welcomeConfig: Object,
   variables: Array,
   questionGuide: Object,
   ttsConfig: Object,
@@ -54,7 +55,7 @@ const AppSchema = new Schema(
     },
     avatar: {
       type: String,
-      default: '/icon/logo.png'
+      default: '/icon/logo.svg'
     },
     intro: {
       type: String,
@@ -104,7 +105,12 @@ const AppSchema = new Schema(
     scheduledTriggerNextTime: {
       type: Date
     },
-
+    resourceRefs: {
+      skillIds: {
+        type: [String],
+        default: []
+      }
+    },
     inheritPermission: {
       type: Boolean,
       default: true
@@ -117,8 +123,11 @@ const AppSchema = new Schema(
     /** @deprecated */
     defaultPermission: Number,
     inited: Boolean,
-    teamTags: {
-      type: [String]
+
+    // 软删除标记字段
+    deleteTime: {
+      type: Date,
+      default: null // null表示未删除，有值表示删除时间
     }
   },
   {
@@ -126,17 +135,27 @@ const AppSchema = new Schema(
   }
 );
 
-AppSchema.index({ teamId: 1, updateTime: -1 });
-AppSchema.index({ teamId: 1, type: 1 });
-AppSchema.index(
-  { scheduledTriggerConfig: 1, scheduledTriggerNextTime: -1 },
-  {
+defineIndex(AppSchema, { key: { teamId: 1, updateTime: -1 } });
+defineIndex(AppSchema, { key: { teamId: 1, type: 1 } });
+defineIndex(AppSchema, { key: { teamId: 1, parentId: 1 } });
+defineIndex(AppSchema, {
+  key: { teamId: 1, deleteTime: 1, 'resourceRefs.skillIds': 1 }
+});
+
+// Schedule
+defineIndex(AppSchema, {
+  key: { scheduledTriggerConfig: 1, scheduledTriggerNextTime: -1 },
+  options: {
     partialFilterExpression: {
       scheduledTriggerConfig: { $exists: true }
     }
   }
-);
+});
+
 // Admin count
-AppSchema.index({ type: 1 });
+defineIndex(AppSchema, { key: { type: 1 } });
+defineIndex(AppSchema, { key: { deleteTime: 1 } });
+// Admin search
+defineIndex(AppSchema, { key: { name: 1 } });
 
 export const MongoApp = getMongoModel<AppType>(AppCollectionName, AppSchema);

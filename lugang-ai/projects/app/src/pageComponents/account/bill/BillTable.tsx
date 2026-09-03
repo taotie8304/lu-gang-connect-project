@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Button,
   Table,
@@ -21,7 +21,7 @@ import dayjs from 'dayjs';
 import { formatStorePrice2Read } from '@fastgpt/global/support/wallet/usage/tools';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import type { BillPayWayEnum, BillTypeEnum } from '@fastgpt/global/support/wallet/bill/constants';
 import {
   BillStatusEnum,
@@ -29,20 +29,22 @@ import {
   billTypeMap
 } from '@fastgpt/global/support/wallet/bill/constants';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MySelect from '@fastgpt/web/components/common/MySelect';
 import { usePagination } from '@fastgpt/web/hooks/usePagination';
 import QRCodePayModal, { type QRPayProps } from '@/components/support/wallet/QRCodePayModal';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import BillDetailModal from './BillDetailModal';
-import type { BillSchemaType } from '@fastgpt/global/support/wallet/bill/type';
+import { accountContentScrollStyles, accountPageRootStyles } from '@/pageComponents/account/styles';
+import type { BillItemType } from '@fastgpt/global/openapi/support/wallet/bill/api';
 
 const BillTable = () => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_bill');
   const { toast } = useToast();
   const [billType, setBillType] = useState<BillTypeEnum | undefined>(undefined);
   const [billDetailId, setBillDetailId] = useState<string>();
   const [qrPayData, setQRPayData] = useState<QRPayProps>();
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const billTypeList = useMemo(
     () =>
@@ -68,15 +70,17 @@ const BillTable = () => {
     pageSize
   } = usePagination(getBills, {
     defaultPageSize: 20,
+    pageSizeCacheKey: 'account-bill-records',
     storeToQuery: true,
     params: {
       type: billType
     },
-    refreshDeps: [billType]
+    refreshDeps: [billType],
+    scrollContainerRef
   });
 
-  const { runAsync: handleRefreshPayOrder, loading: isRefreshing } = useRequest2(
-    async (bill: BillSchemaType) => {
+  const { runAsync: handleRefreshPayOrder, loading: isRefreshing } = useRequest(
+    async (bill: BillItemType) => {
       const { status, description } = await checkBalancePayResult(bill._id);
       if (status === BillStatusEnum.SUCCESS) {
         toast({
@@ -89,6 +93,16 @@ const BillTable = () => {
           billId: bill._id,
           payWay
         });
+
+        // 企微支付直接打开 URL
+        if (payWay === 'wecom' && paymentData.payUrl) {
+          toast({
+            title: t('account_bill:wecom_not_pay_tip'),
+            status: 'success'
+          });
+          window.open(paymentData.payUrl, '_blank');
+          return;
+        }
 
         setQRPayData({
           billId: bill._id,
@@ -109,7 +123,7 @@ const BillTable = () => {
     }
   );
 
-  const { runAsync: handleCancelBill, loading: isCancelling } = useRequest2(
+  const { runAsync: handleCancelBill, loading: isCancelling } = useRequest(
     async (billId: string) => {
       await cancelBill({ billId });
     },
@@ -122,8 +136,8 @@ const BillTable = () => {
   );
 
   return (
-    <MyBox isLoading={isLoading} display={'flex'} flexDir={'column'} h={'100%'}>
-      <TableContainer flex={'1 0 0'} h={0} overflowY={'auto'}>
+    <MyBox {...accountPageRootStyles} isLoading={isLoading} display={'flex'} flexDir={'column'}>
+      <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} px={[2, 6]}>
         <Table>
           <Thead>
             <Tr>
@@ -140,8 +154,8 @@ const BillTable = () => {
                 ></MySelect>
               </Th>
               <Th>{t('account_bill:time')}</Th>
-              <Th>{t('account:support_wallet_amount')}</Th>
-              <Th>{t('account:status')}</Th>
+              <Th>{t('account_bill:support_wallet_amount')}</Th>
+              <Th>{t('account_bill:status')}</Th>
               <Th></Th>
             </Tr>
           </Thead>
@@ -153,7 +167,7 @@ const BillTable = () => {
                 <Td>
                   {item.createTime ? dayjs(item.createTime).format('YYYY/MM/DD HH:mm:ss') : '-'}
                 </Td>
-                <Td>{t('account:yuan', { amount: formatStorePrice2Read(item.price) })}</Td>
+                <Td>{t('account_bill:yuan', { amount: formatStorePrice2Read(item.price) })}</Td>
                 <Td>{t(billStatusMap[item.status]?.label as any)}</Td>
                 <Td display={'flex'} justifyContent={'end'}>
                   {item.status === 'NOTPAY' && (

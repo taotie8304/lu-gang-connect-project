@@ -1,32 +1,22 @@
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
-import type {
-  DatasetCollectionDataProcessModeEnum,
-  TrainingModeEnum
-} from '@fastgpt/global/core/dataset/constants';
-import { readFromSecondary } from '@fastgpt/service/common/mongo/utils';
+import { type TrainingModeEnum } from '@fastgpt/global/core/dataset/constants';
 import { NextAPI } from '@/service/middleware/entry';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { authDatasetCollection } from '@fastgpt/service/support/permission/dataset/auth';
 import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { Types } from '@fastgpt/service/common/mongo';
-
-type getTrainingDetailParams = {
-  collectionId: string;
-};
-
-export type getTrainingDetailResponse = {
-  trainingType: DatasetCollectionDataProcessModeEnum;
-  advancedTraining: {
-    customPdfParse: boolean;
-    imageIndex: boolean;
-    autoIndexes: boolean;
-  };
-  queuedCounts: Record<TrainingModeEnum, number>;
-  trainingCounts: Record<TrainingModeEnum, number>;
-  errorCounts: Record<TrainingModeEnum, number>;
-  trainedCount: number;
-};
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  GetCollectionTrainingDetailQuerySchema,
+  GetCollectionTrainingDetailResponseSchema,
+  type GetCollectionTrainingDetailResponseType
+} from '@fastgpt/global/openapi/core/dataset/collection/api';
+import {
+  BLOCKED_LOCK_TIME,
+  finalErrorTrainingMatch
+} from '@fastgpt/service/core/dataset/training/query';
+import { subMinutes } from 'date-fns';
 
 const defaultCounts: Record<TrainingModeEnum, number> = {
   parse: 0,
@@ -37,10 +27,20 @@ const defaultCounts: Record<TrainingModeEnum, number> = {
   imageParse: 0
 };
 
-async function handler(
-  req: ApiRequestProps<{}, getTrainingDetailParams>
-): Promise<getTrainingDetailResponse> {
-  const { collectionId } = req.query;
+const MODE_LOCK_TIMEOUT_MINUTES: Record<TrainingModeEnum, number> = {
+  parse: 10,
+  qa: 10,
+  chunk: 3,
+  image: 10,
+  auto: 10,
+  imageParse: 10
+};
+
+async function handler(req: ApiRequestProps): Promise<GetCollectionTrainingDetailResponseType> {
+  const { collectionId } = parseApiInput({
+    req,
+    querySchema: GetCollectionTrainingDetailQuerySchema
+  }).query;
 
   const { collection } = await authDatasetCollection({
     req,
@@ -56,35 +56,23 @@ async function handler(
     collectionId: new Types.ObjectId(collection._id)
   };
 
-  // Computed global queue
-  const minId = (
-    await MongoDatasetTraining.findOne(match, { sort: { _id: 1 }, select: '_id' }).lean()
-  )?._id;
+  const now = new Date();
+  const activeTrainingExpr = Object.entries(MODE_LOCK_TIMEOUT_MINUTES).map(
+    ([mode, timeoutMinutes]) => ({
+      mode,
+      lockTime: { $gt: subMinutes(now, timeoutMinutes), $lt: BLOCKED_LOCK_TIME }
+    })
+  );
 
   const [ququedCountData, trainingCountData, errorCountData, trainedCount] = (await Promise.all([
-    minId
-      ? MongoDatasetTraining.aggregate([
-          {
-            $match: {
-              _id: { $lt: new Types.ObjectId(minId) },
-              retryCount: { $gt: 0 },
-              lockTime: { $lt: new Date('2050/1/1') }
-            }
-          },
-          {
-            $group: {
-              _id: '$mode',
-              count: { $sum: 1 }
-            }
-          }
-        ])
-      : Promise.resolve([]),
     MongoDatasetTraining.aggregate([
       {
         $match: {
           ...match,
           retryCount: { $gt: 0 },
-          lockTime: { $lt: new Date('2050/1/1') }
+          lockTime: { $lt: BLOCKED_LOCK_TIME },
+          // 只统计当前集合里未被 worker 领取或锁超时后可重试的任务，避免跨知识库队列污染状态展示。
+          $nor: activeTrainingExpr
         }
       },
       {
@@ -98,8 +86,22 @@ async function handler(
       {
         $match: {
           ...match,
-          // retryCount: { $lte: 0 },
-          errorMsg: { $exists: true }
+          retryCount: { $gt: 0 },
+          $or: activeTrainingExpr
+        }
+      },
+      {
+        $group: {
+          _id: '$mode',
+          count: { $sum: 1 }
+        }
+      }
+    ]),
+    MongoDatasetTraining.aggregate([
+      {
+        $match: {
+          ...match,
+          ...finalErrorTrainingMatch
         }
       },
       {
@@ -139,19 +141,18 @@ async function handler(
     { ...defaultCounts }
   );
 
-  return {
+  return GetCollectionTrainingDetailResponseSchema.parse({
     trainingType: collection.trainingType,
     advancedTraining: {
       customPdfParse: !!collection.customPdfParse,
       imageIndex: !!collection.imageIndex,
       autoIndexes: !!collection.autoIndexes
     },
-
     queuedCounts,
     trainingCounts,
     errorCounts,
     trainedCount
-  };
+  });
 }
 
 export default NextAPI(handler);

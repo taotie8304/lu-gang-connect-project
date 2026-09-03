@@ -1,0 +1,29 @@
+/**
+ * 沙盒原子层：读取 volume-manager 连接配置。
+ *
+ * 只做环境变量校验和配置返回，不发起 volume 或 sandbox 操作。
+ */
+import { serviceEnv } from '../../../../../env';
+
+export type VolumeManagerConfig = {
+  enable: boolean;
+  url: string;
+  token?: string;
+  volumeNamePrefix: string;
+  storageSize: string;
+};
+
+/**
+ * 读取 volume-manager 的环境配置。
+ *
+ * volume-manager 只负责分配持久卷，OpenSandbox 的挂载路径由运行态固定为 /workspace。
+ */
+export function getVolumeManagerEnvConfig(): VolumeManagerConfig {
+  return {
+    enable: true,
+    url: serviceEnv.AGENT_SANDBOX_OPENSANDBOX_VOLUME_MANAGER_URL!,
+    token: serviceEnv.AGENT_SANDBOX_OPENSANDBOX_VOLUME_MANAGER_TOKEN,
+    volumeNamePrefix: serviceEnv.AGENT_SANDBOX_OPENSANDBOX_VOLUME_NAME_PREFIX,
+    storageSize: `${serviceEnv.AGENT_SANDBOX_STORAGE_SIZE_GI}Gi`
+  };
+}

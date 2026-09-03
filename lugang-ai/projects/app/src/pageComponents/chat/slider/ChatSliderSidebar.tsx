@@ -9,9 +9,12 @@ type Props = {
   title?: string;
   banner?: string;
   menuConfirmButtonText?: string;
+  footerSlot?: React.ReactNode;
 };
 
-const ChatHistorySidebar = ({ title, banner, menuConfirmButtonText }: Props) => {
+export const CHAT_HISTORY_SLIDER_PC_WIDTH = '256px';
+
+const ChatHistorySidebar = ({ title, banner, menuConfirmButtonText, footerSlot }: Props) => {
   const theme = useTheme();
 
   return (
@@ -20,13 +23,17 @@ const ChatHistorySidebar = ({ title, banner, menuConfirmButtonText }: Props) => 
       flexDirection={'column'}
       w={'100%'}
       h={'100%'}
+      px={4}
+      gap={[0, 3]}
       bg={'white'}
       borderRight={['', theme.borders.base]}
+      borderRightColor={['', 'myGray.200']}
       whiteSpace={'nowrap'}
     >
       <ChatSliderHeader title={title} banner={banner} />
       <ChatSliderMenu menuConfirmButtonText={menuConfirmButtonText} />
       <ChatSliderList />
+      {footerSlot}
     </MyBox>
   );
 };

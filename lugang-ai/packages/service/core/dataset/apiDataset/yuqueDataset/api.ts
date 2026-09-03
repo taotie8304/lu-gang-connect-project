@@ -1,12 +1,14 @@
 import type {
   APIFileItemType,
-  ApiFileReadContentResponse,
-  YuqueServer,
+  ApiFileReadContentResponseType,
+  YuqueServerType,
   ApiDatasetDetailResponse
 } from '@fastgpt/global/core/dataset/apiDataset/type';
-import axios, { type Method } from 'axios';
-import { addLog } from '../../../../common/system/log';
+import { type Method } from 'axios';
 import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
+import { createProxyAxios } from '../../../../common/api/axios';
+import { getLogger, LogCategories } from '../../../../common/logger';
+import { serviceEnv } from '../../../../env';
 
 type ResponseDataType = {
   success: boolean;
@@ -39,10 +41,11 @@ type YuqueTocListResponse = {
   parent_uuid: string;
 }[];
 
-const yuqueBaseUrl = process.env.YUQUE_DATASET_BASE_URL || 'https://www.yuque.com';
+const yuqueBaseUrl = serviceEnv.YUQUE_DATASET_BASE_URL;
 
-export const useYuqueDatasetRequest = ({ yuqueServer }: { yuqueServer: YuqueServer }) => {
-  const instance = axios.create({
+export const useYuqueDatasetRequest = ({ yuqueServer }: { yuqueServer: YuqueServerType }) => {
+  const logger = getLogger(LogCategories.MODULE.DATASET.API_DATASET);
+  const instance = createProxyAxios({
     baseURL: yuqueBaseUrl,
     timeout: 60000, // 超时时间
     headers: {
@@ -55,13 +58,13 @@ export const useYuqueDatasetRequest = ({ yuqueServer }: { yuqueServer: YuqueServ
    */
   const checkRes = (data: ResponseDataType) => {
     if (data === undefined) {
-      addLog.info('yuque dataset data is empty');
+      logger.warn('Yuque dataset response data is empty');
       return Promise.reject('服务器异常');
     }
     return data.data;
   };
   const responseError = (err: any) => {
-    console.log('error->', '请求错误', err);
+    logger.error('Yuque dataset request failed', { error: err });
 
     if (!err) {
       return Promise.reject({ message: '未知错误' });
@@ -200,7 +203,8 @@ export const useYuqueDatasetRequest = ({ yuqueServer }: { yuqueServer: YuqueServ
     apiFileId
   }: {
     apiFileId: string;
-  }): Promise<ApiFileReadContentResponse> => {
+    usageId?: string;
+  }): Promise<ApiFileReadContentResponseType> => {
     if (typeof apiFileId !== 'string') return Promise.reject('Invalid file id');
     const [parentId, fileId] = apiFileId.split(/-(.*?)-(.*)/);
 

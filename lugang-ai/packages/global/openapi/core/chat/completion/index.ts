@@ -1,0 +1,696 @@
+import type { OpenAPIPath } from '../../../type';
+import { DevApiTagsMap, SystemOpenApiTagMap } from '../../../tag';
+import {
+  ChatHomeBodySchema,
+  ChatWorkflowSseResponseSchema,
+  ChatTestPropsSchema,
+  CompletionsPropsSchema,
+  CompletionsResponseSchema
+} from './api';
+
+/* =============== Request examples =============== */
+
+const basicRequestExample = {
+  chatId: 'my_chatId',
+  stream: false,
+  detail: false,
+  responseChatItemId: 'my_responseChatItemId',
+  variables: {
+    uid: 'asdfadsfasfd2323',
+    name: '张三'
+  },
+  messages: [
+    {
+      role: 'user',
+      content: '导演是谁'
+    }
+  ]
+};
+
+const imageFileRequestExample = {
+  chatId: 'abcd',
+  stream: false,
+  messages: [
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: '导演是谁' },
+        { type: 'image_url', image_url: { url: '图片链接' } },
+        {
+          type: 'file_url',
+          name: '文件名',
+          url: '文档链接，支持 txt md html word pdf ppt csv excel'
+        }
+      ]
+    }
+  ]
+};
+
+const userSelectInteractiveRequestExample = {
+  stream: true,
+  detail: true,
+  chatId: '22222231',
+  messages: [{ role: 'user', content: 'Confirm' }]
+};
+
+const userInputInteractiveRequestExample = {
+  stream: true,
+  detail: true,
+  chatId: '22231',
+  messages: [
+    {
+      role: 'user',
+      content: '{"测试 1":"这是输入框的内容","测试 2":666}'
+    }
+  ]
+};
+
+/* =============== Response examples =============== */
+
+// detail=false, stream=false
+const detailFalseStreamFalseExample = {
+  id: 'adsfasf',
+  title: '铃芽之旅导演',
+  model: '',
+  usage: {
+    prompt_tokens: 1,
+    completion_tokens: 1,
+    total_tokens: 1
+  },
+  choices: [
+    {
+      message: {
+        role: 'assistant',
+        content: '电影《铃芽之旅》的导演是新海诚。'
+      },
+      finish_reason: 'stop',
+      index: 0
+    }
+  ]
+};
+
+// detail=true, stream=false
+const detailTrueStreamFalseExample = {
+  responseData: [
+    {
+      moduleName: 'Dataset Search',
+      price: 1.2000000000000002,
+      model: 'Embedding-2',
+      tokens: 6,
+      similarity: 0.61,
+      limit: 3
+    },
+    {
+      moduleName: 'AI Chat',
+      price: 454.5,
+      model: 'FastAI-4k',
+      tokens: 303,
+      question: '导演是谁',
+      answer: '电影《铃芽之旅》的导演是新海诚。',
+      maxToken: 2050,
+      quoteList: [
+        {
+          dataset_id: '646627f4f7b896cfd8910e38',
+          id: '8099',
+          q: '本作的主人公是谁？',
+          a: '本作的主人公是名叫铃芽的少女。',
+          source: '手动修改'
+        },
+        {
+          dataset_id: '646627f4f7b896cfd8910e38',
+          id: '19339',
+          q: '电影《铃芽之旅》的导演是谁？',
+          a: '电影《铃芽之旅》的导演是新海诚。',
+          source: '手动修改'
+        }
+      ],
+      completeMessages: [
+        {
+          obj: 'System',
+          value:
+            '下面是知识库内容:\n1. [本作的主人公是谁？\n本作的主人公是名叫铃芽的少女。]\n2. [电影《铃芽之旅》的导演是谁？\n电影《铃芽之旅》的导演是新海诚。]\n'
+        },
+        { obj: 'Human', value: '导演是谁' },
+        { obj: 'AI', value: '电影《铃芽之旅》的导演是新海诚。' }
+      ]
+    }
+  ],
+  newVariables: {
+    uid: 'asdfadsfasfd2323',
+    name: '张三'
+  },
+  id: '',
+  title: '铃芽之旅导演',
+  model: '',
+  usage: {
+    prompt_tokens: 1,
+    completion_tokens: 1,
+    total_tokens: 1
+  },
+  choices: [
+    {
+      message: {
+        role: 'assistant',
+        content: '电影《铃芽之旅》的导演是新海诚。'
+      },
+      finish_reason: 'stop',
+      index: 0
+    }
+  ]
+};
+
+/** 构造交互节点用户选择的非流式响应示例，v1 额外包含兼容 type 字段。 */
+const createInteractiveUserSelectResponseExample = (includeLegacyType: boolean) => ({
+  id: 'chatId',
+  model: '',
+  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 1 },
+  choices: [
+    {
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            ...(includeLegacyType && { type: 'interactive' }),
+            interactive: {
+              type: 'userSelect',
+              params: {
+                description: '测试',
+                userSelectOptions: [
+                  { value: 'Confirm', key: 'option1' },
+                  { value: 'Cancel', key: 'option2' }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      finish_reason: 'stop',
+      index: 0
+    }
+  ]
+});
+
+/** 构造交互节点表单输入的非流式响应示例，v1 额外包含兼容 type 字段。 */
+const createInteractiveUserInputResponseExample = (includeLegacyType: boolean) => ({
+  id: 'chatId',
+  model: '',
+  usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 1 },
+  choices: [
+    {
+      message: {
+        role: 'assistant',
+        content: [
+          {
+            ...(includeLegacyType && { type: 'interactive' }),
+            interactive: {
+              type: 'userInput',
+              params: {
+                description: '测试',
+                inputForm: [
+                  {
+                    type: 'input',
+                    key: '测试 1',
+                    label: '测试 1',
+                    description: '',
+                    value: '',
+                    defaultValue: '',
+                    valueType: 'string',
+                    required: false,
+                    list: [{ label: '', value: '' }]
+                  },
+                  {
+                    type: 'numberInput',
+                    key: '测试 2',
+                    label: '测试 2',
+                    description: '',
+                    value: '',
+                    defaultValue: '',
+                    valueType: 'number',
+                    required: false,
+                    list: [{ label: '', value: '' }]
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      finish_reason: 'stop',
+      index: 0
+    }
+  ]
+});
+
+const v1InteractiveUserSelectResponseExample = createInteractiveUserSelectResponseExample(true);
+const v1InteractiveUserInputResponseExample = createInteractiveUserInputResponseExample(true);
+const v2InteractiveUserSelectResponseExample = createInteractiveUserSelectResponseExample(false);
+const v2InteractiveUserInputResponseExample = createInteractiveUserInputResponseExample(false);
+
+// detail=false, stream=true
+// 注：示例为简化版，省略了 object/created 等占位字段；真实响应每行还会带这些字段
+const detailFalseStreamTrueExample = `data: {"choices":[{"delta":{"content":""}}]}
+data: {"choices":[{"delta":{"content":"电影"}}]}
+data: {"choices":[{"delta":{"content":"《铃芽之旅》"}}]}
+data: {"choices":[{"delta":{"content":"的导演"}}]}
+data: {"choices":[{"delta":{"content":"是新海诚。"}}]}
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+data: [DONE]`;
+
+// detail=true, stream=true
+const detailTrueStreamTrueExample = `event: flowNodeStatus
+data: {"status":"running","name":"知识库搜索"}
+
+event: flowNodeStatus
+data: {"status":"running","name":"AI 对话"}
+
+event: answer
+data: {"choices":[{"delta":{"content":"电影"}}]}
+
+event: answer
+data: {"choices":[{"delta":{"content":"《铃芽之旅》"}}]}
+
+event: answer
+data: {"choices":[{"delta":{"content":"的导演是新海诚。"}}]}
+
+event: answer
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+event: chatTitle
+data: {"title":"铃芽之旅导演"}
+
+event: answer
+data: [DONE]
+
+event: flowResponses
+data: [{"moduleName":"知识库搜索","runningTime":1.78}, ...]`;
+
+// v2 detail=true, stream=true
+const v2DetailTrueStreamTrueExample = `event: flowNodeStatus
+data: {"status":"running","name":"知识库搜索"}
+
+event: answer
+data: {"choices":[{"delta":{"content":"电影"}}]}
+
+event: answer
+data: {"choices":[{"delta":{"content":"《铃芽之旅》的导演是新海诚。"}}]}
+
+event: flowNodeResponse
+data: {"moduleName":"知识库搜索","moduleType":"datasetSearchNode","runningTime":1.78}
+
+event: flowNodeResponse
+data: {"moduleName":"AI 对话","moduleType":"chatNode","runningTime":1.86}
+
+event: updateVariables
+data: {"lastQuestion":"导演是谁"}
+
+event: workflowDuration
+data: {"durationSeconds":2.41}
+
+event: chatTitle
+data: {"title":"铃芽之旅导演"}
+
+event: answer
+data: {"choices":[{"delta":{},"finish_reason":"stop"}]}
+
+event: answer
+data: [DONE]`;
+
+// 交互节点 stream 响应
+const interactiveStreamExample = `event: interactive
+data: {"interactive":{"type":"userSelect","params":{...}}}
+
+event: answer
+data: [DONE]`;
+
+/* =============== OpenAPI Path =============== */
+
+export const ChatCompletionPath: OpenAPIPath = {
+  '/v1/chat/completions': {
+    post: {
+      tags: [DevApiTagsMap.chatController, SystemOpenApiTagMap.chatController],
+      deprecated: true,
+      summary: '发起会话v1',
+      description: `v1 对话接口兼容 GPT 的接口。如果你的项目使用的是标准的 GPT 官方接口，可以直接通过修改 BaseUrl 和 Authorization 来访问 FastGPT 应用。
+
+**注意事项**
+
+- 传入的 \`model\`、\`temperature\` 等参数字段均无效，这些字段由编排决定，不会根据 API 参数改变。
+- 不会返回实际消耗 \`Token\` 值。如果需要，可以设置 \`detail=true\`，并手动计算 \`responseData\` 里的 \`tokens\` 值。
+
+**chatId 行为**
+
+- 不传入（或为空）：不使用 FastGPT 提供的上下文功能，完全通过传入的 \`messages\` 构建上下文。
+- 非空字符串：使用 chatId 进行对话，自动从 FastGPT 数据库取会话中的对话，并使用 \`messages\` 数组最后一个内容作为用户问题，其余 message 会被忽略。请自行确保 chatId 唯一，长度小于 250。
+
+**stream / detail 组合**
+
+- \`detail=false, stream=false\`：返回精简 JSON（仅 \`choices/usage/id\` 等）。
+- \`detail=false, stream=true\`：返回兼容 GPT 的 SSE 流，只包含答案 chunk 和结束标记。
+- \`detail=true, stream=false\`：在 JSON 中额外包含 \`responseData\`（各节点详细信息）和 \`newVariables\`。
+- \`detail=true, stream=true\`：返回多 event 的 SSE 流（\`answer\` / \`flowNodeStatus\` / \`flowResponses\` 等）。
+
+**event 取值**（\`stream=true\` 且 \`detail=true\` 场景下才会返回非 answer 的 event）
+
+- \`answer\`：返回给客户端的文本（最终会算作回答）。
+- \`chatTitle\`：根据本轮用户问题生成的对话标题，payload 为 \`{"title":"..."}\`。仅 \`detail=true\`、未命名会话标题生成成功时返回；生成失败、手动标题或已有有效标题不会返回。工作流工具应用会使用本轮运行时间作为默认标题。
+- \`fastAnswer\`：指定回复返回给客户端的文本（最终会算作回答）。
+- \`toolCall\` / \`toolParams\` / \`toolResponse\`：工具相关。
+- \`flowNodeStatus\`：运行到的节点状态。
+- \`flowResponses\`：节点完整响应。
+- \`updateVariables\`：更新变量。
+- \`interactive\`：交互节点配置。
+- \`error\`：报错。
+
+**交互节点**
+
+如果工作流中包含交互节点，需要设置 \`detail=true\`：
+
+- \`stream=true\`：可从 \`event=interactive\` 数据中获取交互节点的配置。
+- \`stream=false\`：可从 \`choices[].message.content\` 中获取包含 \`interactive\` 字段的元素。
+
+返回给外部调用方的 \`interactive\` 是展示配置，只包含 \`type\` 和 \`params\`；\`entryNodeIds\` / \`memoryEdges\` / \`nodeOutputs\` / \`nodeResponseId\` 等内部运行态字段不会返回。若内部命中 children / loop / tool 包装交互，接口会返回最深层面向用户的交互节点。
+
+接收到交互节点信息后，可以根据数据进行 UI 渲染并引导用户输入/选择，然后再次调用本接口继续工作流：
+
+- 用户选择：直接将选择结果作为 user message 的 content 传入。
+- 表单输入：将输入内容以对象形式序列化为字符串，作为 user message 的 content 传入；务必确保 \`chatId\` 一致。
+
+---
+
+## SSE 响应示例（\`stream=true\`）
+
+OpenAPI 渲染器对 \`text/event-stream\` 示例支持有限，因此 SSE 示例在此以 markdown 形式给出。
+
+> 下方示例为简化版本（省略了 \`id\`/\`object\`/\`created\` 等占位字段，\`...\` 表示省略的内容）。\`interactive.params\` 的完整结构请参考下方 Responses → application/json 中的 \`interactiveUserSelect\` / \`interactiveUserInput\` example。
+
+### \`detail=false, stream=true\`
+
+兼容 GPT 的 SSE 流。回答 chunk 仅包含 \`data\`（无 \`event\`），不会返回 \`chatTitle\`：
+
+\`\`\`text
+${detailFalseStreamTrueExample}
+\`\`\`
+
+### \`detail=true, stream=true\`
+
+包含 \`flowNodeStatus\` / \`answer\` / \`flowResponses\` 等多种 event：
+
+\`\`\`text
+${detailTrueStreamTrueExample}
+\`\`\`
+
+### 交互节点 stream 响应
+
+\`detail=true, stream=true\` 时，工作流命中交互节点：
+
+\`\`\`text
+${interactiveStreamExample}
+\`\`\`
+`,
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: CompletionsPropsSchema,
+            examples: {
+              basic: {
+                summary: '基础请求示例',
+                value: basicRequestExample
+              },
+              imageFile: {
+                summary: '图片/文件请求示例',
+                description:
+                  '仅 messages 有部分区别，其他参数一致。目前不支持上传文件，需自行上传到对象存储后传入文件链接',
+                value: imageFileRequestExample
+              },
+              interactiveUserSelect: {
+                summary: '交互节点-用户选择 继续运行',
+                description: '直接传递选择结果作为 user message 的 content',
+                value: userSelectInteractiveRequestExample
+              },
+              interactiveUserInput: {
+                summary: '交互节点-表单输入 继续运行',
+                description:
+                  '将表单输入内容以对象形式序列化成字符串，作为 user message 的 content。对象 key 对应表单 key',
+                value: userInputInteractiveRequestExample
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              schema: CompletionsResponseSchema,
+              examples: {
+                detailFalseStreamFalse: {
+                  summary: 'detail=false, stream=false 响应',
+                  description: '精简 JSON 响应，仅包含基础字段',
+                  value: detailFalseStreamFalseExample
+                },
+                detailTrueStreamFalse: {
+                  summary: 'detail=true, stream=false 响应',
+                  description:
+                    '在精简响应基础上额外包含 responseData（各节点详细信息）和 newVariables',
+                  value: detailTrueStreamFalseExample
+                },
+                interactiveUserSelect: {
+                  summary: '交互节点-用户选择 响应',
+                  description:
+                    '工作流命中用户选择交互节点。从 choices[].message.content 中获取包含 interactive 字段的元素',
+                  value: v1InteractiveUserSelectResponseExample
+                },
+                interactiveUserInput: {
+                  summary: '交互节点-表单输入 响应',
+                  description:
+                    '工作流命中表单输入交互节点。从 choices[].message.content 中获取包含 interactive 字段的元素',
+                  value: v1InteractiveUserInputResponseExample
+                }
+              }
+            },
+            'text/event-stream': {
+              schema: ChatWorkflowSseResponseSchema,
+              examples: {}
+            }
+          }
+        }
+      }
+    }
+  },
+  '/v2/chat/completions': {
+    post: {
+      tags: [DevApiTagsMap.chatController, SystemOpenApiTagMap.chatController],
+      summary: '发起对话 v2',
+      description: `v2 对话接口兼容 GPT 的接口规范。
+
+**密钥使用规范**
+
+- 使用 APIKey 鉴权。调用 \`chat/completions\` 时，推荐在请求体传入 \`body.appId\`。
+- 为兼容 OpenAI SDK，也支持 \`Authorization: Bearer <apiKey>-<appId>\`，此时不需要传递 \`body.appId\`。
+- 有些 SDK 调用时，\`BaseUrl\` 需要添加 \`v1\` 路径，有些不需要，如果出现 404 情况，可补充 \`v1\` 重试。
+- appId 的优先级：\`body.appId\` , \`<apiKey>-<appId>\` , \`apikey 关联的 appId(旧版适配)\`
+
+**注意事项**
+
+- 如需通过 \`authProxy\` 代理团队成员身份，需要团队所有者在创建或编辑该 key 时开启 \`authProxy\`；代理身份仍需要具备目标应用和会话权限。（仅适用于 FastGPT >= v4.15.0）
+- 传入的 \`model\`，\`temperature\` 等参数字段均无效，这些字段由编排决定，不会根据 API 参数改变。
+- 不会返回实际消耗 \`Token\` 值，如果需要，可以设置 \`detail=true\`，并手动计算 \`responseData\` 里的 \`tokens\` 值。
+
+**chatId 行为**
+
+- 不传入（或为空）：不使用 FastGPT 提供的上下文功能，完全通过传入的 \`messages\` 构建上下文。
+- 非空字符串：使用 chatId 进行对话，自动从 FastGPT 数据库取会话中的对话，并使用 \`messages\` 数组最后一个内容作为用户问题，其余 message 会被忽略。请自行确保 chatId 唯一，长度小于 250。
+
+**stream / detail 组合**
+
+- \`detail=false, stream=false\`：返回精简 JSON（仅 \`choices/usage/id\` 等）。
+- \`detail=false, stream=true\`：返回兼容 GPT 的 SSE 流，只包含答案 chunk 和结束标记。
+- \`detail=true, stream=false\`：在 JSON 中额外包含 \`responseData\`（各节点详细信息）和 \`newVariables\`。
+- \`detail=true, stream=true\`：返回多 event 的 SSE 流（\`answer\` / \`flowNodeStatus\` / \`flowNodeResponse\` / \`workflowDuration\` 等）。
+
+**event 取值**（\`stream=true\` 且 \`detail=true\` 场景下才会返回非 answer 的 event）
+
+- \`answer\`：返回给客户端的文本（最终会算作回答）。
+- \`chatTitle\`：根据本轮用户问题生成的对话标题，payload 为 \`{"title":"..."}\`。仅 \`detail=true\`、未命名会话标题生成成功时返回；生成失败、手动标题或已有有效标题不会返回。工作流工具应用会使用本轮运行时间作为默认标题。
+- \`fastAnswer\`：指定回复返回给客户端的文本（最终会算作回答）。
+- \`toolCall\` / \`toolParams\` / \`toolResponse\`：工具相关。
+- \`flowNodeStatus\`：运行到的节点状态。
+- \`flowNodeResponse\`：v2 节点响应详情。与 v1 的 \`flowResponses\` 不同，v2 会按节点逐条推送（包括 Agent、工具、Loop、Parallel 等内部节点），客户端应按 \`id + parentId\` 追加或合并，而不是等待最后一次性数组。
+- \`workflowDuration\`：工作流本轮运行耗时，payload 为 \`{"durationSeconds": number}\`。
+- \`updateVariables\`：更新变量。
+- \`interactive\`：交互节点配置。
+- \`plan\` / \`planStatus\`：Agent 计划和计划状态（仅相关 Agent 节点可能返回）。
+- \`skillCall\` / \`sandboxStatus\`：技能调用和沙盒状态（仅相关能力启用时可能返回）。
+- \`error\`：报错。
+
+Share 调用沿用相同的逐条事件协议，但会先按分享配置过滤公共字段；引用、运行状态和技能引用分别受 \`showCite\`、\`showRunningStatus\`、\`showSkillReferences\` 控制，知识库源文件下载仍受分享下载权限控制。
+
+**交互节点**
+
+如果工作流中包含交互节点，需要设置 \`detail=true\`：
+
+- \`stream=true\`：可从 \`event=interactive\` 数据中获取交互节点的配置。
+- \`stream=false\`：可从 \`choices[].message.content\` 中获取包含 \`interactive\` 字段的元素。
+
+返回给外部调用方的 \`interactive\` 是展示配置，只包含 \`type\` 和 \`params\`；\`entryNodeIds\` / \`memoryEdges\` / \`nodeOutputs\` / \`nodeResponseId\` 等内部运行态字段不会返回。若内部命中 children / loop / tool 包装交互，接口会返回最深层面向用户的交互节点。
+
+接收到交互节点信息后，可以根据数据进行 UI 渲染并引导用户输入/选择，然后再次调用本接口继续工作流：
+
+- 用户选择：直接将选择结果作为 user message 的 content 传入。
+- 表单输入：将输入内容以对象形式序列化为字符串，作为 user message 的 content 传入；务必确保 \`chatId\` 一致。
+
+---
+
+## SSE 响应示例（\`stream=true\`）
+
+OpenAPI 渲染器对 \`text/event-stream\` 示例支持有限，因此 SSE 示例在此以 markdown 形式给出。
+
+> 下方示例为简化版本（省略了 \`id\`/\`object\`/\`created\` 等占位字段，\`...\` 表示省略的内容）。\`interactive.params\` 的完整结构请参考下方 Responses → application/json 中的 \`interactiveUserSelect\` / \`interactiveUserInput\` example。
+
+### \`detail=false, stream=true\`
+
+兼容 GPT 的 SSE 流。回答 chunk 仅包含 \`data\`（无 \`event\`），不会返回 \`chatTitle\`：
+
+\`\`\`text
+${detailFalseStreamTrueExample}
+\`\`\`
+
+### \`detail=true, stream=true\`
+
+包含 \`flowNodeStatus\` / \`answer\` / \`flowNodeResponse\` / \`workflowDuration\` 等多种 event：
+
+\`\`\`text
+${v2DetailTrueStreamTrueExample}
+\`\`\`
+
+### 交互节点 stream 响应
+
+\`detail=true, stream=true\` 时，工作流命中交互节点：
+
+\`\`\`text
+${interactiveStreamExample}
+\`\`\`
+`,
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: CompletionsPropsSchema,
+            examples: {
+              basic: {
+                summary: '基础请求示例',
+                value: basicRequestExample
+              },
+              imageFile: {
+                summary: '图片/文件请求示例',
+                description:
+                  '仅 messages 有部分区别，其他参数一致。目前不支持上传文件，需自行上传到对象存储后传入文件链接',
+                value: imageFileRequestExample
+              },
+              interactiveUserSelect: {
+                summary: '交互节点-用户选择 继续运行',
+                description: '直接传递选择结果作为 user message 的 content',
+                value: userSelectInteractiveRequestExample
+              },
+              interactiveUserInput: {
+                summary: '交互节点-表单输入 继续运行',
+                description:
+                  '将表单输入内容以对象形式序列化成字符串，作为 user message 的 content。对象 key 对应表单 key',
+                value: userInputInteractiveRequestExample
+              }
+            }
+          }
+        }
+      },
+      responses: {
+        200: {
+          content: {
+            'application/json': {
+              schema: CompletionsResponseSchema,
+              examples: {
+                detailFalseStreamFalse: {
+                  summary: 'detail=false, stream=false 响应',
+                  description: '精简 JSON 响应，仅包含基础字段',
+                  value: detailFalseStreamFalseExample
+                },
+                detailTrueStreamFalse: {
+                  summary: 'detail=true, stream=false 响应',
+                  description:
+                    '在精简响应基础上额外包含 responseData（各节点详细信息）和 newVariables',
+                  value: detailTrueStreamFalseExample
+                },
+                interactiveUserSelect: {
+                  summary: '交互节点-用户选择 响应',
+                  description:
+                    '工作流命中用户选择交互节点。从 choices[].message.content 中获取包含 interactive 字段的元素',
+                  value: v2InteractiveUserSelectResponseExample
+                },
+                interactiveUserInput: {
+                  summary: '交互节点-表单输入 响应',
+                  description:
+                    '工作流命中表单输入交互节点。从 choices[].message.content 中获取包含 interactive 字段的元素',
+                  value: v2InteractiveUserInputResponseExample
+                }
+              }
+            },
+            'text/event-stream': {
+              schema: ChatWorkflowSseResponseSchema,
+              examples: {}
+            }
+          }
+        }
+      }
+    }
+  },
+  '/core/chat/chatTest': {
+    post: {
+      tags: [DevApiTagsMap.chatController],
+      summary: '测试对话（调试）',
+      description: `调试运行 Agent / 工作流。接收完整的节点、边和聊天配置，按测试模式执行一次工作流，通过 SSE 流式返回运行结果与节点状态。仅用于 FastGPT 编排页面的调试预览，不建议作为对外接口使用。
+
+响应为 SSE 流，event 结构与 \`/v1/chat/completions\` \`detail=true, stream=true\` 一致，包括 \`answer\` / \`flowNodeStatus\` / \`flowResponses\` / \`interactive\` 等。`,
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: ChatTestPropsSchema
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: 'SSE 流式响应',
+          content: {
+            'text/event-stream': {
+              schema: ChatWorkflowSseResponseSchema,
+              examples: {}
+            }
+          }
+        }
+      }
+    }
+  },
+  '/proApi/core/chat/chatHome': {
+    post: {
+      tags: [DevApiTagsMap.chatController],
+      summary: '应用聊天及工作流执行',
+      description: '使用主页聊天配置和临时工作流执行一次应用对话，返回 SSE 流',
+      requestBody: {
+        content: {
+          'application/json': {
+            schema: ChatHomeBodySchema
+          }
+        }
+      },
+      responses: {
+        200: {
+          description: 'SSE 流式响应',
+          content: {
+            'text/event-stream': {
+              schema: ChatWorkflowSseResponseSchema
+            }
+          }
+        }
+      }
+    }
+  }
+};

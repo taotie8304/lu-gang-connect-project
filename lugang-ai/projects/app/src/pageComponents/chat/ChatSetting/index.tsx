@@ -4,12 +4,12 @@ import { ChatSettingTabOptionEnum, ChatSidebarPaneEnum } from '@/pageComponents/
 import dynamic from 'next/dynamic';
 import SettingTabs from '@/pageComponents/chat/ChatSetting/SettingTabs';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { Box, Flex, type FlexProps } from '@chakra-ui/react';
+import { Box, Flex } from '@chakra-ui/react';
 import { useContextSelector } from 'use-context-selector';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
 import NextHead from '@/components/common/NextHead';
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import ChatSliderMobileDrawer from '@/pageComponents/chat/slider/ChatSliderMobileDrawer';
 import { useTranslation } from 'react-i18next';
 import { useMount } from 'ahooks';
@@ -43,8 +43,8 @@ const ChatSetting = () => {
   );
   const onOpenSlider = useContextSelector(ChatContext, (v) => v.onOpenSlider);
 
-  const chatSettings = useContextSelector(ChatSettingContext, (v) => v.chatSettings);
-  const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
+  const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
+  const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
 
   const handleTabChange = useCallback(
     (tab: ChatSettingTabOptionEnum) => {
@@ -63,9 +63,8 @@ const ChatSetting = () => {
   );
 
   useMount(() => {
-    // 鲁港通 - 检查管理权限
-    if (!userInfo?.team.permission.hasManagePer) {
-      handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
+    if (!feConfigs?.isPlus || !userInfo?.team.permission.hasManagePer) {
+      handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
     }
   });
 
@@ -76,9 +75,8 @@ const ChatSetting = () => {
       <Flex flexDir="column" h="100%">
         {!isPc && (
           <>
-            <Flex borderBottom="sm" color="myGray.900" py={2} flexShrink="0">
+            <Flex borderBottom="sm" color="myGray.900" py={2} px={3} flexShrink="0">
               <MyIcon
-                ml={3}
                 w="20px"
                 color="myGray.900"
                 name="core/chat/sidebar/menu"

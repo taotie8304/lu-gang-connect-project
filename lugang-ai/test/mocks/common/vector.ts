@@ -1,3 +1,4 @@
+import { SEEKDB_ADDRESS } from '@fastgpt/service/common/vectorDB/constants';
 import { vi } from 'vitest';
 
 /**
@@ -28,15 +29,17 @@ export const mockGetVectorCountByTeamId = vi.fn().mockResolvedValue(100);
 
 export const mockGetVectorCount = vi.fn().mockResolvedValue(50);
 
-const MockVectorCtrl = vi.fn().mockImplementation(() => ({
-  init: mockVectorInit,
-  insert: mockVectorInsert,
-  delete: mockVectorDelete,
-  embRecall: mockVectorEmbRecall,
-  getVectorDataByTime: mockGetVectorDataByTime,
-  getVectorCountByTeamId: mockGetVectorCountByTeamId,
-  getVectorCount: mockGetVectorCount
-}));
+const MockVectorCtrl = vi.fn().mockImplementation(function () {
+  return {
+    init: mockVectorInit,
+    insert: mockVectorInsert,
+    delete: mockVectorDelete,
+    embRecall: mockVectorEmbRecall,
+    getVectorDataByTime: mockGetVectorDataByTime,
+    getVectorCountByTeamId: mockGetVectorCountByTeamId,
+    getVectorCount: mockGetVectorCount
+  };
+});
 
 // Mock PgVectorCtrl
 vi.mock('@fastgpt/service/common/vectorDB/pg', () => ({
@@ -57,10 +60,15 @@ vi.mock('@fastgpt/service/common/vectorDB/milvus', () => ({
 vi.mock('@fastgpt/service/common/vectorDB/constants', () => ({
   DatasetVectorDbName: 'fastgpt',
   DatasetVectorTableName: 'modeldata',
+  DatasetVectorTableNameV2: 'modeldata_v2',
+  FULL_TEXT_WRITE_BATCH_SIZE: 50,
+  getVectorType: () => 'pg',
+  getDatasetVectorTableName: () => 'modeldata',
   PG_ADDRESS: 'mock://pg',
   OCEANBASE_ADDRESS: undefined,
   MILVUS_ADDRESS: undefined,
-  MILVUS_TOKEN: undefined
+  MILVUS_TOKEN: undefined,
+  SEEKDB_ADDRESS: undefined
 }));
 
 // Export mocks for test assertions

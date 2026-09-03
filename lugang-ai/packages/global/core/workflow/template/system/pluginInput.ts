@@ -1,4 +1,4 @@
-import { i18nT } from '../../../../../web/i18n/utils';
+import { i18nT } from '../../../../common/i18n/utils';
 import { FlowNodeTemplateTypeEnum } from '../../constants';
 import { FlowNodeTypeEnum } from '../../node/constant';
 import { type FlowNodeTemplateType } from '../../type/node';
@@ -12,6 +12,8 @@ export const PluginInputModule: FlowNodeTemplateType = {
   unique: true,
   forbidDelete: true,
   avatar: 'core/workflow/template/workflowStart',
+  avatarLinear: 'core/workflow/template/workflowStartLinear',
+  colorSchema: 'blue',
   name: i18nT('workflow:plugin_input'),
   intro: i18nT('workflow:intro_plugin_input'),
   showStatus: false,

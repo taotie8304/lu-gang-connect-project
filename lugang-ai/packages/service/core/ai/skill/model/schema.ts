@@ -1,0 +1,139 @@
+import { connectionMongo, defineIndex, getMongoModel } from '../../../../common/mongo';
+import {
+  agentSkillsCollectionName,
+  agentSkillsVersionCollectionName,
+  AgentSkillSourceEnum,
+  AgentSkillCategoryEnum,
+  AgentSkillCreationStatusEnum,
+  AgentSkillTypeEnum
+} from '@fastgpt/global/core/ai/skill/constants';
+import {
+  TeamCollectionName,
+  TeamMemberCollectionName
+} from '@fastgpt/global/support/user/team/constant';
+import type { AgentSkillSchemaType } from '@fastgpt/global/core/ai/skill/type';
+
+export type MongoAgentSkillSchemaType = AgentSkillSchemaType;
+
+const { Schema } = connectionMongo;
+
+export const RuntimeSkillMetadataSchema = new Schema(
+  {
+    name: {
+      type: String,
+      required: true
+    },
+    description: {
+      type: String,
+      default: ''
+    },
+    path: {
+      type: String,
+      required: true
+    }
+  },
+  { _id: false }
+);
+
+/**
+ * Agent Skill 主表结构。
+ *
+ * Skill 与 Folder 共用一张表：type 区分节点类型，parentId 表达目录层级；
+ * 版本字段只记录当前激活版本与对象存储位置，历史版本明细由 version 模块维护。
+ */
+const AgentSkillsSchema = new Schema({
+  // 文件夹层级：folder 和 skill 都通过 parentId 组织在同一棵树里。
+  parentId: {
+    type: Schema.Types.ObjectId,
+    ref: agentSkillsCollectionName,
+    default: null
+  },
+  type: {
+    type: String,
+    enum: Object.values(AgentSkillTypeEnum),
+    default: AgentSkillTypeEnum.skill
+  },
+  // 权限继承：每个节点都持有完整有效 ACL，关闭后形成独立子树。
+  inheritPermission: {
+    type: Boolean,
+    default: true
+  },
+  source: {
+    type: String,
+    enum: Object.values(AgentSkillSourceEnum),
+    required: true
+  },
+  name: {
+    type: String,
+    required: true
+  },
+  description: {
+    type: String,
+    default: ''
+  },
+  avatar: {
+    type: String
+  },
+  teamId: {
+    type: Schema.Types.ObjectId,
+    ref: TeamCollectionName
+  },
+  tmbId: {
+    type: Schema.Types.ObjectId,
+    ref: TeamMemberCollectionName
+  },
+
+  category: {
+    type: [String],
+    enum: Object.values(AgentSkillCategoryEnum),
+    default: []
+  },
+  createTime: {
+    type: Date,
+    default: () => new Date()
+  },
+  updateTime: {
+    type: Date,
+    default: () => new Date()
+  },
+  deleteTime: {
+    type: Date,
+    default: null
+  },
+  // 当前版本指针；version 表只保存历史版本存储记录，不保存当前状态。
+  currentVersionId: {
+    type: Schema.Types.ObjectId,
+    ref: agentSkillsVersionCollectionName
+  },
+  // 当前生效版本中的子 Skill 元数据缓存，供列表和辅助生成直接读取。
+  currentRuntimeSkills: {
+    type: [RuntimeSkillMetadataSchema],
+    default: []
+  },
+  creationStatus: {
+    type: String,
+    enum: Object.values(AgentSkillCreationStatusEnum),
+    default: AgentSkillCreationStatusEnum.ready
+  },
+  creationError: {
+    type: String
+  }
+});
+
+// 名称和描述用于列表页搜索。
+defineIndex(AgentSkillsSchema, {
+  key: { teamId: 1, name: 'text', description: 'text' }
+});
+// 列表页按来源、团队、删除状态和创建时间过滤排序。
+defineIndex(AgentSkillsSchema, {
+  key: { source: 1, teamId: 1, deleteTime: 1, createTime: -1 }
+});
+// 分类筛选。
+defineIndex(AgentSkillsSchema, { key: { category: 1 } });
+// 文件夹树查询：findSkillAndAllChildren 按 teamId + parentId + deleteTime 逐层查子节点。
+defineIndex(AgentSkillsSchema, { key: { teamId: 1, parentId: 1, deleteTime: 1 } });
+
+export const MongoAgentSkills = getMongoModel<MongoAgentSkillSchemaType>(
+  agentSkillsCollectionName,
+  AgentSkillsSchema
+);

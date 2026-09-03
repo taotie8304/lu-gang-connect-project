@@ -9,24 +9,35 @@ import { TOKEN_ERROR_CODE } from '@fastgpt/global/common/error/errorCode';
 import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import { useSystemStore } from '../system/useSystemStore';
 import { getWebReqUrl, subRoute } from '@fastgpt/web/common/system/utils';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import dayjs from 'dayjs';
-import { safeEncodeURIComponent } from '@/web/common/utils/uri';
+import { getAuthLoginRedirectPath } from '@/web/support/user/loginRedirect/url';
+import { getLanguageRequestHeaders } from '@fastgpt/web/i18n/utils';
 
-interface ConfigType {
+type ConfigType = {
   headers?: { [key: string]: string };
   timeout?: number;
   onUploadProgress?: (progressEvent: AxiosProgressEvent) => void;
   cancelToken?: AbortController;
   maxQuantity?: number; // The maximum number of simultaneous requests, usually used to cancel old requests
   withCredentials?: boolean;
-}
-interface ResponseDataType {
+  dataAsBody?: boolean;
+  // 仅复用内容相同的进行中请求；请求结束后不会缓存结果。
+  deduplicate?: boolean;
+};
+type ResponseDataType = {
   code: number;
   message: string;
   data: any;
-}
+};
+
+export const AUTH_ERROR_EVENT_NAME = 'fastgpt:auth-error';
+export type AuthErrorEventDetail = {
+  data: any;
+  skipClearToken?: boolean;
+  skipRedirect?: boolean;
+};
 
 const maxQuantityMap: Record<
   string,
@@ -36,6 +47,46 @@ const maxQuantityMap: Record<
       sign: AbortController;
     }[]
 > = {};
+const deduplicatedRequestMap = new Map<string, Promise<any>>();
+
+/**
+ * 稳定序列化请求参数，确保对象字段顺序不同但内容相同的请求可以共享结果。
+ */
+function stringifyRequestData(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stringifyRequestData).join(',')}]`;
+  }
+
+  if (value && typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype === Object.prototype || prototype === null) {
+      const data = value as Record<string, unknown>;
+      return `{${Object.keys(data)
+        .sort()
+        .map((key) => `${JSON.stringify(key)}:${stringifyRequestData(data[key])}`)
+        .join(',')}}`;
+    }
+  }
+
+  return JSON.stringify(value) ?? String(value);
+}
+
+/**
+ * 生成并发请求去重键。会影响请求响应的配置需参与计算，避免复用非同构请求。
+ */
+function getDeduplicatedRequestKey({
+  method,
+  url,
+  data,
+  config
+}: {
+  method: Method;
+  url: string;
+  data: unknown;
+  config: Pick<ConfigType, 'headers' | 'timeout' | 'withCredentials' | 'dataAsBody'>;
+}) {
+  return stringifyRequestData({ method: method.toUpperCase(), url, data, config });
+}
 
 /*
   Every request generates a unique sign
@@ -81,7 +132,10 @@ function requestFinish({ signId, url }: { signId?: string; url: string }) {
  * 请求开始
  */
 function startInterceptors(config: InternalAxiosRequestConfig): InternalAxiosRequestConfig {
-  if (config.headers) {
+  const languageHeaders = getLanguageRequestHeaders();
+  if (Object.keys(languageHeaders).length > 0) {
+    config.headers ??= {} as InternalAxiosRequestConfig['headers'];
+    Object.assign(config.headers, languageHeaders);
   }
 
   return config;
@@ -99,7 +153,7 @@ function responseSuccess(response: AxiosResponse<ResponseDataType>) {
 function checkRes(data: ResponseDataType) {
   if (data === undefined) {
     console.log('error->', data, 'data is empty');
-    return Promise.reject('服务器异常');
+    return Promise.reject(i18nT('common:server_error'));
   } else if (data.code < 200 || data.code >= 400) {
     return Promise.reject(data);
   }
@@ -110,7 +164,7 @@ function checkRes(data: ResponseDataType) {
  * 响应错误
  */
 function responseError(err: any) {
-  console.log('error->', '请求错误', err);
+  console.log('error->', 'Request failed', err);
   const pathname = window.location.pathname;
   const isOutlinkPage = {
     [`${subRoute}/chat/share`]: true,
@@ -121,7 +175,7 @@ function responseError(err: any) {
   const data = err?.response?.data || err;
 
   if (!err) {
-    return Promise.reject({ message: '未知错误' });
+    return Promise.reject({ message: i18nT('common:error.unKnow') });
   }
   if (typeof err === 'string') {
     return Promise.reject({ message: err });
@@ -132,11 +186,23 @@ function responseError(err: any) {
 
   // Token error
   if (data?.code in TOKEN_ERROR_CODE) {
-    if (!isOutlinkPage && pathname !== `${subRoute}/chat`) {
-      clearToken();
+    const authErrorEvent = new CustomEvent<AuthErrorEventDetail>(AUTH_ERROR_EVENT_NAME, {
+      detail: {
+        data
+      }
+    });
+
+    window.dispatchEvent?.(authErrorEvent);
+
+    if (!authErrorEvent.detail.skipRedirect && !isOutlinkPage && pathname !== `${subRoute}/chat`) {
+      if (!authErrorEvent.detail.skipClearToken) {
+        clearToken();
+      }
       window.location.replace(
         getWebReqUrl(
-          `/login?lastRoute=${safeEncodeURIComponent(location.pathname + location.search)}`
+          getAuthLoginRedirectPath({
+            lastRoute: location.pathname + location.search
+          })
         )
       );
     }
@@ -176,35 +242,70 @@ instance.interceptors.response.use(responseSuccess, (err) => Promise.reject(err)
 function request(
   url: string,
   data: any,
-  { cancelToken, maxQuantity, withCredentials, ...config }: ConfigType,
+  { cancelToken, maxQuantity, withCredentials, dataAsBody, deduplicate, ...config }: ConfigType,
   method: Method
 ): any {
-  /* 去空 */
-  for (const key in data) {
-    const val = data[key];
-    if (data[key] === undefined) {
-      delete data[key];
-    } else if (val instanceof Date) {
-      data[key] = dayjs(val).format();
+  // 只归一化普通参数对象和数组，避免改写 File、Blob 等原始请求体的只读属性。
+  const dataPrototype = data && typeof data === 'object' ? Object.getPrototypeOf(data) : undefined;
+  if (Array.isArray(data) || dataPrototype === Object.prototype || dataPrototype === null) {
+    for (const key in data) {
+      const val = data[key];
+      if (data[key] === undefined) {
+        delete data[key];
+      } else if (val instanceof Date) {
+        data[key] = dayjs(val).format();
+      }
     }
   }
 
   const { id: signId, abortSignal } = checkMaxQuantity({ url, maxQuantity });
+  const shouldSendBody = ['POST', 'PUT'].includes(method) || dataAsBody;
+  // 共享请求不接管取消语义，避免一个调用方取消所有等待者。
+  const deduplicatedRequestKey =
+    deduplicate && !cancelToken && !maxQuantity
+      ? getDeduplicatedRequestKey({
+          method,
+          url,
+          data,
+          config: { headers: config.headers, timeout: config.timeout, withCredentials, dataAsBody }
+        })
+      : undefined;
+  const existingRequest = deduplicatedRequestKey
+    ? deduplicatedRequestMap.get(deduplicatedRequestKey)
+    : undefined;
 
-  return instance
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const requestPromise = instance
     .request({
       baseURL: getWebReqUrl('/api'),
       url,
       method,
-      data: ['POST', 'PUT'].includes(method) ? data : undefined,
-      params: !['POST', 'PUT'].includes(method) ? data : undefined,
+      data: shouldSendBody ? data : undefined,
+      params: shouldSendBody ? undefined : data,
       signal: cancelToken?.signal ?? abortSignal,
       withCredentials,
       ...config // 用户自定义配置，可以覆盖前面的配置
     })
     .then((res) => checkRes(res.data))
     .catch((err) => responseError(err))
-    .finally(() => requestFinish({ signId, url }));
+    .finally(() => {
+      requestFinish({ signId, url });
+      if (
+        deduplicatedRequestKey &&
+        deduplicatedRequestMap.get(deduplicatedRequestKey) === requestPromise
+      ) {
+        deduplicatedRequestMap.delete(deduplicatedRequestKey);
+      }
+    });
+
+  if (deduplicatedRequestKey) {
+    deduplicatedRequestMap.set(deduplicatedRequestKey, requestPromise);
+  }
+
+  return requestPromise;
 }
 
 /**
@@ -222,6 +323,34 @@ export function POST<T = undefined>(url: string, data = {}, config: ConfigType =
   return request(url, data, config, 'POST');
 }
 
+/** 将 File 作为原始请求体上传，对象类型 query 参数按 JSON 序列化。 */
+export function POSTRawFile<T = undefined>({
+  url,
+  file,
+  query,
+  config = {}
+}: {
+  url: string;
+  file: File;
+  query: Record<string, unknown>;
+  config?: ConfigType;
+}): Promise<T> {
+  const searchParams = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      searchParams.set(key, typeof value === 'string' ? value : JSON.stringify(value));
+    }
+  });
+
+  return POST<T>(`${url}?${searchParams.toString()}`, file, {
+    ...config,
+    headers: {
+      'Content-Type': 'application/octet-stream',
+      ...config.headers
+    }
+  });
+}
+
 export function PUT<T = undefined>(url: string, data = {}, config: ConfigType = {}): Promise<T> {
   return request(url, data, config, 'PUT');
 }
@@ -232,6 +361,7 @@ export function DELETE<T = undefined>(url: string, data = {}, config: ConfigType
 
 export {
   maxQuantityMap,
+  deduplicatedRequestMap,
   checkMaxQuantity,
   requestFinish,
   startInterceptors,

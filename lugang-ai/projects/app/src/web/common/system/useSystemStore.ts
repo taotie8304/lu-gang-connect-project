@@ -7,22 +7,29 @@ import type {
   RerankModelItemType,
   EmbeddingModelItemType,
   STTModelType
-} from '@fastgpt/global/core/ai/model.d';
-import type { InitDateResponse } from '@/pages/api/common/system/getInitData';
+} from '@fastgpt/global/core/ai/model.schema';
+import type { GetSystemInitDataResponse } from '@fastgpt/global/openapi/common/system/api';
 import { type FastGPTFeConfigsType } from '@fastgpt/global/common/system/types';
 import { type SubPlanType } from '@fastgpt/global/support/wallet/sub/type';
-import { ModelTypeEnum } from '@fastgpt/global/core/ai/model';
+import { ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 import type { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import type { SystemDefaultModelType } from '@fastgpt/service/core/ai/type';
 import {
-  defaultProvider,
   formatModelProviders,
+  getModelProviderFromCache,
+  getModelProviderListFromCache,
   type langType,
   type ModelProviderItemType
 } from '@fastgpt/global/core/ai/provider';
 import { getMyModels, getOperationalAd } from './api';
 
-type LoginStoreType = { provider: `${OAuthEnum}`; lastRoute: string; state: string };
+type LoginStoreType = {
+  provider: OAuthEnum;
+  lastRoute: string;
+  state: string;
+  lastTmbId?: string;
+  flow?: 'login' | 'accountCancellation';
+};
 
 export type NotSufficientModalType =
   | TeamErrEnum.datasetSizeNotEnough
@@ -51,6 +58,8 @@ type State = {
 
   notSufficientModalType?: NotSufficientModalType;
   setNotSufficientModalType: (val?: NotSufficientModalType) => void;
+  showProModal: boolean;
+  setShowProModal: (e: boolean) => void;
 
   initDataBufferId?: string;
   feConfigs: FastGPTFeConfigsType;
@@ -59,10 +68,9 @@ type State = {
 
   modelProviders: Record<langType, ModelProviderItemType[]>;
   modelProviderMap: Record<langType, Record<string, ModelProviderItemType>>;
-  aiproxyIdMap: NonNullable<InitDateResponse['aiproxyIdMap']>;
+  aiproxyChannels: NonNullable<GetSystemInitDataResponse['aiproxyChannels']>;
   defaultModels: SystemDefaultModelType;
   llmModelList: LLMModelItemType[];
-  datasetModelList: LLMModelItemType[];
   embeddingModelList: EmbeddingModelItemType[];
   ttsModelList: TTSModelType[];
   reRankModelList: RerankModelItemType[];
@@ -78,7 +86,7 @@ type State = {
   getModelProviders: (language?: string) => ModelProviderItemType[];
   getModelProvider: (provider?: string, language?: string) => ModelProviderItemType;
 
-  initStaticData: (e: InitDateResponse) => void;
+  initStaticData: (e: GetSystemInitDataResponse) => void;
 
   appType?: string;
   setAppType: (e?: string) => void;
@@ -126,10 +134,16 @@ export const useSystemStore = create<State>()(
           return null;
         },
 
-        gitStar: 0,
+        gitStar: 26500,
         async loadGitStar() {
-          // GitHub star feature disabled for branded version
-          return;
+          if (!get().feConfigs?.show_git) return;
+          try {
+            const { data: git } = await axios.get('https://api.github.com/repos/labring/FastGPT');
+
+            set((state) => {
+              state.gitStar = git.stargazers_count;
+            });
+          } catch (error) {}
         },
 
         notSufficientModalType: undefined,
@@ -139,8 +153,18 @@ export const useSystemStore = create<State>()(
           });
         },
 
+        showProModal: false,
+        setShowProModal(e) {
+          set((state) => {
+            state.showProModal = e;
+          });
+        },
+
         initDataBufferId: undefined,
-        feConfigs: {},
+        feConfigs: {
+          uploadFileMaxSize: 1000,
+          uploadFileMaxAmount: 1000
+        },
         subPlans: undefined,
         systemVersion: '0.0.0',
 
@@ -154,10 +178,9 @@ export const useSystemStore = create<State>()(
           'zh-CN': {},
           'zh-Hant': {}
         },
-        aiproxyIdMap: {},
+        aiproxyChannels: [],
         defaultModels: {},
         llmModelList: [],
-        datasetModelList: [],
         embeddingModelList: [],
         ttsModelList: [],
         reRankModelList: [],
@@ -201,13 +224,14 @@ export const useSystemStore = create<State>()(
           return get().llmModelList.filter((item) => item.vision);
         },
         getModelProviders(language = 'en') {
-          return get().modelProviders[language as langType] ?? [];
+          return getModelProviderListFromCache(get().modelProviders, language);
         },
         getModelProvider(provider, language = 'en') {
-          if (!provider) {
-            return defaultProvider;
-          }
-          return get().modelProviderMap[language as langType][provider] ?? {};
+          return getModelProviderFromCache({
+            cache: get().modelProviderMap,
+            provider,
+            language
+          });
         },
         initStaticData(res) {
           set((state) => {
@@ -224,12 +248,11 @@ export const useSystemStore = create<State>()(
               state.modelProviders = ModelProviderListCache ?? state.modelProviders;
               state.modelProviderMap = ModelProviderMapCache ?? state.modelProviderMap;
             }
-            state.aiproxyIdMap = res.aiproxyIdMap ?? state.aiproxyIdMap;
+            state.aiproxyChannels = res.aiproxyChannels ?? state.aiproxyChannels;
 
             state.llmModelList =
               res.activeModelList?.filter((item) => item.type === ModelTypeEnum.llm) ??
               state.llmModelList;
-            state.datasetModelList = state.llmModelList.filter((item) => item.datasetProcess);
             state.embeddingModelList =
               res.activeModelList?.filter((item) => item.type === ModelTypeEnum.embedding) ??
               state.embeddingModelList;
@@ -260,10 +283,9 @@ export const useSystemStore = create<State>()(
 
           modelProviders: state.modelProviders,
           modelProviderMap: state.modelProviderMap,
-          aiproxyIdMap: state.aiproxyIdMap,
+          aiproxyChannels: state.aiproxyChannels,
           defaultModels: state.defaultModels,
           llmModelList: state.llmModelList,
-          datasetModelList: state.datasetModelList,
           embeddingModelList: state.embeddingModelList,
           ttsModelList: state.ttsModelList,
           reRankModelList: state.reRankModelList,

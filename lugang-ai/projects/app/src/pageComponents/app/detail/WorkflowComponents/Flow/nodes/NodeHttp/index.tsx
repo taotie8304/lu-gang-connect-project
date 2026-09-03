@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { type NodeProps } from 'reactflow';
 import NodeCard from '../render/NodeCard';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import Container from '../../components/Container';
 import RenderInput from '../render/RenderInput';
 import RenderOutput from '../render/RenderOutput';
@@ -16,6 +16,7 @@ import {
   Td,
   TableContainer,
   Button,
+  IconButton,
   useDisclosure,
   NumberInputField,
   NumberInputStepper,
@@ -32,33 +33,35 @@ import {
 import { useTranslation } from 'next-i18next';
 import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { type FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io.d';
+import { type FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { type EditorVariableLabelPickerType } from '@fastgpt/web/components/common/Textarea/PromptEditor/type';
 import HttpInput from '@fastgpt/web/components/common/Input/HttpInput';
 import dynamic from 'next/dynamic';
 import MySelect from '@fastgpt/web/components/common/MySelect';
-import RenderToolInput from '../render/RenderToolInput';
+import RenderToolInput, { hasDynamicToolInput } from '../render/RenderToolInput';
 import IOTitle from '../../components/IOTitle';
 import { useContextSelector } from 'use-context-selector';
-import { useCreation, useMemoizedFn } from 'ahooks';
+import { useMemoizedFn } from 'ahooks';
 import { AppContext } from '@/pageComponents/app/detail/context';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import { FlowNodeInputTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { getEditorVariables } from '../../../utils';
 import PromptEditor from '@fastgpt/web/components/common/Textarea/PromptEditor';
-import {
-  WorkflowBufferDataContext,
-  WorkflowNodeDataContext
-} from '../../../context/workflowInitContext';
+import { WorkflowBufferDataContext } from '../../../context/workflowInitContext';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import CatchError from '../render/RenderOutput/CatchError';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
 import { WorkflowUtilsContext } from '../../../context/workflowUtilsContext';
 import { WorkflowActionsContext } from '../../../context/workflowActionsContext';
+import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 
 const CurlImportModal = dynamic(() => import('./CurlImportModal'));
 const HeaderAuthConfig = dynamic(() => import('@/components/common/secret/HeaderAuthConfig'));
+
+const HTTP_NODE_WIDTH = '666px';
+const HTTP_PARAM_NAME_COLUMN_WIDTH = '170px';
+const HTTP_OPERATION_COLUMN_WIDTH = '46px';
 
 const defaultFormBody = {
   key: NodeInputKeyEnum.httpFormBody,
@@ -90,10 +93,7 @@ const RenderHttpMethodAndUrl = React.memo(function RenderHttpMethodAndUrl({
   const { t } = useTranslation();
   const { toast } = useToast();
 
-  const { edges, getNodeById, systemConfigNode } = useContextSelector(
-    WorkflowBufferDataContext,
-    (v) => v
-  );
+  const { edges, getNodeById } = useContextSelector(WorkflowBufferDataContext, (v) => v);
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
   const { appDetail } = useContextSelector(AppContext, (v) => v);
 
@@ -172,13 +172,12 @@ const RenderHttpMethodAndUrl = React.memo(function RenderHttpMethodAndUrl({
   const variables = useMemoEnhance(() => {
     return getEditorVariables({
       nodeId,
-      systemConfigNode,
       getNodeById,
       edges,
       appDetail,
       t
     });
-  }, [nodeId, systemConfigNode, getNodeById, edges, appDetail, t]);
+  }, [nodeId, getNodeById, edges, appDetail, t]);
 
   const externalProviderWorkflowVariables = useMemo(() => {
     return (
@@ -192,9 +191,9 @@ const RenderHttpMethodAndUrl = React.memo(function RenderHttpMethodAndUrl({
   return (
     <Box>
       <Box mb={2} display={'flex'} justifyContent={'space-between'}>
-        <Box fontWeight={'medium'} color={'myGray.600'}>
+        <FormLabel required={requestUrl?.required} fontWeight={'medium'} color={'myGray.600'}>
           {t('common:core.module.Http request settings')}
-        </Box>
+        </FormLabel>
         <Button variant={'link'} onClick={onOpenCurl}>
           {t('common:core.module.http.curl import')}
         </Button>
@@ -260,7 +259,7 @@ export function RenderHttpProps({
   const [selectedTab, setSelectedTab] = useState(TabEnum.params);
 
   const edges = useContextSelector(WorkflowBufferDataContext, (v) => v.edges);
-  const { getNodeById, systemConfigNode } = useContextSelector(WorkflowBufferDataContext, (v) => v);
+  const { getNodeById } = useContextSelector(WorkflowBufferDataContext, (v) => v);
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
 
   const { appDetail } = useContextSelector(AppContext, (v) => v);
@@ -291,13 +290,12 @@ export function RenderHttpProps({
   const variables = useMemoEnhance(() => {
     return getEditorVariables({
       nodeId,
-      systemConfigNode,
       getNodeById,
       edges,
       appDetail,
       t
     });
-  }, [nodeId, systemConfigNode, getNodeById, edges, appDetail, t]);
+  }, [nodeId, getNodeById, edges, appDetail, t]);
 
   const variableText = useMemo(() => {
     return variables
@@ -495,150 +493,180 @@ const RenderForm = ({
   const { t } = useTranslation();
   const { toast } = useToast();
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
+  const draftValuesRef = React.useRef<Record<number, PropsArrType>>({});
 
-  const [list, setList] = useState<PropsArrType[]>(input.value || []);
-  const [updateTrigger, setUpdateTrigger] = useState(false);
-  const [shouldUpdateNode, setShouldUpdateNode] = useState(false);
+  const list = useMemo(() => (input.value || []) as PropsArrType[], [input.value]);
+  const [rowKeys, setRowKeys] = useState<string[]>(() =>
+    Array.from({ length: list.length + 1 }, (_, index) => `http-param-${index}`)
+  );
 
   useEffect(() => {
-    setList(input.value || []);
+    draftValuesRef.current = {};
   }, [input.value]);
 
-  useEffect(() => {
-    if (shouldUpdateNode) {
+  const updateListAndNode = useCallback(
+    (nextList: PropsArrType[]) => {
       onChangeNode({
         nodeId,
         type: 'updateInput',
         key: input.key,
         value: {
           ...input,
-          value: list
+          value: nextList
         }
       });
-      setShouldUpdateNode(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [list]);
-
-  const handleKeyChange = useCallback(
-    (index: number, newKey: string) => {
-      setList((prevList) => {
-        if (!newKey) {
-          setUpdateTrigger((prev) => !prev);
-          // toast({
-          //   status: 'warning',
-          //   title: t('common:core.module.http.Key cannot be empty')
-          // });
-        } else if (prevList.find((item, i) => i !== index && item.key == newKey)) {
-          setUpdateTrigger((prev) => !prev);
-          toast({
-            status: 'warning',
-            title: t('common:core.module.http.Key already exists')
-          });
-        }
-        return prevList.map((item, i) => (i === index ? { ...item, key: newKey } : item));
-      });
-      setShouldUpdateNode(true);
     },
-    [t, toast]
+    [input, nodeId, onChangeNode]
   );
 
-  // Add new params/headers key
-  const handleAddNewProps = useCallback(
-    (value: string) => {
-      setList((prevList) => {
-        if (!value) {
-          return prevList;
-        }
+  const handleRowBlur = useCallback(
+    (index: number, field: 'key' | 'value', value: string) => {
+      const currentItem = list[index] ?? { key: '', type: 'string', value: '' };
+      const nextItem = {
+        ...currentItem,
+        ...draftValuesRef.current[index],
+        [field]: value
+      } as PropsArrType;
+      draftValuesRef.current[index] = nextItem;
 
-        const checkExist = prevList.find((item) => item.key === value);
-        if (checkExist) {
-          setUpdateTrigger((prev) => !prev);
-          toast({
-            status: 'warning',
-            title: t('common:core.module.http.Key already exists')
-          });
-          return prevList;
-        }
-        return [...prevList, { key: value, type: 'string', value: '' }];
-      });
+      if (
+        nextItem.key &&
+        list.some((item, itemIndex) => itemIndex !== index && item.key === nextItem.key)
+      ) {
+        toast({
+          status: 'warning',
+          title: t('common:core.module.http.Key already exists')
+        });
+        return;
+      }
 
-      setShouldUpdateNode(true);
+      if (index === list.length) {
+        if (!nextItem.key) return;
+        setRowKeys((currentKeys) => {
+          const nextKeys = [...currentKeys];
+          while (nextKeys.length < list.length + 1) {
+            nextKeys.push(`http-param-${nextKeys.length}`);
+          }
+          let nextKeyIndex = nextKeys.length;
+          while (nextKeys.includes(`http-param-${nextKeyIndex}`)) {
+            nextKeyIndex += 1;
+          }
+          nextKeys.push(`http-param-${nextKeyIndex}`);
+          return nextKeys;
+        });
+        updateListAndNode([...list, nextItem]);
+        return;
+      }
+
+      updateListAndNode(list.map((item, itemIndex) => (itemIndex === index ? nextItem : item)));
     },
-    [t, toast]
+    [list, t, toast, updateListAndNode]
+  );
+
+  const handleDelete = useCallback(
+    (index: number) => {
+      draftValuesRef.current = {};
+      setRowKeys((currentKeys) => {
+        const nextKeys = [...currentKeys];
+        while (nextKeys.length < list.length + 1) {
+          nextKeys.push(`http-param-${nextKeys.length}`);
+        }
+        return nextKeys.filter((_, itemIndex) => itemIndex !== index);
+      });
+      updateListAndNode(list.filter((_, itemIndex) => itemIndex !== index));
+    },
+    [list, setRowKeys, updateListAndNode]
   );
 
   const Render = useMemo(() => {
     return (
       <Box
+        className={'nodrag nowheel'}
         borderRadius={'md'}
         overflow={'hidden'}
         borderWidth={'1px'}
         borderBottom={'none'}
         bg={'white'}
       >
-        <TableContainer overflowY={'visible'} overflowX={'unset'}>
-          <Table>
+        <TableContainer overflowY={'visible'} overflowX={'hidden'}>
+          <Table w={'full'} style={{ tableLayout: 'fixed' }}>
+            <colgroup>
+              <col style={{ width: HTTP_PARAM_NAME_COLUMN_WIDTH }} />
+              <col />
+              <col style={{ width: HTTP_OPERATION_COLUMN_WIDTH }} />
+            </colgroup>
             <Thead>
               <Tr>
-                <Th px={2} borderBottomLeftRadius={'none !important'}>
+                <Th
+                  px={2}
+                  w={HTTP_PARAM_NAME_COLUMN_WIDTH}
+                  borderRight={'1px solid'}
+                  borderColor={'myGray.200'}
+                >
                   {t('common:core.module.http.Props name')}
                 </Th>
-                <Th px={2} borderBottomRadius={'none !important'}>
+                <Th px={2} borderRight={'1px solid'} borderColor={'myGray.200'}>
                   {t('common:core.module.http.Props value')}
                 </Th>
+                <Th px={0} w={HTTP_OPERATION_COLUMN_WIDTH} textAlign={'center'}></Th>
               </Tr>
             </Thead>
             <Tbody>
               {[...list, { key: '', value: '', label: '' }].map((item, index) => (
-                <Tr key={`${input.key}${index}`}>
-                  <Td p={0} w={'50%'} borderRight={'1px solid'} borderColor={'myGray.200'}>
+                <Tr key={`${input.key}-${rowKeys[index] ?? `http-param-${index}`}`}>
+                  <Td
+                    p={0}
+                    w={HTTP_PARAM_NAME_COLUMN_WIDTH}
+                    borderRight={'1px solid'}
+                    borderColor={'myGray.200'}
+                  >
                     <HttpInput
                       placeholder={t('common:textarea_variable_picker_tip')}
                       value={item.key}
                       variableLabels={variables}
                       variables={externalProviderWorkflowVariables}
-                      onBlur={(val) => {
-                        handleKeyChange(index, val);
-
-                        // Last item blur, add the next item.
-                        if (index === list.length && val) {
-                          handleAddNewProps(val);
-                          setUpdateTrigger((prev) => !prev);
-                        }
-                      }}
-                      updateTrigger={updateTrigger}
+                      tabIndex={0}
+                      resetOnValueChange={false}
+                      onBlur={(val) => handleRowBlur(index, 'key', val)}
                     />
                   </Td>
-                  <Td p={0} w={'50%'}>
-                    <Box display={'flex'} alignItems={'center'}>
-                      <HttpInput
-                        placeholder={t('common:textarea_variable_picker_tip')}
-                        value={item.value}
-                        variables={externalProviderWorkflowVariables}
-                        variableLabels={variables}
-                        onBlur={(val) => {
-                          setList((prevList) =>
-                            prevList.map((item, i) =>
-                              i === index ? { ...item, value: val } : item
-                            )
-                          );
-                          setShouldUpdateNode(true);
-                        }}
-                      />
+                  <Td p={0} borderRight={'1px solid'} borderColor={'myGray.200'}>
+                    <HttpInput
+                      placeholder={t('common:textarea_variable_picker_tip')}
+                      value={item.value}
+                      variables={externalProviderWorkflowVariables}
+                      variableLabels={variables}
+                      tabIndex={0}
+                      resetOnValueChange={false}
+                      onBlur={(val) => handleRowBlur(index, 'value', val)}
+                    />
+                  </Td>
+                  <Td
+                    p={0}
+                    px={'3px'}
+                    w={HTTP_OPERATION_COLUMN_WIDTH}
+                    whiteSpace={'nowrap'}
+                    verticalAlign={'middle'}
+                  >
+                    <Flex h={'24px'} alignItems={'center'} justifyContent={'center'}>
                       {index !== list.length && (
-                        <MyIcon
-                          name={'delete'}
-                          cursor={'pointer'}
+                        <IconButton
+                          icon={<MyIcon name={'delete'} w={'14px'} />}
+                          size={'xs'}
+                          variant={'unstyled'}
+                          color={'myGray.600'}
+                          w={'24px'}
+                          h={'24px'}
+                          minW={'24px'}
+                          p={'5px'}
+                          aria-label={t('common:Delete')}
+                          tabIndex={0}
                           _hover={{ color: 'red.600' }}
-                          w={'14px'}
-                          onClick={() => {
-                            setList((prevlist) => prevlist.filter((val) => val.key !== item.key));
-                            setShouldUpdateNode(true);
-                          }}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => handleDelete(index)}
                         />
                       )}
-                    </Box>
+                    </Flex>
                   </Td>
                 </Tr>
               ))}
@@ -649,12 +677,12 @@ const RenderForm = ({
     );
   }, [
     externalProviderWorkflowVariables,
-    handleAddNewProps,
-    handleKeyChange,
+    handleDelete,
+    handleRowBlur,
     input.key,
     list,
+    rowKeys,
     t,
-    updateTrigger,
     variables
   ]);
 
@@ -680,7 +708,6 @@ const RenderBody = ({
 }) => {
   const { t } = useTranslation();
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
-  const [_, startSts] = useTransition();
 
   useEffect(() => {
     if (typeInput === undefined) {
@@ -853,8 +880,14 @@ const NodeHttp = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
 
   // console.log(inputs);
   return (
-    <NodeCard minW={'350px'} selected={selected} {...data}>
-      {isTool && (
+    <NodeCard
+      {...data}
+      w={HTTP_NODE_WIDTH}
+      minW={HTTP_NODE_WIDTH}
+      maxW={HTTP_NODE_WIDTH}
+      selected={selected}
+    >
+      {isTool && hasDynamicToolInput(data) && (
         <>
           <Container>
             <RenderToolInput nodeId={nodeId} inputs={inputs} />
@@ -867,6 +900,7 @@ const NodeHttp = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
           nodeId={nodeId}
           flowInputList={commonInputs}
           CustomComponent={CustomComponents}
+          isTool={isTool}
         />
       </Container>
       <Container>

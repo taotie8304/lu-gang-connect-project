@@ -1,11 +1,18 @@
 import { type AppDetailType } from '@fastgpt/global/core/app/type';
-import { type OutlinkAppType, type OutLinkSchema } from '@fastgpt/global/support/outLink/type';
+import { type OutlinkAppType, type OutLinkSchemaType } from '@fastgpt/global/support/outLink/type';
 import { MongoOutLink } from '../../outLink/schema';
 import { OutLinkErrEnum } from '@fastgpt/global/common/error/code/outLink';
 import { OwnerPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { authAppByTmbId } from '../app/auth';
 import { type AuthModeType, type AuthResponseType } from '../type';
 import { parseHeaderCert } from '../auth/common';
+import type { PublishChannelEnum } from '@fastgpt/global/support/outLink/constant';
+import type { z } from 'zod';
+import { getLogger, LogCategories } from '../../../common/logger';
+
+const logger = getLogger(LogCategories.MODULE.OUTLINK);
+import { assertCancellation } from '../../user/account/cancellation/guard';
+import { getUserIdByTmbId } from '../../user/team/utils';
 
 /* crud outlink permission */
 export async function authOutLinkCrud({
@@ -17,7 +24,7 @@ export async function authOutLinkCrud({
 }): Promise<
   AuthResponseType & {
     app: AppDetailType;
-    outLink: OutLinkSchema;
+    outLink: OutLinkSchemaType;
   }
 > {
   const result = await parseHeaderCert(props);
@@ -62,14 +69,57 @@ export async function authOutLinkValid<T extends OutlinkAppType = any>({
   if (!shareId) {
     return Promise.reject(OutLinkErrEnum.linkUnInvalid);
   }
-  const outLinkConfig = await MongoOutLink.findOne({ shareId }).lean<OutLinkSchema<T>>();
+  const outLinkConfig = await MongoOutLink.findOne({ shareId }).lean<OutLinkSchemaType<T>>();
 
   if (!outLinkConfig) {
     return Promise.reject(OutLinkErrEnum.linkUnInvalid);
   }
 
+  // 分享链接没有用户 Session，使用发布链接绑定的 tmb/team 校验账号可用性
+  await assertCancellation({
+    teamId: String(outLinkConfig.teamId),
+    userId: await getUserIdByTmbId(String(outLinkConfig.tmbId))
+  });
+
   return {
     appId: outLinkConfig.appId,
     outLinkConfig: outLinkConfig
+  };
+}
+
+/**
+ * Loads provider config by channel and validates the stored app payload instead of trusting the
+ * TypeScript generic.
+ */
+export async function loadOutlinkProviderConfig<T extends OutlinkAppType>({
+  shareId,
+  channel,
+  appSchema
+}: {
+  shareId?: string;
+  channel: PublishChannelEnum;
+  appSchema: z.ZodType<T>;
+}): Promise<OutLinkSchemaType<T>> {
+  if (!shareId) return Promise.reject(OutLinkErrEnum.linkUnInvalid);
+
+  const outLinkConfig = await MongoOutLink.findOne({
+    shareId,
+    type: channel
+  }).lean<OutLinkSchemaType>();
+  if (!outLinkConfig) return Promise.reject(OutLinkErrEnum.linkUnInvalid);
+
+  const appResult = appSchema.safeParse(outLinkConfig.app);
+  if (!appResult.success) {
+    logger.warn('Invalid outlink provider config', {
+      shareId,
+      channel,
+      issues: appResult.error.issues.map(({ code, path }) => ({ code, path }))
+    });
+    return Promise.reject(OutLinkErrEnum.linkUnInvalid);
+  }
+
+  return {
+    ...outLinkConfig,
+    app: appResult.data
   };
 }

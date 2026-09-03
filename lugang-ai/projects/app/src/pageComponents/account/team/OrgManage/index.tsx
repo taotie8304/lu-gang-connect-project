@@ -20,9 +20,9 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
 import MyMenu from '@fastgpt/web/components/common/MyMenu';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { useTranslation } from 'next-i18next';
-import { useMemo, useState } from 'react';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { useState } from 'react';
 import MemberTag from '@/components/support/user/team/Info/MemberTag';
 import { deleteOrg, deleteOrgMember } from '@/web/support/user/team/org/api';
 
@@ -36,6 +36,7 @@ import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { delRemoveMember } from '@/web/support/user/team/api';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import useOrg from '@/web/support/user/team/org/hooks/useOrg';
+import { getIsMemberSyncMode } from '@/web/common/system/utils';
 
 const OrgInfoModal = dynamic(() => import('./OrgInfoModal'));
 const OrgMemberManageModal = dynamic(() => import('./OrgMemberManageModal'));
@@ -71,10 +72,10 @@ function ActionButton({
 }
 
 function OrgTable({ Tabs }: { Tabs: React.ReactNode }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_team');
   const { userInfo, isTeamAdmin } = useUserStore();
   const { feConfigs } = useSystemStore();
-  const isSyncMember = feConfigs.register_method?.includes('sync');
+  const isSyncMember = getIsMemberSyncMode(feConfigs);
   const [editOrg, setEditOrg] = useState<OrgFormType>();
   const [manageMemberOrg, setManageMemberOrg] = useState<OrgListItemType>();
   const [movingOrg, setMovingOrg] = useState<OrgListItemType>();
@@ -100,7 +101,7 @@ function OrgTable({ Tabs }: { Tabs: React.ReactNode }) {
   });
   const deleteOrgHandler = (orgId: string) =>
     openDeleteOrgModal({ onConfirm: () => deleteOrgReq(orgId) })();
-  const { runAsync: deleteOrgReq } = useRequest2(deleteOrg, {
+  const { runAsync: deleteOrgReq } = useRequest(deleteOrg, {
     onSuccess: refresh
   });
 
@@ -115,33 +116,47 @@ function OrgTable({ Tabs }: { Tabs: React.ReactNode }) {
       type: 'delete'
     });
 
-  const { runAsync: deleteMemberReq } = useRequest2(deleteOrgMember, {
+  const { runAsync: deleteMemberReq } = useRequest(deleteOrgMember, {
     onSuccess: refresh
   });
 
-  const { runAsync: deleteMemberFromTeamReq } = useRequest2(delRemoveMember, {
+  const { runAsync: deleteMemberFromTeamReq } = useRequest(delRemoveMember, {
     onSuccess: refresh
   });
 
   return (
     <>
-      <Flex justify={'space-between'} align={'center'} pb={'1rem'}>
-        {Tabs}
-        <Box w="200px">
-          <SearchInput
-            placeholder={t('account_team:search_org')}
-            value={searchKey}
-            onChange={(e) => setSearchKey(e.target.value)}
-          />
-        </Box>
+      <Flex
+        justify={'space-between'}
+        align={['stretch', 'center']}
+        flexDirection={['column', 'row']}
+        pb={'1rem'}
+      >
+        <Box w={['100%', 'auto']}>{Tabs}</Box>
+        <Flex mt={[3, 0]} w={['100%', 'auto']} justifyContent={'flex-end'}>
+          <Box w={['100%', '200px']}>
+            <SearchInput
+              bg={'white'}
+              placeholder={t('account_team:search_org')}
+              value={searchKey}
+              onChange={(e) => setSearchKey(e.target.value)}
+            />
+          </Box>
+        </Flex>
       </Flex>
-      <MyBox flex={'1 0 0'} h={0} display={'flex'} flexDirection={'column'}>
+      <MyBox
+        flex={['0 0 auto', '1 0 0']}
+        h={['auto', 0]}
+        minH={0}
+        display={'flex'}
+        flexDirection={'column'}
+      >
         <Box mb={3}>
           {!searchKey && (
             <Path paths={paths} rootName={userInfo?.team?.teamName} onClick={onPathClick} />
           )}
         </Box>
-        <Flex flex={'1 0 0'} h={0} w={'100%'} gap={'4'}>
+        <Flex flex={['0 0 auto', '1 0 0']} h={['auto', 0]} w={'100%'} gap={'4'}>
           <MemberScrollData flex="1" isLoading={isLoading}>
             <TableContainer>
               <Table>

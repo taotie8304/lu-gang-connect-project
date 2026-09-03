@@ -4,7 +4,7 @@ import { Box, Button, Flex, useDisclosure } from '@chakra-ui/react';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { useTranslation } from 'next-i18next';
 import dynamic from 'next/dynamic';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { postCreateAppFolder } from '@/web/core/app/api/app';
 import type { EditFolderFormType } from '@fastgpt/web/components/common/MyModal/EditFolderModal';
 import { useContextSelector } from 'use-context-selector';
@@ -14,11 +14,7 @@ import { useRouter } from 'next/router';
 import FolderSlideCard from '@/components/common/folder/SlideCard';
 import { delAppById, resumeInheritPer } from '@/web/core/app/api';
 import { AppRoleList } from '@fastgpt/global/support/permission/app/constant';
-import {
-  deleteAppCollaborators,
-  getCollaboratorList,
-  postUpdateAppCollaborators
-} from '@/web/core/app/api/collaborator';
+import { getCollaboratorList, postUpdateAppCollaborators } from '@/web/core/app/api/collaborator';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
@@ -29,9 +25,15 @@ import { getUtmWorkflow } from '@/web/support/marketing/utils';
 import { useMount } from 'ahooks';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import { useUserStore } from '@/web/support/user/useUserStore';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import {
+  canCreateSubFolder,
+  DEFAULT_MAX_FOLDER_DEPTH
+} from '@fastgpt/global/common/parentFolder/depth';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
 import TemplateCreatePanel from '@/pageComponents/dashboard/agent/TemplateCreatePanel';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 
 const EditFolderModal = dynamic(
   () => import('@fastgpt/web/components/common/MyModal/EditFolderModal')
@@ -57,12 +59,20 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
   } = useContextSelector(AppListContext, (v) => v);
   const [editFolder, setEditFolder] = useState<EditFolderFormType>();
   const { userInfo } = useUserStore();
+  const { feConfigs } = useSystemStore();
+  const maxFolderDepth = feConfigs?.limit?.maxFolderDepth ?? DEFAULT_MAX_FOLDER_DEPTH;
+  const canCreateFolder = canCreateSubFolder(parentId, paths, maxFolderDepth);
+  const folderDepthLimitTip = t('common:folder_depth_limit_tip');
 
   const {
     isOpen: isOpenJsonImportModal,
     onOpen: onOpenJsonImportModal,
     onClose: onCloseJsonImportModal
   } = useDisclosure();
+  const hasCreatePer = folderDetail
+    ? folderDetail.permission.hasWritePer && folderDetail?.type !== AppTypeEnum.httpPlugin
+    : userInfo?.team.permission.hasAppCreatePer;
+
   //if there is a workflow url in the session storage, open the json import modal and import the workflow
   useMount(() => {
     if (getUtmWorkflow()) {
@@ -70,13 +80,13 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
     }
   });
 
-  const { runAsync: onCreateFolder } = useRequest2(postCreateAppFolder, {
+  const { runAsync: onCreateFolder } = useRequest(postCreateAppFolder, {
     onSuccess() {
       loadMyApps();
     },
     errorToast: 'Error'
   });
-  const { runAsync: onDeleFolder } = useRequest2(delAppById, {
+  const { runAsync: onDeleFolder } = useRequest(delAppById, {
     onSuccess(data) {
       data.forEach((appId) => {
         localStorage.removeItem(`app_log_keys_${appId}`);
@@ -105,7 +115,7 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
           overflowX={'hidden'}
         >
           {/* Only shown on pc root page */}
-          {!folderDetail && isPc && <TemplateCreatePanel type={appType} />}
+          {!folderDetail && isPc && hasCreatePer && <TemplateCreatePanel type={appType} />}
           <Flex alignItems={'center'}>
             {!isPc ? (
               MenuIcon
@@ -143,19 +153,19 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
                 />
               )}
 
-              {(folderDetail
-                ? folderDetail.permission.hasWritePer &&
-                  folderDetail?.type !== AppTypeEnum.httpPlugin
-                : userInfo?.team.permission.hasAppCreatePer) && (
+              {hasCreatePer && (
                 <>
-                  <Button
-                    variant={'grayBase'}
-                    leftIcon={<MyIcon name={'common/addLight'} w={'18px'} mr={-1} />}
-                    onClick={() => setEditFolder({})}
-                    px={5}
-                  >
-                    {t('common:Folder')}
-                  </Button>
+                  <MyTooltip label={canCreateFolder ? '' : folderDepthLimitTip}>
+                    <Button
+                      variant={'grayBase'}
+                      leftIcon={<MyIcon name={'common/addLight'} w={'18px'} mr={-1} />}
+                      onClick={() => setEditFolder({})}
+                      isDisabled={!canCreateFolder}
+                      px={5}
+                    >
+                      {t('common:Folder')}
+                    </Button>
+                  </MyTooltip>
                   <Button
                     variant={'grayBase'}
                     leftIcon={<MyIcon name={'common/importLight'} w={'14px'} />}
@@ -218,12 +228,7 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
                     ...props,
                     appId: folderDetail._id
                   }),
-                refreshDeps: [folderDetail._id, folderDetail.inheritPermission],
-                onDelOneCollaborator: async (params) =>
-                  deleteAppCollaborators({
-                    ...params,
-                    appId: folderDetail._id
-                  })
+                refreshDeps: [folderDetail._id, folderDetail.inheritPermission]
               }}
             />
           </Box>
@@ -238,7 +243,9 @@ const MyApps = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
           onEdit={({ id, ...data }) => onUpdateApp(id, data)}
         />
       )}
-      {isOpenJsonImportModal && <JsonImportModal onClose={onCloseJsonImportModal} />}
+      {isOpenJsonImportModal && (
+        <JsonImportModal scene={'agent'} onClose={onCloseJsonImportModal} />
+      )}
     </Flex>
   );
 };

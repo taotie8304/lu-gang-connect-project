@@ -14,9 +14,9 @@ import {
 } from '@chakra-ui/react';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useTranslation } from 'next-i18next';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import {
   deleteEvalItem,
@@ -81,11 +81,11 @@ const EvaluationDetailModal = ({
   onClose: () => void;
   fetchEvalList: () => void;
 }) => {
-  const { t, i18n } = useTranslation();
-  const language = i18n.language;
+  const { t } = useTranslation();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [editing, setEditing] = useState(false);
   const [pollingInterval, setPollingInterval] = useState(10000);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const modelData = useMemo(() => getWebLLMModel(evalDetail.evalModel), [evalDetail.evalModel]);
 
@@ -97,10 +97,12 @@ const EvaluationDetailModal = ({
     getData: fetchData
   } = usePagination(getEvalItemsList, {
     defaultPageSize: 20,
+    pageSizeCacheKey: 'dashboard-evaluation-detail',
     params: {
       evalId: evalDetail._id
     },
-    pollingInterval
+    pollingInterval,
+    scrollContainerRef
   });
 
   useEffect(() => {
@@ -111,7 +113,11 @@ const EvaluationDetailModal = ({
         !!item.errorMessage
       );
     });
-    setPollingInterval(hasRunningOrErrorTasks ? 10000 : 0);
+    const frameId = window.requestAnimationFrame(() => {
+      setPollingInterval(hasRunningOrErrorTasks ? 10000 : 0);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [evalItemsList]);
 
   const evalItem = evalItemsList[selectedIndex];
@@ -127,7 +133,7 @@ const EvaluationDetailModal = ({
     [t]
   );
 
-  const { runAsync: exportEval, loading: isDownloading } = useRequest2(async () => {
+  const { runAsync: exportEval, loading: isDownloading } = useRequest(async () => {
     await downloadFetch({
       url: `/api/proApi/core/app/evaluation/exportItems?evalId=${evalDetail._id}`,
       filename: `${evalDetail.name}.csv`,
@@ -138,21 +144,21 @@ const EvaluationDetailModal = ({
     });
   });
 
-  const { runAsync: delEvalItem, loading: isLoadingDelete } = useRequest2(deleteEvalItem, {
+  const { runAsync: delEvalItem, loading: isLoadingDelete } = useRequest(deleteEvalItem, {
     onSuccess: () => {
       fetchData();
       fetchEvalList();
     }
   });
 
-  const { runAsync: rerunItem, loading: isLoadingRerun } = useRequest2(retryEvalItem, {
+  const { runAsync: rerunItem, loading: isLoadingRerun } = useRequest(retryEvalItem, {
     onSuccess: () => {
       fetchData();
       fetchEvalList();
     }
   });
 
-  const { runAsync: updateItem, loading: isLoadingUpdate } = useRequest2(
+  const { runAsync: updateItem, loading: isLoadingUpdate } = useRequest(
     async (data: updateEvalItemBody) => {
       await updateEvalItem({ ...data, evalItemId: evalItem.evalItemId });
     },
@@ -357,7 +363,12 @@ const EvaluationDetailModal = ({
                             }
                             type="delete"
                             content={t('dashboard_evaluation:comfirm_delete_item')}
-                            onConfirm={() => delEvalItem({ evalItemId: evalItem.evalItemId })}
+                            onConfirm={() =>
+                              delEvalItem({
+                                evalId: evalDetail._id,
+                                itemId: evalItem.evalItemId
+                              })
+                            }
                           />
                         )}
                       </>
@@ -396,7 +407,7 @@ const EvaluationDetailModal = ({
                     </Box>
                   </Flex>
 
-                  <Box flex={1} overflow={'auto'} px={6}>
+                  <Box ref={scrollContainerRef} flex={1} overflow={'auto'} px={6}>
                     {evalItemsList.map((item: listEvalItemsItem, index: number) => {
                       const formattedStatus = formatEvaluationStatus(item, t);
 

@@ -1,12 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { Table, TableContainer, Thead, Tbody, Tr, Th, Td, Button } from '@chakra-ui/react';
 import { formatNumber } from '@fastgpt/global/common/math/tools';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
-import type { DashboardDataItemType } from '@/global/aiproxy/type.d';
+import type { DashboardDataItemType } from '@/global/aiproxy/type';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { calculateModelPrice } from '@fastgpt/global/core/ai/pricing';
+import type { ModelPriceTierType } from '@fastgpt/global/core/ai/model.schema';
 
 export type DashboardDataEntry = {
   timestamp: number;
@@ -29,21 +31,24 @@ export type DataTableComponentProps = {
       inputPrice?: number;
       outputPrice?: number;
       charsPointsPrice?: number;
+      priceTiers?: ModelPriceTierType[];
     }
   >;
   onViewDetail: (model: string) => void;
+  isLLMModel: (model: string) => boolean;
 };
 
-type SortFieldType = 'totalCalls' | 'errorCalls' | 'totalCost';
+type SortFieldType = 'totalCalls' | 'errorCalls' | 'totalCost' | 'cacheHitRate';
 
 const DataTableComponent = ({
   data,
   filterProps,
   onViewDetail,
   channelList,
-  modelPriceMap
+  modelPriceMap,
+  isLLMModel
 }: DataTableComponentProps) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('config_model');
   const { feConfigs } = useSystemStore();
   const [sortField, setSortField] = useState<SortFieldType>('totalCalls');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -78,6 +83,7 @@ const DataTableComponent = ({
       totalCost: number;
       avgResponseTime: number;
       avgTtfb: number;
+      cacheHitRate: number;
     }[] = [];
 
     if (showChannelColumn) {
@@ -91,6 +97,8 @@ const DataTableComponent = ({
           totalCost: number;
           totalResponseTime: number;
           totalTtfb: number;
+          cacheHitCount: number;
+          llmRequestCount: number;
         }
       >();
 
@@ -105,25 +113,29 @@ const DataTableComponent = ({
             errorCalls: 0,
             totalCost: 0,
             totalResponseTime: 0,
-            totalTtfb: 0
+            totalTtfb: 0,
+            cacheHitCount: 0,
+            llmRequestCount: 0
           };
 
           existing.totalCalls += item.request_count || 0;
           existing.errorCalls += item.exception_count || 0;
           existing.totalResponseTime += item.total_time_milliseconds || 0;
           existing.totalTtfb += item.total_ttfb_milliseconds || 0;
+          existing.cacheHitCount += item.cache_hit_count || 0;
+          if (isLLMModel(item.model)) {
+            existing.llmRequestCount += item.request_count || 0;
+          }
 
           const modelPricing = modelPriceMap.get(item.model);
           if (modelPricing) {
             const inputTokens = item.input_tokens || 0;
             const outputTokens = item.output_tokens || 0;
-            const isIOPriceType =
-              typeof modelPricing.inputPrice === 'number' && modelPricing.inputPrice > 0;
-
-            const totalPoints = isIOPriceType
-              ? (modelPricing.inputPrice || 0) * (inputTokens / 1000) +
-                (modelPricing.outputPrice || 0) * (outputTokens / 1000)
-              : ((modelPricing.charsPointsPrice || 0) * (inputTokens + outputTokens)) / 1000;
+            const { totalPoints } = calculateModelPrice({
+              config: modelPricing,
+              inputTokens,
+              outputTokens
+            });
 
             existing.totalCost += totalPoints;
           }
@@ -134,6 +146,8 @@ const DataTableComponent = ({
 
       channelMap.forEach((item, channelId) => {
         const successCalls = item.totalCalls - item.errorCalls;
+        const cacheHitRate =
+          item.llmRequestCount === 0 ? 0 : formatNumber(item.cacheHitCount / item.llmRequestCount);
 
         rows.push({
           channelName: channelIdToNameMap.get(parseInt(channelId)) || '',
@@ -142,7 +156,8 @@ const DataTableComponent = ({
           errorCalls: item.errorCalls,
           totalCost: Math.floor(item.totalCost),
           avgResponseTime: successCalls > 0 ? item.totalResponseTime / successCalls / 1000 : 0,
-          avgTtfb: successCalls > 0 ? item.totalTtfb / successCalls / 1000 : 0
+          avgTtfb: successCalls > 0 ? item.totalTtfb / successCalls / 1000 : 0,
+          cacheHitRate
         });
       });
     } else {
@@ -155,6 +170,8 @@ const DataTableComponent = ({
           totalCost: number;
           totalResponseTime: number;
           totalTtfb: number;
+          cacheHitCount: number;
+          llmRequestCount: number;
         }
       >();
 
@@ -168,25 +185,29 @@ const DataTableComponent = ({
             errorCalls: 0,
             totalCost: 0,
             totalResponseTime: 0,
-            totalTtfb: 0
+            totalTtfb: 0,
+            cacheHitCount: 0,
+            llmRequestCount: 0
           };
 
           existing.totalCalls += item.request_count || 0;
           existing.errorCalls += item.exception_count || 0;
           existing.totalResponseTime += item.total_time_milliseconds || 0;
           existing.totalTtfb += item.total_ttfb_milliseconds || 0;
+          existing.cacheHitCount += item.cache_hit_count || 0;
+          if (isLLMModel(modelName)) {
+            existing.llmRequestCount += item.request_count || 0;
+          }
 
           const modelPricing = modelPriceMap.get(item.model);
           if (modelPricing) {
             const inputTokens = item.input_tokens || 0;
             const outputTokens = item.output_tokens || 0;
-            const isIOPriceType =
-              typeof modelPricing.inputPrice === 'number' && modelPricing.inputPrice > 0;
-
-            const totalPoints = isIOPriceType
-              ? (modelPricing.inputPrice || 0) * (inputTokens / 1000) +
-                (modelPricing.outputPrice || 0) * (outputTokens / 1000)
-              : ((modelPricing.charsPointsPrice || 0) * (inputTokens + outputTokens)) / 1000;
+            const { totalPoints } = calculateModelPrice({
+              config: modelPricing,
+              inputTokens,
+              outputTokens
+            });
 
             existing.totalCost += totalPoints;
           }
@@ -197,13 +218,16 @@ const DataTableComponent = ({
 
       modelMap.forEach((item, modelName) => {
         const successCalls = item.totalCalls - item.errorCalls;
+        const cacheHitRate =
+          item.llmRequestCount === 0 ? 0 : formatNumber(item.cacheHitCount / item.llmRequestCount);
         rows.push({
           model: modelName,
           totalCalls: item.totalCalls,
           errorCalls: item.errorCalls,
           totalCost: Math.floor(item.totalCost),
           avgResponseTime: successCalls > 0 ? item.totalResponseTime / successCalls / 1000 : 0,
-          avgTtfb: successCalls > 0 ? item.totalTtfb / successCalls / 1000 : 0
+          avgTtfb: successCalls > 0 ? item.totalTtfb / successCalls / 1000 : 0,
+          cacheHitRate
         });
       });
     }
@@ -218,7 +242,15 @@ const DataTableComponent = ({
     }
 
     return rows;
-  }, [data, showChannelColumn, sortField, modelPriceMap, channelIdToNameMap, sortDirection]);
+  }, [
+    data,
+    showChannelColumn,
+    sortField,
+    modelPriceMap,
+    channelIdToNameMap,
+    sortDirection,
+    isLLMModel
+  ]);
 
   const handleSort = (field: SortFieldType) => {
     if (sortField === field) {
@@ -242,32 +274,40 @@ const DataTableComponent = ({
         <Table>
           <Thead>
             <Tr userSelect={'none'}>
-              <Th>{t('account_model:dashboard_model')}</Th>
-              {showChannelColumn && <Th>{t('account_model:dashboard_channel')}</Th>}
+              <Th>{t('config_model:dashboard_model')}</Th>
+              {showChannelColumn && <Th>{t('config_model:dashboard_channel')}</Th>}
               <Th
                 cursor="pointer"
                 onClick={() => handleSort('totalCalls')}
                 _hover={{ color: 'primary.600' }}
               >
-                {t('account_model:total_call_volume')} {getSortIcon('totalCalls')}
+                {t('config_model:total_call_volume')} {getSortIcon('totalCalls')}
               </Th>
               <Th
                 cursor="pointer"
                 onClick={() => handleSort('errorCalls')}
                 _hover={{ color: 'primary.600' }}
               >
-                {t('account_model:volunme_of_failed_calls')} {getSortIcon('errorCalls')}
+                {t('config_model:volunme_of_failed_calls')} {getSortIcon('errorCalls')}
               </Th>
-              {/* 鲁港通 - 显示积分消耗列 */}
+              {feConfigs?.isPlus && (
+                <Th
+                  cursor="pointer"
+                  onClick={() => handleSort('totalCost')}
+                  _hover={{ color: 'primary.600' }}
+                >
+                  {t('config_model:aipoint_usage')} {getSortIcon('totalCost')}
+                </Th>
+              )}
+              <Th>{t('config_model:avg_response_time')}</Th>
+              <Th>{t('config_model:avg_ttfb')}</Th>
               <Th
                 cursor="pointer"
-                onClick={() => handleSort('totalCost')}
+                onClick={() => handleSort('cacheHitRate')}
                 _hover={{ color: 'primary.600' }}
               >
-                {t('account_model:aipoint_usage')} {getSortIcon('totalCost')}
+                {t('config_model:cache_hit_rate')} {getSortIcon('cacheHitRate')}
               </Th>
-              <Th>{t('account_model:avg_response_time')}</Th>
-              <Th>{t('account_model:avg_ttfb')}</Th>
               <Th></Th>
             </Tr>
           </Thead>
@@ -278,12 +318,16 @@ const DataTableComponent = ({
                 {showChannelColumn && <Td>{item.channelName}</Td>}
                 <Td color={'primary.700'}>{formatNumber(item.totalCalls).toLocaleString()}</Td>
                 <Td color={'red.700'}>{formatNumber(item.errorCalls)}</Td>
-                {/* 鲁港通 - 显示积分消耗数据 */}
-                <Td>{formatNumber(item.totalCost).toLocaleString()}</Td>
+                {feConfigs?.isPlus && <Td>{formatNumber(item.totalCost).toLocaleString()}</Td>}
                 <Td color={item.avgResponseTime > 10 ? 'yellow.700' : ''}>
                   {item.avgResponseTime > 0 ? `${item.avgResponseTime.toFixed(2)}` : '-'}
                 </Td>
                 <Td>{item.avgTtfb > 0 ? `${item.avgTtfb.toFixed(2)}` : '-'}</Td>
+                <Td>
+                  {isLLMModel(item.model)
+                    ? `${formatNumber(item.cacheHitRate).toLocaleString()}`
+                    : '-'}
+                </Td>
                 <Td>
                   <Button
                     leftIcon={<MyIcon name={'menu'} w={'1rem'} />}
@@ -291,7 +335,7 @@ const DataTableComponent = ({
                     variant={'whiteBase'}
                     onClick={() => onViewDetail(item.model)}
                   >
-                    {t('account_model:detail')}
+                    {t('config_model:detail')}
                   </Button>
                 </Td>
               </Tr>
@@ -299,7 +343,7 @@ const DataTableComponent = ({
           </Tbody>
         </Table>
       </TableContainer>
-      {tableData.length === 0 && <EmptyTip text={t('account_model:dashboard_no_data')} />}
+      {tableData.length === 0 && <EmptyTip text={t('config_model:dashboard_no_data')} />}
     </MyBox>
   );
 };

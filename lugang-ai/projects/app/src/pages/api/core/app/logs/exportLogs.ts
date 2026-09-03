@@ -1,9 +1,9 @@
 import type { NextApiResponse } from 'next';
 import { responseWriteController } from '@fastgpt/service/common/response';
 import { readFromSecondary } from '@fastgpt/service/common/mongo/utils';
-import { addLog } from '@fastgpt/service/common/system/log';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import dayjs from 'dayjs';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { replaceRegChars } from '@fastgpt/global/common/string/tools';
 import { NextAPI } from '@/service/middleware/entry';
 import { authApp } from '@fastgpt/service/support/permission/app/auth';
@@ -14,13 +14,16 @@ import {
   ChatItemResponseCollectionName
 } from '@fastgpt/service/core/chat/constants';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
-import { type ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
+import { ChatSourceTypeEnum, type ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import { AppLogKeysEnum } from '@fastgpt/global/core/app/logs/constants';
 import { sanitizeCsvField } from '@fastgpt/service/common/file/csv';
 import { AppReadChatLogPerVal } from '@fastgpt/global/support/permission/app/constant';
 import { addAuditLog, getI18nAppType } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
-import { useIPFrequencyLimit } from '@fastgpt/service/common/middle/reqFrequencyLimit';
+import {
+  assertMemberRateLimit,
+  MemberRateLimitPolicy
+} from '@fastgpt/service/common/rateLimit/interface/member';
 import { getAppLatestVersion } from '@fastgpt/service/core/app/version/controller';
 import { VariableInputEnum } from '@fastgpt/global/core/workflow/constants';
 import { getTimezoneCodeFromStr } from '@fastgpt/global/common/time/timezone';
@@ -28,6 +31,12 @@ import { getLocationFromIp } from '@fastgpt/service/common/geo';
 import { getLocale } from '@fastgpt/service/common/middle/i18n';
 import { AppVersionCollectionName } from '@fastgpt/service/core/app/version/schema';
 import { ExportChatLogsBodySchema } from '@fastgpt/global/openapi/core/app/log/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+const logger = getLogger(LogCategories.MODULE.APP.LOGS);
+
+const appChatSourceMatch = {
+  $or: [{ sourceType: ChatSourceTypeEnum.app }, { sourceType: { $exists: false } }]
+};
 
 const formatJsonString = (data: any) => {
   if (data == null) return '';
@@ -38,23 +47,24 @@ const formatJsonString = (data: any) => {
 };
 
 async function handler(req: ApiRequestProps, res: NextApiResponse) {
-  let {
+  const {
     appId,
     dateStart,
     dateEnd,
     sources,
     tmbIds,
+    outLinkUids,
     chatSearch,
     title,
     sourcesMap,
     logKeys = [],
     feedbackType,
-    unreadOnly
-  } = ExportChatLogsBodySchema.parse(req.body);
-
-  if (!appId) {
-    throw new Error('缺少参数');
-  }
+    unreadOnly,
+    errorFilter
+  } = parseApiInput({
+    req,
+    bodySchema: ExportChatLogsBodySchema
+  }).body;
 
   const locale = getLocale(req);
   const timezoneCode = getTimezoneCodeFromStr(dateStart);
@@ -64,6 +74,10 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
     authToken: true,
     appId,
     per: AppReadChatLogPerVal
+  });
+  await assertMemberRateLimit({
+    policy: MemberRateLimitPolicy.ExportChatLogs,
+    memberId: String(tmbId)
   });
   const { chatConfig } = await getAppLatestVersion(appId, app);
   const variables = (chatConfig.variables || []).filter(
@@ -95,10 +109,8 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
   ]);
 
   const where = {
-    teamId: new Types.ObjectId(teamId),
     appId: new Types.ObjectId(appId),
-    source: sources ? { $in: sources } : { $exists: true },
-    tmbId: tmbIds ? { $in: tmbIds.map((item) => new Types.ObjectId(item)) } : { $exists: true },
+    $and: [appChatSourceMatch],
     // Feedback type filtering (BEFORE pagination for performance)
     ...(feedbackType === 'has_feedback' &&
       !unreadOnly && {
@@ -124,6 +136,22 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
       unreadOnly && {
         hasUnreadBadFeedback: true
       }),
+    ...(sources && { source: { $in: sources } }),
+    ...(tmbIds || outLinkUids
+      ? {
+          $or: [
+            ...(tmbIds?.length
+              ? [
+                  {
+                    tmbId: { $in: tmbIds.map((item) => new Types.ObjectId(item)) },
+                    $or: [{ outLinkUid: { $exists: false } }, { outLinkUid: { $in: [null, ''] } }]
+                  }
+                ]
+              : []),
+            ...(outLinkUids?.length ? [{ outLinkUid: { $in: outLinkUids } }] : [])
+          ]
+        }
+      : {}),
     updateTime: {
       $gte: new Date(dateStart),
       $lte: new Date(dateEnd)
@@ -136,7 +164,8 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
             { customTitle: { $regex: new RegExp(`${replaceRegChars(chatSearch)}`, 'i') } }
           ]
         }
-      : undefined)
+      : undefined),
+    ...(errorFilter === 'has_error' && { errorCount: { $gt: 0 } })
   };
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8;');
@@ -157,7 +186,16 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
             {
               $match: {
                 $expr: {
-                  $and: [{ $eq: ['$appId', '$$appId'] }, { $eq: ['$chatId', '$$chatId'] }]
+                  $and: [
+                    { $eq: ['$appId', '$$appId'] },
+                    { $eq: ['$chatId', '$$chatId'] },
+                    {
+                      $or: [
+                        { $eq: ['$sourceType', ChatSourceTypeEnum.app] },
+                        { $eq: [{ $type: '$sourceType' }, 'missing'] }
+                      ]
+                    }
+                  ]
                 }
               }
             },
@@ -197,28 +235,6 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
                     $cond: [{ $eq: ['$obj', 'AI'] }, 1, 0]
                   }
                 },
-                errorCount: {
-                  $sum: {
-                    $cond: [
-                      {
-                        $gt: [
-                          {
-                            $size: {
-                              $filter: {
-                                input: { $ifNull: ['$responseData', []] },
-                                as: 'item',
-                                cond: { $ne: [{ $ifNull: ['$$item.errorText', null] }, null] }
-                              }
-                            }
-                          },
-                          0
-                        ]
-                      },
-                      1,
-                      0
-                    ]
-                  }
-                },
                 totalPoints: {
                   $sum: {
                     $reduce: {
@@ -253,20 +269,22 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
             {
               $match: {
                 $expr: {
-                  $and: [{ $eq: ['$appId', '$$appId'] }, { $eq: ['$chatId', '$$chatId'] }]
+                  $and: [
+                    { $eq: ['$appId', '$$appId'] },
+                    { $eq: ['$chatId', '$$chatId'] },
+                    {
+                      $or: [
+                        { $eq: ['$sourceType', ChatSourceTypeEnum.app] },
+                        { $eq: [{ $type: '$sourceType' }, 'missing'] }
+                      ]
+                    }
+                  ]
                 }
               }
             },
             {
               $group: {
                 _id: null,
-                // errorCount from chatItemResponse data
-                errorCountFromResponse: {
-                  $sum: {
-                    $cond: [{ $ne: [{ $ifNull: ['$data.errorText', null] }, null] }, 1, 0]
-                  }
-                },
-                // totalPoints from chatItemResponse data
                 totalPointsFromResponse: {
                   $sum: { $ifNull: ['$data.totalPoints', 0] }
                 }
@@ -319,16 +337,7 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
               0
             ]
           },
-          // Merge errorCount from both sources
-          errorCount: {
-            $add: [
-              { $ifNull: [{ $arrayElemAt: ['$chatData.errorCountFromChatItem', 0] }, 0] },
-              {
-                $ifNull: [{ $arrayElemAt: ['$chatItemResponsesData.errorCountFromResponse', 0] }, 0]
-              }
-            ]
-          },
-          // Merge totalPoints from both sources
+          errorCount: { $ifNull: ['$errorCount', 0] },
           totalPoints: {
             $add: [
               { $ifNull: [{ $arrayElemAt: ['$chatData.totalPointsFromChatItem', 0] }, 0] },
@@ -506,7 +515,7 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
   });
 
   cursor.on('error', (err) => {
-    addLog.error(`export chat logs error`, err);
+    logger.error(`export chat logs error`, { error: err });
     res.status(500);
     res.end();
   });
@@ -524,7 +533,4 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
   })();
 }
 
-export default NextAPI(
-  useIPFrequencyLimit({ id: 'export-chat-logs', seconds: 1, limit: 1, force: true }),
-  handler
-);
+export default NextAPI(handler);

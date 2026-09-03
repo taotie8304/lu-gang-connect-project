@@ -1,10 +1,7 @@
 import { chatValue2RuntimePrompt } from '@fastgpt/global/core/chat/adapt';
 import { NodeInputKeyEnum, NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
-import type {
-  DispatchNodeResultType,
-  ModuleDispatchProps
-} from '@fastgpt/global/core/workflow/runtime/type';
+import type { DispatchNodeResultType, ModuleDispatchProps } from '../../types/runtime';
 
 export type UserChatInputProps = ModuleDispatchProps<{
   [NodeInputKeyEnum.userChatInput]: string;
@@ -17,7 +14,7 @@ type Response = DispatchNodeResultType<{
 export const dispatchWorkflowStart = async (props: Record<string, any>): Promise<Response> => {
   const {
     query,
-    variables,
+    variableState,
     params: { userChatInput }
   } = props as UserChatInputProps;
 
@@ -28,9 +25,8 @@ export const dispatchWorkflowStart = async (props: Record<string, any>): Promise
       return item?.url ?? '';
     })
     .filter(Boolean);
-  const variablesFiles: string[] = Array.isArray(variables?.fileUrlList)
-    ? variables.fileUrlList
-    : [];
+  const fileUrlList = variableState.get('fileUrlList');
+  const variablesFiles: string[] = Array.isArray(fileUrlList) ? fileUrlList : [];
 
   return {
     [DispatchNodeResponseKeyEnum.nodeResponse]: {},

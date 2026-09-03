@@ -8,6 +8,7 @@ import { useTranslation } from 'next-i18next';
 import React, { type DragEvent, useCallback, useMemo, useState } from 'react';
 import { getFileIcon } from '@fastgpt/global/common/file/icon';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 export type SelectFileItemType = {
   file: File;
@@ -21,7 +22,6 @@ const FileSelector = ({
   selectFiles,
   setSelectFiles,
   maxCount = 1000,
-  maxSize,
   FileTypeNode,
   ...props
 }: {
@@ -29,19 +29,23 @@ const FileSelector = ({
   selectFiles: SelectFileItemType[];
   setSelectFiles: (files: SelectFileItemType[]) => void;
   maxCount?: number;
-  maxSize?: string;
   FileTypeNode?: React.ReactNode;
 } & FlexProps) => {
   const { t } = useTranslation();
 
   const { toast } = useToast();
   const { feConfigs } = useSystemStore();
+  const { teamPlanStatus } = useUserStore();
 
-  const systemMaxSize = (feConfigs?.uploadFileMaxSize || 1024) * 1024 * 1024;
-  const displayMaxSize = maxSize || formatFileSize(systemMaxSize);
-  const formatMaxCount = feConfigs.uploadFileMaxAmount
-    ? Math.min(maxCount, feConfigs.uploadFileMaxAmount)
-    : maxCount;
+  // 文件大小限制（B）：团队套餐 || 系统配置 || 默认值
+  const displayMaxSize = formatFileSize(
+    (teamPlanStatus?.standard?.maxUploadFileSize || feConfigs.uploadFileMaxSize) * 1024 * 1024
+  );
+  // 文件数量限制：组件传入的maxCount || 团队套餐 || 系统配置
+  const formatMaxCount = Math.min(
+    maxCount,
+    teamPlanStatus?.standard?.maxUploadFileCount || feConfigs.uploadFileMaxAmount
+  );
 
   const { File, onOpen } = useSelectFile({
     fileType,
@@ -71,10 +75,18 @@ const FileSelector = ({
         size: formatFileSize(file.size)
       }));
 
+      const remainingFileAmount = Math.max(formatMaxCount - selectFiles.length, 0);
+      if (fileList.length > remainingFileAmount) {
+        toast({
+          status: 'warning',
+          title: t('file:some_file_count_exceeds_limit', { maxCount: formatMaxCount })
+        });
+      }
+
       const newFiles = [...fileList, ...selectFiles].slice(0, formatMaxCount);
       setSelectFiles(newFiles);
     },
-    [formatMaxCount, selectFiles, setSelectFiles]
+    [formatMaxCount, selectFiles, setSelectFiles, t, toast]
   );
 
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
@@ -208,10 +220,14 @@ const FileSelector = ({
               </Box>
             )}
             <Box color={'myGray.500'} fontSize={'xs'}>
-              {/* max count */}
-              {formatMaxCount && <>{t('file:support_max_count', { maxCount: formatMaxCount })}, </>}
-              {/* max size */}
-              {t('file:support_max_size', { maxSize: displayMaxSize })}
+              {formatMaxCount && (
+                <>
+                  {t('common:n_max_upload_file_limit', {
+                    count: formatMaxCount,
+                    size: displayMaxSize
+                  })}
+                </>
+              )}
             </Box>
           </>
 

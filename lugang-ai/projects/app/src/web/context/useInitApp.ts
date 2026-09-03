@@ -1,30 +1,30 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { clientInitData } from '@/web/common/system/staticData';
 import { useRouter } from 'next/router';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import type { FastGPTFeConfigsType } from '@fastgpt/global/common/system/types/index.d';
+import type { FastGPTFeConfigsType } from '@fastgpt/global/common/system/types/index';
 import { useMemoizedFn, useMount } from 'ahooks';
 import { TrackEventName } from '../common/system/constants';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useUserStore } from '../support/user/useUserStore';
 import {
   setBdVId,
   setFastGPTSem,
-  setInviterId,
+  initFastGPTSemSourceDomain,
   setMsclkid,
-  setSourceDomain,
   setUtmParams,
   setUtmWorkflow
 } from '../support/marketing/utils';
 import { type ShortUrlParams } from '@fastgpt/global/support/marketing/type';
 import { setCouponCode } from '@/web/support/marketing/utils';
+import { appClientEnv } from '@/web/common/system/env';
 
 type MarketingQueryParams = {
-  hiId?: string;
   bd_vid?: string;
   msclkid?: string;
   k?: string;
   search?: string;
+  visitor_id?: string;
   sourceDomain?: string;
   utm_source?: string;
   utm_medium?: string;
@@ -34,10 +34,10 @@ type MarketingQueryParams = {
 };
 
 const MARKETING_PARAMS: (keyof MarketingQueryParams)[] = [
-  'hiId',
   'bd_vid',
   'msclkid',
   'k',
+  'visitor_id',
   'sourceDomain',
   'utm_source',
   'utm_medium',
@@ -49,11 +49,11 @@ const MARKETING_PARAMS: (keyof MarketingQueryParams)[] = [
 export const useInitApp = () => {
   const router = useRouter();
   const {
-    hiId,
     bd_vid,
     msclkid,
     k,
     search,
+    visitor_id,
     sourceDomain,
     utm_source,
     utm_medium,
@@ -65,10 +65,18 @@ export const useInitApp = () => {
   const { loadGitStar, setInitd, feConfigs } = useSystemStore();
   const { userInfo } = useUserStore();
   const [scripts, setScripts] = useState<FastGPTFeConfigsType['scripts']>([]);
-  const [title, setTitle] = useState(process.env.SYSTEM_NAME || 'AI');
+  const [title, setTitle] = useState(appClientEnv.systemName);
 
   const getPathWithoutMarketingParams = () => {
     const filteredQuery = { ...router.query };
+    const hasMarketingParams = MARKETING_PARAMS.some((param) =>
+      Object.prototype.hasOwnProperty.call(filteredQuery, param)
+    );
+
+    if (!hasMarketingParams) {
+      return;
+    }
+
     MARKETING_PARAMS.forEach((param) => {
       delete filteredQuery[param];
     });
@@ -84,7 +92,9 @@ export const useInitApp = () => {
       }
     });
 
-    return `${router.pathname}${newQuery.toString() ? `?${newQuery.toString()}` : ''}`;
+    return `${router.pathname}${newQuery.toString() ? `?${newQuery.toString()}` : ''}${
+      window.location.hash
+    }`;
   };
 
   const initFetch = useMemoizedFn(async () => {
@@ -97,8 +107,9 @@ export const useInitApp = () => {
     // log fastgpt
     if (!isPlus) {
       console.log(
-        '%cWelcome to 鲁港通跨境AI智能平台',
-        'font-family:Arial; color:#3370ff ; font-size:18px; font-weight:bold;'
+        '%cWelcome to FastGPT',
+        'font-family:Arial; color:#3370ff ; font-size:18px; font-weight:bold;',
+        `GitHub：https://github.com/labring/FastGPT`
       );
     }
 
@@ -128,7 +139,7 @@ export const useInitApp = () => {
     };
   });
 
-  useRequest2(initFetch, {
+  useRequest(initFetch, {
     refreshDeps: [userInfo?.username],
     manual: false,
     pollingInterval: 300000 // 5 minutes refresh
@@ -136,11 +147,10 @@ export const useInitApp = () => {
 
   // Marketing data track
   useMount(() => {
-    setInviterId(hiId);
     setBdVId(bd_vid);
     setMsclkid(msclkid);
     setUtmWorkflow(utm_workflow);
-    setSourceDomain(sourceDomain);
+    initFastGPTSemSourceDomain(sourceDomain);
 
     const utmParams: ShortUrlParams = {
       ...(utm_source && { shortUrlSource: utm_source }),
@@ -150,14 +160,22 @@ export const useInitApp = () => {
     if (utm_workflow) {
       setUtmParams(utmParams);
     }
-    setFastGPTSem({ keyword: k, search, ...utmParams });
+
+    setFastGPTSem({
+      keyword: k,
+      search,
+      visitor_id,
+      ...utmParams
+    });
 
     if (couponCode) {
       setCouponCode(couponCode);
     }
 
     const newPath = getPathWithoutMarketingParams();
-    router.replace(newPath);
+    if (newPath) {
+      router.replace(newPath);
+    }
   });
 
   return {

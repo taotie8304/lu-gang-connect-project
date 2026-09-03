@@ -10,29 +10,25 @@ import {
   Td,
   Th,
   Thead,
-  Tr
+  Tr,
+  Checkbox
 } from '@chakra-ui/react';
 import type { ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import { ChatSourceMap } from '@fastgpt/global/core/chat/constants';
-import MultipleSelect, {
-  useMultipleSelect
-} from '@fastgpt/web/components/common/MySelect/MultipleSelect';
-import React, { useCallback, useMemo, useState } from 'react';
+import MultipleSelect from '@fastgpt/web/components/common/MySelect/MultipleSelect';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'next-i18next';
 import DateRangePicker from '@fastgpt/web/components/common/DateRangePicker';
-import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
-import { getTeamMembers } from '@/web/support/user/team/api';
-import Avatar from '@fastgpt/web/components/common/Avatar';
 import { useLocalStorageState } from 'ahooks';
 import { getLogKeys } from '@/web/core/app/api/log';
 import type { AppLogKeysType } from '@fastgpt/global/core/app/logs/type';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import {
   AppLogKeysEnum,
   AppLogKeysEnumMap,
   DefaultAppLogKeys
 } from '@fastgpt/global/core/app/logs/constants';
-import { isEqual } from 'lodash';
+import { isEqual } from 'lodash-es';
 import SyncLogKeysPopover from './SyncLogKeysPopover';
 import LogKeysConfigPopover from './LogKeysConfigPopover';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
@@ -48,13 +44,24 @@ import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import dynamic from 'next/dynamic';
 import type { HeaderControlProps } from './LogChart';
 import FeedbackTypeFilter from './FeedbackTypeFilter';
+import UserIpTypeFilter, { type UserIpTypeValue } from './UserIpTypeFilter';
+import ErrorCountFilter from './ErrorCountFilter';
+import UserFilter, { type SelectedUserType } from './UserFilter';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useContextSelector } from 'use-context-selector';
 import { AppContext } from '../context';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
+import { batchDeleteChatHistories } from '@/web/core/chat/history/api';
+import { useTableMultipleSelect } from '@fastgpt/web/hooks/useTableMultipleSelect';
+import MyIconButton from '@fastgpt/web/components/common/Icon/button';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 
 const DetailLogsModal = dynamic(() => import('./DetailLogsModal'));
+
+type LogTableProps = HeaderControlProps & {
+  pageSizeCacheKey: string;
+};
 
 const LogTable = ({
   appId,
@@ -64,16 +71,23 @@ const LogTable = ({
   setIsSelectAllSource,
   dateRange,
   setDateRange,
+  pageSizeCacheKey,
   showSourceSelector = true,
   px = [4, 8]
-}: HeaderControlProps) => {
+}: LogTableProps) => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
 
-  const [detailLogsId, setDetailLogsId] = useState<string>();
+  const [detailLogData, setDetailLogData] = useState<{
+    chatId: string;
+    feedbackUserName?: string;
+  }>();
   const appName = useContextSelector(AppContext, (v) => v.appDetail.name);
-  const [feedbackType, setFeedbackType] = useState<'all' | 'has_feedback' | 'good' | 'bad'>('all');
   const [unreadOnly, setUnreadOnly] = useState<boolean>(false);
+  const [userIpType, setUserIpType] = useState<UserIpTypeValue>('all');
+  const [feedbackType, setFeedbackType] = useState<'all' | 'has_feedback' | 'good' | 'bad'>('all');
+  const [errorFilter, setErrorFilter] = useState<'all' | 'has_error'>('all');
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // source
   const sourceList = useMemo(
@@ -85,33 +99,9 @@ const LogTable = ({
     [t]
   );
 
-  // member
-  const [tmbInputValue, setTmbInputValue] = useState('');
-  const { data: members, ScrollData: TmbScrollData } = useScrollPagination(getTeamMembers, {
-    params: { searchKey: tmbInputValue },
-    refreshDeps: [tmbInputValue]
-  });
-  const tmbList = useMemo(
-    () =>
-      members.map((item) => ({
-        label: (
-          <HStack spacing={1}>
-            <Avatar src={item.avatar} w={'1.2rem'} rounded={'full'} />
-            <Box color={'myGray.900'} className="textEllipsis">
-              {item.memberName}
-            </Box>
-          </HStack>
-        ),
-        value: item.tmbId
-      })),
-    [members]
-  );
-  const {
-    value: selectTmbIds,
-    setValue: setSelectTmbIds,
-    isSelectAll: isSelectAllTmb,
-    setIsSelectAll: setIsSelectAllTmb
-  } = useMultipleSelect<string>([], true);
+  // user filter
+  const [selectedUsers, setSelectedUsers] = useState<SelectedUserType[]>([]);
+  const [isSelectAllUser, setIsSelectAllUser] = useState(true);
 
   // chat
   const [chatSearch, setChatSearch] = useState('');
@@ -120,7 +110,7 @@ const LogTable = ({
   const [logKeys = DefaultAppLogKeys, setLogKeys] = useLocalStorageState<AppLogKeysType[]>(
     `app_log_keys_${appId}`
   );
-  const { runAsync: fetchLogKeys, data: teamLogKeys } = useRequest2(
+  const { runAsync: fetchLogKeys, data: teamLogKeys } = useRequest(
     async () => {
       return getLogKeys({ appId });
     },
@@ -145,7 +135,17 @@ const LogTable = ({
     return !isEqual(teamLogKeysList, personalLogKeysList);
   }, [teamLogKeys, logKeys]);
 
-  const { runAsync: exportLogs } = useRequest2(async () => {
+  const { tmbIds, outLinkUids } = useMemo(() => {
+    if (isSelectAllUser || selectedUsers.length === 0) {
+      return { tmbIds: undefined, outLinkUids: undefined };
+    }
+    return {
+      tmbIds: selectedUsers.filter((u) => u.tmbId && !u.outLinkUid).map((u) => u.tmbId!),
+      outLinkUids: selectedUsers.filter((u) => u.outLinkUid).map((u) => u.outLinkUid!)
+    };
+  }, [selectedUsers, isSelectAllUser]);
+
+  const { runAsync: exportLogs } = useRequest(async () => {
     const enabledKeys = logKeys.filter((item) => item.enable).map((item) => item.key);
     const headerTitle = enabledKeys.map((k) => t(AppLogKeysEnumMap[k])).join(',');
     await downloadFetch({
@@ -156,7 +156,8 @@ const LogTable = ({
         dateStart: dayjs(dateRange.from || new Date()).format(),
         dateEnd: dayjs(dateRange.to || new Date()).format(),
         sources: isSelectAllSource ? undefined : chatSources,
-        tmbIds: isSelectAllTmb ? undefined : selectTmbIds,
+        tmbIds: tmbIds?.length ? tmbIds : undefined,
+        outLinkUids: outLinkUids?.length ? outLinkUids : undefined,
         chatSearch,
         title: `${headerTitle},${t('app:logs_keys_chatDetails')}`,
         logKeys: enabledKeys,
@@ -169,7 +170,8 @@ const LogTable = ({
           ])
         ),
         feedbackType,
-        unreadOnly
+        unreadOnly,
+        errorFilter: errorFilter === 'all' ? undefined : errorFilter
       }
     });
   });
@@ -179,10 +181,12 @@ const LogTable = ({
       dateStart: dateRange.from!,
       dateEnd: dateRange.to!,
       sources: isSelectAllSource ? undefined : chatSources,
-      tmbIds: isSelectAllTmb ? undefined : selectTmbIds,
+      tmbIds: tmbIds?.length ? tmbIds : undefined,
+      outLinkUids: outLinkUids?.length ? outLinkUids : undefined,
       chatSearch,
       feedbackType,
-      unreadOnly: feedbackType === 'all' ? undefined : unreadOnly
+      unreadOnly: feedbackType === 'all' ? undefined : unreadOnly,
+      errorFilter: errorFilter === 'all' ? undefined : errorFilter
     }),
     [
       appId,
@@ -190,11 +194,12 @@ const LogTable = ({
       dateRange.from,
       dateRange.to,
       isSelectAllSource,
-      selectTmbIds,
-      isSelectAllTmb,
+      tmbIds,
+      outLinkUids,
       chatSearch,
       feedbackType,
-      unreadOnly
+      unreadOnly,
+      errorFilter
     ]
   );
 
@@ -208,11 +213,40 @@ const LogTable = ({
     pageSize
   } = usePagination(getAppChatLogs, {
     defaultPageSize: 20,
+    pageSizeCacheKey,
     params,
-    refreshDeps: [params]
+    refreshDeps: [params],
+    scrollContainerRef
   });
 
-  const HeaderRenderMap = useMemo(
+  const {
+    selectedItems,
+    toggleSelect,
+    isSelected,
+    FloatingActionBar,
+    isSelecteAll,
+    selectAllTrigger
+  } = useTableMultipleSelect({
+    list: logs,
+    getItemId: (item) => item._id
+  });
+  const chatIds = useMemoEnhance(() => selectedItems.map((item) => item.chatId), [selectedItems]);
+
+  const { openConfirm: openConfirmDelete, ConfirmModal: ConfirmDeleteModal } = useConfirm({
+    type: 'delete'
+  });
+
+  const { runAsync: handleDelete } = useRequest(
+    async (chatIds: string[]) => {
+      await batchDeleteChatHistories({ appId, chatIds });
+      await getData(pageNum);
+    },
+    {
+      successToast: t('common:delete_success')
+    }
+  );
+
+  const HeaderRenderMap = useMemoEnhance(
     () => ({
       [AppLogKeysEnum.SOURCE]: <Th key={AppLogKeysEnum.SOURCE}>{t('app:logs_keys_source')}</Th>,
       [AppLogKeysEnum.CREATED_TIME]: (
@@ -224,7 +258,22 @@ const LogTable = ({
         </Th>
       ),
       [AppLogKeysEnum.USER]: <Th key={AppLogKeysEnum.USER}>{t('app:logs_chat_user')}</Th>,
-      [AppLogKeysEnum.REGION]: <Th key={AppLogKeysEnum.REGION}>{t('app:logs_keys_region')}</Th>,
+      [AppLogKeysEnum.REGION]: (
+        <Th key={AppLogKeysEnum.REGION}>
+          <UserIpTypeFilter
+            userIpType={userIpType}
+            setUserIpType={setUserIpType}
+            menuButtonProps={{
+              fontSize: '12.8px',
+              fontWeight: 'medium',
+              color: 'myGray.600',
+              px: 0,
+              _hover: {},
+              _active: {}
+            }}
+          />
+        </Th>
+      ),
       [AppLogKeysEnum.TITLE]: <Th key={AppLogKeysEnum.TITLE}>{t('app:logs_title')}</Th>,
       [AppLogKeysEnum.SESSION_ID]: (
         <Th key={AppLogKeysEnum.SESSION_ID}>{t('app:logs_keys_sessionId')}</Th>
@@ -268,14 +317,28 @@ const LogTable = ({
         <Th key={AppLogKeysEnum.RESPONSE_TIME}>{t('app:logs_response_time')}</Th>
       ),
       [AppLogKeysEnum.ERROR_COUNT]: (
-        <Th key={AppLogKeysEnum.ERROR_COUNT}>{t('app:logs_error_count')}</Th>
+        <Th key={AppLogKeysEnum.ERROR_COUNT}>
+          <ErrorCountFilter
+            errorFilter={errorFilter}
+            setErrorFilter={setErrorFilter}
+            placement="right"
+            menuButtonProps={{
+              fontSize: '12.8px',
+              fontWeight: 'medium',
+              color: 'myGray.600',
+              px: 0,
+              _hover: {},
+              _active: {}
+            }}
+          />
+        </Th>
       ),
       [AppLogKeysEnum.POINTS]: <Th key={AppLogKeysEnum.POINTS}>{t('app:logs_points')}</Th>,
       [AppLogKeysEnum.VERSION_NAME]: (
         <Th key={AppLogKeysEnum.VERSION_NAME}>{t('app:logs_keys_versionName')}</Th>
       )
     }),
-    [t, feedbackType, setFeedbackType, unreadOnly, setUnreadOnly]
+    [t, feedbackType, unreadOnly, userIpType, errorFilter]
   );
 
   const getCellRenderMap = useCallback(
@@ -309,7 +372,19 @@ const LogTable = ({
           </Box>
         </Td>
       ),
-      [AppLogKeysEnum.REGION]: <Td key={AppLogKeysEnum.REGION}>{item.region || '-'}</Td>,
+      [AppLogKeysEnum.REGION]: (
+        <Td key={AppLogKeysEnum.REGION}>
+          {userIpType === 'only_ip'
+            ? item.originIp || '-'
+            : userIpType === 'only_region'
+              ? item.originIp !== item.region
+                ? item.region || '-'
+                : '-'
+              : item.originIp
+                ? `${item.region || '-'}: ${item.originIp}`
+                : '-'}
+        </Td>
+      ),
       [AppLogKeysEnum.TITLE]: (
         <Td key={AppLogKeysEnum.TITLE} className="textEllipsis" maxW={'250px'}>
           {item.customTitle || item.title}
@@ -328,13 +403,13 @@ const LogTable = ({
           <Flex gap={3} px={1}>
             {!!item?.userGoodFeedbackCount && (
               <Flex alignItems={'center'}>
-                <MyIcon mr={1} name={'core/chat/feedback/goodLight'} color={'green.500'} w={4} />
+                <MyIcon mr={1} name={'core/chat/feedback/goodLight'} color={'myGray.400'} w={4} />
                 {item.userGoodFeedbackCount}
               </Flex>
             )}
             {!!item?.userBadFeedbackCount && (
               <Flex alignItems={'center'}>
-                <MyIcon mr={1} name={'core/chat/feedback/badLight'} color={'yellow.500'} w={4} />
+                <MyIcon mr={1} name={'core/chat/feedback/badLight'} color={'myGray.400'} w={4} />
                 {item.userBadFeedbackCount}
               </Flex>
             )}
@@ -365,7 +440,7 @@ const LogTable = ({
         <Td key={AppLogKeysEnum.VERSION_NAME}>{item.versionName || '-'}</Td>
       )
     }),
-    [t]
+    [t, userIpType]
   );
 
   return (
@@ -401,7 +476,7 @@ const LogTable = ({
             onSuccess={(date) => {
               setDateRange(date);
             }}
-            bg={'myGray.25'}
+            bg={'white'}
             h={10}
             flex={'0 1 250px'}
             rounded={'8px'}
@@ -412,32 +487,19 @@ const LogTable = ({
             }}
           />
         </Flex>
-        {/* 鲁港通 - 启用成员筛选 */}
-        <Flex>
-          <MultipleSelect<string>
-            list={tmbList}
-            value={selectTmbIds}
-            onSelect={(val) => {
-              setSelectTmbIds(val as string[]);
-            }}
-            ScrollData={TmbScrollData}
-            isSelectAll={isSelectAllTmb}
-            setIsSelectAll={setIsSelectAllTmb}
-            h={10}
-            w={' 226px'}
-            rounded={'8px'}
-            formLabelFontSize={'sm'}
-            formLabel={t('common:member')}
-            tagStyle={{
-              px: 1,
-              borderRadius: 'sm',
-              bg: 'myGray.100',
-              w: '76px'
-            }}
-            inputValue={tmbInputValue}
-            setInputValue={setTmbInputValue}
-          />
-        </Flex>
+        {feConfigs?.isPlus && (
+          <Flex>
+            <UserFilter
+              appId={appId}
+              dateRange={dateRange}
+              sources={isSelectAllSource ? undefined : chatSources}
+              selectedUsers={selectedUsers}
+              setSelectedUsers={setSelectedUsers}
+              isSelectAll={isSelectAllUser}
+              setIsSelectAll={setIsSelectAllUser}
+            />
+          </Flex>
+        )}
         <Flex
           flex={'0 1 230px'}
           h={10}
@@ -452,11 +514,11 @@ const LogTable = ({
           pl={3}
         >
           <Box rounded={'8px'} bg={'white'} fontSize={'sm'} border={'none'} whiteSpace={'nowrap'}>
-            {t('common:chat')}
+            {t('common:Search')}
           </Box>
           <Box w={'1px'} h={'12px'} bg={'myGray.200'} mx={2} />
           <Input
-            placeholder={t('app:logs_search_chat')}
+            placeholder={t('app:logs_search_placeholder')}
             value={chatSearch}
             onChange={(e) => setChatSearch(e.target.value)}
             fontSize={'sm'}
@@ -497,13 +559,17 @@ const LogTable = ({
         />
       </Flex>
 
-      <TableContainer mt={[2, 4]} flex={'1 0 0'} overflowY={'auto'}>
+      <TableContainer ref={scrollContainerRef} mt={[2, 4]} flex={'1 0 0'} overflowY={'auto'}>
         <Table variant={'simple'} fontSize={'sm'}>
           <Thead>
             <Tr>
+              <Th>
+                <Checkbox isChecked={isSelecteAll} onChange={selectAllTrigger} />
+              </Th>
               {logKeys
                 .filter((logKey) => logKey.enable)
                 .map((logKey) => HeaderRenderMap[logKey.key])}
+              <Th>{t('common:Action')}</Th>
             </Tr>
           </Thead>
           <Tbody fontSize={'xs'}>
@@ -514,12 +580,34 @@ const LogTable = ({
                   key={item._id}
                   _hover={{ bg: 'myWhite.600' }}
                   cursor={'pointer'}
-                  title={t('common:core.view_chat_detail')}
-                  onClick={() => setDetailLogsId(item.chatId)}
+                  onClick={() =>
+                    setDetailLogData({
+                      chatId: item.chatId,
+                      feedbackUserName:
+                        item.outLinkUid || item.sourceMember?.name || item.tmbId || undefined
+                    })
+                  }
                 >
+                  <Td>
+                    <HStack onClick={(e) => e.stopPropagation()}>
+                      <Checkbox isChecked={isSelected(item)} onChange={() => toggleSelect(item)} />
+                    </HStack>
+                  </Td>
                   {logKeys
                     .filter((logKey) => logKey.enable)
                     .map((logKey) => cellRenderMap[logKey.key as AppLogKeysEnum])}
+                  <Td onClick={(e) => e.stopPropagation()}>
+                    <PopoverConfirm
+                      content={t('app:confirm_delete_chat_content')}
+                      type="delete"
+                      onConfirm={() => handleDelete([item.chatId])}
+                      Trigger={
+                        <Flex>
+                          <MyIconButton icon={'delete'} hoverColor={'red.600'} hoverBg="red.100" />
+                        </Flex>
+                      }
+                    />
+                  </Td>
                 </Tr>
               );
             })}
@@ -528,22 +616,46 @@ const LogTable = ({
         {logs.length === 0 && !isLoading && <EmptyTip text={t('app:logs_empty')}></EmptyTip>}
       </TableContainer>
 
-      {total >= pageSize && (
-        <Flex mt={3} justifyContent={'center'}>
-          <Pagination />
-        </Flex>
-      )}
+      <FloatingActionBar
+        pb={0}
+        Controler={
+          <HStack>
+            <Button
+              variant={'whiteDanger'}
+              onClick={() =>
+                openConfirmDelete({
+                  onConfirm: () => handleDelete(chatIds),
+                  customContent: t('app:confirm_delete_chats', {
+                    n: chatIds.length
+                  })
+                })()
+              }
+            >
+              {t('common:Delete')} ({chatIds.length})
+            </Button>
+          </HStack>
+        }
+      >
+        {total > pageSize && (
+          <Flex justifyContent={'center'}>
+            <Pagination />
+          </Flex>
+        )}
+      </FloatingActionBar>
 
-      {!!detailLogsId && (
+      {!!detailLogData && (
         <DetailLogsModal
           appId={appId}
-          chatId={detailLogsId}
+          chatId={detailLogData.chatId}
+          feedbackUserName={detailLogData.feedbackUserName}
           onClose={() => {
-            setDetailLogsId(undefined);
+            setDetailLogData(undefined);
             getData(pageNum);
           }}
         />
       )}
+
+      <ConfirmDeleteModal />
     </MyBox>
   );
 };

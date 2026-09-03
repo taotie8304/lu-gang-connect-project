@@ -1,4 +1,4 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../i18n/utils';
 import { type ErrType } from '../errorCode';
 
 /* dataset: 507000 */
@@ -9,7 +9,9 @@ export enum CommonErrEnum {
   fileNotFound = 'fileNotFound',
   unAuthFile = 'unAuthFile',
   missingParams = 'missingParams',
-  inheritPermissionError = 'inheritPermissionError'
+  inheritPermissionError = 'inheritPermissionError',
+  folderDepthLimit = 'folderDepthLimit',
+  folderMoveDepthLimit = 'folderMoveDepthLimit'
 }
 const datasetErr = [
   {
@@ -22,19 +24,28 @@ const datasetErr = [
   },
   {
     statusText: CommonErrEnum.fileNotFound,
-    message: 'error.fileNotFound'
+    message: i18nT('common:error.fileNotFound'),
+    httpStatus: 404
   },
   {
     statusText: CommonErrEnum.unAuthFile,
-    message: 'error.unAuthFile'
+    message: i18nT('common:error.unAuthFile')
   },
   {
     statusText: CommonErrEnum.missingParams,
-    message: 'error.missingParams'
+    message: i18nT('common:error.missingParams')
   },
   {
     statusText: CommonErrEnum.inheritPermissionError,
-    message: 'error.inheritPermissionError'
+    message: i18nT('common:error.inheritPermissionError')
+  },
+  {
+    statusText: CommonErrEnum.folderDepthLimit,
+    message: i18nT('common:error.folderDepthLimit')
+  },
+  {
+    statusText: CommonErrEnum.folderMoveDepthLimit,
+    message: i18nT('common:error.folderMoveDepthLimit')
   }
 ];
 export default datasetErr.reduce((acc, cur, index) => {
@@ -44,7 +55,8 @@ export default datasetErr.reduce((acc, cur, index) => {
       code: startCode + index,
       statusText: cur.statusText,
       message: cur.message,
-      data: null
+      data: null,
+      ...(cur.httpStatus !== undefined ? { httpStatus: cur.httpStatus } : {})
     }
   };
 }, {} as ErrType<`${CommonErrEnum}`>);

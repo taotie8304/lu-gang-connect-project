@@ -1,0 +1,49 @@
+import { defineIndex, Schema, getMongoModel } from '../../mongo';
+import { type S3TtlSchemaType } from '@fastgpt/global/common/file/s3TTL/type';
+
+const collectionName = 's3_ttls';
+
+const S3MultipartTTLSchema = new Schema(
+  {
+    uploadId: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    objectMarker: {
+      type: String,
+      required: false,
+      trim: true
+    },
+    totalSize: {
+      type: Number,
+      required: false,
+      min: 1
+    }
+  },
+  { _id: false }
+);
+
+const S3TTLSchema = new Schema({
+  bucketName: {
+    type: String,
+    required: true
+  },
+  minioKey: {
+    type: String,
+    required: true
+  },
+  expiredTime: {
+    type: Date,
+    required: true
+  },
+  multipart: {
+    type: S3MultipartTTLSchema,
+    required: false
+  }
+});
+
+defineIndex(S3TTLSchema, { key: { expiredTime: 1 } });
+defineIndex(S3TTLSchema, { key: { bucketName: 1, minioKey: 1 } });
+
+export const MongoS3TTL = getMongoModel<S3TtlSchemaType>(collectionName, S3TTLSchema);

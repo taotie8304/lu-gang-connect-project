@@ -1,8 +1,11 @@
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 import { type SystemModelItemType } from './type';
-import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
+import type {
+  EmbeddingModelItemType,
+  LLMModelItemType
+} from '@fastgpt/global/core/ai/model.schema';
 
-export const getDefaultLLMModel = () => global?.systemDefaultModel.llm!;
+export const getDefaultLLMModel = () => global.systemDefaultModel.llm!;
 export const getLLMModel = (model?: string | LLMModelItemType) => {
   if (!model) return getDefaultLLMModel();
 
@@ -11,9 +14,9 @@ export const getLLMModel = (model?: string | LLMModelItemType) => {
 
 export const getDatasetModel = (model?: string) => {
   return (
-    Array.from(global.llmModelMap.values())
-      ?.filter((item) => item.datasetProcess)
-      ?.find((item) => item.model === model || item.name === model) ?? getDefaultLLMModel()
+    Array.from(global.llmModelMap.values())?.find(
+      (item) => item.model === model || item.name === model
+    ) ?? getDefaultLLMModel()
   );
 };
 
@@ -26,10 +29,19 @@ export const getVlmModel = (model?: string) => {
   return list.find((item) => item.model === model || item.name === model) || list[0];
 };
 
+export const getDefaultChatTitleModel = () => global?.systemDefaultModel.chatTitleLLM;
+
 export const getDefaultEmbeddingModel = () => global?.systemDefaultModel.embedding!;
-export const getEmbeddingModel = (model?: string) => {
+export const getEmbeddingModel = (model?: string | EmbeddingModelItemType) => {
   if (!model) return getDefaultEmbeddingModel();
-  return global.embeddingModelMap.get(model) || getDefaultEmbeddingModel();
+  if (typeof model === 'string') {
+    return global.embeddingModelMap.get(model) || getDefaultEmbeddingModel();
+  }
+
+  return model;
+};
+export const isImageEmbeddingModel = (model?: string | EmbeddingModelItemType) => {
+  return !!getEmbeddingModel(model)?.vision;
 };
 
 export const getDefaultTTSModel = () => global?.systemDefaultModel.tts!;
@@ -50,7 +62,13 @@ export function getRerankModel(model?: string) {
   return global.reRankModelMap.get(model) || getDefaultRerankModel();
 }
 
-export const findAIModel = (model: string): SystemModelItemType | undefined => {
+export const findAIModel = (
+  model: string | SystemModelItemType
+): SystemModelItemType | undefined => {
+  if (typeof model === 'object') {
+    return model;
+  }
+
   return (
     global.llmModelMap.get(model) ||
     global.embeddingModelMap.get(model) ||

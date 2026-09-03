@@ -12,20 +12,22 @@ import { delAppById, getAppDetailById, putAppById } from '@/web/core/app/api';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { type AppChatConfigType, type AppDetailType } from '@fastgpt/global/core/app/type';
-import { type AppUpdateParams, type PostPublishAppProps } from '@/global/core/app/api';
+import { type PostPublishAppProps } from '@/global/core/app/api';
+import { type UpdateAppBodyType } from '@fastgpt/global/openapi/core/app/common/api';
 import { postPublishApp, getAppLatestVersion } from '@/web/core/app/api/version';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import dynamic from 'next/dynamic';
 import { useDisclosure } from '@chakra-ui/react';
-import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import type { StoreNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import type { StoreEdgeItemType } from '@fastgpt/global/core/workflow/type/edge';
 import { AppErrEnum } from '@fastgpt/global/common/error/code/app';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { AppTypeList } from '@fastgpt/global/core/app/constants';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import { hasDebugToolInNodes } from '@fastgpt/global/core/app/tool/utils';
+import { ToastHandledError } from '@fastgpt/global/common/error/utils';
 
 const InfoModal = dynamic(() => import('./InfoModal'));
-const TagsEditModal = dynamic(() => import('./TagsEditModal'));
 
 export enum TabEnum {
   'appEdit' = 'appEdit',
@@ -40,9 +42,8 @@ type AppContextType = {
   appDetail: AppDetailType;
   setAppDetail: Dispatch<SetStateAction<AppDetailType>>;
   loadingApp: boolean;
-  updateAppDetail: (data: AppUpdateParams) => Promise<void>;
+  updateAppDetail: (data: UpdateAppBodyType) => Promise<void>;
   onOpenInfoEdit: () => void;
-  onOpenTeamTagModal: () => void;
   onDelApp: () => void;
   onSaveApp: (data: PostPublishAppProps) => Promise<void>;
   appLatestVersion:
@@ -64,16 +65,13 @@ export const AppContext = createContext<AppContextType>({
   },
   appDetail: defaultApp,
   loadingApp: false,
-  updateAppDetail: function (data: AppUpdateParams): Promise<void> {
+  updateAppDetail: function (data: UpdateAppBodyType): Promise<void> {
     throw new Error('Function not implemented.');
   },
   setAppDetail: function (value: SetStateAction<AppDetailType>): void {
     throw new Error('Function not implemented.');
   },
   onOpenInfoEdit: function (): void {
-    throw new Error('Function not implemented.');
-  },
-  onOpenTeamTagModal: function (): void {
     throw new Error('Function not implemented.');
   },
   onDelApp: function (): void {
@@ -105,12 +103,6 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
     onOpen: onOpenInfoEdit,
     onClose: onCloseInfoEdit
   } = useDisclosure();
-  const {
-    isOpen: isOpenTeamTagModal,
-    onOpen: onOpenTeamTagModal,
-    onClose: onCloseTeamTagModal
-  } = useDisclosure();
-
   const route2Tab = useCallback(
     (currentTab: `${TabEnum}`) => {
       router.push({
@@ -124,7 +116,7 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
   );
 
   const [appDetail, setAppDetail] = useState<AppDetailType>(defaultApp);
-  const { loading: loadingApp, runAsync: reloadApp } = useRequest2(
+  const { loading: loadingApp, runAsync: reloadApp } = useRequest(
     () => {
       if (appId) {
         return getAppDetailById(appId);
@@ -144,7 +136,7 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
     }
   );
 
-  const { data: appLatestVersion, run: reloadAppLatestVersion } = useRequest2(
+  const { data: appLatestVersion, run: reloadAppLatestVersion } = useRequest(
     () => getAppLatestVersion({ appId }),
     {
       manual: !appDetail?.permission?.hasWritePer,
@@ -152,19 +144,28 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
     }
   );
 
-  const { runAsync: updateAppDetail } = useRequest2(async (data: AppUpdateParams) => {
+  const { runAsync: updateAppDetail } = useRequest(async (data: UpdateAppBodyType) => {
     await putAppById(appId, data);
+    const { avatar, intro, ...rest } = data;
     setAppDetail((state) => ({
       ...state,
-      ...data,
-      modules: data.nodes || state.modules
+      ...rest,
+      ...(avatar !== undefined && { avatar: avatar ?? '' }),
+      ...(intro !== undefined && { intro: intro ?? '' })
     }));
   });
 
-  const { runAsync: onSaveApp } = useRequest2(
+  const { runAsync: onSaveApp } = useRequest(
     async (data: PostPublishAppProps) => {
       try {
         if (!appDetail.permission.hasWritePer) return;
+        if (data.isPublish && hasDebugToolInNodes(data.nodes)) {
+          toast({
+            title: t('app:publish_remove_debug_tool_tip'),
+            status: 'warning'
+          });
+          return Promise.reject(new ToastHandledError('Debug tool cannot be published'));
+        }
         await postPublishApp(appId, data);
         setAppDetail((state) => ({
           ...state,
@@ -181,16 +182,15 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
     },
     {
       manual: true,
+      // 保存入口通常会再包一层 useRequest 处理按钮 loading 和 toast，这里只做共享保存动作，避免失败时重复提示。
+      errorToast: '',
       refreshDeps: [appDetail.permission.hasWritePer, appId]
     }
   );
 
   const isAgent = AppTypeList.includes(appDetail.type);
-  const { openConfirm: openConfirmDel, ConfirmModal: ConfirmDelModal } = useConfirm({
-    type: 'delete',
-    content: isAgent ? t('app:confirm_del_app_tip') : t('app:confirm_del_tool_tip')
-  });
-  const { runAsync: deleteApp } = useRequest2(
+  const { openConfirm, ConfirmModal } = useConfirm();
+  const { runAsync: deleteApp } = useRequest(
     async () => {
       if (!appDetail) return Promise.reject('Not load app');
       return delAppById(appDetail._id);
@@ -207,14 +207,15 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
       errorToast: t('common:delete_failed')
     }
   );
-  const onDelApp = useCallback(
-    () =>
-      openConfirmDel({
-        onConfirm: deleteApp,
-        inputConfirmText: appDetail.name
-      })(),
-    [deleteApp, openConfirmDel, appDetail.name]
-  );
+  const onDelApp = useCallback(() => {
+    openConfirm({
+      title: t('common:delete_warning'),
+      customContent: isAgent ? t('app:confirm_del_app_tip') : t('app:confirm_del_tool_tip'),
+      onConfirm: deleteApp,
+      confirmButtonVariant: 'dangerFill',
+      inputConfirmText: appDetail.name
+    })();
+  }, [openConfirm, isAgent, deleteApp, appDetail.name, t]);
 
   const contextValue: AppContextType = useMemo(
     () => ({
@@ -226,7 +227,6 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
       loadingApp,
       updateAppDetail,
       onOpenInfoEdit,
-      onOpenTeamTagModal,
       onDelApp,
       onSaveApp,
       appLatestVersion,
@@ -241,7 +241,6 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
       loadingApp,
       onDelApp,
       onOpenInfoEdit,
-      onOpenTeamTagModal,
       onSaveApp,
       reloadApp,
       reloadAppLatestVersion,
@@ -254,9 +253,8 @@ const AppContextProvider = ({ children }: { children: ReactNode }) => {
     <AppContext.Provider value={contextValue}>
       {children}
       {isOpenInfoEdit && <InfoModal onClose={onCloseInfoEdit} />}
-      {isOpenTeamTagModal && <TagsEditModal onClose={onCloseTeamTagModal} />}
 
-      <ConfirmDelModal />
+      <ConfirmModal />
     </AppContext.Provider>
   );
 };

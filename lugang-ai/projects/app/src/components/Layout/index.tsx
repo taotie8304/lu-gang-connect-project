@@ -11,11 +11,11 @@ import { useI18nLng } from '@fastgpt/web/hooks/useI18n';
 
 import Auth from './auth';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { useDebounceEffect, useMount } from 'ahooks';
-import { useTranslation } from 'next-i18next';
+import { useDebounceEffect } from 'ahooks';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useCheckCoupon } from './hooks/checkCoupon';
-import HelperBot from './HelperBot';
+import SupportBot from './SupportBot';
 
 const Navbar = dynamic(() => import('./navbar'));
 const NavbarPhone = dynamic(() => import('./navbarPhone'));
@@ -30,6 +30,12 @@ const NotSufficientModal = dynamic(() => import('@/components/support/wallet/Not
 const SystemMsgModal = dynamic(() => import('@/components/support/user/inform/SystemMsgModal'), {
   ssr: false
 });
+const EnterpriseAuthNoticeModal = dynamic(
+  () => import('@/components/support/user/inform/EnterpriseAuthNoticeModal'),
+  {
+    ssr: false
+  }
+);
 const ImportantInform = dynamic(() => import('@/components/support/user/inform/ImportantInform'), {
   ssr: false
 });
@@ -40,27 +46,41 @@ const ManualCopyModal = dynamic(
   () => import('@fastgpt/web/hooks/useCopyData').then((mod) => mod.ManualCopyModal),
   { ssr: false }
 );
+const ActivityAdModal = dynamic(() => import('@/components/support/activity/ActivityAdModal'), {
+  ssr: false
+});
+const ProModal = dynamic(() => import('@/components/ProTip/ProModal'), {
+  ssr: false
+});
 
 const pcUnShowLayoutRoute: Record<string, boolean> = {
   '/': true,
   '/login': true,
   '/login/provider': true,
   '/login/fastlogin': true,
+  '/account/cancel': true,
   '/chat/share': true,
   '/app/edit': true,
   '/chat': true,
   '/tools/price': true,
-  '/price': true
+  '/price': true,
+  '/skill/detail': true,
+  '/config/plugin/marketplace': true,
+  '/dashboard/tool/marketplace': true
 };
 const phoneUnShowLayoutRoute: Record<string, boolean> = {
   '/': true,
   '/login': true,
   '/login/provider': true,
   '/login/fastlogin': true,
+  '/account/cancel': true,
   '/chat': true,
   '/chat/share': true,
   '/tools/price': true,
-  '/price': true
+  '/price': true,
+  '/skill/detail': true,
+  '/config/plugin/marketplace': true,
+  '/dashboard/tool/marketplace': true
 };
 
 export const navbarWidth = '64px';
@@ -68,12 +88,20 @@ export const navbarWidth = '64px';
 const Layout = ({ children }: { children: JSX.Element }) => {
   const router = useRouter();
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('price');
   const { Loading } = useLoading();
-  const { setLastRoute, loading, feConfigs, llmModelList, embeddingModelList } = useSystemStore();
+  const {
+    setLastRoute,
+    loading,
+    feConfigs,
+    llmModelList,
+    embeddingModelList,
+    showProModal,
+    setShowProModal
+  } = useSystemStore();
   const { isPc } = useSystem();
   const { userInfo, isUpdateNotification, setIsUpdateNotification } = useUserStore();
-  const { setUserDefaultLng } = useI18nLng();
+  const { setUserDefaultLng, setShareDefaultLng } = useI18nLng();
 
   // Auto redeem coupon
   useCheckCoupon();
@@ -86,7 +114,7 @@ const Layout = ({ children }: { children: JSX.Element }) => {
 
   // System hook
   const { data, refetch: refetchUnRead } = useQuery(['getUnreadCount'], getUnreadCount, {
-    enabled: !!userInfo,
+    enabled: !!userInfo && !!feConfigs.isPlus,
     refetchInterval: 30000
   });
   const unread = data?.unReadCount || 0;
@@ -99,9 +127,12 @@ const Layout = ({ children }: { children: JSX.Element }) => {
     !userInfo?.contact &&
     !!userInfo?.team.permission.isOwner;
 
-  useMount(() => {
-    setUserDefaultLng();
-  });
+  const syncDefaultLanguage =
+    router.pathname === '/chat/share' ? setShareDefaultLng : setUserDefaultLng;
+
+  useEffect(() => {
+    void syncDefaultLanguage();
+  }, [syncDefaultLanguage]);
 
   // Check model invalid
   useDebounceEffect(
@@ -112,13 +143,17 @@ const Layout = ({ children }: { children: JSX.Element }) => {
             status: 'warning',
             title: t('common:llm_model_not_config')
           });
-          router.pathname !== '/account/model' && router.push('/account/model');
+          if (router.pathname !== '/config/model') {
+            router.push('/config/model?modelTab=config');
+          }
         } else if (embeddingModelList.length === 0) {
           toast({
             status: 'warning',
             title: t('common:embedding_model_not_config')
           });
-          router.pathname !== '/account/model' && router.push('/account/model');
+          if (router.pathname !== '/config/model') {
+            router.push('/config/model?modelTab=config');
+          }
         }
       }
     },
@@ -131,7 +166,18 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   // Route watch
   useEffect(() => {
     setLastRoute(router.pathname);
-  }, [router.pathname]);
+  }, [router.pathname, setLastRoute]);
+
+  useEffect(() => {
+    if (
+      userInfo?.team?.accountCancellation &&
+      router.pathname !== '/account/cancel' &&
+      router.pathname !== '/login' &&
+      router.pathname !== '/login/provider'
+    ) {
+      router.replace('/account/cancel?view=team');
+    }
+  }, [router, router.pathname, userInfo?.team?.accountCancellation]);
 
   return (
     <>
@@ -171,21 +217,25 @@ const Layout = ({ children }: { children: JSX.Element }) => {
           </>
         )}
       </Box>
-      {/* 鲁港通 - 启用所有功能 */}
-      <>
-        <NotSufficientModal />
-        <SystemMsgModal />
-        {showUpdateNotification && (
-          <UpdateContact onClose={() => setIsUpdateNotification(false)} mode="contact" />
-        )}
-        {!!userInfo && importantInforms.length > 0 && (
-          <ImportantInform informs={importantInforms} refetch={refetchUnRead} />
-        )}
-        <ResetExpiredPswModal />
-        <HelperBot />
-      </>
+      {feConfigs?.isPlus && (
+        <>
+          <NotSufficientModal />
+          <SystemMsgModal />
+          {showUpdateNotification && (
+            <UpdateContact onClose={() => setIsUpdateNotification(false)} mode="contact" />
+          )}
+          {!!userInfo && importantInforms.length > 0 && (
+            <ImportantInform informs={importantInforms} refetch={refetchUnRead} />
+          )}
+          <ResetExpiredPswModal />
+          <SupportBot />
+        </>
+      )}
+      <EnterpriseAuthNoticeModal key={`${router.pathname}-${userInfo?.team?.teamId ?? ''}`} />
 
       <ManualCopyModal />
+      <ActivityAdModal />
+      {showProModal && <ProModal isOpen onClose={() => setShowProModal(false)} />}
       <Loading loading={loading} zIndex={999999} />
     </>
   );

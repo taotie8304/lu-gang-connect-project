@@ -1,0 +1,25 @@
+import z from 'zod';
+import type { OutLinkSchemaType } from './type';
+import { PlaygroundVisibilityConfigSchema } from './type';
+
+export type AuthOutLinkInitProps = {
+  outLinkUid: string;
+  tokenUrl?: string;
+};
+export type AuthOutLinkChatProps = { outLinkUid: string; question: string };
+export type AuthOutLinkLimitProps = AuthOutLinkChatProps & { outLink: OutLinkSchemaType };
+export type AuthOutLinkResponse = {
+  uid: string;
+};
+
+export const UpdatePlaygroundVisibilityConfigBodySchema = PlaygroundVisibilityConfigSchema.extend({
+  appId: z.string().min(1, 'App ID is required')
+});
+export type UpdatePlaygroundVisibilityConfigBody = z.infer<
+  typeof UpdatePlaygroundVisibilityConfigBodySchema
+>;
+
+export const PlaygroundVisibilityConfigQuerySchema = z.object({
+  appId: z.string().min(1, 'App ID is required')
+});
+export type PlaygroundVisibilityConfigQuery = z.infer<typeof PlaygroundVisibilityConfigQuerySchema>;

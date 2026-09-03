@@ -1,6 +1,7 @@
 import crypto from 'crypto';
-import { AES256_SECRET_KEY } from './constants';
+import { serviceEnv } from '../../env';
 
+const AES256_SECRET_KEY = serviceEnv.AES256_SECRET_KEY;
 export const encryptSecret = (text: string) => {
   const iv = crypto.randomBytes(16);
   const key = crypto.scryptSync(AES256_SECRET_KEY, 'salt', 32);
@@ -10,7 +11,11 @@ export const encryptSecret = (text: string) => {
   return `${iv.toString('hex')}:${encrypted.toString('hex')}:${authTag.toString('hex')}`;
 };
 
-export const decryptSecret = (encryptedText: string) => {
+export const decryptSecret = (encryptedText?: string) => {
+  if (!encryptedText) {
+    return '';
+  }
+
   const [ivHex, encryptedHex, authTagHex] = encryptedText.split(':');
 
   if (!ivHex || !encryptedHex || !authTagHex) {

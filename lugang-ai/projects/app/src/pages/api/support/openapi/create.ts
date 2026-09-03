@@ -1,52 +1,68 @@
 import { MongoOpenApi } from '@fastgpt/service/support/openapi/schema';
-import type { EditApiKeyProps } from '@/global/support/openapi/api';
 import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { ManagePermissionVal } from '@fastgpt/global/support/permission/constant';
-import { authApp } from '@fastgpt/service/support/permission/app/auth';
 import { OpenApiErrEnum } from '@fastgpt/global/common/error/code/openapi';
+import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import { TeamApikeyCreatePermissionVal } from '@fastgpt/global/support/permission/user/constant';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
-async function handler(req: ApiRequestProps<EditApiKeyProps>): Promise<string> {
-  const { appId, name, limit } = req.body;
-  const { tmbId, teamId } = await (async () => {
-    if (!appId) {
-      // global apikey is being created, auth the tmb
-      const { teamId, tmbId } = await authUserPer({
-        req,
-        authToken: true,
-        per: TeamApikeyCreatePermissionVal
-      });
-      return { teamId, tmbId };
-    } else {
-      const { teamId, tmbId } = await authApp({
-        req,
-        per: ManagePermissionVal,
-        appId,
-        authToken: true
-      });
-      return { teamId, tmbId };
-    }
-  })();
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { appEnv } from '@/env';
+import { validateOpenApiTags } from '@fastgpt/service/support/openapi/tag/service';
+import {
+  CreateApiKeyBodySchema,
+  CreateApiKeyResponseSchema,
+  type CreateApiKeyBodyType,
+  type CreateApiKeyResponseType
+} from '@fastgpt/global/openapi/support/openapi/api';
 
-  const count = await MongoOpenApi.find({ tmbId, appId }).countDocuments();
+async function handler(
+  req: ApiRequestProps<CreateApiKeyBodyType>
+): Promise<CreateApiKeyResponseType> {
+  const {
+    name,
+    limit,
+    authProxy = false,
+    tags
+  } = parseApiInput({
+    req,
+    bodySchema: CreateApiKeyBodySchema
+  }).body;
+  const { teamId, tmbId, permission } = await authUserPer({
+    req,
+    authToken: true,
+    per: TeamApikeyCreatePermissionVal
+  });
 
-  if (count >= 10) {
+  if (authProxy && !permission.isOwner) {
+    return Promise.reject(TeamErrEnum.unPermission);
+  }
+
+  const count = await MongoOpenApi.find({ tmbId }).countDocuments();
+
+  if (count >= appEnv.OPENAPI_KEY_MAX_COUNT) {
     return Promise.reject(OpenApiErrEnum.exceedLimit);
   }
 
   const nanoid = getNanoid(Math.floor(Math.random() * 14) + 52);
   const apiKey = `${global.systemEnv?.openapiPrefix || 'fastgpt'}-${nanoid}`;
+  const tagIds = tags
+    ? await validateOpenApiTags({
+        teamId,
+        tmbId,
+        tags
+      })
+    : [];
 
   await MongoOpenApi.create({
     teamId,
     tmbId,
     apiKey,
-    appId,
+    authProxy,
     name,
+    tagIds,
     limit
   });
 
@@ -61,7 +77,7 @@ async function handler(req: ApiRequestProps<EditApiKeyProps>): Promise<string> {
     });
   })();
 
-  return apiKey;
+  return CreateApiKeyResponseSchema.parse(apiKey);
 }
 
 export default NextAPI(handler);

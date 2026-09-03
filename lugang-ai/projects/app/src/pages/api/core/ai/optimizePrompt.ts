@@ -1,23 +1,21 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { SseResponseEventEnum } from '@fastgpt/global/core/workflow/runtime/constants';
 import { responseWrite } from '@fastgpt/service/common/response';
 import { sseErrRes } from '@fastgpt/service/common/response';
-import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/type';
+import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { formatModelChars2Points } from '@fastgpt/service/support/wallet/usage/utils';
 import { createUsage } from '@fastgpt/service/support/wallet/usage/controller';
 import { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
-import { ModelTypeEnum } from '@fastgpt/global/core/ai/model';
-import { i18nT } from '@fastgpt/web/i18n/utils';
-import { addLog } from '@fastgpt/service/common/system/log';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { createLLMResponse } from '@fastgpt/service/core/ai/llm/request';
-
-type OptimizePromptBody = {
-  originalPrompt: string;
-  optimizerInput: string;
-  model: string;
-};
+import {
+  OptimizePromptBodySchema,
+  OptimizePromptResponseSchema,
+  type OptimizePromptBody
+} from '@fastgpt/global/openapi/core/ai/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
 const getPromptOptimizerSystemPrompt = () => {
   return `# Role
@@ -73,9 +71,12 @@ ${originalPrompt}
 };
 
 async function handler(req: ApiRequestProps<OptimizePromptBody>, res: ApiResponseType) {
-  try {
-    const { originalPrompt, optimizerInput, model } = req.body;
+  const { originalPrompt, optimizerInput, model } = parseApiInput({
+    req,
+    bodySchema: OptimizePromptBodySchema
+  }).body;
 
+  try {
     const { teamId, tmbId } = await authCert({
       req,
       authToken: true,
@@ -100,26 +101,28 @@ async function handler(req: ApiRequestProps<OptimizePromptBody>, res: ApiRespons
     const {
       usage: { inputTokens, outputTokens }
     } = await createLLMResponse({
+      teamId,
+      saveLLMResponseRecord: false,
       body: {
         model,
         messages,
-        temperature: 0.1,
-        max_tokens: 2000,
         stream: true
       },
       onStreaming: ({ text }) => {
         responseWrite({
           res,
           event: SseResponseEventEnum.answer,
-          data: JSON.stringify({
-            choices: [
-              {
-                delta: {
-                  content: text
+          data: OptimizePromptResponseSchema.parse(
+            JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    content: text
+                  }
                 }
-              }
-            ]
-          })
+              ]
+            })
+          )
         });
       }
     });
@@ -127,7 +130,7 @@ async function handler(req: ApiRequestProps<OptimizePromptBody>, res: ApiRespons
     responseWrite({
       res,
       event: SseResponseEventEnum.answer,
-      data: '[DONE]'
+      data: OptimizePromptResponseSchema.parse('[DONE]')
     });
 
     const { totalPoints, modelName } = formatModelChars2Points({
@@ -153,7 +156,6 @@ async function handler(req: ApiRequestProps<OptimizePromptBody>, res: ApiRespons
       ]
     });
   } catch (error: any) {
-    addLog.error('Optimize prompt error', error);
     sseErrRes(res, error);
   }
   res.end();

@@ -1,20 +1,20 @@
 import { NextAPI } from '@/service/middleware/entry';
 import { MongoPluginToolTag } from '@fastgpt/service/core/plugin/tool/tagSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { UpdatePluginToolTagBody } from '@fastgpt/global/openapi/core/plugin/admin/tool/tag/api';
+import {
+  UpdatePluginToolTagBodySchema,
+  type UpdatePluginToolTagBody
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/tag/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-async function handler(
-  req: ApiRequestProps<UpdatePluginToolTagBody>,
-  res: ApiResponseType<any>
-): Promise<{}> {
+async function handler(req: ApiRequestProps<UpdatePluginToolTagBody>): Promise<void> {
   await authSystemAdmin({ req });
 
-  const { tagId, tagName } = req.body;
-
-  if (!tagId || !tagName || !tagName.trim()) {
-    return Promise.reject('Missing params');
-  }
+  const { tagId, tagName } = parseApiInput({
+    req,
+    bodySchema: UpdatePluginToolTagBodySchema
+  }).body;
 
   const tag = await MongoPluginToolTag.findOne({ tagId });
 
@@ -30,8 +30,6 @@ async function handler(
       }
     }
   );
-
-  return {};
 }
 
 export default NextAPI(handler);

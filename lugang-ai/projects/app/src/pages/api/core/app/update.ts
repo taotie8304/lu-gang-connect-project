@@ -1,7 +1,5 @@
 import { MongoApp } from '@fastgpt/service/core/app/schema';
-import type { AppUpdateParams } from '@/global/core/app/api';
 import { authApp } from '@fastgpt/service/support/permission/app/auth';
-import { beforeUpdateAppFormat } from '@fastgpt/service/core/app/controller';
 import { NextAPI } from '@/service/middleware/entry';
 import {
   ManagePermissionVal,
@@ -10,7 +8,7 @@ import {
 } from '@fastgpt/global/support/permission/constant';
 import { parseParentIdInMongo } from '@fastgpt/global/common/parentFolder/utils';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import {
   syncChildrenPermission,
   syncCollaborators
@@ -25,30 +23,38 @@ import { AppErrEnum } from '@fastgpt/global/common/error/code/app';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { getI18nAppType } from '@fastgpt/service/support/user/audit/util';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { getS3AvatarSource } from '@fastgpt/service/common/s3/sources/avatar';
-
-export type AppUpdateQuery = {
-  appId: string;
-};
-
-export type AppUpdateBody = AppUpdateParams;
+import { updateParentFoldersUpdateTime } from '@fastgpt/service/core/app/controller';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { checkMoveFolderDepth } from '@fastgpt/service/common/parentFolder/depth';
+import {
+  UpdateAppBodySchema,
+  UpdateAppQuerySchema,
+  UpdateAppResponseSchema,
+  type UpdateAppBodyType,
+  type UpdateAppQueryType
+} from '@fastgpt/global/openapi/core/app/common/api';
 
 // 更新应用接口
 // 包括如下功能：
 // 1. 更新应用的信息（包括名称，类型，头像，介绍等）
-// 2. 更新应用的编排信息
-// 3. 移动应用
+// 2. 移动应用
 // 操作权限：
-// 1. 更新信息和工作流编排需要有应用的写权限
+// 1. 更新信息需要有应用的写权限
 // 2. 移动应用需要有
 //  (1) 父目录的管理权限
 //  (2) 目标目录的管理权限
 //  (3) 如果从根目录移动或移动到根目录，需要有团队的应用创建权限
-async function handler(req: ApiRequestProps<AppUpdateBody, AppUpdateQuery>) {
-  const { parentId, name, avatar, type, intro, nodes, edges, chatConfig, teamTags } = req.body;
-
-  const { appId } = req.query;
+async function handler(req: ApiRequestProps<UpdateAppBodyType, UpdateAppQueryType>) {
+  const {
+    query: { appId },
+    body: { parentId, name, avatar, type, intro }
+  } = parseApiInput({
+    req,
+    querySchema: UpdateAppQuerySchema,
+    bodySchema: UpdateAppBodySchema
+  });
 
   if (!appId) {
     Promise.reject(CommonErrEnum.missingParams);
@@ -104,20 +110,31 @@ async function handler(req: ApiRequestProps<AppUpdateBody, AppUpdateQuery>) {
     }
   }
 
-  const onUpdate = async (session?: ClientSession) => {
-    // format nodes data
-    // 1. dataset search limit, less than model quoteMaxToken
-    beforeUpdateAppFormat({
-      nodes
-    });
+  if (isMove) {
+    const isFolderType =
+      app.type === AppTypeEnum.toolFolder
+        ? (type: string) => type === AppTypeEnum.toolFolder
+        : app.type === AppTypeEnum.folder
+          ? (type: string) => type === AppTypeEnum.folder
+          : () => false;
 
+    await checkMoveFolderDepth({
+      resourceId: appId,
+      targetParentId: parentId,
+      teamId: app.teamId,
+      model: MongoApp,
+      isFolderType
+    });
+  }
+
+  const onUpdate = async (session?: ClientSession) => {
     if (app.type === AppTypeEnum.mcpToolSet && avatar) {
       await MongoApp.updateMany({ parentId: appId, teamId: app.teamId }, { avatar }, { session });
     }
 
     await getS3AvatarSource().refreshAvatar(avatar, app.avatar, session);
 
-    return MongoApp.findByIdAndUpdate(
+    const result = await MongoApp.findByIdAndUpdate(
       appId,
       {
         ...parseParentIdInMongo(parentId),
@@ -125,35 +142,62 @@ async function handler(req: ApiRequestProps<AppUpdateBody, AppUpdateQuery>) {
         ...(type && { type }),
         ...(avatar && { avatar }),
         ...(intro !== undefined && { intro }),
-        ...(teamTags && { teamTags }),
-        ...(nodes && {
-          modules: nodes
-        }),
-        ...(edges && {
-          edges
-        }),
-        ...(chatConfig && { chatConfig }),
-        ...(isMove && { inheritPermission: true })
+        ...(isMove && { inheritPermission: true }),
+        updateTime: new Date()
       },
       { session }
     );
+
+    if (isMove) {
+      // Update both old and new parent folders
+      updateParentFoldersUpdateTime({
+        parentId: app.parentId
+      });
+      updateParentFoldersUpdateTime({
+        parentId
+      });
+    } else {
+      // Update current parent folder
+      updateParentFoldersUpdateTime({
+        parentId: parentId || app.parentId
+      });
+    }
+
+    return result;
   };
 
   // Move
   if (isMove) {
     await mongoSessionRun(async (session) => {
       // Inherit folder: Sync children permission and it's clbs
-      const parentClbs = await getResourceOwnedClbs({
-        teamId: app.teamId,
-        resourceId: parentId,
-        resourceType: PerResourceTypeEnum.app,
-        session
-      });
+      const [parentClbs, oldParentClbs, oldResourceClbs] = await Promise.all([
+        getResourceOwnedClbs({
+          teamId: app.teamId,
+          resourceId: parentId,
+          resourceType: PerResourceTypeEnum.app,
+          session
+        }),
+        app.parentId
+          ? getResourceOwnedClbs({
+              teamId: app.teamId,
+              resourceId: app.parentId,
+              resourceType: PerResourceTypeEnum.app,
+              session
+            })
+          : Promise.resolve([]),
+        getResourceOwnedClbs({
+          teamId: app.teamId,
+          resourceId: app._id,
+          resourceType: PerResourceTypeEnum.app,
+          session
+        })
+      ]);
       // sync self
-      await syncCollaborators({
+      const newResourceClbs = await syncCollaborators({
         resourceId: app._id,
         resourceType: PerResourceTypeEnum.app,
         collaborators: parentClbs,
+        oldParentCollaborators: oldParentClbs,
         session,
         teamId: app.teamId
       });
@@ -163,16 +207,17 @@ async function handler(req: ApiRequestProps<AppUpdateBody, AppUpdateQuery>) {
         resourceType: PerResourceTypeEnum.app,
         resourceModel: MongoApp,
         folderTypeList: AppFolderTypeList,
-        collaborators: parentClbs,
+        oldParentCollaborators: oldResourceClbs,
+        newParentCollaborators: newResourceClbs,
         session
       });
       logAppMove({ tmbId, teamId, app, targetName });
-      return onUpdate(session);
+      return UpdateAppResponseSchema.parse(await onUpdate(session));
     });
   } else {
-    logAppUpdate({ tmbId, teamId, app, name, intro });
+    logAppUpdate({ tmbId, teamId, app, name, intro: intro ?? undefined });
 
-    return onUpdate();
+    return UpdateAppResponseSchema.parse(await onUpdate());
   }
 }
 

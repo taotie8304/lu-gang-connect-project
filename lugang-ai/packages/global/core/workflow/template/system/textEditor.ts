@@ -3,14 +3,14 @@ import {
   FlowNodeOutputTypeEnum,
   FlowNodeTypeEnum
 } from '../../node/constant';
-import { type FlowNodeTemplateType } from '../../type/node.d';
+import { type FlowNodeTemplateType } from '../../type/node';
 import {
   WorkflowIOValueTypeEnum,
   NodeOutputKeyEnum,
   NodeInputKeyEnum,
   FlowNodeTemplateTypeEnum
 } from '../../constants';
-import { i18nT } from '../../../../../web/i18n/utils';
+import { i18nT } from '../../../../common/i18n/utils';
 
 export const TextEditorNode: FlowNodeTemplateType = {
   id: FlowNodeTypeEnum.textEditor,
@@ -19,14 +19,18 @@ export const TextEditorNode: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/textConcat',
+  avatarLinear: 'core/workflow/template/textConcatLinear',
+  colorSchema: 'orange',
   name: i18nT('workflow:text_concatenation'),
   intro: i18nT('workflow:intro_text_concatenation'),
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/text_editor/',
+  isTool: true,
+  courseUrl: '/guide/build/workflow/nodes/text_editor',
   inputs: [
     {
       key: NodeInputKeyEnum.textareaInput,
       renderTypeList: [FlowNodeInputTypeEnum.textarea],
       valueType: WorkflowIOValueTypeEnum.string,
+      canAgentGenerated: false,
       required: true,
       label: i18nT('workflow:concatenation_text'),
       placeholder: i18nT('workflow:input_variable_list')

@@ -1,4 +1,4 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../../common/i18n/utils';
 
 export enum AppLogKeysEnum {
   SOURCE = 'source',
@@ -37,7 +37,7 @@ export const AppLogKeysEnumMap = {
 };
 
 export const DefaultAppLogKeys = [
-  { key: AppLogKeysEnum.SOURCE, enable: true },
+  { key: AppLogKeysEnum.SOURCE, enable: false },
   { key: AppLogKeysEnum.USER, enable: true },
   { key: AppLogKeysEnum.TITLE, enable: true },
   { key: AppLogKeysEnum.SESSION_ID, enable: false },
@@ -60,6 +60,20 @@ export enum AppLogTimespanEnum {
   month = 'month',
   quarter = 'quarter'
 }
+export const AppLogTimespanMap: Record<AppLogTimespanEnum, { label: string }> = {
+  [AppLogTimespanEnum.day]: {
+    label: i18nT('app:logs_timespan_day')
+  },
+  [AppLogTimespanEnum.week]: {
+    label: i18nT('app:logs_timespan_week')
+  },
+  [AppLogTimespanEnum.month]: {
+    label: i18nT('app:logs_timespan_month')
+  },
+  [AppLogTimespanEnum.quarter]: {
+    label: i18nT('app:logs_timespan_quarter')
+  }
+};
 
 export const offsetOptions = [
   { label: 'T+1', value: '1' },

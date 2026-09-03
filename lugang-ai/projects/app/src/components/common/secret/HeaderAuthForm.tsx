@@ -27,14 +27,14 @@ const AuthValueDisplay = ({
   showInput,
   index = 0,
   onEdit,
-  value,
+  value = '',
   onChange,
   bg
 }: {
   showInput: boolean;
   index?: number;
   onEdit: (index?: number) => void;
-  value: string;
+  value?: string;
   onChange: (value: string) => void;
   bg: string;
 }) => {
@@ -47,7 +47,7 @@ const AuthValueDisplay = ({
           placeholder={'Value'}
           bg={bg}
           h={8}
-          maxLength={200}
+          maxLength={50000}
           onFocus={() => onEdit(index)}
           onBlur={() => onEdit(undefined)}
           value={value}
@@ -87,9 +87,9 @@ const AuthValueDisplay = ({
 };
 
 export const getSecretType = (config: HeaderSecretConfigType): HeaderSecretTypeEnum => {
-  if (config.Bearer && (config.Bearer.secret || config.Bearer.value)) {
+  if (config.Bearer) {
     return HeaderSecretTypeEnum.Bearer;
-  } else if (config.Basic && (config.Basic.secret || config.Basic.value)) {
+  } else if (config.Basic) {
     return HeaderSecretTypeEnum.Basic;
   } else if (config.customs && config.customs.length > 0) {
     return HeaderSecretTypeEnum.Custom;

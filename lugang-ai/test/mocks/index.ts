@@ -1,5 +1,4 @@
 import './request';
-import './common/geo';
 import './common/mongo';
 import './common/redis';
 import './common/bullmq';
@@ -7,7 +6,8 @@ import './common/s3';
 import './common/system';
 import './common/vector';
 import './common/tracks';
+import './common/log';
+import './common/response';
 import './support/audit/utils';
-import './support/user/auth/controller';
 import './core/ai/embedding';
 import './core/ai/llm';

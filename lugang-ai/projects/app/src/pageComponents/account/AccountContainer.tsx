@@ -1,18 +1,14 @@
-import React, { useCallback, useMemo, useRef } from 'react';
-import { Box, Flex, useTheme } from '@chakra-ui/react';
+import React, { useCallback, useMemo } from 'react';
+import { Box, Flex } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRouter } from 'next/router';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
-import PageContainer from '@/components/PageContainer';
-import SideTabs from '@/components/SideTabs';
-import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
-import { useTranslation } from 'next-i18next';
-import { useSystem } from '@fastgpt/web/hooks/useSystem';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import SecondaryNavigationContainer from '@/pageComponents/common/SecondaryNavigationContainer';
 
 export enum TabEnum {
   'info' = 'info',
-  'promotion' = 'promotion',
   'usage' = 'usage',
   'bill' = 'bill',
   'inform' = 'inform',
@@ -33,34 +29,39 @@ const AccountContainer = ({
   children: React.ReactNode;
   isLoading?: boolean;
 }) => {
-  const { t } = useTranslation();
-  const theme = useTheme();
+  const { t } = useClientTranslation('account');
   const { userInfo, setUserInfo } = useUserStore();
   const { feConfigs, systemVersion } = useSystemStore();
   const router = useRouter();
-  const { isPc } = useSystem();
+
+  const showThirdPartyTab =
+    feConfigs?.show_openai_account === true ||
+    feConfigs?.externalProviderWorkflowVariables?.some((item) => item.isOpen) === true;
 
   const currentTab = useMemo(() => {
     return router.pathname.split('/').pop() as TabEnum;
   }, [router.pathname]);
 
-  const tabList = useRef([
+  const tabList = [
     {
       icon: 'support/user/userLight',
       label: t('account:personal_information'),
       value: TabEnum.info
     },
-    // 鲁港通 - 启用团队和使用记录功能
-    {
-      icon: 'support/user/usersLight',
-      label: t('account:team'),
-      value: TabEnum.team
-    },
-    {
-      icon: 'support/usage/usageRecordLight',
-      label: t('account:usage_records'),
-      value: TabEnum.usage
-    },
+    ...(feConfigs?.isPlus
+      ? [
+          {
+            icon: 'support/user/usersLight',
+            label: t('account:team'),
+            value: TabEnum.team
+          },
+          {
+            icon: 'support/usage/usageRecordLight',
+            label: t('account:usage_records'),
+            value: TabEnum.usage
+          }
+        ]
+      : []),
     ...(feConfigs?.show_pay && userInfo?.team?.permission.hasManagePer
       ? [
           {
@@ -70,13 +71,16 @@ const AccountContainer = ({
           }
         ]
       : []),
-    {
-      icon: 'common/thirdParty',
-      label: t('account:third_party'),
-      value: TabEnum.thirdParty
-    },
-    // 鲁港通 - 启用自定义域名功能
-    ...(feConfigs.customDomain?.enable
+    ...(showThirdPartyTab
+      ? [
+          {
+            icon: 'common/thirdParty',
+            label: t('account:third_party'),
+            value: TabEnum.thirdParty
+          }
+        ]
+      : []),
+    ...(feConfigs.isPlus && feConfigs.customDomain?.enable
       ? [
           {
             icon: 'common/globalLine',
@@ -85,17 +89,12 @@ const AccountContainer = ({
           }
         ]
       : []),
-    {
-      icon: 'common/model',
-      label: t('account:model_provider'),
-      value: TabEnum.model
-    },
-    ...(feConfigs?.show_promotion && userInfo?.team?.permission.isOwner
+    ...(feConfigs.isPlus
       ? [
           {
-            icon: 'support/account/promotionLight',
-            label: t('account:promotion_records'),
-            value: TabEnum.promotion
+            icon: 'common/model',
+            label: t('common:model.provider_title'),
+            value: TabEnum.model
           }
         ]
       : []),
@@ -108,12 +107,16 @@ const AccountContainer = ({
           }
         ]
       : []),
-    // 鲁港通 - 启用通知功能
-    {
-      icon: 'support/user/informLight',
-      label: t('account:notifications'),
-      value: TabEnum.inform
-    },
+
+    ...(feConfigs.isPlus
+      ? [
+          {
+            icon: 'support/user/informLight',
+            label: t('account:notifications'),
+            value: TabEnum.inform
+          }
+        ]
+      : []),
     {
       icon: 'support/usage/usageRecordLight',
       label: t('account:language'),
@@ -124,7 +127,7 @@ const AccountContainer = ({
       label: t('account:logout'),
       value: TabEnum.loginout
     }
-  ]);
+  ];
 
   const { openConfirm, ConfirmModal } = useConfirm({
     content: t('account:confirm_logout')
@@ -147,54 +150,24 @@ const AccountContainer = ({
   );
 
   return (
-    <PageContainer isLoading={isLoading}>
-      <Flex flexDirection={['column', 'row']} h={'100%'} pt={[4, 0]}>
-        {isPc ? (
-          <Flex
-            flexDirection={'column'}
-            p={4}
-            h={'100%'}
-            flex={'0 0 200px'}
-            borderRight={theme.borders.base}
-          >
-            <SideTabs<TabEnum>
-              flex={1}
-              mx={'auto'}
-              mt={2}
-              w={'100%'}
-              list={tabList.current}
-              value={currentTab}
-              onChange={setCurrentTab}
-            />
-            <Flex alignItems={'center'}>
-              <Box w={'8px'} h={'8px'} borderRadius={'50%'} bg={'#67c13b'} />
-              <Box fontSize={'md'} ml={2}>
-                V{systemVersion}
-              </Box>
-            </Flex>
-          </Flex>
-        ) : (
-          <Box mb={3}>
-            <LightRowTabs<TabEnum>
-              m={'auto'}
-              w={'100%'}
-              size={isPc ? 'md' : 'sm'}
-              list={tabList.current.map((item) => ({
-                value: item.value,
-                label: item.label
-              }))}
-              value={currentTab}
-              onChange={setCurrentTab}
-            />
+    <SecondaryNavigationContainer
+      isLoading={isLoading}
+      tabs={tabList}
+      value={currentTab}
+      onChange={setCurrentTab}
+      mobileScrollPositionKey={'account-mobile-navigation'}
+      footer={
+        <Flex alignItems={'center'} px={'11px'} pb={5} pt={3}>
+          <Box w={'8px'} h={'8px'} borderRadius={'50%'} bg={'#67c13b'} />
+          <Box fontSize={'md'} ml={2}>
+            V{systemVersion}
           </Box>
-        )}
-
-        <Box flex={'1 0 0'} h={'100%'} pb={[4, 0]} overflow={'auto'}>
-          {children}
-        </Box>
-      </Flex>
+        </Flex>
+      }
+    >
+      {children}
       <ConfirmModal />
-    </PageContainer>
+    </SecondaryNavigationContainer>
   );
 };
 

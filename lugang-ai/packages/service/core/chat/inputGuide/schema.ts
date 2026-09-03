@@ -1,7 +1,7 @@
 import { AppCollectionName } from '../../app/schema';
-import { connectionMongo, getMongoModel, type Model } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel, type Model } from '../../../common/mongo';
 const { Schema, model, models } = connectionMongo;
-import type { ChatInputGuideSchemaType } from '@fastgpt/global/core/chat/inputGuide/type.d';
+import type { ChatInputGuideSchemaType } from '@fastgpt/global/core/chat/inputGuide/type';
 
 export const ChatInputGuideCollectionName = 'chat_input_guides';
 
@@ -17,11 +17,10 @@ const ChatInputGuideSchema = new Schema({
   }
 });
 
-try {
-  ChatInputGuideSchema.index({ appId: 1, text: 1 }, { unique: true });
-} catch (error) {
-  console.log(error);
-}
+defineIndex(ChatInputGuideSchema, {
+  key: { appId: 1, text: 1 },
+  options: { unique: true }
+});
 
 export const MongoChatInputGuide = getMongoModel<ChatInputGuideSchemaType>(
   ChatInputGuideCollectionName,

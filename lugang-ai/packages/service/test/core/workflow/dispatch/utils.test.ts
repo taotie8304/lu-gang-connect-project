@@ -1,0 +1,1627 @@
+import { describe, it, expect, vi } from 'vitest';
+
+import {
+  getWorkflowResponseWrite,
+  getWorkflowChildResponseWrite,
+  filterOrphanEdges,
+  filterToolNodeIdByEdges,
+  getAgentLoopHistories,
+  getHistories,
+  checkQuoteQAValue,
+  filterSystemVariables,
+  formatHttpError,
+  rewriteRuntimeWorkFlow,
+  getNodeErrResponse,
+  safePoints,
+  summarizeRuntimeNodeResponses
+} from '@fastgpt/service/core/workflow/dispatch/utils';
+import { WorkflowVariableState } from '../../../../core/workflow/dispatch/utils/variables';
+import { responseWrite } from '@fastgpt/service/common/response';
+import { ChatFileTypeEnum, ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
+import type { ChatItemMiniType } from '@fastgpt/global/core/chat/type';
+import { NodeOutputKeyEnum, VariableInputEnum } from '@fastgpt/global/core/workflow/constants';
+import {
+  SseResponseEventEnum,
+  DispatchNodeResponseKeyEnum
+} from '@fastgpt/global/core/workflow/runtime/constants';
+import { workflowSseEvent } from '@fastgpt/global/core/workflow/runtime/sse';
+import {
+  FlowNodeInputTypeEnum,
+  FlowNodeTypeEnum
+} from '@fastgpt/global/core/workflow/node/constant';
+import type { RuntimeEdgeItemType } from '@fastgpt/global/core/workflow/type/edge';
+import type { RuntimeNodeItemType } from '@fastgpt/global/core/workflow/runtime/type';
+
+const mockGetSystemToolRunTimeNodeFromSystemToolset = vi.fn();
+vi.mock('@fastgpt/service/core/workflow/utils', () => ({
+  getSystemToolRunTimeNodeFromSystemToolset: (...args: any[]) =>
+    mockGetSystemToolRunTimeNodeFromSystemToolset(...args)
+}));
+
+const mockMongoAppFindOne = vi.fn();
+const mockMongoAppFind = vi.fn(() => ({ lean: vi.fn().mockResolvedValue([]) }));
+vi.mock('@fastgpt/service/core/app/schema', () => ({
+  AppCollectionName: 'apps',
+  MongoApp: {
+    findOne: (...args: any[]) => mockMongoAppFindOne(...args),
+    find: (...args: any[]) => mockMongoAppFind(...args)
+  }
+}));
+
+const mockGetMCPChildren = vi.fn();
+vi.mock('@fastgpt/service/core/app/mcp', () => ({
+  getMCPChildren: (...args: any[]) => mockGetMCPChildren(...args)
+}));
+
+const mockGetHTTPToolList = vi.fn();
+vi.mock('@fastgpt/service/core/app/http', () => ({
+  getHTTPToolList: (...args: any[]) => mockGetHTTPToolList(...args)
+}));
+
+const mockPresignVariablesFileUrls = vi.fn();
+vi.mock('@fastgpt/service/core/chat/utils', () => ({
+  presignVariablesFileUrls: (...args: any[]) => mockPresignVariablesFileUrls(...args)
+}));
+
+const mockGetChatFilePreviewUrl = vi.fn(async (key: string) => `http://example.com/${key}`);
+vi.mock('@fastgpt/service/common/s3/sources/chat', () => ({
+  createChatFilePreviewUrlGetter: () => mockGetChatFilePreviewUrl
+}));
+
+describe('getWorkflowResponseWrite', () => {
+  const mockRes = () => {
+    const res: any = { closed: false };
+    return res;
+  };
+
+  it('should return a function', () => {
+    const fn = getWorkflowResponseWrite({ detail: true, streamResponse: true });
+    expect(typeof fn).toBe('function');
+  });
+
+  it('should not write when res is undefined', () => {
+    const fn = getWorkflowResponseWrite({ detail: true, streamResponse: true });
+    fn(workflowSseEvent.answerDelta('hi'));
+    // No error thrown
+  });
+
+  it('should not write when res.closed is true', () => {
+    const res = mockRes();
+    res.closed = true;
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: true, streamResponse: true });
+    fn(workflowSseEvent.answerDelta('hi'));
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+
+  it('should not write when streamResponse is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: true, streamResponse: false });
+    fn(workflowSseEvent.answerDelta('hi'));
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+
+  it('should write answer event even when detail is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: false, streamResponse: true });
+    fn(workflowSseEvent.answerDelta('hi'));
+    expect(responseWrite).toHaveBeenCalled();
+  });
+
+  it('should write fastAnswer event even when detail is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: false, streamResponse: true });
+    fn(workflowSseEvent.fastAnswerDelta('hi'));
+    expect(responseWrite).toHaveBeenCalled();
+  });
+
+  it('should skip non-answer events when detail is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: false, streamResponse: true });
+    fn(workflowSseEvent.flowNodeStatus('test node'));
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+
+  it('should skip status events when showNodeStatus is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({
+      res,
+      detail: true,
+      streamResponse: true,
+      showNodeStatus: false
+    });
+    fn(workflowSseEvent.flowNodeStatus('test node'));
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+
+  it('should skip toolCall events when showNodeStatus is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({
+      res,
+      detail: true,
+      streamResponse: true,
+      showNodeStatus: false
+    });
+    fn(
+      workflowSseEvent.toolCall({
+        id: 'tool-call-id',
+        toolName: 'tool',
+        toolAvatar: '',
+        functionName: 'tool',
+        params: ''
+      })
+    );
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+
+  it('should include responseValueId when detail is true', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({
+      res,
+      detail: true,
+      streamResponse: true,
+      id: 'test-id'
+    });
+    fn(workflowSseEvent.answerDelta('hi', 'rid'));
+    expect(responseWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        res,
+        event: SseResponseEventEnum.answer
+      })
+    );
+    const callData = JSON.parse(vi.mocked(responseWrite).mock.calls[0][0].data as string);
+    expect(callData.responseValueId).toBe('rid');
+  });
+
+  it('should not include event in data when detail is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: false, streamResponse: true });
+    fn(workflowSseEvent.answerDelta('hi'));
+    expect(responseWrite).toHaveBeenCalledWith(expect.objectContaining({ event: undefined }));
+  });
+
+  it('should keep chatTitle event name when detail is false', () => {
+    const res = mockRes();
+    vi.mocked(responseWrite).mockClear();
+    const fn = getWorkflowResponseWrite({ res, detail: false, streamResponse: true });
+    fn(workflowSseEvent.chatTitle('Generated Title'));
+    expect(responseWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: SseResponseEventEnum.chatTitle
+      })
+    );
+  });
+
+  it('should continue mirroring direct chunks after response is closed', () => {
+    const res = mockRes();
+    res.closed = true;
+    const enqueueRaw = vi.fn();
+    vi.mocked(responseWrite).mockClear();
+
+    const fn = getWorkflowResponseWrite({
+      res,
+      detail: true,
+      streamResponse: true,
+      streamResumeMirror: {
+        enqueueRaw
+      }
+    });
+
+    fn({
+      event: SseResponseEventEnum.answer,
+      data: '[DONE]'
+    });
+
+    expect(enqueueRaw).toHaveBeenCalledWith(expect.stringContaining('data: [DONE]'));
+    expect(responseWrite).not.toHaveBeenCalled();
+  });
+});
+
+describe('getWorkflowChildResponseWrite', () => {
+  it('should return undefined when fn is undefined', () => {
+    const result = getWorkflowChildResponseWrite({ id: 'id' });
+    expect(result).toBeUndefined();
+  });
+
+  it('should return a wrapper function that passes id', () => {
+    const mockFn = vi.fn();
+    const wrapped = getWorkflowChildResponseWrite({
+      id: 'child-id',
+      fn: mockFn as any
+    });
+    expect(wrapped).toBeDefined();
+    wrapped!(workflowSseEvent.answerDelta('hi'));
+    expect(mockFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'child-id',
+        event: SseResponseEventEnum.answer
+      })
+    );
+  });
+
+  it('should preserve explicit child event id', () => {
+    const mockFn = vi.fn();
+    const wrapped = getWorkflowChildResponseWrite({
+      id: 'node-response-id',
+      fn: mockFn as any
+    });
+
+    wrapped!(
+      workflowSseEvent.toolParams({
+        id: 'tool-call-id',
+        params: 'delta'
+      })
+    );
+
+    expect(mockFn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: 'tool-call-id',
+        event: SseResponseEventEnum.toolParams
+      })
+    );
+  });
+});
+
+describe('filterOrphanEdges', () => {
+  const makeNode = (nodeId: string) =>
+    ({ nodeId, flowNodeType: 'test', inputs: [], outputs: [] }) as any as RuntimeNodeItemType;
+  const makeEdge = (source: string, target: string) =>
+    ({ source, target, sourceHandle: 's', targetHandle: 't' }) as any as RuntimeEdgeItemType;
+
+  it('should filter edge when source node is missing', () => {
+    const nodes = [makeNode('n2')];
+    const edges = [makeEdge('missing', 'n2')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result.length).toBe(0);
+  });
+
+  it('should filter edge when target node is missing', () => {
+    const nodes = [makeNode('n1')];
+    const edges = [makeEdge('n1', 'missing')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result.length).toBe(0);
+  });
+
+  it('should filter edge when both source and target are missing', () => {
+    const nodes = [makeNode('n1')];
+    const edges = [makeEdge('missing1', 'missing2')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result.length).toBe(0);
+  });
+
+  it('should collect orphan edges in debug mode', () => {
+    const nodes = [makeNode('n1'), makeNode('n2')];
+    const edges = [makeEdge('n1', 'n2'), makeEdge('n1', 'missing'), makeEdge('missing', 'n2')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result).toEqual([edges[0]]);
+    expect(result.length).toBe(1);
+  });
+
+  it('should not collect orphan edges when mode is not debug', () => {
+    const nodes = [makeNode('n1'), makeNode('n2')];
+    const edges = [makeEdge('n1', 'missing')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result.length).toBe(0);
+  });
+
+  it('should not log debug details when debug mode has no orphan edges', () => {
+    const nodes = [makeNode('n1'), makeNode('n2')];
+    const edges = [makeEdge('n1', 'n2')];
+    const result = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(result.length).toBe(1);
+  });
+
+  it('should warn when filtering takes significant time', () => {
+    const originalDateNow = Date.now;
+    let callCount = 0;
+    // First call returns 0, second call returns 200 (simulating >100ms duration)
+    Date.now = () => {
+      callCount++;
+      return callCount === 1 ? 0 : 200;
+    };
+
+    const nodes = [makeNode('n1')];
+    const edges = [makeEdge('n1', 'missing')];
+    filterOrphanEdges({ edges, nodes, workflowId: 'slow-test' });
+
+    Date.now = originalDateNow;
+  });
+
+  it('should handle empty nodes array', () => {
+    const nodes: RuntimeNodeItemType[] = [];
+    const edges: RuntimeEdgeItemType[] = [
+      { source: 'node1', target: 'node2', sourceHandle: 's', targetHandle: 't' } as any
+    ];
+    const filteredEdges = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(filteredEdges.length).toBe(0);
+  });
+
+  it('should handle empty edges array', () => {
+    const nodes: RuntimeNodeItemType[] = [
+      { nodeId: 'node1', flowNodeType: 'test', inputs: [], outputs: [] } as any
+    ];
+    const edges: RuntimeEdgeItemType[] = [];
+    const filteredEdges = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(filteredEdges.length).toBe(0);
+  });
+
+  it('should handle no orphan edges', () => {
+    const nodes: RuntimeNodeItemType[] = [
+      { nodeId: 'n1', flowNodeType: 't', inputs: [], outputs: [] } as any,
+      { nodeId: 'n2', flowNodeType: 't', inputs: [], outputs: [] } as any
+    ];
+    const edges: RuntimeEdgeItemType[] = [
+      { source: 'n1', target: 'n2', sourceHandle: 's', targetHandle: 't' } as any
+    ];
+    const filteredEdges = filterOrphanEdges({ edges, nodes, workflowId: 'test' });
+    expect(filteredEdges.length).toBe(1);
+  });
+
+  it('Performance test: 1000 nodes and edges', () => {
+    const nodeCount = 1000;
+    const nodes: RuntimeNodeItemType[] = [];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    // Create 1000 nodes
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({ nodeId: `node${i}`, flowNodeType: 'test', inputs: [], outputs: [] } as any);
+    }
+
+    // Create edges: 50% valid, 50% orphan
+    for (let i = 0; i < nodeCount; i++) {
+      if (i % 2 === 0) {
+        // Valid edge
+        edges.push({
+          source: `node${i}`,
+          target: `node${(i + 1) % nodeCount}`,
+          sourceHandle: 's',
+          targetHandle: 't'
+        } as any);
+      } else {
+        // Orphan edge
+        edges.push({
+          source: `node${i}`,
+          target: `non-existent-node`,
+          sourceHandle: 's',
+          targetHandle: 't'
+        } as any);
+      }
+    }
+
+    const start = Date.now();
+    const filteredEdges = filterOrphanEdges({ edges, nodes, workflowId: 'perf-test' });
+    const duration = Date.now() - start;
+
+    expect(filteredEdges.length).toBe(nodeCount / 2);
+    // Performance check: should be very fast (e.g., < 50ms)
+    // We log it instead of failing to avoid flaky tests on slow machines
+    console.log(`Performance test took ${duration}ms for ${nodeCount} edges`);
+    expect(duration).toBeLessThan(100);
+  });
+});
+
+describe('filterToolNodeIdByEdges', () => {
+  const makeEdge = (source: string, target: string, targetHandle: string): RuntimeEdgeItemType =>
+    ({ source, target, sourceHandle: 'out', targetHandle }) as any;
+
+  it('should return targets connected via selectedTools handle', () => {
+    const edges = [
+      makeEdge('node1', 'tool1', NodeOutputKeyEnum.selectedTools),
+      makeEdge('node1', 'tool2', NodeOutputKeyEnum.selectedTools)
+    ];
+    const result = filterToolNodeIdByEdges({ nodeId: 'node1', edges });
+    expect(result).toEqual(['tool1', 'tool2']);
+  });
+
+  it('should return empty array when no matching edges', () => {
+    const edges = [makeEdge('node2', 'tool1', NodeOutputKeyEnum.selectedTools)];
+    const result = filterToolNodeIdByEdges({ nodeId: 'node1', edges });
+    expect(result).toEqual([]);
+  });
+
+  it('should filter by targetHandle selectedTools only', () => {
+    const edges = [
+      makeEdge('node1', 'tool1', NodeOutputKeyEnum.selectedTools),
+      makeEdge('node1', 'other1', 'otherHandle')
+    ];
+    const result = filterToolNodeIdByEdges({ nodeId: 'node1', edges });
+    expect(result).toEqual(['tool1']);
+  });
+
+  it('should return empty array for empty edges', () => {
+    const result = filterToolNodeIdByEdges({ nodeId: 'node1', edges: [] });
+    expect(result).toEqual([]);
+  });
+});
+
+describe('getHistories', () => {
+  const MockHistories: ChatItemMiniType[] = [
+    {
+      obj: ChatRoleEnum.System,
+      value: [
+        {
+          text: {
+            content: '你好'
+          }
+        }
+      ]
+    },
+    {
+      obj: ChatRoleEnum.Human,
+      value: [
+        {
+          text: {
+            content: '你好'
+          }
+        }
+      ]
+    },
+    {
+      obj: ChatRoleEnum.AI,
+      value: [
+        {
+          text: {
+            content: '你好2'
+          }
+        }
+      ]
+    },
+    {
+      obj: ChatRoleEnum.Human,
+      value: [
+        {
+          text: {
+            content: '你好3'
+          }
+        }
+      ]
+    },
+    {
+      obj: ChatRoleEnum.AI,
+      value: [
+        {
+          text: {
+            content: '你好4'
+          }
+        }
+      ]
+    }
+  ];
+
+  it('getHistories', async () => {
+    // Number
+    expect(getHistories(1, MockHistories)).toEqual([
+      ...MockHistories.slice(0, 1),
+      ...MockHistories.slice(-2)
+    ]);
+    expect(getHistories(2, MockHistories)).toEqual([...MockHistories.slice(0)]);
+    expect(getHistories(4, MockHistories)).toEqual([...MockHistories.slice(0)]);
+
+    // Array
+    expect(
+      getHistories(
+        [
+          {
+            obj: ChatRoleEnum.Human,
+            value: [
+              {
+                text: {
+                  content: '你好'
+                }
+              }
+            ]
+          }
+        ],
+        MockHistories
+      )
+    ).toEqual([
+      {
+        obj: ChatRoleEnum.Human,
+        value: [
+          {
+            text: {
+              content: '你好'
+            }
+          }
+        ]
+      }
+    ]);
+  });
+
+  it('should return empty array when history is undefined', () => {
+    expect(getHistories(undefined, MockHistories)).toEqual([]);
+  });
+
+  it('should return empty array when history is 0', () => {
+    expect(getHistories(0, MockHistories)).toEqual([]);
+  });
+
+  it('keeps only the pending interactive round when agent history is 0', () => {
+    const pendingRound: ChatItemMiniType[] = [
+      ...MockHistories,
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'need a choice' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [
+          {
+            interactive: {
+              type: 'agentAsk',
+              askId: 'ask_1',
+              params: {
+                description: 'Choose one',
+                questions: [
+                  {
+                    question: 'Choose one?',
+                    options: [
+                      { summary: 'A', value: 'A' },
+                      { summary: 'B', value: 'B' }
+                    ]
+                  }
+                ]
+              }
+            } as any
+          }
+        ]
+      }
+    ];
+
+    expect(getAgentLoopHistories(0, pendingRound)).toEqual(pendingRound.slice(-2));
+  });
+
+  it('keeps only the pending child-tool round when agent history is 0', () => {
+    const pendingRound: ChatItemMiniType[] = [
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'run the tool' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [
+          {
+            interactive: {
+              type: 'toolChildrenInteractive',
+              params: {
+                toolParams: {
+                  toolCallId: 'tool_1'
+                },
+                childrenResponse: {
+                  type: 'userSelect',
+                  params: {
+                    description: 'Choose one',
+                    userSelectOptions: []
+                  }
+                }
+              }
+            } as any
+          }
+        ]
+      }
+    ];
+
+    expect(getAgentLoopHistories(0, pendingRound)).toEqual(pendingRound);
+  });
+
+  it('does not retain completed or non-interactive history when agent history is 0', () => {
+    const completedRound: ChatItemMiniType[] = [
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'need a choice' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [
+          {
+            interactive: {
+              type: 'agentPlanAskQuery',
+              askId: 'ask_1',
+              params: {
+                content: 'Choose one',
+                options: ['A', 'B', 'C'],
+                answer: 'A'
+              }
+            }
+          }
+        ]
+      }
+    ];
+
+    expect(getAgentLoopHistories(0, completedRound)).toEqual([]);
+    expect(getAgentLoopHistories(0, MockHistories)).toEqual([]);
+  });
+
+  it('keeps configured agent history unchanged when history is not 0', () => {
+    expect(getAgentLoopHistories(1, MockHistories)).toEqual(getHistories(1, MockHistories));
+  });
+
+  it('should use default empty histories', () => {
+    expect(getHistories(1)).toEqual([]);
+  });
+
+  it('should keep the latest context checkpoint even when it is outside the recent window', () => {
+    const histories: ChatItemMiniType[] = [
+      {
+        obj: ChatRoleEnum.System,
+        value: [{ text: { content: 'system prompt' } }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'old question' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ text: { content: 'old answer' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [
+          { text: { content: 'before checkpoint' } },
+          { contextCheckpoint: '<context_checkpoint>compressed history</context_checkpoint>' }
+        ]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'recent question 1' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ text: { content: 'recent answer 1' } }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'recent question 2' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ text: { content: 'recent answer 2' } }]
+      }
+    ];
+
+    expect(getHistories(1, histories)).toEqual([histories[0], ...histories.slice(3)]);
+  });
+
+  it('should ignore non-AI checkpoint-shaped values when applying recent window', () => {
+    const histories = [
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ contextCheckpoint: '<context_checkpoint>invalid</context_checkpoint>' }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ text: { content: 'old answer' } }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'recent question' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ text: { content: 'recent answer' } }]
+      }
+    ] as any as ChatItemMiniType[];
+
+    expect(getHistories(1, histories)).toEqual(histories.slice(-2));
+  });
+
+  it('should keep only histories from the latest context checkpoint', () => {
+    const histories: ChatItemMiniType[] = [
+      {
+        obj: ChatRoleEnum.System,
+        value: [{ text: { content: 'system prompt' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ contextCheckpoint: '<context_checkpoint>first</context_checkpoint>' }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'after first checkpoint' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ contextCheckpoint: '<context_checkpoint>latest</context_checkpoint>' }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'after latest checkpoint' } }]
+      }
+    ];
+
+    expect(getHistories(10, histories)).toEqual([histories[0], ...histories.slice(3)]);
+  });
+
+  it('should keep checkpoint histories when there are no leading system histories', () => {
+    const histories: ChatItemMiniType[] = [
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'old question' } }]
+      },
+      {
+        obj: ChatRoleEnum.AI,
+        value: [{ contextCheckpoint: '<context_checkpoint>latest</context_checkpoint>' }]
+      },
+      {
+        obj: ChatRoleEnum.Human,
+        value: [{ text: { content: 'after latest checkpoint' } }]
+      }
+    ];
+
+    expect(getHistories(1, histories)).toEqual(histories.slice(1));
+  });
+});
+
+describe('checkQuoteQAValue', () => {
+  it('should return undefined when quoteQA is undefined', () => {
+    expect(checkQuoteQAValue(undefined)).toBeUndefined();
+  });
+
+  it('should return empty array when quoteQA is empty', () => {
+    expect(checkQuoteQAValue([])).toEqual([]);
+  });
+
+  it('should return undefined when items are not objects', () => {
+    expect(checkQuoteQAValue(['not-object'] as any)).toBeUndefined();
+  });
+
+  it('should return undefined when items are missing q field', () => {
+    expect(checkQuoteQAValue([{ a: 'test' }] as any)).toBeUndefined();
+  });
+
+  it('should return the array when items are valid', () => {
+    const data = [{ q: 'question', a: 'answer' }] as any;
+    expect(checkQuoteQAValue(data)).toEqual(data);
+  });
+
+  it('should return undefined when some items are invalid', () => {
+    const data = [{ q: 'question' }, { a: 'no-q' }] as any;
+    expect(checkQuoteQAValue(data)).toBeUndefined();
+  });
+});
+
+describe('WorkflowVariableState file store conversion', () => {
+  const createFileVariableState = (inputVariables: Record<string, unknown> = {}) =>
+    WorkflowVariableState.create({
+      timezone: 'Asia/Shanghai',
+      runningAppInfo: {
+        id: 'appId',
+        teamId: 'teamId',
+        tmbId: 'tmbId',
+        name: 'app'
+      },
+      uid: 'uid',
+      chatId: 'chatId',
+      variablesConfig: [
+        {
+          key: 'files',
+          type: VariableInputEnum.file
+        } as any
+      ],
+      inputVariables
+    });
+
+  it('should convert unknown runtime urls to external file store values', async () => {
+    const state = await createFileVariableState();
+
+    await state.set('files', ['https://preview.example.com/doc.pdf']);
+
+    expect(state.toStoreRecord().files).toEqual([
+      {
+        url: 'https://preview.example.com/doc.pdf',
+        name: 'doc.pdf',
+        type: ChatFileTypeEnum.file
+      }
+    ]);
+  });
+
+  it('should preserve private file metadata when updating with its runtime url', async () => {
+    const state = await createFileVariableState({
+      files: [
+        {
+          key: 'chat/app/a.png',
+          name: 'a.png',
+          type: ChatFileTypeEnum.image
+        }
+      ]
+    });
+    const runtimeUrls = state.get('files') as string[];
+
+    await state.set('files', [runtimeUrls[0], 'https://external.example.com/report.unknown']);
+
+    expect(state.toStoreRecord().files).toEqual([
+      {
+        key: 'chat/app/a.png',
+        name: 'a.png',
+        type: ChatFileTypeEnum.image
+      },
+      {
+        url: 'https://external.example.com/report.unknown',
+        name: 'report.unknown',
+        type: ChatFileTypeEnum.file
+      }
+    ]);
+  });
+});
+
+describe('filterSystemVariables', () => {
+  it('should return only system variables', () => {
+    const variables = {
+      userId: 'u1',
+      appId: 'a1',
+      chatId: 'c1',
+      responseChatItemId: 'r1',
+      histories: [{ obj: 'Human', value: [] }],
+      cTime: '2024-01-01',
+      customVar: 'should-not-appear'
+    };
+    const result = filterSystemVariables(variables);
+    expect(result).toEqual({
+      userId: 'u1',
+      appId: 'a1',
+      chatId: 'c1',
+      responseChatItemId: 'r1',
+      histories: [{ obj: 'Human', value: [] }],
+      cTime: '2024-01-01'
+    });
+    expect((result as any).customVar).toBeUndefined();
+  });
+
+  it('should handle missing system variables', () => {
+    const result = filterSystemVariables({});
+    expect(result.userId).toBeUndefined();
+    expect(result.appId).toBeUndefined();
+  });
+});
+
+describe('formatHttpError', () => {
+  it('should format error with all fields', () => {
+    const error = {
+      message: 'Request failed',
+      response: { data: { detail: 'not found' } },
+      name: 'AxiosError',
+      config: { method: 'GET' },
+      code: 'ERR_BAD_REQUEST',
+      status: 400
+    };
+    const result = formatHttpError(error);
+    expect(result.message).toBe('Request failed');
+    expect(result.data).toEqual({ detail: 'not found' });
+    expect(result.name).toBe('AxiosError');
+    expect(result.method).toBe('GET');
+    expect(result.code).toBe('ERR_BAD_REQUEST');
+    expect(result.status).toBe(400);
+  });
+
+  it('should handle error with missing fields', () => {
+    const result = formatHttpError({});
+    expect(result.message).toBe('');
+    expect(result.data).toBeUndefined();
+    expect(result.name).toBeUndefined();
+    expect(result.method).toBeUndefined();
+    expect(result.code).toBeUndefined();
+    expect(result.status).toBeUndefined();
+  });
+
+  it('should handle string error', () => {
+    const result = formatHttpError('something went wrong');
+    expect(result.message).toBe('something went wrong');
+  });
+});
+
+describe('rewriteRuntimeWorkFlow', () => {
+  const makeNode = (
+    nodeId: string,
+    flowNodeType: string,
+    extra: Partial<RuntimeNodeItemType> = {}
+  ): RuntimeNodeItemType =>
+    ({
+      nodeId,
+      name: nodeId,
+      flowNodeType,
+      inputs: [],
+      outputs: [],
+      ...extra
+    }) as any;
+
+  const makeEdge = (
+    source: string,
+    target: string,
+    opts: Partial<RuntimeEdgeItemType> = {}
+  ): RuntimeEdgeItemType =>
+    ({
+      source,
+      target,
+      sourceHandle: 'out',
+      targetHandle: 'in',
+      status: 'waiting',
+      ...opts
+    }) as any;
+
+  it('should return early when no toolSet nodes', async () => {
+    const nodes = [makeNode('n1', FlowNodeTypeEnum.chatNode)];
+    const edges = [makeEdge('n1', 'n2')];
+    const originalNodesLen = nodes.length;
+    const originalEdgesLen = edges.length;
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+    expect(nodes.length).toBe(originalNodesLen);
+    expect(edges.length).toBe(originalEdgesLen);
+  });
+
+  it('should handle systemTool toolSet nodes', async () => {
+    const toolSetNode = makeNode('ts1', FlowNodeTypeEnum.toolSet, {
+      toolConfig: { systemToolSet: { toolId: 'sys-tool-1' } }
+    } as any);
+    const parentNode = makeNode('parent', FlowNodeTypeEnum.chatNode);
+    const nodes = [parentNode, toolSetNode];
+    const edges = [
+      makeEdge('parent', 'ts1', { sourceHandle: 'out', targetHandle: 'selectedTools' })
+    ];
+
+    const childNode = makeNode('child1', 'systemTool');
+    mockGetSystemToolRunTimeNodeFromSystemToolset.mockResolvedValue([childNode]);
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(nodes.find((n) => n.nodeId === 'ts1')).toBeUndefined();
+    expect(nodes.find((n) => n.nodeId === 'child1')).toBeDefined();
+    expect(edges.find((e) => e.target === 'ts1')).toBeUndefined();
+    expect(edges.find((e) => e.target === 'child1')).toBeDefined();
+  });
+
+  it('should handle MCP toolSet nodes', async () => {
+    const toolSetNode = makeNode('ts2', FlowNodeTypeEnum.toolSet, {
+      pluginId: 'mcp-app-1',
+      name: 'MCPTool',
+      avatar: 'avatar.png',
+      toolConfig: {
+        mcpToolSet: { toolId: 'mcp-tool-1' }
+      }
+    } as any);
+    const parentNode = makeNode('parent', FlowNodeTypeEnum.chatNode);
+    const nodes = [parentNode, toolSetNode];
+    const edges = [
+      makeEdge('parent', 'ts2', { sourceHandle: 'out', targetHandle: 'selectedTools' })
+    ];
+
+    mockMongoAppFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({
+        _id: 'mcp-app-1',
+        name: 'TestApp',
+        modules: [
+          {
+            toolConfig: {
+              mcpToolSet: {
+                url: 'https://mcp.example.com',
+                toolList: []
+              }
+            }
+          }
+        ]
+      })
+    });
+    mockGetMCPChildren.mockResolvedValue([
+      { name: 'tool1', description: 'desc', inputSchema: {}, url: 'https://mcp.example.com' }
+    ]);
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(nodes.find((n) => n.nodeId === 'ts2')).toBeUndefined();
+    expect(nodes.find((n) => n.nodeId === 'ts20')).toMatchObject({
+      toolConfig: {
+        mcpToolSet: {
+          url: 'https://mcp.example.com'
+        }
+      }
+    });
+    expect(edges.find((e) => e.target === 'ts2')).toBeUndefined();
+    expect(edges.find((e) => e.target === 'ts20')).toBeDefined();
+  });
+
+  it('should keep resumed MCP toolSet memory edge after child node is rebuilt', async () => {
+    const toolSetNode = makeNode('ts2', FlowNodeTypeEnum.toolSet, {
+      pluginId: 'mcp-app-1',
+      name: 'MCPTool',
+      avatar: 'avatar.png',
+      toolConfig: {
+        // 模拟前端 preview 后的 ToolSet 节点：保留工具名，但没有完整 inputSchema。
+        mcpToolSet: { toolId: 'mcp-tool-1', toolList: [{ name: 'tool1', description: 'desc' }] }
+      }
+    } as any);
+    const parentNode = makeNode('parent', FlowNodeTypeEnum.toolCall);
+    const nodes = [parentNode, toolSetNode];
+    // 交互暂停会保存 ToolSet 展开后的运行态边；续跑时 store nodes 里仍只有 ToolSet。
+    const edges = [
+      makeEdge('parent', 'ts20', { sourceHandle: 'selectedTools', targetHandle: 'selectedTools' })
+    ];
+
+    const fullSchema = {
+      type: 'object',
+      properties: { city: { type: 'string', isToolParam: false } }
+    };
+    mockMongoAppFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({
+        _id: 'mcp-app-1',
+        name: 'TestApp',
+        modules: [
+          {
+            toolConfig: {
+              mcpToolSet: {
+                url: 'https://mcp.example.com',
+                toolList: []
+              }
+            }
+          }
+        ]
+      })
+    });
+    mockGetMCPChildren.mockResolvedValue([
+      {
+        name: 'tool1',
+        description: 'desc',
+        inputSchema: fullSchema,
+        url: 'https://mcp.example.com'
+      }
+    ]);
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+    const filteredEdges = filterOrphanEdges({ nodes, edges, workflowId: 'workflow-app' });
+
+    expect(nodes.find((n) => n.nodeId === 'ts20')?.jsonSchema).toEqual(fullSchema);
+    expect(nodes.find((n) => n.nodeId === 'ts20')?.toolConfig?.mcpToolSet).toMatchObject({
+      url: 'https://mcp.example.com'
+    });
+    expect(nodes.find((n) => n.nodeId === 'ts20')?.inputs[0]).toMatchObject({
+      key: 'city',
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      renderTypeList: [
+        FlowNodeInputTypeEnum.agentGenerated,
+        FlowNodeInputTypeEnum.input,
+        FlowNodeInputTypeEnum.reference
+      ]
+    });
+    expect(filteredEdges).toHaveLength(1);
+    expect(filteredEdges[0].target).toBe('ts20');
+  });
+
+  it('should skip MCP toolSet when app not found', async () => {
+    const toolSetNode = makeNode('ts3', FlowNodeTypeEnum.toolSet, {
+      pluginId: 'missing-app',
+      toolConfig: {
+        mcpToolSet: { toolId: 'mcp-tool-1' }
+      }
+    } as any);
+    const nodes = [toolSetNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    mockMongoAppFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue(null)
+    });
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(nodes.find((n) => n.nodeId === 'ts3')).toBeUndefined();
+  });
+
+  it('should handle HTTP toolSet nodes', async () => {
+    const toolSetNode = makeNode('ts4', FlowNodeTypeEnum.toolSet, {
+      pluginId: 'http-plugin-1',
+      name: 'HTTPTool',
+      avatar: 'avatar.png',
+      toolConfig: {
+        httpToolSet: {}
+      }
+    } as any);
+    const parentNode = makeNode('parent', FlowNodeTypeEnum.chatNode);
+    const nodes = [parentNode, toolSetNode];
+    const edges = [
+      makeEdge('parent', 'ts4', { sourceHandle: 'out', targetHandle: 'selectedTools' })
+    ];
+
+    mockMongoAppFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({ _id: 'http-plugin-1', name: 'HTTPApp' })
+    });
+    mockGetHTTPToolList.mockResolvedValue([
+      { name: 'api1', description: 'desc1', url: 'http://example.com/api1' },
+      { name: 'api2', description: 'desc2', url: 'http://example.com/api2' }
+    ]);
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(nodes.find((n) => n.nodeId === 'ts4')).toBeUndefined();
+    expect(nodes.find((n) => n.nodeId === 'ts40')).toBeDefined();
+    expect(nodes.find((n) => n.nodeId === 'ts41')).toBeDefined();
+    expect(edges.filter((e) => e.target === 'ts40' || e.target === 'ts41').length).toBe(2);
+  });
+
+  // Helper: route MongoApp.find responses by the toolsetId it queries, since
+  // parseMcpTool and parseHttpTool may both hit MongoApp.find in parallel.
+  const setupFindByIdMap = (idToDoc: Record<string, any>) => {
+    mockMongoAppFind.mockImplementation((query: any) => {
+      const ids: string[] = query?._id?.$in ?? [];
+      const docs = ids.map((id) => idToDoc[id]).filter(Boolean);
+      return { lean: vi.fn().mockResolvedValue(docs) };
+    });
+  };
+
+  it('should inject jsonSchema and intro for standalone MCP tool nodes', async () => {
+    const mcpToolNode = makeNode('mcp1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        mcpTool: { toolId: 'mcp-toolset-1/toolA' }
+      },
+      inputs: [
+        {
+          key: 'x',
+          valueType: 'string',
+          required: true,
+          renderTypeList: [FlowNodeInputTypeEnum.input, FlowNodeInputTypeEnum.reference],
+          selectedType: FlowNodeInputTypeEnum.input
+        }
+      ]
+    } as any);
+    const nodes = [mcpToolNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    const toolAInputSchema = {
+      type: 'object',
+      properties: { x: { type: 'string', isToolParam: true } }
+    };
+    setupFindByIdMap({
+      'toolset-1': {
+        _id: 'toolset-1',
+        modules: [
+          {
+            toolConfig: {
+              mcpToolSet: {
+                url: 'https://mcp.example.com',
+                toolList: [
+                  {
+                    name: 'toolA',
+                    description: 'tool A description',
+                    inputSchema: toolAInputSchema
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(mcpToolNode.jsonSchema).toEqual(toolAInputSchema);
+    expect(mcpToolNode.intro).toBe('tool A description');
+    expect(mcpToolNode.inputs[0]).toMatchObject({
+      selectedType: FlowNodeInputTypeEnum.input,
+      renderTypeList: [
+        FlowNodeInputTypeEnum.agentGenerated,
+        FlowNodeInputTypeEnum.input,
+        FlowNodeInputTypeEnum.reference
+      ]
+    });
+  });
+
+  it('should inject jsonSchema and intro for standalone HTTP tool nodes', async () => {
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        httpTool: { toolId: 'http-toolset-1/toolB' }
+      },
+      inputs: [
+        {
+          key: 'y',
+          valueType: 'number',
+          required: true,
+          renderTypeList: [
+            FlowNodeInputTypeEnum.agentGenerated,
+            FlowNodeInputTypeEnum.numberInput,
+            FlowNodeInputTypeEnum.reference
+          ],
+          selectedType: FlowNodeInputTypeEnum.agentGenerated
+        }
+      ]
+    } as any);
+    const nodes = [httpToolNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    const toolBInputSchema = {
+      type: 'object',
+      properties: { y: { type: 'number', isToolParam: false } }
+    };
+    const toolBRequestSchema = {
+      type: 'object',
+      properties: { y: { type: 'number', isToolParam: false } }
+    };
+    setupFindByIdMap({
+      'toolset-1': {
+        _id: 'toolset-1',
+        modules: [
+          {
+            toolConfig: {
+              httpToolSet: {
+                toolList: [
+                  {
+                    name: 'toolB',
+                    description: 'tool B description',
+                    inputSchema: toolBInputSchema,
+                    requestSchema: toolBRequestSchema
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(httpToolNode.jsonSchema).toEqual(toolBRequestSchema);
+    expect(httpToolNode.intro).toBe('tool B description');
+    expect(httpToolNode.inputs[0]).toMatchObject({
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      renderTypeList: [
+        FlowNodeInputTypeEnum.agentGenerated,
+        FlowNodeInputTypeEnum.numberInput,
+        FlowNodeInputTypeEnum.reference
+      ]
+    });
+  });
+
+  it('should use the remote default only when a saved tool input has no selection', async () => {
+    const mcpToolNode = makeNode('mcp1', FlowNodeTypeEnum.tool, {
+      toolConfig: { mcpTool: { toolId: 'mcp-toolset-1/toolA' } },
+      inputs: [
+        {
+          key: 'query',
+          valueType: 'string',
+          required: true,
+          renderTypeList: [FlowNodeInputTypeEnum.input, FlowNodeInputTypeEnum.reference]
+        }
+      ]
+    } as any);
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: { httpTool: { toolId: 'http-toolset-1/toolB' } },
+      inputs: [
+        {
+          key: 'count',
+          valueType: 'number',
+          required: true,
+          renderTypeList: [FlowNodeInputTypeEnum.numberInput, FlowNodeInputTypeEnum.reference]
+        }
+      ]
+    } as any);
+    setupFindByIdMap({
+      'toolset-1': {
+        _id: 'toolset-1',
+        modules: [
+          {
+            toolConfig: {
+              mcpToolSet: {
+                url: 'https://mcp.example.com',
+                toolList: [
+                  {
+                    name: 'toolA',
+                    inputSchema: {
+                      type: 'object',
+                      properties: { query: { type: 'string', isToolParam: true } }
+                    }
+                  }
+                ]
+              },
+              httpToolSet: {
+                toolList: [
+                  {
+                    name: 'toolB',
+                    inputSchema: {
+                      type: 'object',
+                      properties: { count: { type: 'number', isToolParam: false } }
+                    },
+                    requestSchema: { type: 'object', properties: {} }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    await rewriteRuntimeWorkFlow({
+      teamId: 'team1',
+      nodes: [mcpToolNode, httpToolNode],
+      edges: []
+    });
+
+    expect(mcpToolNode.inputs[0].selectedType).toBe(FlowNodeInputTypeEnum.agentGenerated);
+    expect(httpToolNode.inputs[0].selectedType).toBe(FlowNodeInputTypeEnum.numberInput);
+  });
+
+  it('should fall back to inputSchema for legacy scalar HTTP request schemas', async () => {
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        httpTool: { toolId: 'http-toolset-1/toolLegacy' }
+      }
+    } as any);
+    const inputSchema = {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query']
+    };
+    setupFindByIdMap({
+      'toolset-1': {
+        _id: 'toolset-1',
+        modules: [
+          {
+            toolConfig: {
+              httpToolSet: {
+                toolList: [
+                  {
+                    name: 'toolLegacy',
+                    description: 'legacy HTTP tool',
+                    inputSchema,
+                    requestSchema: { type: 'string' }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes: [httpToolNode], edges: [] });
+
+    expect(httpToolNode.jsonSchema).toEqual(inputSchema);
+  });
+
+  it('should preserve tool names containing slashes when injecting schema', async () => {
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        httpTool: { toolId: 'http-toolset-1/namespace/toolC' }
+      }
+    } as any);
+    const nodes = [httpToolNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    setupFindByIdMap({
+      'toolset-1': {
+        _id: 'toolset-1',
+        modules: [
+          {
+            toolConfig: {
+              httpToolSet: {
+                toolList: [
+                  {
+                    name: 'namespace/toolC',
+                    description: 'nested tool',
+                    requestSchema: { type: 'object' }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(httpToolNode.jsonSchema).toEqual({ type: 'object' });
+    expect(httpToolNode.intro).toBe('nested tool');
+  });
+
+  it('should skip schema injection when toolset is not found', async () => {
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        httpTool: { toolId: 'http-missing/toolX' }
+      },
+      intro: 'original',
+      jsonSchema: { type: 'original' }
+    } as any);
+    const nodes = [httpToolNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    setupFindByIdMap({});
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(httpToolNode.jsonSchema).toEqual({ type: 'original' });
+    expect(httpToolNode.intro).toBe('original');
+  });
+
+  it('should skip schema injection when toolId prefix does not match', async () => {
+    const httpToolNode = makeNode('http1', FlowNodeTypeEnum.tool, {
+      toolConfig: {
+        httpTool: { toolId: 'mcp-toolset-1/toolA' }
+      },
+      intro: 'original',
+      jsonSchema: { type: 'original' }
+    } as any);
+    const nodes = [httpToolNode];
+    const edges: RuntimeEdgeItemType[] = [];
+
+    setupFindByIdMap({});
+
+    await rewriteRuntimeWorkFlow({ teamId: 'team1', nodes, edges });
+
+    expect(httpToolNode.jsonSchema).toEqual({ type: 'original' });
+    expect(httpToolNode.intro).toBe('original');
+  });
+});
+
+describe('getNodeErrResponse', () => {
+  it('should return proper error response structure', () => {
+    const result = getNodeErrResponse({ error: 'test error' });
+    expect(result.error[NodeOutputKeyEnum.errorText]).toBe('test error');
+    expect(result[DispatchNodeResponseKeyEnum.nodeResponse]).toHaveProperty(
+      'errorText',
+      'test error'
+    );
+    expect(result[DispatchNodeResponseKeyEnum.toolResponse]).toHaveProperty('error', 'test error');
+  });
+
+  it('should include customErr in error and toolResponse', () => {
+    const result = getNodeErrResponse({
+      error: 'fail',
+      customErr: { code: 500, detail: 'internal' }
+    });
+    expect(result.error).toEqual({
+      [NodeOutputKeyEnum.errorText]: 'fail',
+      code: 500,
+      detail: 'internal'
+    });
+    expect(result[DispatchNodeResponseKeyEnum.toolResponse]).toEqual({
+      error: 'fail',
+      code: 500,
+      detail: 'internal'
+    });
+  });
+
+  it('should include responseData in nodeResponse', () => {
+    const result = getNodeErrResponse({
+      error: 'fail',
+      responseData: { extra: 'info' }
+    });
+    expect(result[DispatchNodeResponseKeyEnum.nodeResponse]).toEqual({
+      errorText: 'fail',
+      extra: 'info'
+    });
+  });
+
+  it('should pass through optional fields', () => {
+    const result = getNodeErrResponse({
+      error: 'fail',
+      runTimes: 3,
+      system_memories: { mem: 'val' }
+    });
+    expect(result[DispatchNodeResponseKeyEnum.runTimes]).toBe(3);
+    expect(result[DispatchNodeResponseKeyEnum.newVariables]).toBeUndefined();
+    expect(result[DispatchNodeResponseKeyEnum.memories]).toEqual({ mem: 'val' });
+  });
+
+  it('should handle non-object customErr gracefully', () => {
+    const result = getNodeErrResponse({
+      error: 'fail',
+      customErr: 'not-object' as any
+    });
+    expect(result.error).toEqual({
+      [NodeOutputKeyEnum.errorText]: 'fail'
+    });
+  });
+});
+
+describe('summarizeRuntimeNodeResponses', () => {
+  it('deduplicates flattened child rows that are already included in parent child stats', () => {
+    const summary = summarizeRuntimeNodeResponses(undefined, [
+      {
+        id: 'parent',
+        nodeId: 'parent-node',
+        moduleName: 'Parent',
+        totalPoints: 1,
+        childTotalPoints: 2,
+        childResponseCount: 1
+      },
+      {
+        id: 'child',
+        parentId: 'parent',
+        nodeId: 'child-node',
+        moduleName: 'Child',
+        totalPoints: 2
+      }
+    ]);
+
+    expect(summary.childTotalPoints).toBe(3);
+    expect(summary.childResponseCount).toBe(2);
+  });
+
+  it('counts nested children when only an in-memory child tree is available', () => {
+    const summary = summarizeRuntimeNodeResponses(undefined, [
+      {
+        id: 'parent',
+        nodeId: 'parent-node',
+        moduleName: 'Parent',
+        totalPoints: 1,
+        childrenResponses: [
+          {
+            id: 'child',
+            nodeId: 'child-node',
+            moduleName: 'Child',
+            totalPoints: 2
+          }
+        ]
+      }
+    ]);
+
+    expect(summary.childTotalPoints).toBe(3);
+    expect(summary.childResponseCount).toBe(2);
+  });
+
+  it('does not count the same response id again across incremental summaries', () => {
+    const firstSummary = summarizeRuntimeNodeResponses(undefined, [
+      {
+        id: 'repeat',
+        nodeId: 'repeat-node',
+        moduleName: 'Repeat',
+        runningTime: 1,
+        totalPoints: 2
+      }
+    ]);
+    const nextSummary = summarizeRuntimeNodeResponses(firstSummary, [
+      {
+        id: 'repeat',
+        nodeId: 'repeat-node',
+        moduleName: 'Repeat',
+        runningTime: 1,
+        totalPoints: 2
+      },
+      {
+        id: 'next',
+        nodeId: 'next-node',
+        moduleName: 'Next',
+        runningTime: 3,
+        totalPoints: 4
+      }
+    ]);
+
+    expect(nextSummary.responseIds).toEqual(['repeat', 'next']);
+    expect(nextSummary.finishedNodeIds).toEqual(['repeat-node', 'next-node']);
+    expect(nextSummary).not.toHaveProperty('runningTime');
+    expect(nextSummary.childTotalPoints).toBe(6);
+    expect(nextSummary.childResponseCount).toBe(2);
+  });
+});
+
+// ─── safePoints ───────────────────────────────────────────────────────────────
+describe('safePoints', () => {
+  it('正常数值 → 原样返回', () => {
+    expect(safePoints(42)).toBe(42);
+    expect(safePoints(0)).toBe(0);
+    expect(safePoints(3.14)).toBe(3.14);
+  });
+
+  it('NaN → 0', () => {
+    expect(safePoints(NaN)).toBe(0);
+  });
+
+  it('Infinity → 0', () => {
+    expect(safePoints(Infinity)).toBe(0);
+    expect(safePoints(-Infinity)).toBe(0);
+  });
+
+  it('null → 0', () => {
+    expect(safePoints(null)).toBe(0);
+  });
+
+  it('undefined → 0', () => {
+    expect(safePoints(undefined)).toBe(0);
+  });
+});

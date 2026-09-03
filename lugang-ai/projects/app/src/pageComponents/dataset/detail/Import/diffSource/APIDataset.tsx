@@ -5,8 +5,11 @@ import dynamic from 'next/dynamic';
 import Loading from '@fastgpt/web/components/common/MyLoading';
 import { Box, Button, Checkbox, Flex } from '@chakra-ui/react';
 import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContext';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { getApiDatasetFileList, getApiDatasetFileListExistId } from '@/web/core/dataset/api';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import {
+  getApiDatasetFileList,
+  getApiDatasetFileListExistId
+} from '@/web/core/dataset/api/apiDataset';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useTranslation } from 'next-i18next';
 import { type ParentTreePathItemType } from '@fastgpt/global/common/parentFolder/type';
@@ -57,7 +60,7 @@ const CustomAPIFileInput = () => {
 
   const [searchKey, setSearchKey] = useState('');
 
-  const { data: fileList = [], loading } = useRequest2(
+  const { data: fileList = [], loading } = useRequest(
     async () => {
       return getApiDatasetFileList({
         datasetId: datasetDetail._id,
@@ -66,13 +69,13 @@ const CustomAPIFileInput = () => {
       });
     },
     {
-      refreshDeps: [datasetDetail._id, datasetDetail.apiServer, parent, searchKey],
+      refreshDeps: [datasetDetail._id, datasetDetail.apiDatasetServer, parent, searchKey],
       throttleWait: 500,
       manual: false
     }
   );
 
-  const { data: existIdList = new Set() } = useRequest2(
+  const { data: existIdList = new Set() } = useRequest(
     async () => {
       return new Set<string>(await getApiDatasetFileListExistId({ datasetId: datasetDetail._id }));
     },
@@ -92,7 +95,7 @@ const CustomAPIFileInput = () => {
     }
   });
 
-  const { runAsync: onclickNext, loading: onNextLoading } = useRequest2(
+  const { runAsync: onclickNext, loading: onNextLoading } = useRequest(
     async () => {
       const finalSelectedFiles: APIFileItemType[] = await (async () => {
         if (isSelectAll) {
@@ -169,7 +172,7 @@ const CustomAPIFileInput = () => {
               setPaths(paths.slice(0, index + 1));
             }}
           />
-          {datasetDetail.apiServer && (
+          {datasetDetail?.apiDatasetServer?.apiServer && (
             <Box w={'240px'}>
               <SearchInput
                 value={searchKey}

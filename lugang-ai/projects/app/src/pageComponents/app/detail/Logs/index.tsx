@@ -13,12 +13,14 @@ import ProTag from '@/components/ProTip/Tag';
 import ProText from '@/components/ProTip/ProText';
 import { useContextSelector } from 'use-context-selector';
 import { AppContext } from '@/pageComponents/app/detail/context';
+import { useLocalStorageState } from 'ahooks';
 
 const Logs = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
-  // 鲁港通 - 默认显示图表视图
-  const [viewMode, setViewMode] = useState<'chart' | 'table'>('chart');
+  const [viewMode, setViewMode] = useLocalStorageState<'chart' | 'table'>(`app_log_view_mode`, {
+    defaultValue: feConfigs.isPlus ? 'chart' : 'table'
+  });
   const appId = useContextSelector(AppContext, (v) => v.appId);
 
   const [dateRange, setDateRange] = useState<DateRangeType>({
@@ -34,14 +36,7 @@ const Logs = () => {
   } = useMultipleSelect<ChatSourceEnum>(Object.values(ChatSourceEnum), true);
 
   return (
-    <Flex
-      flexDirection={'column'}
-      h={'full'}
-      rounded={'lg'}
-      bg={'myGray.25'}
-      boxShadow={3.5}
-      py={[4, 6]}
-    >
+    <Flex flexDirection={'column'} h={'full'} rounded={'lg'} py={[4, 6]}>
       <Flex px={[4, 8]}>
         <Flex
           w={'full'}
@@ -52,9 +47,9 @@ const Logs = () => {
           borderColor={'myGray.200'}
           alignItems={'center'}
         >
-          <Flex flex={'1 0 0'} gap={2}>
-            {/* 鲁港通 - 移除 ProTag */}
+          <Flex flex={'1 0 0'} gap={2} overflowX={'auto'}>
             <Flex
+              flexShrink={0}
               px={2}
               py={2}
               cursor={'pointer'}
@@ -63,13 +58,17 @@ const Logs = () => {
               borderRadius={'8px'}
               bg={viewMode === 'chart' ? 'myGray.05' : 'transparent'}
               _hover={{ bg: 'myGray.05' }}
+              alignItems={'center'}
+              whiteSpace={'nowrap'}
             >
               <MyIcon name={'core/app/logsLight'} w={4} />
               <Box ml={2} mr={0.5}>
                 {t('app:logs_app_data')}
               </Box>
+              <ProTag />
             </Flex>
             <Flex
+              flexShrink={0}
               px={2}
               py={2}
               cursor={'pointer'}
@@ -79,16 +78,28 @@ const Logs = () => {
               borderRadius={'8px'}
               bg={viewMode === 'table' ? 'myGray.05' : 'transparent'}
               _hover={{ bg: 'myGray.05' }}
+              alignItems={'center'}
+              whiteSpace={'nowrap'}
             >
               <MyIcon name={'core/app/logsLight'} w={4} />
               {t('app:log_detail')}
             </Flex>
           </Flex>
-          {/* 鲁港通 - 移除升级提示 */}
+          {viewMode === 'chart' && !feConfigs.isPlus && (
+            <ProText signKey={'app_log'}>
+              <Flex alignItems={'center'} cursor={'pointer'}>
+                <Box color={'primary.600'} fontSize="sm" fontWeight={'medium'} mr={1}>
+                  {t('common:upgrade')}
+                </Box>
+                <ProTag />
+              </Flex>
+            </ProText>
+          )}
         </Flex>
       </Flex>
       {viewMode === 'table' ? (
         <LogTable
+          pageSizeCacheKey={'app-detail-logs'}
           appId={appId}
           chatSources={chatSources}
           setChatSources={setChatSources}

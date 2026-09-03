@@ -14,7 +14,7 @@ function findSvgFiles(dir, relativePath = '') {
     if (item.isDirectory()) {
       const nestedSvgs = findSvgFiles(fullPath, relativeItemPath);
       svgFiles = svgFiles.concat(nestedSvgs);
-    } else if (item.isFile() && item.name.endsWith('.svg')) {
+    } else if (item.isFile() && (item.name.endsWith('.svg') || item.name.endsWith('.tsx'))) {
       svgFiles.push(relativeItemPath);
     }
   }
@@ -26,9 +26,11 @@ const svgPaths = findSvgFiles(`${__dirname}/../../packages/web/components/common
 
 let result = ``;
 
-svgPaths.forEach((path) => {
-  const name = path.split('.')[0];
-  result += ` '${name}': () => import('./icons/${path}'),\n`;
+svgPaths.forEach((svgPath) => {
+  const ext = path.extname(svgPath);
+  const name = svgPath.replace(ext, '');
+  const importPath = ext === '.tsx' ? name : svgPath;
+  result += ` '${name}': () => import('./icons/${importPath}'),\n`;
 });
 
 // 把 result 结果写入  '../../packages/web/components/common/Icon/constants'

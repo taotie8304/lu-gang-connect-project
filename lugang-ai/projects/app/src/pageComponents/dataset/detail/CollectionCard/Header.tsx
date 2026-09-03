@@ -4,11 +4,11 @@ import {
   getDatasetCollectionPathById,
   postDatasetCollection,
   putDatasetCollectionById
-} from '@/web/core/dataset/api';
+} from '@/web/core/dataset/api/collection';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyInput from '@/components/MyInput';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useRouter } from 'next/router';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyMenu from '@fastgpt/web/components/common/MyMenu';
@@ -40,7 +40,15 @@ const FileSourceSelector = dynamic(() => import('../Import/components/FileSource
 const BackupImportModal = dynamic(() => import('./BackupImportModal'));
 const TemplateImportModal = dynamic(() => import('./TemplateImportModal'));
 
-const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
+const Header = ({
+  hasTrainingData,
+  hasTrainingError,
+  onOpenTrainingErrorModal
+}: {
+  hasTrainingData: boolean;
+  hasTrainingError: boolean;
+  onOpenTrainingErrorModal: () => void;
+}) => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
   const { isPc } = useSystem();
@@ -60,7 +68,7 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
     openDatasetSyncConfirm
   } = useContextSelector(CollectionPageContext, (v) => v);
 
-  const { data: paths = [] } = useRequest2(() => getDatasetCollectionPathById(parentId), {
+  const { data: paths = [] } = useRequest(() => getDatasetCollectionPathById(parentId), {
     refreshDeps: [parentId],
     manual: false
   });
@@ -92,8 +100,14 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
     onClose: onCloseTemplateImportModal
   } = useDisclosure();
 
-  const { runAsync: onCreateCollection } = useRequest2(
-    async ({ name, type }: { name: string; type: DatasetCollectionTypeEnum }) => {
+  const { runAsync: onCreateCollection } = useRequest(
+    async ({
+      name,
+      type
+    }: {
+      name: string;
+      type: DatasetCollectionTypeEnum.folder | DatasetCollectionTypeEnum.virtual;
+    }) => {
       const id = await postDatasetCollection({
         parentId,
         datasetId: datasetDetail._id,
@@ -187,9 +201,26 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
         )}
 
         {/* Tag */}
-        {/* 鲁港通 - 启用标签功能 */}
         {datasetDetail.type !== DatasetTypeEnum.websiteDataset &&
-          datasetDetail.permission.hasWritePer && <HeaderTagPopOver />}
+          datasetDetail.permission.hasWritePer &&
+          feConfigs?.isPlus && <HeaderTagPopOver />}
+
+        {hasTrainingError && (
+          <Button
+            variant={'whiteBase'}
+            h={'36px'}
+            px={'14px'}
+            color={'#F97066'}
+            borderColor={'#F97066'}
+            _hover={{
+              color: '#F97066',
+              borderColor: '#F97066'
+            }}
+            onClick={onOpenTrainingErrorModal}
+          >
+            {t('dataset:training_error_list')}
+          </Button>
+        )}
       </HStack>
 
       {/* diff collection button */}
@@ -250,7 +281,8 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       ),
                       onClick: onOpenFileSourceSelector
                     },
-                    ...[
+                    ...(feConfigs?.isPlus
+                      ? [
                           {
                             label: (
                               <Flex>
@@ -267,7 +299,8 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                                 }
                               })
                           }
-                        ],
+                        ]
+                      : []),
 
                     {
                       label: (
@@ -323,12 +356,12 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       >
                         {t('dataset:params_config')}
                       </Button>
-                      {/* 鲁港通 - 启用立即同步功能 */}
-                      {!hasTrainingData && (
+                      {feConfigs?.isPlus && (
                         <Button
                           variant={'whitePrimary'}
                           onClick={openDatasetSyncConfirm}
                           leftIcon={<Icon name="common/confirm/restoreTip" w={'1rem'} />}
+                          isDisabled={hasTrainingData}
                         >
                           {t('dataset:immediate_sync')}
                         </Button>
@@ -487,8 +520,7 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
                       {t('dataset:add_file')}
                     </Box>
                   </Flex>
-                  {/* 鲁港通 - 启用立即同步功能 */}
-                  {!hasTrainingData && (
+                  {!hasTrainingData && feConfigs?.isPlus && (
                     <Button
                       variant={'whitePrimary'}
                       onClick={openDatasetSyncConfirm}
@@ -568,10 +600,7 @@ const Header = ({ hasTrainingData }: { hasTrainingData: boolean }) => {
           name={editFolderData.name}
         />
       )}
-      <EditCreateVirtualFileModal
-        iconSrc={'modal/manualDataset'}
-        closeBtnText={t('common:Cancel')}
-      />
+      <EditCreateVirtualFileModal closeBtnText={t('common:Cancel')} size="sm" />
       {isOpenFileSourceSelector && <FileSourceSelector onClose={onCloseFileSourceSelector} />}
       {isOpenBackupImportModal && (
         <BackupImportModal

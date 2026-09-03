@@ -1,14 +1,18 @@
-import type { NextApiRequest } from 'next';
-import type { LinkCreateDatasetCollectionParams } from '@fastgpt/global/core/dataset/api.d';
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { createCollectionAndInsertData } from '@fastgpt/service/core/dataset/collection/controller';
 import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { NextAPI } from '@/service/middleware/entry';
 import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
-import { type CreateCollectionResponse } from '@/global/core/dataset/api';
+import { type ApiRequestProps } from '@fastgpt/next/type';
+import {
+  CreateLinkCollectionBodySchema,
+  type CreateCollectionWithResultResponseType
+} from '@fastgpt/global/openapi/core/dataset/collection/createApi';
+import { checkDatasetIndexLimit } from '@fastgpt/service/support/permission/teamLimit';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-async function handler(req: NextApiRequest): CreateCollectionResponse {
-  const { link, ...body } = req.body as LinkCreateDatasetCollectionParams;
+async function handler(req: ApiRequestProps): Promise<CreateCollectionWithResultResponseType> {
+  const { link, ...body } = parseApiInput({ req, bodySchema: CreateLinkCollectionBodySchema }).body;
 
   const { teamId, tmbId, dataset } = await authDataset({
     req,
@@ -18,7 +22,13 @@ async function handler(req: NextApiRequest): CreateCollectionResponse {
     per: WritePermissionVal
   });
 
-  const { collectionId, insertResults } = await createCollectionAndInsertData({
+  // Check dataset limit
+  await checkDatasetIndexLimit({
+    teamId,
+    insertLen: 1
+  });
+
+  return createCollectionAndInsertData({
     dataset,
     createCollectionParams: {
       ...body,
@@ -33,11 +43,6 @@ async function handler(req: NextApiRequest): CreateCollectionResponse {
       rawLink: link
     }
   });
-
-  return {
-    collectionId,
-    results: insertResults
-  };
 }
 
 export default NextAPI(handler);

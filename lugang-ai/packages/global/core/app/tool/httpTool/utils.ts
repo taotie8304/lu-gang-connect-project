@@ -1,14 +1,65 @@
 import { getNanoid } from '../../../../common/string/tools';
-import type { PathDataType } from './type';
+import type { PathDataType, HttpToolConfigType } from './type';
 import { type RuntimeNodeItemType } from '../../../workflow/runtime/type';
 import { FlowNodeOutputTypeEnum, FlowNodeTypeEnum } from '../../../workflow/node/constant';
-import { type HttpToolConfigType } from '../../type';
 import { AppToolSourceEnum } from '../constants';
-import { jsonSchema2NodeInput, jsonSchema2NodeOutput } from '../../jsonschema';
+import {
+  getNodeInputTypeFromSchemaInputType,
+  jsonSchema2NodeInput,
+  jsonSchema2NodeOutput
+} from '../../jsonschema';
 import { type StoreSecretValueType } from '../../../../common/secret/type';
 import { type JsonSchemaPropertiesItemType } from '../../jsonschema';
-import { NodeOutputKeyEnum, WorkflowIOValueTypeEnum } from '../../../workflow/constants';
-import { i18nT } from '../../../../../web/i18n/utils';
+import {
+  NodeOutputKeyEnum,
+  WorkflowIOValueTypeEnum,
+  valueTypeJsonSchemaMap
+} from '../../../workflow/constants';
+import { i18nT } from '../../../../common/i18n/utils';
+import type { NodeToolConfigType } from '../../../workflow/type/node';
+
+const legacyManualHttpToolArrayTypes = new Set<string>([
+  WorkflowIOValueTypeEnum.arrayString,
+  WorkflowIOValueTypeEnum.arrayNumber,
+  WorkflowIOValueTypeEnum.arrayBoolean
+]);
+
+/** 判断 JSON Schema type 是否为手工 HTTP 工具历史上写入的数组值类型。 */
+export const isLegacyManualHttpToolArrayType = (
+  value: unknown
+): value is
+  | WorkflowIOValueTypeEnum.arrayString
+  | WorkflowIOValueTypeEnum.arrayNumber
+  | WorkflowIOValueTypeEnum.arrayBoolean =>
+  typeof value === 'string' && legacyManualHttpToolArrayTypes.has(value);
+
+/** 将手工 HTTP 工具编辑器的工作流值类型转换为标准 JSON Schema property。 */
+export const manualHttpToolValueType2JsonSchema = (
+  valueType: WorkflowIOValueTypeEnum
+): JsonSchemaPropertiesItemType => {
+  const schema =
+    valueTypeJsonSchemaMap[valueType] ?? valueTypeJsonSchemaMap[WorkflowIOValueTypeEnum.string];
+
+  return {
+    ...schema,
+    ...(schema.items && typeof schema.items === 'object' ? { items: { ...schema.items } } : {})
+  };
+};
+
+/** 将标准或历史 HTTP 工具 property Schema 还原为手工编辑器使用的工作流值类型。 */
+export const jsonSchemaProperty2ManualHttpToolValueType = (
+  schema: JsonSchemaPropertiesItemType
+): WorkflowIOValueTypeEnum => {
+  if (isLegacyManualHttpToolArrayType(schema.type)) {
+    return schema.type;
+  }
+
+  return getNodeInputTypeFromSchemaInputType({
+    type: typeof schema.type === 'string' ? schema.type : undefined,
+    arrayItems: schema.items,
+    schema
+  });
+};
 
 export const getHTTPToolSetRuntimeNode = ({
   name,
@@ -52,26 +103,39 @@ export const getHTTPToolRuntimeNode = ({
   tool,
   nodeId,
   avatar = 'core/app/type/httpToolsFill',
-  parentId
+  toolSetId,
+  toolsetName
 }: {
   tool: Omit<HttpToolConfigType, 'path' | 'method'>;
-  nodeId?: string;
+  nodeId: string;
   avatar?: string;
-  parentId: string;
+  toolSetId: string;
+  toolsetName: string;
 }): RuntimeNodeItemType => {
+  const { inputSchema, requestSchema } = getHTTPToolRuntimeSchemas(tool);
+  const inputs = jsonSchema2NodeInput({
+    jsonSchema: inputSchema,
+    schemaType: 'http'
+  }).map((input) => ({
+    ...input,
+    // 兼容旧 HTTP 工具 schema；空 x-tool-description 表示开发者手动配置。
+    defaultToAgentGenerated: input.defaultToAgentGenerated ?? Boolean(input.toolDescription)
+  }));
+
   return {
-    nodeId: nodeId || getNanoid(16),
+    nodeId,
     flowNodeType: FlowNodeTypeEnum.tool,
     avatar,
     intro: tool.description,
     toolConfig: {
       httpTool: {
-        toolId: `${AppToolSourceEnum.http}-${parentId}/${tool.name}`
+        toolId: `${AppToolSourceEnum.http}-${toolSetId}/${tool.name}`
       }
     },
-    inputs: jsonSchema2NodeInput({ jsonSchema: tool.inputSchema, schemaType: 'http' }),
+    jsonSchema: requestSchema,
+    inputs,
     outputs: [
-      ...jsonSchema2NodeOutput(tool.outputSchema),
+      ...jsonSchema2NodeOutput({ jsonSchema: tool.outputSchema }),
       {
         id: NodeOutputKeyEnum.rawResponse,
         key: NodeOutputKeyEnum.rawResponse,
@@ -82,8 +146,49 @@ export const getHTTPToolRuntimeNode = ({
         type: FlowNodeOutputTypeEnum.static
       }
     ],
-    name: tool.name,
+    name: `${toolsetName}/${tool.name}`,
     version: ''
+  };
+};
+
+/**
+ * 在 runtime builder 入口一次性补齐 HTTP 请求 schema 和表单 schema。
+ * 旧版 GET 工具可能把单个参数 schema 写进 requestSchema，运行时回退到 inputSchema。
+ */
+export const getHTTPToolRuntimeSchemas = ({
+  requestSchema,
+  inputSchema
+}: Pick<HttpToolConfigType, 'requestSchema' | 'inputSchema'>) => {
+  const hasRequestProperties =
+    !!requestSchema?.properties && Object.keys(requestSchema.properties).length > 0;
+  const currentRequestSchema = hasRequestProperties
+    ? requestSchema
+    : (inputSchema ?? requestSchema);
+  const hasInputProperties =
+    !!inputSchema?.properties && Object.keys(inputSchema.properties).length > 0;
+
+  return {
+    requestSchema: currentRequestSchema,
+    inputSchema: hasInputProperties ? inputSchema : currentRequestSchema
+  };
+};
+
+export const parseHttpToolConfig = (
+  config: NonNullable<NodeToolConfigType['httpTool']>
+):
+  | {
+      toolsetId: string;
+      toolName: string;
+    }
+  | undefined => {
+  const prefix = `${AppToolSourceEnum.http}-`;
+  if (!config.toolId.startsWith(prefix)) return undefined;
+  const [toolsetId, ...rest] = config.toolId.slice(prefix.length).split('/');
+  const toolName = rest.join('/');
+  if (!toolsetId || !toolName) return undefined;
+  return {
+    toolsetId,
+    toolName
   };
 };
 
@@ -93,16 +198,26 @@ export const pathData2ToolList = async (
   try {
     return pathData.map((pathItem) => {
       const inputProperties: Record<string, JsonSchemaPropertiesItemType> = {};
+      const requestProperties: Record<string, JsonSchemaPropertiesItemType> = {};
       const inputRequired: string[] = [];
       const outputProperties: Record<string, JsonSchemaPropertiesItemType> = {};
       const outputRequired: string[] = [];
+      let requestSchema = undefined;
 
       if (pathItem.params && Array.isArray(pathItem.params)) {
         pathItem.params.forEach((param) => {
           if (param.name && param.schema) {
+            const description = param.description || param.schema.description || '';
+            requestProperties[param.name] = {
+              ...param.schema,
+              ...(description ? { description } : {}),
+              isToolParam: true
+            };
             inputProperties[param.name] = {
               type: param.schema.type || 'any',
-              description: param.description || ''
+              description,
+              'x-tool-description': param.description || param.name,
+              isToolParam: true
             };
 
             if (param.required) {
@@ -110,15 +225,25 @@ export const pathData2ToolList = async (
             }
           }
         });
+
+        if (Object.keys(requestProperties).length > 0) {
+          requestSchema = {
+            type: 'object',
+            properties: requestProperties,
+            required: inputRequired
+          };
+        }
       }
       if (pathItem.request?.content?.['application/json']?.schema) {
-        const requestSchema = pathItem.request.content['application/json'].schema;
+        requestSchema = pathItem.request.content['application/json'].schema;
 
         if (requestSchema.properties) {
           Object.entries(requestSchema.properties).forEach(([key, value]: [string, any]) => {
             inputProperties[key] = {
               type: value.type || 'any',
-              description: value.description || ''
+              description: value.description || '',
+              'x-tool-description': value.description || key,
+              isToolParam: true
             };
           });
         }
@@ -154,6 +279,7 @@ export const pathData2ToolList = async (
         description: pathItem.description || pathItem.name,
         path: pathItem.path,
         method: pathItem.method?.toLowerCase(),
+        requestSchema,
         inputSchema: {
           type: 'object',
           properties: inputProperties,

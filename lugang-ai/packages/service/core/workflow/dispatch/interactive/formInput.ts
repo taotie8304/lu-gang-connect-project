@@ -2,23 +2,80 @@ import { chatValue2RuntimePrompt } from '@fastgpt/global/core/chat/adapt';
 import type { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
-import type {
-  DispatchNodeResultType,
-  ModuleDispatchProps
-} from '@fastgpt/global/core/workflow/runtime/type';
+import type { DispatchNodeResultType, ModuleDispatchProps } from '../../types/runtime';
 import type { UserInputFormItemType } from '@fastgpt/global/core/workflow/template/system/interactive/type';
-import { addLog } from '../../../../common/system/log';
 import { FlowNodeInputTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { anyValueDecrypt } from '../../../../common/secret/utils';
+import { getLogger, LogCategories } from '../../../../common/logger';
+import { createChatFilePreviewUrlGetter } from '../../../../common/s3/sources/chat';
+import {
+  normalizeChatFileStoreValues,
+  type ChatFileValueInput
+} from '../../../chat/fileStoreValue';
+import { getWorkflowFileContext, getWorkflowFileRegistrar } from '../../utils/context';
+import type { WorkflowFileRegistrar } from '../../utils/fileContext';
+import { getModuleFileAmountLimit } from '@fastgpt/global/core/workflow/fileLimit';
+
+const logger = getLogger(LogCategories.MODULE.WORKFLOW.INTERACTIVE);
+const DEFAULT_FORM_FILE_INPUT_MAX_FILES = 5;
 
 type Props = ModuleDispatchProps<{
   [NodeInputKeyEnum.description]: string;
   [NodeInputKeyEnum.userInputForms]: UserInputFormItemType[];
 }>;
+type FormInputValueMap = Record<string, unknown>;
 type FormInputResponse = DispatchNodeResultType<{
-  [NodeOutputKeyEnum.formInputResult]?: Record<string, any>;
-  [key: string]: any;
+  [NodeOutputKeyEnum.formInputResult]?: FormInputValueMap;
+  [key: string]: unknown;
 }>;
+
+const isFileSelectObject = (value: unknown): value is { key?: unknown; url?: unknown } =>
+  !!value && typeof value === 'object' && !Array.isArray(value);
+
+const formatFileSelectRuntimeValue = async ({
+  value,
+  maxFiles,
+  getPreviewUrl,
+  fileRegistrar
+}: {
+  value: unknown;
+  maxFiles?: number;
+  getPreviewUrl: (key: string) => Promise<string>;
+  fileRegistrar?: WorkflowFileRegistrar;
+}) => {
+  if (!Array.isArray(value)) return value;
+
+  const urls = await Promise.all(
+    value.slice(0, Math.max(maxFiles ?? DEFAULT_FORM_FILE_INPUT_MAX_FILES, 0)).map(async (file) => {
+      if (fileRegistrar) {
+        const storeValue = normalizeChatFileStoreValues([
+          typeof file === 'string'
+            ? { url: file }
+            : isFileSelectObject(file)
+              ? (file as ChatFileValueInput)
+              : {}
+        ])[0];
+        if (!storeValue) return;
+
+        const ref = await fileRegistrar.registerInputFile({
+          file: storeValue,
+          source: 'interactive'
+        });
+        return ref?.modelUrl;
+      }
+
+      if (typeof file === 'string') return file;
+      if (!isFileSelectObject(file)) return;
+
+      if (typeof file.url === 'string' && file.url) return file.url;
+      if (typeof file.key !== 'string' || !file.key) return;
+
+      return getPreviewUrl(file.key);
+    })
+  );
+
+  return urls.filter((url): url is string => typeof url === 'string' && !!url);
+};
 
 /* 
   用户输入都内容，将会以 JSON 字符串格式进入工作流，可以从 query 的 text 中获取。
@@ -49,40 +106,46 @@ export const dispatchFormInput = async (props: Props): Promise<FormInputResponse
   node.isEntry = false;
 
   const { text } = chatValue2RuntimePrompt(query);
-  const rawUserInputVal: Record<string, any> = (() => {
+  const rawUserInputVal: FormInputValueMap = (() => {
     try {
       return JSON.parse(text);
     } catch (error) {
-      addLog.warn('formInput error', { error });
+      logger.warn('Failed to parse form input JSON', { error });
       return {};
     }
   })();
 
-  const userInputVal = Object.entries(rawUserInputVal).reduce(
-    (acc, [key, value]) => {
-      const inputConfig = userInputForms.find((form) => form.key === key);
+  const getPreviewUrl = createChatFilePreviewUrlGetter({ expiredHours: 1 });
+  const userMaxFileAmount =
+    getWorkflowFileContext()?.limits.maxFileAmount ?? DEFAULT_FORM_FILE_INPUT_MAX_FILES;
+  const fileRegistrar = getWorkflowFileRegistrar();
+  const inputConfigMap = new Map(userInputForms.map((form) => [form.key, form]));
+  const userInputEntries = await Promise.all(
+    Object.entries(rawUserInputVal).map(async ([key, value]) => {
+      const inputConfig = inputConfigMap.get(key);
 
       if (inputConfig?.type === FlowNodeInputTypeEnum.password) {
-        acc[key] = anyValueDecrypt(value);
-      } else if (inputConfig?.type === FlowNodeInputTypeEnum.fileSelect) {
-        if (Array.isArray(value)) {
-          acc[key] = value.map((file: any) => {
-            if (typeof file === 'object' && file.url) {
-              return file.url;
-            }
-            return file;
-          });
-        } else {
-          acc[key] = value;
-        }
-      } else {
-        acc[key] = value;
+        return [key, anyValueDecrypt(value)] as const;
       }
-
-      return acc;
-    },
-    {} as Record<string, any>
+      if (inputConfig?.type === FlowNodeInputTypeEnum.fileSelect) {
+        return [
+          key,
+          await formatFileSelectRuntimeValue({
+            value,
+            maxFiles: getModuleFileAmountLimit({
+              userMaxFileAmount,
+              moduleMaxFileAmount: inputConfig.maxFiles,
+              defaultModuleMaxFileAmount: DEFAULT_FORM_FILE_INPUT_MAX_FILES
+            }),
+            getPreviewUrl,
+            fileRegistrar
+          })
+        ] as const;
+      }
+      return [key, value] as const;
+    })
   );
+  const userInputVal = Object.fromEntries(userInputEntries) as FormInputValueMap;
 
   return {
     data: {
@@ -90,7 +153,7 @@ export const dispatchFormInput = async (props: Props): Promise<FormInputResponse
       [NodeOutputKeyEnum.formInputResult]: userInputVal
     },
     [DispatchNodeResponseKeyEnum.rewriteHistories]: histories.slice(0, -2), // Removes the current session record as the history of subsequent nodes
-    [DispatchNodeResponseKeyEnum.toolResponses]: userInputVal,
+    [DispatchNodeResponseKeyEnum.toolResponse]: userInputVal,
     [DispatchNodeResponseKeyEnum.nodeResponse]: {
       formInputResult: userInputVal
     }

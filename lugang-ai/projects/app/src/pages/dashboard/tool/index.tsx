@@ -4,7 +4,7 @@ import { Box, Button, Flex, useDisclosure } from '@chakra-ui/react';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { useTranslation } from 'next-i18next';
 import dynamic from 'next/dynamic';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { postCreateAppFolder } from '@/web/core/app/api/app';
 import type { EditFolderFormType } from '@fastgpt/web/components/common/MyModal/EditFolderModal';
 import { useContextSelector } from 'use-context-selector';
@@ -14,11 +14,7 @@ import { useRouter } from 'next/router';
 import FolderSlideCard from '@/components/common/folder/SlideCard';
 import { delAppById, resumeInheritPer } from '@/web/core/app/api';
 import { AppRoleList } from '@fastgpt/global/support/permission/app/constant';
-import {
-  deleteAppCollaborators,
-  getCollaboratorList,
-  postUpdateAppCollaborators
-} from '@/web/core/app/api/collaborator';
+import { getCollaboratorList, postUpdateAppCollaborators } from '@/web/core/app/api/collaborator';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
@@ -68,13 +64,13 @@ const MyTools = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
     }
   });
 
-  const { runAsync: onCreateFolder } = useRequest2(postCreateAppFolder, {
+  const { runAsync: onCreateFolder } = useRequest(postCreateAppFolder, {
     onSuccess() {
       loadMyApps();
     },
     errorToast: 'Error'
   });
-  const { runAsync: onDeleFolder } = useRequest2(delAppById, {
+  const { runAsync: onDeleFolder } = useRequest(delAppById, {
     onSuccess(data) {
       data.forEach((appId) => {
         localStorage.removeItem(`app_log_keys_${appId}`);
@@ -214,12 +210,7 @@ const MyTools = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
                     ...props,
                     appId: folderDetail._id
                   }),
-                refreshDeps: [folderDetail._id, folderDetail.inheritPermission],
-                onDelOneCollaborator: async (params) =>
-                  deleteAppCollaborators({
-                    ...params,
-                    appId: folderDetail._id
-                  })
+                refreshDeps: [folderDetail._id, folderDetail.inheritPermission]
               }}
             />
           </Box>
@@ -234,7 +225,7 @@ const MyTools = ({ MenuIcon }: { MenuIcon: JSX.Element }) => {
           onEdit={({ id, ...data }) => onUpdateApp(id, data)}
         />
       )}
-      {isOpenJsonImportModal && <JsonImportModal onClose={onCloseJsonImportModal} />}
+      {isOpenJsonImportModal && <JsonImportModal scene={'tool'} onClose={onCloseJsonImportModal} />}
     </Flex>
   );
 };

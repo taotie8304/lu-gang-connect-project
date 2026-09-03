@@ -1,11 +1,33 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "baseUrl": ".",
     "paths": {
+      "@fastgpt-sdk/storage": ["../../sdk/storage/src/index.ts"],
+      "@fastgpt-sdk/otel": ["../../sdk/otel/src/index.ts"],
+      "@fastgpt-sdk/otel/logger": ["../../sdk/otel/src/logger-entry.ts"],
+      "@fastgpt-sdk/otel/metrics": ["../../sdk/otel/src/metrics-entry.ts"],
+      "@fastgpt-sdk/otel/tracing": ["../../sdk/otel/src/tracing-entry.ts"],
       "@/*": ["./src/*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", "**/*.d.ts", "../../packages/**/*.d.ts"],
-  "exclude": ["**/*.test.ts"]
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    "../../packages/**/*.ts",
+    "../../packages/**/*.d.ts"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "vitest.config.ts",
+    "vitest.integration.config.ts",
+    "../../packages/**/vitest.config.ts",
+    "../../packages/**/vitest.integration.config.ts",
+    "../../packages/**/vitest.benchmark.config.ts",
+    "../../packages/**/test/**",
+    ".next",
+    "dist",
+    "coverage"
+  ]
 }

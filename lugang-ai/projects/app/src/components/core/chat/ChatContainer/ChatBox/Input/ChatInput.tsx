@@ -1,132 +1,116 @@
-import type { FlexProps } from '@chakra-ui/react';
-import { Box, Flex, Textarea, useBoolean, Switch, Text } from '@chakra-ui/react';
-import React, { useRef, useCallback, useMemo, useState, useEffect } from 'react';
+import type { FlexProps, BoxProps } from '@chakra-ui/react';
+import { Box, Flex, Textarea, useBoolean } from '@chakra-ui/react';
+import React, { useRef, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'next-i18next';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { type ChatBoxInputFormType, type ChatBoxInputType, type SendPromptFnType } from '../type';
-import { textareaMinH } from '../constants';
-import { useFieldArray, type UseFormReturn } from 'react-hook-form';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import {
+  type ChatBoxInputFormType,
+  type ChatBoxInputType,
+  type SendPromptFnType,
+  type StopChatFnResult
+} from '../type';
+import { ChatInputDefaultHeight, ChatTypeEnum, textareaMinH } from '../constants';
+import { useFieldArray, useWatch, type UseFormReturn } from 'react-hook-form';
 import { ChatBoxContext } from '../Provider';
 import dynamic from 'next/dynamic';
 import { useContextSelector } from 'use-context-selector';
 import { WorkflowRuntimeContext } from '../../context/workflowRuntimeContext';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { documentFileType } from '@fastgpt/global/common/file/constants';
+import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
 import FilePreview from '../../components/FilePreview';
 import { useFileUpload } from '../hooks/useFileUpload';
+import { getFileUploadId } from '../utils/uploadTask';
+import { isChatFileAllowedBySelectConfig } from '../utils/file';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
-import { useUserStore } from '@/web/support/user/useUserStore';
-
-// 鲁港通 - 深度思考开关 localStorage key
-const DEEP_THINKING_KEY = 'lugang_enable_thinking';
-// 鲁港通 - 联网搜索开关 localStorage key
-const SEARCH_MODE_KEY = 'lugang_search_mode';
+import MyBox from '@fastgpt/web/components/common/MyBox';
+import type { WorkflowInteractiveResponseType } from '@fastgpt/global/core/workflow/template/system/interactive/type';
+import { ChatGenerateStatusEnum, ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
 
 const InputGuideBox = dynamic(() => import('./InputGuideBox'));
+const PLACEHOLDER_APP_NAME_TOKEN = '__APP_NAME__';
 
-const fileTypeFilter = (file: File) => {
-  return (
-    file.type.includes('image') ||
-    documentFileType.split(',').some((type) => file.name.endsWith(type.trim()))
-  );
-};
-
-const ChatInput = ({
-  onSendMessage,
-  onStop,
-  TextareaDom,
-  resetInputVal,
-  chatForm
-}: {
+type ChatInputProps = BoxProps & {
+  lastInteractive?: WorkflowInteractiveResponseType;
   onSendMessage: SendPromptFnType;
-  onStop: () => void;
+  onStopChat: () => Promise<StopChatFnResult>;
+  onStopSettled?: (status: ChatGenerateStatusEnum, completed: boolean) => void;
+  enableInputGuide: boolean;
+  enableVoiceInput: boolean;
+  disableSend?: boolean;
   TextareaDom: React.MutableRefObject<HTMLTextAreaElement | null>;
   resetInputVal: (val: ChatBoxInputType) => void;
   chatForm: UseFormReturn<ChatBoxInputFormType>;
-}) => {
+};
+
+const ChatInput = ({
+  lastInteractive,
+  onSendMessage,
+  onStopChat,
+  onStopSettled,
+  enableInputGuide,
+  enableVoiceInput,
+  disableSend,
+  TextareaDom,
+  resetInputVal,
+  chatForm,
+  ...props
+}: ChatInputProps) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { isPc } = useSystem();
-  // 鲁港通 - 获取用户角色，普通用户强制深度思考
-  const userInfo = useUserStore((s) => s.userInfo);
-  const isRoot = userInfo?.username === 'root';
-
   const VoiceInputRef = useRef<VoiceInputComponentRef>(null);
 
-  const { setValue, watch, control } = chatForm;
-  const inputValue = watch('input');
+  const { setValue, control } = chatForm;
+  const inputValue = useWatch({
+    control,
+    name: 'input'
+  });
 
   const [focusing, { on: onFocus, off: offFocus }] = useBoolean();
 
   // Check voice input state
   const [mobilePreSpeak, setMobilePreSpeak] = useState(false);
 
-  // 鲁港通 - 深度思考开关状态（SSR 安全初始值，水合后同步）
-  const [enableThinking, setEnableThinking] = useState<boolean>(false);
-
-  // 鲁港通 - 用户信息水合后同步深度思考开关状态
-  useEffect(() => {
-    if (!userInfo) return;
-    if (isRoot) {
-      setEnableThinking(localStorage.getItem(DEEP_THINKING_KEY) === 'true');
-    } else {
-      // 鲁港通 - 普通用户强制启用深度思考
-      setEnableThinking(true);
-    }
-  }, [userInfo, isRoot]);
-  const toggleThinking = useCallback(() => {
-    setEnableThinking((prev) => {
-      const next = !prev;
-      localStorage.setItem(DEEP_THINKING_KEY, String(next));
-      return next;
-    });
-  }, []);
-
-  // 鲁港通 - 联网搜索开关状态（on / off 两级切换）
-  type SearchMode = 'on' | 'off';
-  const [searchMode, setSearchMode] = useState<SearchMode>(() => {
-    if (typeof window === 'undefined') return 'on';
-    const saved = localStorage.getItem(SEARCH_MODE_KEY);
-    if (saved === 'off') return 'off';
-    return 'on';
-  });
-  const [showSearchMenu, setShowSearchMenu] = useState(false);
-  const searchMenuRef = useRef<HTMLDivElement>(null);
-
-  // 鲁港通 - 点击外部关闭联网搜索菜单
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchMenuRef.current && !searchMenuRef.current.contains(e.target as Node)) {
-        setShowSearchMenu(false);
-      }
-    };
-    if (showSearchMenu) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showSearchMenu]);
-
-  const setSearchModeAndSave = useCallback((mode: SearchMode) => {
-    setSearchMode(mode);
-    localStorage.setItem(SEARCH_MODE_KEY, mode);
-    setShowSearchMenu(false);
-  }, []);
-
   const InputLeftComponent = useContextSelector(ChatBoxContext, (v) => v.InputLeftComponent);
 
   const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
-  const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
+  const sourceTarget = useContextSelector(WorkflowRuntimeContext, (v) => v.sourceTarget);
   const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v.chatId);
+  const formFileUploading = useContextSelector(WorkflowRuntimeContext, (v) => v.fileUploading);
   const isChatting = useContextSelector(ChatBoxContext, (v) => v.isChatting);
+  const inputBodyProps = useContextSelector(ChatBoxContext, (v) => v.inputBodyProps);
   const whisperConfig = useContextSelector(ChatBoxContext, (v) => v.whisperConfig);
   const chatInputGuide = useContextSelector(ChatBoxContext, (v) => v.chatInputGuide);
   const fileSelectConfig = useContextSelector(ChatBoxContext, (v) => v.fileSelectConfig);
   const dialogTips = useContextSelector(ChatBoxContext, (v) => v.dialogTips);
   const autoTTSResponse = useContextSelector(ChatBoxContext, (v) => v.autoTTSResponse);
+  const chatType = useContextSelector(ChatBoxContext, (v) => v.chatType);
+  const appName = useContextSelector(ChatItemContext, (v) => v.chatBoxData.app.name);
+  const placeholderAppName = chatType === ChatTypeEnum.home ? 'FastGPT' : appName || 'FastGPT';
+  const appNamePlaceholderParts = useMemo(() => {
+    const placeholderText = String(
+      t('common:core.chat.Type a message to app', {
+        appName: PLACEHOLDER_APP_NAME_TOKEN
+      })
+    );
+    const tokenIndex = placeholderText.indexOf(PLACEHOLDER_APP_NAME_TOKEN);
+
+    if (tokenIndex < 0) {
+      return {
+        prefix: placeholderText,
+        suffix: ''
+      };
+    }
+
+    return {
+      prefix: placeholderText.slice(0, tokenIndex),
+      suffix: placeholderText.slice(tokenIndex + PLACEHOLDER_APP_NAME_TOKEN.length)
+    };
+  }, [t]);
 
   const fileCtrl = useFieldArray({
     control,
@@ -145,27 +129,40 @@ const ChatInput = ({
     showSelectVideo,
     showSelectAudio,
     showSelectCustomFileExtension,
-    removeFiles,
-    replaceFiles,
+    cancelUploadFile,
+    clearFiles,
     hasFileUploading
   } = useFileUpload({
     fileSelectConfig,
     fileCtrl,
     outLinkAuthData,
-    appId,
+    sourceTarget,
     chatId
   });
   const havInput = !!inputValue || fileList.length > 0;
-  const canSendMessage = havInput && !hasFileUploading;
+  const canSendMessage = havInput && !hasFileUploading && !formFileUploading && !disableSend;
   const canUploadFile =
     showSelectFile ||
     showSelectImg ||
     showSelectVideo ||
     showSelectAudio ||
     showSelectCustomFileExtension;
+  const isFileTypeAllowed = useCallback(
+    (file: File) => isChatFileAllowedBySelectConfig({ file, fileSelectConfig }),
+    [fileSelectConfig]
+  );
+  const canUseInputGuide =
+    enableInputGuide &&
+    sourceTarget.sourceType === ChatSourceTypeEnum.app &&
+    !!sourceTarget.sourceId &&
+    !!chatInputGuide.open;
+  const canUseVoiceInput =
+    enableVoiceInput && !!sourceTarget.sourceId && !!whisperConfig?.open && !formFileUploading;
+  const isDefaultInputHeight =
+    !mobilePreSpeak && !inputValue && fileList.length === 0 && !canUseInputGuide;
 
   // Upload files
-  useRequest2(uploadFiles, {
+  useRequest(uploadFiles, {
     manual: false,
     errorToast: t('common:upload_file_error'),
     refreshDeps: [fileList, outLinkAuthData, chatId]
@@ -173,48 +170,55 @@ const ChatInput = ({
 
   /* on send */
   const handleSend = useCallback(
-    async (val?: string) => {
+    async (val: string = inputValue) => {
       if (!canSendMessage) return;
-      const textareaValue = val || TextareaDom.current?.value || '';
 
       onSendMessage({
-        text: textareaValue.trim(),
+        text: val.trim(),
         files: fileList,
-        // 鲁港通 - 深度思考开关：注入 enableThinking 标志
-        enableThinking,
-        // 鲁港通 - 联网搜索开关：注入 searchMode
-        enableSearch: searchMode
+        interactive: lastInteractive,
+        clearInput: true
       });
-      replaceFiles([]);
+      clearFiles();
     },
-    [TextareaDom, canSendMessage, fileList, onSendMessage, replaceFiles, enableThinking, searchMode]
+    [inputValue, lastInteractive, canSendMessage, fileList, onSendMessage, clearFiles]
   );
+  const { runAsync: handleStop, loading: isStopping } = useRequest(async () => {
+    try {
+      if (isChatting) {
+        const result = await onStopChat();
+        onStopSettled?.(result.chatGenerateStatus, result.completed);
+      }
+    } catch {
+      onStopSettled?.(ChatGenerateStatusEnum.generating, false);
+    }
+  });
 
   const RenderTextarea = useMemo(
     () => (
-      <Flex direction={'column'} mt={fileList.length > 0 ? 1 : 0}>
+      <Flex direction={'column'} mt={fileList.length > 0 ? 1 : 0} minH={'42px'}>
         {/* Textarea */}
-        <Flex w={'100%'}>
+        <Flex w={'100%'} position={'relative'}>
           {/* Prompt Container */}
           <Textarea
             ref={TextareaDom}
             py={0}
-            mx={[2, 4]}
-            px={2}
+            mx={0}
+            px={0}
             border={'none'}
+            borderRadius={0}
+            appearance={'none'}
             _focusVisible={{
               border: 'none'
             }}
-            placeholder={
-              dialogTips ||
-              (isPc ? t('common:core.chat.Type a message') : t('chat:input_placeholder_phone'))
-            }
+            placeholder={dialogTips || ''}
             resize={'none'}
             rows={1}
-            height={[5, 6]}
-            lineHeight={[5, 6]}
+            bg={'transparent'}
+            height={textareaMinH}
+            lineHeight={textareaMinH}
             maxHeight={[24, 32]}
-            minH={'50px'}
+            minH={textareaMinH}
             mb={0}
             maxLength={-1}
             overflowY={'hidden'}
@@ -224,12 +228,14 @@ const ChatInput = ({
             boxShadow={'none !important'}
             color={'myGray.900'}
             fontWeight={400}
-            fontSize={'1rem'}
+            fontSize={'16px'}
             letterSpacing={'0.5px'}
             w={'100%'}
             _placeholder={{
-              color: '#707070',
-              fontSize: 'sm'
+              color: 'myGray.400',
+              fontSize: 'inherit',
+              lineHeight: 'inherit',
+              letterSpacing: 'inherit'
             }}
             value={inputValue}
             onChange={(e) => {
@@ -246,31 +252,36 @@ const ChatInput = ({
                 textarea.style.overflowY = 'hidden';
               }
 
-              setValue('input', textarea.value);
+              setValue('input', textarea.value, {
+                shouldDirty: true,
+                shouldTouch: true
+              });
             }}
             onKeyDown={(e) => {
               // enter send.(pc or iframe && enter and unPress shift)
               const isEnter = e.key === 'Enter';
-              if (isEnter && TextareaDom.current && (e.ctrlKey || e.altKey)) {
+              const textarea = e.currentTarget;
+              if (isEnter && (e.ctrlKey || e.altKey)) {
                 // Add a new line
-                const index = TextareaDom.current.selectionStart;
-                const val = TextareaDom.current.value;
-                TextareaDom.current.value = `${val.slice(0, index)}\n${val.slice(index)}`;
-                TextareaDom.current.selectionStart = index + 1;
-                TextareaDom.current.selectionEnd = index + 1;
+                const index = textarea.selectionStart;
+                const val = textarea.value;
+                textarea.value = `${val.slice(0, index)}\n${val.slice(index)}`;
+                textarea.selectionStart = index + 1;
+                textarea.selectionEnd = index + 1;
 
-                TextareaDom.current.style.height = textareaMinH;
-                TextareaDom.current.style.height = `${TextareaDom.current.scrollHeight}px`;
+                textarea.style.height = textareaMinH;
+                textarea.style.height = `${textarea.scrollHeight}px`;
 
                 return;
               }
 
               // Select all content
-              // @ts-ignore
-              e.key === 'a' && e.ctrlKey && e.target?.select();
+              if (e.key === 'a' && e.ctrlKey) {
+                textarea.select();
+              }
 
               if ((isPc || window !== parent) && e.keyCode === 13 && !e.shiftKey) {
-                handleSend();
+                handleSend(textarea.value);
                 e.preventDefault();
               }
             }}
@@ -281,7 +292,7 @@ const ChatInput = ({
                 const files = Array.from(items)
                   .map((item) => (item.kind === 'file' ? item.getAsFile() : undefined))
                   .filter((file) => {
-                    return file && fileTypeFilter(file);
+                    return file && isFileTypeAllowed(file);
                   }) as File[];
                 onSelectFile({ files });
 
@@ -294,6 +305,37 @@ const ChatInput = ({
             onFocus={onFocus}
             onBlur={offFocus}
           />
+          {!dialogTips && !inputValue && (
+            <Flex
+              pointerEvents={'none'}
+              position={'absolute'}
+              left={0}
+              right={0}
+              top={0}
+              h={textareaMinH}
+              alignItems={'center'}
+              color={'myGray.400'}
+              fontSize={'16px'}
+              lineHeight={textareaMinH}
+              letterSpacing={'0.5px'}
+              minW={0}
+              overflow={'hidden'}
+              whiteSpace={'nowrap'}
+            >
+              <Box flexShrink={0}>{appNamePlaceholderParts.prefix}</Box>
+              <Box
+                flex={'0 1 auto'}
+                minW={0}
+                maxW={'100%'}
+                overflow={'hidden'}
+                textOverflow={'ellipsis'}
+                whiteSpace={'nowrap'}
+              >
+                {placeholderAppName}
+              </Box>
+              <Box flexShrink={0}>{appNamePlaceholderParts.suffix}</Box>
+            </Flex>
+          )}
         </Flex>
       </Flex>
     ),
@@ -301,22 +343,25 @@ const ChatInput = ({
       fileList.length,
       TextareaDom,
       dialogTips,
+      appNamePlaceholderParts.prefix,
+      appNamePlaceholderParts.suffix,
+      placeholderAppName,
       isPc,
-      t,
       inputValue,
       onFocus,
       offFocus,
       setValue,
       handleSend,
       canUploadFile,
+      isFileTypeAllowed,
       onSelectFile
     ]
   );
 
   const RenderButtonGroup = useMemo(() => {
     const iconSize = {
-      w: isPc ? '20px' : '16px',
-      h: isPc ? '20px' : '16px'
+      w: '20px',
+      h: '20px'
     };
 
     return (
@@ -325,175 +370,25 @@ const ChatInput = ({
         justifyContent={'space-between'}
         w={'100%'}
         mt={0}
-        pr={[3, 4]}
-        pl={[3, 4]}
-        h={[8, 9]}
+        h={9}
         gap={[0, 1]}
       >
         {/* 左侧自定义按钮组 */}
-        <Flex alignItems={'center'} gap={2} flex={'1 0 0'} w={0}>
+        <Flex alignItems={'center'} gap={2} flex={'1 1 0'} minW={0} w={0}>
           {InputLeftComponent}
-          {/* 鲁港通 - 深度思考开关（仅 root 用户可见） */}
-          {isRoot && (
-            <Flex
-              alignItems={'center'}
-              gap={1}
-              cursor={'pointer'}
-              onClick={toggleThinking}
-              px={2}
-              py={1}
-              borderRadius={'md'}
-              bg={enableThinking ? 'purple.50' : 'transparent'}
-              border={'1px solid'}
-              borderColor={enableThinking ? 'purple.300' : 'transparent'}
-              _hover={{ bg: enableThinking ? 'purple.100' : 'rgba(0,0,0,0.04)' }}
-              flexShrink={0}
-            >
-              <MyIcon
-                name={'core/app/aiLight'}
-                w={'14px'}
-                h={'14px'}
-                color={enableThinking ? 'purple.500' : '#707070'}
-              />
-              <Text
-                fontSize={'xs'}
-                color={enableThinking ? 'purple.600' : 'myGray.500'}
-                whiteSpace={'nowrap'}
-                display={['none', 'block']}
-              >
-                深度思考
-              </Text>
-            </Flex>
-          )}
-
-          {/* 鲁港通 - 联网搜索三级开关 */}
-          <Box position={'relative'} ref={searchMenuRef} flexShrink={0}>
-            <Flex
-              alignItems={'center'}
-              gap={1}
-              cursor={'pointer'}
-              onClick={() => setShowSearchMenu(!showSearchMenu)}
-              px={2}
-              py={1}
-              borderRadius={'md'}
-              bg={searchMode === 'on' ? 'blue.50' : 'transparent'}
-              border={'1px solid'}
-              borderColor={searchMode === 'on' ? 'blue.300' : 'transparent'}
-              _hover={{ bg: searchMode === 'on' ? 'blue.100' : 'rgba(0,0,0,0.04)' }}
-            >
-              <Box
-                w={'14px'}
-                h={'14px'}
-                display={'flex'}
-                alignItems={'center'}
-                justifyContent={'center'}
-              >
-                <Box
-                  w={'12px'}
-                  h={'12px'}
-                  borderRadius={'50%'}
-                  border={'1.5px solid'}
-                  borderColor={searchMode === 'on' ? 'blue.500' : 'myGray.300'}
-                  position={'relative'}
-                  _after={searchMode === 'on' ? {
-                    content: '""',
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    w: '4px',
-                    h: '4px',
-                    borderRadius: '50%',
-                    bg: 'blue.500'
-                  } : undefined}
-                />
-              </Box>
-              <Text
-                fontSize={'xs'}
-                color={searchMode === 'on' ? 'blue.600' : 'myGray.400'}
-                whiteSpace={'nowrap'}
-                display={['none', 'block']}
-              >
-                {searchMode === 'on' ? '联网搜索' : '关闭联网'}
-              </Text>
-            </Flex>
-
-            {/* 下拉菜单 */}
-            {showSearchMenu && (
-              <Box
-                position={'absolute'}
-                bottom={'calc(100% + 4px)'}
-                left={0}
-                bg={'white'}
-                borderRadius={'lg'}
-                boxShadow={'0px 4px 16px rgba(0, 0, 0, 0.12)'}
-                border={'1px solid'}
-                borderColor={'gray.100'}
-                py={1}
-                zIndex={10}
-                minW={'140px'}
-              >
-                {([
-                  { key: 'on' as const, label: '联网搜索', desc: '联网获取最新信息并整合回答' },
-                  { key: 'off' as const, label: '关闭联网', desc: '仅使用知识库回答' }
-                ]).map((item) => (
-                  <Flex
-                    key={item.key}
-                    px={3}
-                    py={2}
-                    cursor={'pointer'}
-                    alignItems={'center'}
-                    gap={2}
-                    bg={searchMode === item.key ? 'blue.50' : 'transparent'}
-                    _hover={{ bg: searchMode === item.key ? 'blue.50' : 'gray.50' }}
-                    onClick={() => setSearchModeAndSave(item.key)}
-                  >
-                    <Box
-                      w={'10px'}
-                      h={'10px'}
-                      borderRadius={'50%'}
-                      border={'1.5px solid'}
-                      borderColor={searchMode === item.key ? 'blue.500' : 'gray.300'}
-                      position={'relative'}
-                      flexShrink={0}
-                      _after={searchMode === item.key ? {
-                        content: '""',
-                        position: 'absolute',
-                        top: '50%',
-                        left: '50%',
-                        transform: 'translate(-50%, -50%)',
-                        w: '4px',
-                        h: '4px',
-                        borderRadius: '50%',
-                        bg: 'blue.500'
-                      } : undefined}
-                    />
-                    <Box>
-                      <Text fontSize={'xs'} fontWeight={500} color={searchMode === item.key ? 'blue.600' : 'myGray.700'}>
-                        {item.label}
-                      </Text>
-                      <Text fontSize={'10px'} color={'myGray.400'} mt={'1px'}>
-                        {item.desc}
-                      </Text>
-                    </Box>
-                  </Flex>
-                ))}
-              </Box>
-            )}
-          </Box>
         </Flex>
 
         {/* 右侧原有按钮组 */}
         <Flex alignItems={'center'} gap={[0, 1]}>
           {/* Attachment and Voice Group */}
-          <Flex alignItems={'center'} h={[8, 9]}>
+          <Flex alignItems={'center'} h={9}>
             {/* file selector button */}
             {canUploadFile && (
               <Flex
                 alignItems={'center'}
                 justifyContent={'center'}
-                w={[8, 9]}
-                h={[8, 9]}
+                w={9}
+                h={9}
                 p={[1, 2]}
                 borderRadius={'sm'}
                 cursor={'pointer'}
@@ -504,19 +399,19 @@ const ChatInput = ({
                 }}
               >
                 <MyTooltip label={selectFileLabel}>
-                  <MyIcon name={selectFileIcon as any} {...iconSize} color={'#707070'} />
+                  <MyIcon name={selectFileIcon as any} {...iconSize} color={'myGray.500'} />
                 </MyTooltip>
                 <File onSelect={(files) => onSelectFile({ files })} />
               </Flex>
             )}
 
             {/* Voice input button */}
-            {whisperConfig?.open && !inputValue && (
+            {canUseVoiceInput && !inputValue && (
               <Flex
                 alignItems={'center'}
                 justifyContent={'center'}
-                w={[8, 9]}
-                h={[8, 9]}
+                w={9}
+                h={9}
                 p={[1, 2]}
                 borderRadius={'sm'}
                 cursor={'pointer'}
@@ -527,26 +422,28 @@ const ChatInput = ({
                 }}
               >
                 <MyTooltip label={t('common:core.chat.Record')}>
-                  <MyIcon name={'core/chat/recordFill'} {...iconSize} color={'#707070'} />
+                  <MyIcon name={'core/chat/recordFill'} {...iconSize} color={'myGray.500'} />
                 </MyTooltip>
               </Flex>
             )}
           </Flex>
 
           {/* Divider Container */}
-          {((whisperConfig?.open && !inputValue) || canUploadFile) && (
+          {((canUseVoiceInput && !inputValue) || canUploadFile) && (
             <Flex alignItems={'center'} justifyContent={'center'} w={2} h={4} mr={2}>
               <Box w={'2px'} h={5} bg={'myGray.200'} />
             </Flex>
           )}
 
           {/* Send Button Container */}
-          <Flex alignItems={'center'} w={[8, 9]} h={[8, 9]} borderRadius={'lg'}>
-            <Flex
+          <Flex alignItems={'center'} w={9} h={9} borderRadius={'lg'}>
+            <MyBox
+              isLoading={isStopping}
+              display={'flex'}
               alignItems={'center'}
               justifyContent={'center'}
-              w={[7, 9]}
-              h={[7, 9]}
+              w={9}
+              h={9}
               p={[1, 2]}
               bg={
                 isChatting ? 'primary.50' : canSendMessage ? 'primary.500' : 'rgba(17, 24, 36, 0.1)'
@@ -556,9 +453,10 @@ const ChatInput = ({
               onClick={(e) => {
                 e.stopPropagation();
                 if (isChatting) {
-                  return onStop();
+                  void handleStop();
+                  return;
                 }
-                return handleSend();
+                return void handleSend(inputValue);
               }}
             >
               {isChatting ? (
@@ -568,42 +466,42 @@ const ChatInput = ({
                   <MyIcon name={'core/chat/sendFill'} {...iconSize} color={'white'} />
                 </MyTooltip>
               )}
-            </Flex>
+            </MyBox>
           </Flex>
         </Flex>
       </Flex>
     );
   }, [
-    isPc,
     InputLeftComponent,
     canUploadFile,
     selectFileLabel,
     selectFileIcon,
     File,
-    whisperConfig?.open,
+    canUseVoiceInput,
     inputValue,
     t,
+    isStopping,
     isChatting,
     canSendMessage,
     onOpenSelectFile,
     onSelectFile,
     handleSend,
-    onStop,
-    enableThinking,
-    toggleThinking,
-    searchMode,
-    showSearchMenu,
-    setSearchModeAndSave
+    handleStop
   ]);
 
   const activeStyles: FlexProps = {
     boxShadow: '0px 5px 20px -4px rgba(19, 51, 107, 0.13)',
-    border: '0.5px solid rgba(0, 0, 0, 0.24)'
+    border: '1px solid',
+    borderColor: 'myGray.250'
   };
 
   return (
     <Box
-      className={'chat-input-container'}
+      w={'100%'}
+      maxW={inputBodyProps?.maxW ?? ['100%', '780px']}
+      mx={inputBodyProps?.mx ?? inputBodyProps?.margin ?? 'auto'}
+      pb={inputBodyProps?.pb ?? ['calc(16px + env(safe-area-inset-bottom))', 4]}
+      {...props}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => {
         e.preventDefault();
@@ -611,15 +509,20 @@ const ChatInput = ({
         if (!canUploadFile) return;
         const files = Array.from(e.dataTransfer.files);
 
-        const droppedFiles = files.filter((file) => fileTypeFilter(file));
+        const droppedFiles: File[] = [];
+        const invalidFiles: File[] = [];
+        files.forEach((file) => {
+          if (isFileTypeAllowed(file)) {
+            droppedFiles.push(file);
+          } else {
+            invalidFiles.push(file);
+          }
+        });
         if (droppedFiles.length > 0) {
           onSelectFile({ files: droppedFiles });
         }
 
-        const invalidFileName = files
-          .filter((file) => !fileTypeFilter(file))
-          .map((file) => file.name)
-          .join(', ');
+        const invalidFileName = invalidFiles.map((file) => file.name).join(', ');
         if (invalidFileName) {
           toast({
             status: 'warning',
@@ -632,37 +535,35 @@ const ChatInput = ({
       {/* Real Chat Input */}
       <Flex
         direction={'column'}
-        minH={mobilePreSpeak ? '48px' : ['96px', '120px']}
-        pt={fileList.length > 0 ? '0' : mobilePreSpeak ? [0, 4] : [3, 4]}
-        pb={InputLeftComponent ? 2 : 3}
-        position={['fixed', 'relative']}
-        bottom={[0, 'auto']}
-        left={[0, 'auto']}
-        right={[0, 'auto']}
-        width={['100%', 'auto']}
-        zIndex={[10, 'auto']}
-        mx={[0, 'auto']}
-        borderTop={[isPc ? 'none' : '1px solid #f0f0f0', 'none']}
-        borderRadius={['0', 'xxl']}
+        h={isDefaultInputHeight ? ChatInputDefaultHeight : undefined}
+        minH={mobilePreSpeak ? '48px' : ChatInputDefaultHeight}
+        p={mobilePreSpeak ? [0, 4] : 4}
+        mb={0}
+        position={'relative'}
+        borderRadius={['xl', 'xxl']}
         bg={'white'}
-        overflow={'display'}
+        overflow={mobilePreSpeak ? 'hidden' : 'display'}
         {...(focusing
           ? activeStyles
           : {
               _hover: activeStyles,
-              border: '0.5px solid rgba(0, 0, 0, 0.18)',
+              border: '1px solid',
+              borderColor: 'myGray.200',
               boxShadow: `0px 5px 16px -4px rgba(19, 51, 107, 0.08)`
             })}
         onClick={() => TextareaDom?.current?.focus()}
       >
         <Box flex={1}>
           {/* Chat input guide box */}
-          {chatInputGuide.open && (
+          {canUseInputGuide && (
             <InputGuideBox
-              appId={appId}
+              sourceTarget={sourceTarget}
               text={inputValue}
               onSelect={(e) => {
-                setValue('input', e);
+                setValue('input', e, {
+                  shouldDirty: true,
+                  shouldTouch: true
+                });
               }}
               onSend={(e) => {
                 handleSend(e);
@@ -671,22 +572,27 @@ const ChatInput = ({
           )}
           {/* file preview */}
           {(!mobilePreSpeak || isPc || inputValue) && (
-            <Box px={[2, 3]}>
-              <FilePreview fileList={fileList} removeFiles={removeFiles} />
+            <Box>
+              <FilePreview
+                fileList={fileList}
+                onRemoveFile={(file) => cancelUploadFile(getFileUploadId(file))}
+                pt={0}
+              />
             </Box>
           )}
 
           {/* voice input and loading container */}
-          {!inputValue && (
+          {canUseVoiceInput && !inputValue && (
             <VoiceInput
               ref={VoiceInputRef}
               handleSend={(text) => {
                 onSendMessage({
                   text: text.trim(),
                   files: fileList,
-                  autoTTSResponse
+                  autoTTSResponse,
+                  clearInput: true
                 });
-                replaceFiles([]);
+                clearFiles();
               }}
               resetInputVal={(val) => {
                 setMobilePreSpeak(false);
@@ -705,7 +611,7 @@ const ChatInput = ({
 
         {!mobilePreSpeak && <Box>{RenderButtonGroup}</Box>}
       </Flex>
-      <ComplianceTip type={'chat'} />
+      <ComplianceTip type={'chat'} pt={4} pb={0} />
     </Box>
   );
 };

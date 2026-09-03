@@ -1,17 +1,14 @@
 import React, { useState, useMemo } from 'react';
-import { Box, Card, IconButton, Flex, Button, useTheme, Image } from '@chakra-ui/react';
-import {
-  getDatasetDataList,
-  delOneDatasetDataById,
-  getDatasetCollectionById
-} from '@/web/core/dataset/api';
+import { Box, Card, IconButton, Flex, Button } from '@chakra-ui/react';
+import { getDatasetCollectionById } from '@/web/core/dataset/api/collection';
+import { getDatasetDataList, delOneDatasetDataById } from '@/web/core/dataset/api/data';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { useTranslation } from 'next-i18next';
 import { useRouter } from 'next/router';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyInput from '@/components/MyInput';
-import InputDataModal from './InputDataModal';
+import InputDataModal from './components/InputDataModal';
 import RawSourceBox from '@/components/core/dataset/RawSourceBox';
 import { getCollectionSourceData } from '@fastgpt/global/core/dataset/collection/utils';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
@@ -31,13 +28,18 @@ import {
   DatasetCollectionTypeEnum,
   ImportDataSourceEnum
 } from '@fastgpt/global/core/dataset/constants';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import TrainingStates from './CollectionCard/TrainingStates';
 import { getTextValidLength } from '@fastgpt/global/common/string/utils';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import dynamic from 'next/dynamic';
+import { downloadFetch } from '@/web/common/system/utils';
+import {
+  getCollectionTrainingStatusColorSchema,
+  getCollectionTrainingStatusText
+} from '@/web/core/dataset/trainingStatus';
 
 const InsertImagesModal = dynamic(() => import('./data/InsertImageModal'), {
   ssr: false
@@ -87,7 +89,7 @@ const DataCard = () => {
   const [editDataId, setEditDataId] = useState<string>();
 
   // Get collection info
-  const { data: collection, runAsync: reloadCollection } = useRequest2(
+  const { data: collection, runAsync: reloadCollection } = useRequest(
     () => getDatasetCollectionById(collectionId),
     {
       refreshDeps: [collectionId],
@@ -103,6 +105,13 @@ const DataCard = () => {
   );
 
   const canWrite = useMemo(() => datasetDetail.permission.hasWritePer, [datasetDetail]);
+  const collectionTrainingStatus = useMemo(() => {
+    if (!collection) return;
+    return {
+      text: getCollectionTrainingStatusText(collection),
+      colorSchema: getCollectionTrainingStatusColorSchema(collection)
+    };
+  }, [collection]);
 
   const [
     isInsertImagesModalOpen,
@@ -128,6 +137,21 @@ const DataCard = () => {
     }
   });
 
+  const { runAsync: onExportAllChunks, loading: isExportChunksLoading } = useRequest(
+    async (collectionId: string) => {
+      await downloadFetch({
+        url: '/api/core/dataset/collection/export',
+        filename: `${collection?.name}.csv`,
+        body: {
+          collectionId
+        }
+      });
+    },
+    {
+      manual: true
+    }
+  );
+
   return (
     <MyBox py={[1, 0]} h={'100%'}>
       <Flex flexDirection={'column'} h={'100%'}>
@@ -144,18 +168,32 @@ const DataCard = () => {
                 <RawSourceBox
                   collectionType={collection.type}
                   collectionId={collection._id}
-                  {...getCollectionSourceData(collection)}
+                  rawSourceId={getCollectionSourceData(collection).sourceId}
+                  rawSourceName={getCollectionSourceData(collection).sourceName}
                   fontSize={['sm', 'md']}
                   color={'black'}
                   textDecoration={'none'}
                 />
               )}
             </Box>
-            {/* 鲁港通 - 启用标签功能 */}
-            {!!collection?.tags?.length && (
+            {feConfigs?.isPlus && !!collection?.tags?.length && (
               <TagsPopOver currentCollection={collection} />
             )}
           </Box>
+
+          <Button
+            variant={'whitePrimary'}
+            size={['sm', 'md']}
+            isDisabled={!collection}
+            isLoading={isExportChunksLoading}
+            onClick={() => {
+              if (!collection?._id) return;
+              onExportAllChunks(collection._id);
+            }}
+          >
+            {t('dataset:collection.export_all_chunks')}
+          </Button>
+
           {datasetDetail.type !== 'websiteDataset' &&
             !!collection?.chunkSize &&
             collection.permission?.hasWritePer && (
@@ -201,25 +239,6 @@ const DataCard = () => {
               {t('dataset:insert_images')}
             </Button>
           )}
-          {collection && (
-            <Button
-              ml={2}
-              variant={'whiteBase'}
-              size={['sm', 'md']}
-              onClick={() => {
-                router.push({
-                  query: {
-                    datasetId,
-                    collectionId,
-                    currentTab: TabEnum.autoUpdate
-                  }
-                });
-              }}
-            >
-              <MyIcon name={'common/settingLight'} w={'14px'} mr={1} />
-              {t('dataset:enable_auto_update')}
-            </Button>
-          )}
         </Flex>
         <Box justifyContent={'center'} px={6} pos={'relative'} w={'100%'}>
           <MyDivider my={'17px'} w={'100%'} />
@@ -233,21 +252,19 @@ const DataCard = () => {
                 indexAmount: collection?.indexAmount ?? '-'
               })}
             </Box>
-            {!!collection?.errorCount && (
+            {!!collectionTrainingStatus && (
               <MyTag
-                colorSchema={'red'}
                 type={'fill'}
                 cursor={'pointer'}
                 rounded={'full'}
                 ml={2}
+                colorSchema={collectionTrainingStatus.colorSchema}
                 onClick={() => {
-                  setErrorModalId(collection._id);
+                  setErrorModalId(collection?._id || '');
                 }}
               >
                 <Flex fontWeight={'medium'} alignItems={'center'} gap={1}>
-                  {t('dataset:data_error_amount', {
-                    errorAmount: collection?.errorCount
-                  })}
+                  {t(collectionTrainingStatus.text as any)}
                   <MyIcon name={'common/maximize'} w={'11px'} />
                 </Flex>
               </MyTag>
@@ -365,6 +382,7 @@ const DataCard = () => {
                   position={'absolute'}
                   bottom={2}
                   right={2}
+                  zIndex={2}
                   overflow={'hidden'}
                   alignItems={'flex-end'}
                   visibility={'hidden'}
@@ -402,6 +420,7 @@ const DataCard = () => {
                       </>
                     )}
                   </Flex>
+
                   {canWrite && (
                     <PopoverConfirm
                       Trigger={
@@ -454,11 +473,11 @@ const DataCard = () => {
           }}
         />
       )}
-      {errorModalId && (
+      {errorModalId && collection && (
         <TrainingStates
-          datasetId={datasetId}
-          defaultTab={'errors'}
+          defaultTab={collection?.hasError ? 'errors' : 'states'}
           collectionId={errorModalId}
+          permission={collection.permission}
           onClose={() => {
             setErrorModalId('');
             refreshList();

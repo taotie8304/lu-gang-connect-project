@@ -3,12 +3,13 @@ import { ModalBody, Box, Flex, Input, ModalFooter, Button, HStack } from '@chakr
 import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
 import { useForm } from 'react-hook-form';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { resetPassword, getCheckPswExpired } from '@/web/support/user/api';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import Icon from '@fastgpt/web/components/common/Icon';
+import { accountCancellationActiveStatuses } from '@fastgpt/global/support/user/account/cancellation/constants';
 
 type FormType = {
   newPsw: string;
@@ -19,6 +20,10 @@ const ResetPswModal = () => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { userInfo } = useUserStore();
+  const isAccountCancellationPending = accountCancellationActiveStatuses.includes(
+    userInfo?.team?.accountCancellation
+      ?.status as (typeof accountCancellationActiveStatuses)[number]
+  );
 
   const { register, handleSubmit, getValues } = useForm<FormType>({
     defaultValues: {
@@ -31,20 +36,23 @@ const ResetPswModal = () => {
     data: passwordExpired = false,
     runAsync,
     loading: isFetching
-  } = useRequest2(
+  } = useRequest(
     async () => {
       if (!userInfo?._id) {
+        return false;
+      }
+      if (isAccountCancellationPending) {
         return false;
       }
       return getCheckPswExpired();
     },
     {
       manual: false,
-      refreshDeps: [userInfo?._id]
+      refreshDeps: [userInfo?._id, isAccountCancellationPending]
     }
   );
 
-  const { runAsync: onSubmit, loading: isSubmitting } = useRequest2(resetPassword, {
+  const { runAsync: onSubmit, loading: isSubmitting } = useRequest(resetPassword, {
     onSuccess() {
       runAsync();
     },

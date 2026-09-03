@@ -1,26 +1,28 @@
 import { chats2GPTMessages } from '@fastgpt/global/core/chat/adapt';
-import type { ChatItemType } from '@fastgpt/global/core/chat/type.d';
-import { ChatItemValueTypeEnum, ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
+import type { ChatItemMiniType } from '@fastgpt/global/core/chat/type';
+import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
 import type { ClassifyQuestionAgentItemType } from '@fastgpt/global/core/workflow/template/system/classifyQuestion/type';
 import type { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
-import type { ModuleDispatchProps } from '@fastgpt/global/core/workflow/runtime/type';
+
 import { getCQSystemPrompt } from '@fastgpt/global/core/ai/prompt/agent';
-import { type LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
+import { type LLMModelItemType } from '@fastgpt/global/core/ai/model.schema';
 import { getLLMModel } from '../../../ai/model';
 import { getHistories } from '../utils';
 import { formatModelChars2Points } from '../../../../support/wallet/usage/utils';
-import { type DispatchNodeResultType } from '@fastgpt/global/core/workflow/runtime/type';
+import type { DispatchNodeResultType, ModuleDispatchProps } from '../../types/runtime';
 import { getHandleId } from '@fastgpt/global/core/workflow/utils';
-import { addLog } from '../../../../common/system/log';
-import { ModelTypeEnum } from '../../../../../global/core/ai/model';
 import { createLLMResponse } from '../../../ai/llm/request';
+import { getLogger, LogCategories } from '../../../../common/logger';
+import { getWorkflowSourceNodeKey } from '../utils/source';
+
+const logger = getLogger(LogCategories.MODULE.WORKFLOW.AI);
 
 type Props = ModuleDispatchProps<{
   [NodeInputKeyEnum.aiModel]: string;
   [NodeInputKeyEnum.aiSystemPrompt]?: string;
-  [NodeInputKeyEnum.history]?: ChatItemType[] | number;
+  [NodeInputKeyEnum.history]?: ChatItemMiniType[] | number;
   [NodeInputKeyEnum.userChatInput]: string;
   [NodeInputKeyEnum.agents]: ClassifyQuestionAgentItemType[];
 }>;
@@ -35,7 +37,6 @@ type ActionProps = Props & {
 /* request openai chat */
 export const dispatchClassifyQuestion = async (props: Props): Promise<CQResponse> => {
   const {
-    externalProvider,
     runningAppInfo,
     node: { nodeId, name },
     histories,
@@ -48,14 +49,14 @@ export const dispatchClassifyQuestion = async (props: Props): Promise<CQResponse
 
   const cqModel = getLLMModel(model);
 
-  const memoryKey = `${runningAppInfo.id}-${nodeId}`;
+  const memoryKey = getWorkflowSourceNodeKey({ runningAppInfo, nodeId });
   const chatHistories = getHistories(history, histories);
   // @ts-ignore
   const lastMemory = chatHistories[chatHistories.length - 1]?.memories?.[
     memoryKey
   ] as ClassifyQuestionAgentItemType;
 
-  const { arg, inputTokens, outputTokens } = await completions({
+  const { arg, inputTokens, outputTokens, usedUserOpenAIKey } = await completions({
     ...props,
     lastMemory,
     histories: chatHistories,
@@ -69,11 +70,21 @@ export const dispatchClassifyQuestion = async (props: Props): Promise<CQResponse
     inputTokens: inputTokens,
     outputTokens: outputTokens
   });
+  props.usagePush([
+    {
+      moduleName: name,
+      totalPoints: usedUserOpenAIKey ? 0 : totalPoints,
+      model: modelName,
+      inputTokens: inputTokens,
+      outputTokens: outputTokens
+    }
+  ]);
 
   return {
     data: {
       [NodeOutputKeyEnum.cqResult]: result.value
     },
+    [DispatchNodeResponseKeyEnum.toolResponse]: result.value,
     [DispatchNodeResponseKeyEnum.skipHandleId]: agents
       .filter((item) => item.key !== result.key)
       .map((item) => getHandleId(nodeId, 'source', item.key)),
@@ -81,7 +92,7 @@ export const dispatchClassifyQuestion = async (props: Props): Promise<CQResponse
       [memoryKey]: result
     },
     [DispatchNodeResponseKeyEnum.nodeResponse]: {
-      totalPoints: externalProvider.openaiAccount?.key ? 0 : totalPoints,
+      totalPoints: usedUserOpenAIKey ? 0 : totalPoints,
       model: modelName,
       query: userChatInput,
       inputTokens: inputTokens,
@@ -89,32 +100,23 @@ export const dispatchClassifyQuestion = async (props: Props): Promise<CQResponse
       cqList: agents,
       cqResult: result.value,
       contextTotalLen: chatHistories.length + 2
-    },
-    [DispatchNodeResponseKeyEnum.nodeDispatchUsages]: [
-      {
-        moduleName: name,
-        totalPoints: externalProvider.openaiAccount?.key ? 0 : totalPoints,
-        model: modelName,
-        inputTokens: inputTokens,
-        outputTokens: outputTokens
-      }
-    ]
+    }
   };
 };
 
 const completions = async ({
   cqModel,
   externalProvider,
+  runningUserInfo,
   histories,
   lastMemory,
   params: { agents, systemPrompt = '', userChatInput }
 }: ActionProps) => {
-  const messages: ChatItemType[] = [
+  const messages: ChatItemMiniType[] = [
     {
       obj: ChatRoleEnum.System,
       value: [
         {
-          type: ChatItemValueTypeEnum.text,
           text: {
             content: getCQSystemPrompt({
               systemPrompt,
@@ -132,7 +134,6 @@ const completions = async ({
       obj: ChatRoleEnum.Human,
       value: [
         {
-          type: ChatItemValueTypeEnum.text,
           text: {
             content: userChatInput
           }
@@ -143,33 +144,32 @@ const completions = async ({
 
   const {
     answerText: answer,
-    usage: { inputTokens, outputTokens }
+    usage: { inputTokens, outputTokens, usedUserOpenAIKey }
   } = await createLLMResponse({
     body: {
       model: cqModel.model,
-      temperature: 0.01,
-      max_tokens: 50, // 鲁港通 - 限制分类输出长度，防止模型生成完整回答
-      messages: chats2GPTMessages({ messages, reserveId: false }),
-      stream: false // 鲁港通 - 分类无需流式，减少开销
+      messages: chats2GPTMessages({ messages, reserveId: false, reserveReason: false }),
+      stream: true
     },
-    userKey: externalProvider.openaiAccount
+    userKey: externalProvider.openaiAccount,
+    teamId: runningUserInfo.teamId
   });
 
-  // 鲁港通 - 改进分类匹配逻辑：先精确匹配（trim后），再模糊匹配
-  const trimmedAnswer = answer.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  // console.log(JSON.stringify(chats2GPTMessages({ messages, reserveId: false }), null, 2));
+
   const id =
-    agents.find((item) => trimmedAnswer === item.key)?.key ||
-    agents.find((item) => trimmedAnswer.includes(item.key))?.key ||
-    agents.find((item) => trimmedAnswer.includes(item.value))?.key ||
+    agents.find((item) => answer.includes(item.key))?.key ||
+    agents.find((item) => answer.includes(item.value))?.key ||
     '';
 
   if (!id) {
-    addLog.warn('Classify error', { answer });
+    logger.warn('Classify question returned unknown type', { answer });
   }
 
   return {
     inputTokens,
     outputTokens,
+    usedUserOpenAIKey,
     arg: { type: id }
   };
 };

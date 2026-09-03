@@ -1,11 +1,12 @@
-import MyModal from '@fastgpt/web/components/common/MyModal';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useTranslation, Trans } from 'next-i18next';
-import { Box, ModalBody, Flex, Button, Text, Link } from '@chakra-ui/react';
+import { Trans } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { Box, Flex, Button, Link } from '@chakra-ui/react';
 import { checkBalancePayResult, putUpdatePayment } from '@/web/support/wallet/bill/api';
 import LightTip from '@fastgpt/web/components/common/LightTip';
 import QRCode from 'qrcode';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import {
   BillPayWayEnum,
   BillStatusEnum,
@@ -16,8 +17,11 @@ import Markdown from '@/components/Markdown';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import type { CreateBillResponseType } from '@fastgpt/global/openapi/support/wallet/bill/api';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
+import { getPaymentRenderType, type PaymentRenderData } from './utils';
 
 export type QRPayProps = CreateBillResponseType & {
+  billId: string;
   tip?: string;
   discountCouponName?: string;
 };
@@ -38,7 +42,7 @@ const QRCodePayModal = ({
   onSuccess?: () => any;
   onClose?: () => void;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation();
   const canvasRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const { feConfigs } = useSystemStore();
@@ -47,18 +51,37 @@ const QRCodePayModal = ({
   const isWxConfigured = feConfigs.payConfig?.wx;
   const isBankConfigured = feConfigs.payConfig?.bank;
 
-  const [payWayRenderData, setPayWayRenderData] = useState<{
-    qrCode?: string;
-    iframeCode?: string;
-    markdown?: string;
-  }>({
+  const MIN_QR_SIZE = 150;
+  const [dynamicQRSize, setDynamicQRSize] = useState(QR_CODE_SIZE);
+
+  useEffect(() => {
+    const calculateQRSize = () => {
+      const windowHeight = window.innerHeight;
+      const reservedSpace = 470 + (tip ? 60 : 0) + (discountCouponName ? 30 : 0);
+      const availableHeight = windowHeight - reservedSpace;
+
+      const newSize = Math.min(QR_CODE_SIZE, Math.max(MIN_QR_SIZE, availableHeight));
+
+      setDynamicQRSize(newSize);
+    };
+
+    calculateQRSize();
+    window.addEventListener('resize', calculateQRSize);
+
+    return () => {
+      window.removeEventListener('resize', calculateQRSize);
+    };
+  }, [tip, discountCouponName]);
+
+  const [payWayRenderData, setPayWayRenderData] = useState<PaymentRenderData>({
     qrCode,
     iframeCode,
     markdown
   });
+  const paymentRenderType = getPaymentRenderType(payWayRenderData);
 
   const [selectedPayment, setSelectedPayment] = useState(payment);
-  const { runAsync: handlePaymentChange, loading: isUpdating } = useRequest2(
+  const { runAsync: handlePaymentChange, loading: isUpdating } = useRequest(
     async (newPayment: BillPayWayEnum) => {
       if (newPayment === selectedPayment) {
         return;
@@ -74,7 +97,7 @@ const QRCodePayModal = ({
   );
 
   // Check pay result
-  useRequest2(() => checkBalancePayResult(billId), {
+  useRequest(() => checkBalancePayResult(billId), {
     manual: false,
     pollingInterval: 2000,
     onSuccess: ({ status, description }) => {
@@ -99,7 +122,7 @@ const QRCodePayModal = ({
     const canvas = document.createElement('canvas');
 
     QRCode.toCanvas(canvas, payWayRenderData.qrCode, {
-      width: QR_CODE_SIZE,
+      width: dynamicQRSize,
       margin: 0,
       color: {
         dark: '#000000',
@@ -113,7 +136,7 @@ const QRCodePayModal = ({
         }
       })
       .catch(console.error);
-  }, [payWayRenderData.qrCode]);
+  }, [payWayRenderData.qrCode, dynamicQRSize]);
   useEffect(() => {
     drawCode();
   }, [drawCode]);
@@ -139,23 +162,46 @@ const QRCodePayModal = ({
     }
   });
   const renderPaymentContent = () => {
-    if (payWayRenderData.qrCode) {
-      return <Box ref={canvasRef} display={'inline-block'} h={`${QR_CODE_SIZE}px`} />;
-    }
-    if (payWayRenderData.iframeCode) {
+    if (paymentRenderType === 'qrCode') {
       return (
-        <iframe
-          srcDoc={payWayRenderData.iframeCode}
-          style={{
-            width: QR_CODE_SIZE + 5,
-            height: QR_CODE_SIZE + 5,
-            border: 'none',
-            display: 'inline-block'
-          }}
+        <Box
+          key={paymentRenderType}
+          ref={canvasRef}
+          display={'inline-block'}
+          alignSelf={'center'}
+          h={`${dynamicQRSize}px`}
         />
       );
     }
-    if (payWayRenderData.markdown) {
+    if (paymentRenderType === 'iframeCode') {
+      const iframeSize = QR_CODE_SIZE + 5;
+      const renderedSize = dynamicQRSize + 5;
+      const iframeScale = renderedSize / iframeSize;
+
+      return (
+        <Box
+          key={paymentRenderType}
+          alignSelf={'center'}
+          w={`${renderedSize}px`}
+          h={`${renderedSize}px`}
+          overflow={'hidden'}
+        >
+          <iframe
+            srcDoc={payWayRenderData.iframeCode}
+            scrolling="no"
+            style={{
+              width: iframeSize,
+              height: iframeSize,
+              border: 'none',
+              display: 'block',
+              transform: `scale(${iframeScale})`,
+              transformOrigin: 'top left'
+            }}
+          />
+        </Box>
+      );
+    }
+    if (paymentRenderType === 'markdown') {
       return <Markdown source={payWayRenderData.markdown} />;
     }
     return null;
@@ -166,44 +212,60 @@ const QRCodePayModal = ({
       isLoading={isUpdating}
       isOpen
       title={t('common:user.Pay')}
-      iconSrc="/imgs/modal/wallet.svg"
       w={'600px'}
       onClose={onClose}
+      closeOnOverlayClick={false}
+      blockScrollOnMount
+      bodyStyles={{ textAlign: 'center' }}
     >
-      <ModalBody textAlign={'center'} padding={['16px 24px', '32px 52px']}>
-        {tip && <LightTip text={tip} mb={6} textAlign={'left'} />}
-        <Box>{t('common:pay_money')}</Box>
-        <Box
-          color="primary.600"
-          fontSize="32px"
-          fontWeight="600"
-          lineHeight="40px"
-          mb={discountCouponName ? 1 : 6}
-        >
-          ¥{readPrice.toFixed(2)}
+      {tip && <LightTip text={tip} mb={6} textAlign={'left'} />}
+      <Box>{t('common:pay_money')}</Box>
+      <Box
+        color="primary.600"
+        fontSize="32px"
+        fontWeight="600"
+        lineHeight="40px"
+        mb={discountCouponName ? 1 : 6}
+      >
+        ¥{readPrice.toFixed(2)}
+      </Box>
+      {discountCouponName && (
+        <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
+          {t('common:discount_coupon_used') + t(discountCouponName as any)}
         </Box>
-        {discountCouponName && (
-          <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
-            {t('common:discount_coupon_used') + t(discountCouponName)}
-          </Box>
-        )}
+      )}
 
-        {renderPaymentContent()}
+      {renderPaymentContent()}
 
-        {selectedPayment !== BillPayWayEnum.bank && (
-          <Box
-            mt={5}
-            textAlign={'center'}
-            display="flex"
-            alignItems="center"
-            justifyContent="center"
-            gap={1}
+      {selectedPayment !== BillPayWayEnum.bank && (
+        <Box
+          mt={5}
+          textAlign={'center'}
+          display="flex"
+          alignItems="center"
+          justifyContent="center"
+          gap={1}
+        >
+          <MyIcon name={'common/info'} w={4} h={4} />
+          {t('common:pay.noclose')}
+        </Box>
+      )}
+
+      {/* WeChat Work payment: only show WeChat Work option, no switching allowed */}
+      {payment === BillPayWayEnum.wecom ? (
+        <Flex justifyContent="center" mt={6}>
+          <Button
+            flex={1}
+            h={10}
+            color={'myGray.900'}
+            leftIcon={<MyIcon name={'common/wecom'} />}
+            variant={'solid'}
+            isDisabled
           >
-            <MyIcon name={'common/info'} w={4} h={4} />
-            {t('common:pay.noclose')}
-          </Box>
-        )}
-
+            {t('common:support.wallet.bill.payWay.wecom')}
+          </Button>
+        </Flex>
+      ) : (
         <Flex justifyContent="center" gap={3} mt={6}>
           {isWxConfigured && (
             <Button
@@ -241,18 +303,18 @@ const QRCodePayModal = ({
             </Button>
           )}
         </Flex>
+      )}
 
-        {feConfigs.payFormUrl && (
-          <Box mt={4} textAlign="center" fontSize="sm">
-            <Trans
-              i18nKey="common:pay.payment_form_tip"
-              components={{
-                payLink: <Link href={feConfigs.payFormUrl} target="_blank" color="primary.600" />
-              }}
-            />
-          </Box>
-        )}
-      </ModalBody>
+      {feConfigs.payFormUrl && (
+        <Box mt={4} textAlign="center" fontSize="sm">
+          <Trans
+            i18nKey={i18nT('common:pay.payment_form_tip')}
+            components={{
+              payLink: <Link href={feConfigs.payFormUrl} target="_blank" color="primary.600" />
+            }}
+          />
+        </Box>
+      )}
     </MyModal>
   );
 };

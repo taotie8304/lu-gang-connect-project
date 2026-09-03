@@ -18,12 +18,26 @@ import { DefaultGroupName } from '@fastgpt/global/support/user/team/group/consta
 import { getAIApi } from '../../../core/ai/config';
 import { createRootOrg } from '../../permission/org/controllers';
 import { getS3AvatarSource } from '../../../common/s3/sources/avatar';
+import { getLogger, LogCategories } from '../../../common/logger';
+import {
+  formatTeamAccountCancellationSummary,
+  getActiveAccountCancellationsByTeamIds
+} from '../account/cancellation';
 
-async function getTeamMember(match: Record<string, any>): Promise<TeamTmbItemType> {
-  const tmb = await MongoTeamMember.findOne(match).populate<{ team: TeamSchema }>('team').lean();
-  if (!tmb) {
+const logger = getLogger(LogCategories.MODULE.USER.TEAM);
+
+async function getTeamMember(
+  match: Record<string, any>,
+  session?: ClientSession
+): Promise<TeamTmbItemType> {
+  const query = MongoTeamMember.findOne(match).populate<{ team: TeamSchema }>('team');
+  if (session) query.session(session);
+  const tmb = await query.lean();
+  if (!tmb || !tmb.team || tmb.team.deleteTime) {
     return Promise.reject('member not exist');
   }
+
+  const [cancellation] = await getActiveAccountCancellationsByTeamIds([String(tmb.teamId)]);
 
   const role =
     (await getTmbPermission({
@@ -41,7 +55,6 @@ async function getTeamMember(match: Record<string, any>): Promise<TeamTmbItemTyp
     avatar: tmb.avatar,
     balance: tmb.team.balance,
     tmbId: String(tmb._id),
-    teamDomain: tmb.team?.teamDomain,
     role: tmb.role,
     status: tmb.status,
     permission: new TeamPermission({
@@ -50,9 +63,14 @@ async function getTeamMember(match: Record<string, any>): Promise<TeamTmbItemTyp
     }),
     notificationAccount: tmb.team.notificationAccount,
 
-    lafAccount: tmb.team.lafAccount,
     openaiAccount: tmb.team.openaiAccount,
-    externalWorkflowVariables: tmb.team.externalWorkflowVariables
+    externalWorkflowVariables: tmb.team.externalWorkflowVariables,
+    isWecomTeam: !!tmb.team.meta?.wecom,
+    ...(cancellation
+      ? {
+          accountCancellation: formatTeamAccountCancellationSummary(cancellation.record)
+        }
+      : {})
   };
 }
 
@@ -64,29 +82,48 @@ export const getTeamOwner = async (teamId: string) => {
   return tmb;
 };
 
-export async function getTmbInfoByTmbId({ tmbId }: { tmbId: string }) {
+export async function getTmbInfoByTmbId({
+  tmbId,
+  session
+}: {
+  tmbId: string;
+  session?: ClientSession;
+}) {
   if (!tmbId) {
     return Promise.reject('tmbId or userId is required');
   }
-  return getTeamMember({
-    _id: new Types.ObjectId(String(tmbId)),
-    status: notLeaveStatus
-  });
+  return getTeamMember(
+    {
+      _id: new Types.ObjectId(String(tmbId)),
+      status: notLeaveStatus
+    },
+    session
+  );
 }
 
-export async function getUserDefaultTeam({ userId }: { userId: string }) {
+export async function getUserDefaultTeam({
+  userId,
+  session
+}: {
+  userId: string;
+  session?: ClientSession;
+}) {
   if (!userId) {
     return Promise.reject('tmbId or userId is required');
   }
-  return getTeamMember({
-    userId: new Types.ObjectId(userId)
-  });
+  return getTeamMember(
+    {
+      userId: new Types.ObjectId(userId),
+      status: TeamMemberStatusEnum.active
+    },
+    session
+  );
 }
 
 export async function createDefaultTeam({
   userId,
   teamName = 'My Team',
-  avatar = '/icon/logo.png',
+  avatar = '/icon/logo.svg',
   session
 }: {
   userId: string;
@@ -138,10 +175,10 @@ export async function createDefaultTeam({
       { session }
     );
     await createRootOrg({ teamId: tmb.teamId, session });
-    console.log('create default team, group and root org', userId);
+    logger.info('Default team created', { userId, teamId: tmb.teamId, tmbId: tmb._id });
     return tmb;
   } else {
-    console.log('default team exist', userId);
+    logger.info('Default team exists', { userId });
   }
 }
 
@@ -149,24 +186,20 @@ export async function updateTeam({
   teamId,
   name,
   avatar,
-  teamDomain,
-  lafAccount,
   openaiAccount,
   externalWorkflowVariable
 }: UpdateTeamProps & { teamId: string }) {
   // auth openai key
   if (openaiAccount?.key) {
-    console.log('auth user openai key', openaiAccount?.key);
     const baseUrl = openaiAccount?.baseUrl || 'https://api.openai.com/v1';
     openaiAccount.baseUrl = baseUrl;
 
-    const ai = getAIApi({
+    const { ai } = getAIApi({
       userKey: openaiAccount
     });
 
     const response = await ai.chat.completions.create({
       model: 'gpt-4o-mini',
-      max_tokens: 1,
       messages: [{ role: 'user', content: 'hi' }]
     });
     if (response?.choices?.[0]?.message?.content === undefined) {
@@ -177,9 +210,6 @@ export async function updateTeam({
   return mongoSessionRun(async (session) => {
     const unsetObj = (() => {
       const obj: Record<string, 1> = {};
-      if (lafAccount?.pat === '') {
-        obj.lafAccount = 1;
-      }
       if (openaiAccount?.key === '') {
         obj.openaiAccount = 1;
       }
@@ -198,9 +228,6 @@ export async function updateTeam({
     })();
     const setObj = (() => {
       const obj: Record<string, any> = {};
-      if (lafAccount?.pat && lafAccount?.appid) {
-        obj.lafAccount = lafAccount;
-      }
       if (openaiAccount?.key && openaiAccount?.baseUrl) {
         obj.openaiAccount = openaiAccount;
       }
@@ -223,7 +250,6 @@ export async function updateTeam({
         $set: {
           ...(name ? { name } : {}),
           ...(avatar ? { avatar } : {}),
-          ...(teamDomain ? { teamDomain } : {}),
           ...setObj
         },
         ...unsetObj

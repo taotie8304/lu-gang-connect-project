@@ -19,11 +19,11 @@ import {
   delDatasetCollectionById,
   putDatasetCollectionById,
   postLinkCollectionSync
-} from '@/web/core/dataset/api';
+} from '@/web/core/dataset/api/collection';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useRouter } from 'next/router';
 import MyMenu from '@fastgpt/web/components/common/MyMenu';
 import { useEditTitle } from '@/web/common/hooks/useEditTitle';
@@ -52,6 +52,13 @@ import TagsPopOver from './TagsPopOver';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import TrainingStates from './TrainingStates';
 import { useTableMultipleSelect } from '@fastgpt/web/hooks/useTableMultipleSelect';
+import {
+  getCollectionTrainingStatusColorSchema,
+  getCollectionTrainingStatusText
+} from '@/web/core/dataset/trainingStatus';
+import TrainingErrorModal from './TrainingErrorModal';
+import type { DatasetCollectionsListItemType } from '@fastgpt/global/openapi/core/dataset/collection/api';
+import { hasDatasetTrainingError as checkDatasetTrainingError } from '@/web/core/dataset/api/training';
 
 const Header = dynamic(() => import('./Header'));
 const EmptyCollectionTip = dynamic(() => import('./EmptyCollectionTip'));
@@ -66,45 +73,38 @@ const CollectionCard = () => {
 
   const [trainingStatesCollection, setTrainingStatesCollection] = useState<{
     collectionId: string;
+    permission: DatasetCollectionsListItemType['permission'];
   }>();
+  const [isTrainingErrorModalOpen, setIsTrainingErrorModalOpen] = useState(false);
+  const [hasDatasetTrainingError, setHasDatasetTrainingError] = useState(false);
 
-  const { collections, Pagination, total, getData, isGetting, pageNum, pageSize } =
-    useContextSelector(CollectionPageContext, (v) => v);
+  const {
+    collections,
+    Pagination,
+    total,
+    getData,
+    isGetting,
+    pageNum,
+    pageSize,
+    scrollContainerRef
+  } = useContextSelector(CollectionPageContext, (v) => v);
 
   // Add file status icon
-  // 鲁港通 - 防御性检查，确保 collections 始终为数组
   const formatCollections = useMemo(
     () =>
-      (collections ?? []).map((collection) => {
+      collections.map((collection) => {
         const icon = getCollectionIcon({ type: collection.type, name: collection.name });
-        const status = (() => {
-          if (collection.hasError) {
-            return {
-              statusText: t('common:core.dataset.collection.status.error'),
-              colorSchema: 'red'
-            };
-          }
-          if (collection.trainingAmount > 0) {
-            return {
-              statusText: t('common:dataset.collections.Collection Embedding', {
-                total: collection.trainingAmount
-              }),
-              colorSchema: 'gray'
-            };
-          }
-          return {
-            statusText: t('common:core.dataset.collection.status.active'),
-            colorSchema: 'green'
-          };
-        })();
+        const statusColorSchema = getCollectionTrainingStatusColorSchema(collection);
+        const statusText = getCollectionTrainingStatusText(collection);
 
         return {
           ...collection,
           icon,
-          ...status
+          statusText,
+          statusColorSchema
         };
       }),
-    [collections, t]
+    [collections]
   );
 
   const {
@@ -125,7 +125,23 @@ const CollectionCard = () => {
   const { onOpenModal: onOpenEditTitleModal, EditModal: EditTitleModal } = useEditTitle({
     title: t('common:Rename')
   });
-  const { runAsync: onUpdateCollection, loading: isUpdating } = useRequest2(
+
+  const { runAsync: refreshDatasetTrainingError } = useRequest(
+    async () => {
+      const res = await checkDatasetTrainingError(datasetDetail._id);
+      return res.hasError;
+    },
+    {
+      manual: false,
+      refreshDeps: [datasetDetail._id],
+      errorToast: '',
+      onSuccess(hasError) {
+        setHasDatasetTrainingError(hasError);
+      }
+    }
+  );
+
+  const { runAsync: onUpdateCollection, loading: isUpdating } = useRequest(
     putDatasetCollectionById,
     {
       onSuccess() {
@@ -139,7 +155,7 @@ const CollectionCard = () => {
     content: t('common:dataset.Confirm to delete the file'),
     type: 'delete'
   });
-  const { runAsync: onDelCollection } = useRequest2(
+  const { runAsync: onDelCollection } = useRequest(
     (collectionIds: string[]) => {
       return delDatasetCollectionById({
         collectionIds
@@ -148,6 +164,7 @@ const CollectionCard = () => {
     {
       onSuccess() {
         getData(pageNum);
+        refreshDatasetTrainingError().catch(() => undefined);
       },
       successToast: t('common:delete_success'),
       errorToast: t('common:delete_failed')
@@ -157,7 +174,7 @@ const CollectionCard = () => {
   const { openConfirm: openSyncConfirm, ConfirmModal: ConfirmSyncModal } = useConfirm({
     content: t('dataset:collection_sync_confirm_tip')
   });
-  const { runAsync: onclickStartSync, loading: isSyncing } = useRequest2(postLinkCollectionSync, {
+  const { runAsync: onclickStartSync, loading: isSyncing } = useRequest(postLinkCollectionSync, {
     onSuccess(res: DatasetCollectionSyncResultEnum) {
       getData(pageNum);
       toast({
@@ -173,13 +190,19 @@ const CollectionCard = () => {
     [formatCollections]
   );
 
-  useRequest2(
+  useRequest(
     async () => {
+      const shouldRefreshTrainingError =
+        hasTrainingData || datasetDetail.status !== DatasetStatusEnum.active;
+
       if (datasetDetail.status !== DatasetStatusEnum.active) {
         loadDatasetDetail(datasetDetail._id);
       }
       if (hasTrainingData) {
         getData(pageNum);
+      }
+      if (shouldRefreshTrainingError) {
+        await refreshDatasetTrainingError().catch(() => undefined);
       }
     },
     {
@@ -199,7 +222,9 @@ const CollectionCard = () => {
           parentId: targetId
         });
         getData(pageNum);
-      } catch (error) {}
+      } catch {
+        // Drag failures are handled by the request layer toast; keep the list state unchanged here.
+      }
     }
   });
 
@@ -209,10 +234,21 @@ const CollectionCard = () => {
     <MyBox isLoading={isLoading} h={'100%'} py={[2, 4]} overflow={'hidden'}>
       <Flex ref={BoxRef} flexDirection={'column'} py={[1, 0]} h={'100%'} px={[2, 6]}>
         {/* header */}
-        <Header hasTrainingData={hasTrainingData} />
+        <Header
+          hasTrainingData={hasTrainingData}
+          hasTrainingError={hasDatasetTrainingError}
+          onOpenTrainingErrorModal={() => setIsTrainingErrorModalOpen(true)}
+        />
 
         {/* collection table */}
-        <TableContainer mt={3} overflowY={'auto'} fontSize={'sm'} flex={'1 0 0'} h={0}>
+        <TableContainer
+          ref={scrollContainerRef}
+          mt={3}
+          overflowY={'auto'}
+          fontSize={'sm'}
+          flex={'1 0 0'}
+          h={0}
+        >
           <Table variant={'simple'} draggable={false}>
             <Thead draggable={false}>
               <Tr>
@@ -262,24 +298,34 @@ const CollectionCard = () => {
                   }}
                 >
                   <Td minW={'150px'} maxW={['200px', '300px']} draggable py={2}>
-                    <HStack>
+                    <HStack minW={0}>
                       <HStack onClick={(e) => e.stopPropagation()}>
                         <Checkbox
                           isChecked={isSelected(collection)}
-                          onChange={(e) => toggleSelect(collection)}
+                          onChange={() => toggleSelect(collection)}
                         />
                       </HStack>
-                      <Box>
-                        <Flex alignItems={'center'}>
-                          <MyIcon name={collection.icon as any} w={'1.25rem'} mr={2} />
-                          <MyTooltip label={t('common:click_drag_tip')} shouldWrapChildren={false}>
-                            <Box color={'myGray.900'} fontWeight={'500'} className="textEllipsis">
+                      <Box minW={0} flex={1}>
+                        <Flex alignItems={'center'} minW={0}>
+                          <MyIcon
+                            name={collection.icon as any}
+                            w={'1.25rem'}
+                            mr={2}
+                            flexShrink={0}
+                          />
+                          <MyTooltip label={collection.name} showOnlyWhenOverflow>
+                            <Box
+                              color={'myGray.900'}
+                              fontWeight={'500'}
+                              className="textEllipsis"
+                              minW={0}
+                              flex={'0 1 auto'}
+                            >
                               {collection.name}
                             </Box>
                           </MyTooltip>
                         </Flex>
-                        {/* 鲁港通 - 显示集合标签 */}
-                        {!!collection.tags?.length && (
+                        {feConfigs?.isPlus && !!collection.tags?.length && (
                           <TagsPopOver currentCollection={collection} hoverBg={'white'} />
                         )}
                       </Box>
@@ -302,16 +348,21 @@ const CollectionCard = () => {
                     <MyTooltip label={t('common:Click_to_expand')}>
                       <MyTag
                         showDot
-                        colorSchema={collection.colorSchema as any}
+                        colorSchema={collection.statusColorSchema}
                         type={'fill'}
+                        fontSize={'mini'}
+                        letterSpacing={'0.5px'}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setTrainingStatesCollection({ collectionId: collection._id });
+                          setTrainingStatesCollection({
+                            collectionId: collection._id,
+                            permission: collection.permission
+                          });
                         }}
                       >
                         <Flex fontWeight={'medium'} alignItems={'center'} gap={1}>
                           {t(collection.statusText as any)}
-                          <MyIcon name={'common/maximize'} w={'11px'} />
+                          <MyIcon name={'common/maximize'} w={'10px'} h={'10px'} />
                         </Flex>
                       </MyTag>
                     </MyTooltip>
@@ -452,6 +503,7 @@ const CollectionCard = () => {
         </TableContainer>
 
         <FloatingActionBar
+          pt={4}
           Controler={
             <HStack>
               <Button
@@ -486,9 +538,21 @@ const CollectionCard = () => {
 
         {!!trainingStatesCollection && (
           <TrainingStates
-            datasetId={datasetDetail._id}
             collectionId={trainingStatesCollection.collectionId}
+            permission={trainingStatesCollection.permission}
             onClose={() => setTrainingStatesCollection(undefined)}
+          />
+        )}
+
+        {isTrainingErrorModalOpen && (
+          <TrainingErrorModal
+            datasetId={datasetDetail._id}
+            permission={datasetDetail.permission}
+            onClose={() => setIsTrainingErrorModalOpen(false)}
+            onRefresh={() => {
+              getData(pageNum);
+              refreshDatasetTrainingError().catch(() => undefined);
+            }}
           />
         )}
 

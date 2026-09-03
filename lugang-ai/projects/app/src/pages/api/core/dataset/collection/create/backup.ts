@@ -1,7 +1,6 @@
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { addLog } from '@fastgpt/service/common/system/log';
-import { readRawTextByLocalFile } from '@fastgpt/service/common/file/read/utils';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
 import { createCollectionAndInsertData } from '@fastgpt/service/core/dataset/collection/controller';
@@ -9,57 +8,66 @@ import {
   DatasetCollectionDataProcessModeEnum,
   DatasetCollectionTypeEnum
 } from '@fastgpt/global/core/dataset/constants';
-import { i18nT } from '@fastgpt/web/i18n/utils';
-import { isCSVFile } from '@fastgpt/global/common/file/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { multer } from '@fastgpt/service/common/file/multer';
 import { getS3DatasetSource } from '@fastgpt/service/common/s3/sources/dataset';
+import { CreateBackupCollectionFormSchema } from '@fastgpt/global/openapi/core/dataset/collection/createApi';
+import { checkDatasetIndexLimit } from '@fastgpt/service/support/permission/teamLimit';
+import { parseDatasetImportFile } from '@fastgpt/service/core/dataset/importFile';
+import { decodeMultipartFilename } from '@fastgpt/service/common/s3/filename';
+const logger = getLogger(LogCategories.MODULE.DATASET.COLLECTION);
 
-export type backupQuery = {};
-
-export type backupBody = {};
-
-export type backupResponse = {};
-
-async function handler(req: ApiRequestProps<backupBody, backupQuery>) {
+async function handler(req: ApiRequestProps) {
   const filepaths: string[] = [];
+  let fileId: string | undefined;
+  let promoted = false;
 
   try {
     const result = await multer.resolveFormData({
       request: req,
-      maxFileSize: global.feConfigs?.uploadFileMaxSize
+      maxFileSize: global.feConfigs.uploadFileMaxSize
     });
     filepaths.push(result.fileMetadata.path);
-    const filename = decodeURIComponent(result.fileMetadata.originalname);
-
-    if (!isCSVFile(filename)) {
-      return Promise.reject('File must be a CSV file');
-    }
+    const filename = decodeMultipartFilename(result.fileMetadata.originalname);
+    const { datasetId, parentId } = CreateBackupCollectionFormSchema.parse(result.data);
 
     const { teamId, tmbId, dataset } = await authDataset({
       req,
       authToken: true,
       authApiKey: true,
       per: WritePermissionVal,
-      datasetId: result.data.datasetId
+      datasetId
     });
 
-    const { rawText } = await readRawTextByLocalFile({
+    // Check dataset limit
+    await checkDatasetIndexLimit({
       teamId,
-      tmbId,
-      path: result.fileMetadata.path,
-      encoding: result.fileMetadata.encoding,
-      getFormatText: false
+      insertLen: 1
     });
 
-    if (!rawText.trim().startsWith('q,a,indexes')) {
-      return Promise.reject(i18nT('dataset:backup_template_invalid'));
-    }
-
-    const fileId = await getS3DatasetSource().upload({
+    const datasetSource = getS3DatasetSource();
+    fileId = await datasetSource.upload({
       datasetId: dataset._id,
       stream: result.getReadStream(),
       size: result.fileMetadata.size,
       filename: filename
+    });
+    // 上传完成后解析只依赖 S3 source，本地临时文件不进入等待队列。
+    multer.clearDiskTempFiles([...filepaths]);
+    filepaths.length = 0;
+
+    const source = await datasetSource.getDatasetFileSource({
+      fileId,
+      datasetId: String(dataset._id)
+    });
+    const rawText = await parseDatasetImportFile({
+      teamId,
+      tmbId,
+      source,
+      filename
+    }).catch((error) => {
+      logger.warn('Backup dataset import file parse failed', { filename, error });
+      return Promise.reject(i18nT('dataset:backup_template_invalid'));
     });
 
     await createCollectionAndInsertData({
@@ -70,16 +78,28 @@ async function handler(req: ApiRequestProps<backupBody, backupQuery>) {
         teamId,
         tmbId,
         datasetId: dataset._id,
+        parentId,
         name: filename,
         type: DatasetCollectionTypeEnum.file,
         fileId,
         trainingType: DatasetCollectionDataProcessModeEnum.backup
       }
     });
+    promoted = true;
 
     return {};
   } catch (error) {
-    addLog.error(`Backup dataset collection create error: ${error}`);
+    if (fileId && !promoted) {
+      await getS3DatasetSource()
+        .cleanupPendingDatasetFile(fileId)
+        .catch((cleanupError) => {
+          logger.warn('Backup pending dataset file cleanup failed', {
+            fileId,
+            error: cleanupError
+          });
+        });
+    }
+    logger.error(`Backup dataset collection create error: ${error}`);
     return Promise.reject(error);
   } finally {
     multer.clearDiskTempFiles(filepaths);

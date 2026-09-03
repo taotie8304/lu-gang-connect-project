@@ -14,7 +14,7 @@ import {
 } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getFeedbackRecordIds } from '@/web/core/chat/feedback/api';
 import { eventBus, EventNameEnum } from '@/web/common/utils/eventbus';
 
@@ -194,7 +194,7 @@ export const DetailLogsModalFeedbackTypeFilter = ({
   const { t } = useTranslation();
 
   // Get feedback record IDs when in feedback mode
-  const { data: feedbackRecords, runAsync: loadFeedbackRecords } = useRequest2(
+  const { data: feedbackRecords, runAsync: loadFeedbackRecords } = useRequest(
     async (_feedbackType = feedbackType, _unreadOnly = unreadOnly) => {
       if (!appId || !chatId || _feedbackType === 'all') return null;
       return await getFeedbackRecordIds({
@@ -275,7 +275,7 @@ export const DetailLogsModalFeedbackTypeFilter = ({
     return () => {
       eventBus.off(EventNameEnum.refreshFeedback);
     };
-  }, []);
+  }, [loadFeedbackRecords]);
 
   return (
     <Flex alignItems={'center'} gap={3} w={'100%'}>
@@ -290,17 +290,18 @@ export const DetailLogsModalFeedbackTypeFilter = ({
       {showNavigation && (
         <>
           {/* Current position indicator */}
-          <Box fontSize={'sm'} color={'myGray.600'} whiteSpace={'nowrap'} flex={1}>
+          <Box fontSize={'sm'} color={'myGray.600'} whiteSpace={'nowrap'}>
             {currentPosition}/{totalCount}
           </Box>
 
-          {/* Previous button */}
-          <Button size="sm" w={'100px'} variant={'whiteBase'} onClick={handlePrev}>
-            {t('chat:Previous')}
-          </Button>
-          <Button size="sm" w={'100px'} variant={'whiteBase'} onClick={handleNext}>
-            {t('chat:Next')}
-          </Button>
+          <Flex flex={1} gap={3} minW={0}>
+            <Button size="sm" flex={1} h={'36px'} py={2} variant={'whiteBase'} onClick={handlePrev}>
+              {t('chat:Previous')}
+            </Button>
+            <Button size="sm" flex={1} h={'36px'} py={2} variant={'whiteBase'} onClick={handleNext}>
+              {t('chat:Next')}
+            </Button>
+          </Flex>
         </>
       )}
     </Flex>

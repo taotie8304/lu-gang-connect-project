@@ -1,14 +1,15 @@
 import type { SystemDefaultModelType, SystemModelItemType } from '../type';
-import { ModelTypeEnum } from '@fastgpt/global/core/ai/model';
+import { ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 import { MongoSystemModel } from './schema';
 import {
   type LLMModelItemType,
   type EmbeddingModelItemType,
   type TTSModelType,
   type STTModelType,
-  type RerankModelItemType
-} from '@fastgpt/global/core/ai/model.d';
-import { debounce } from 'lodash';
+  type RerankModelItemType,
+  PersistedSystemModelItemSchema
+} from '@fastgpt/global/core/ai/model.schema';
+import { debounce } from 'lodash-es';
 import { getModelProvider } from '../../../core/app/provider/controller';
 import { findModelFromAlldata } from '../model';
 import {
@@ -21,6 +22,80 @@ import { setCron } from '../../../common/system/cron';
 import { preloadModelProviders } from '../../../core/app/provider/controller';
 import { refreshVersionKey } from '../../../common/cache';
 import { SystemCacheKeyEnum } from '../../../common/cache/type';
+import { getLogger, LogCategories } from '../../../common/logger';
+import { getRuntimeResolvedPriceTiers } from '@fastgpt/global/core/ai/pricing';
+
+/**
+ * 生成可返回客户端的脱敏模型副本。系统模型对象还会被服务端请求链路复用，不能原地删除字段。
+ */
+export const desensitizeSystemModel = <T extends SystemModelItemType>(model: T): T =>
+  ({
+    ...model,
+    defaultSystemChatPrompt: undefined,
+    fieldMap: undefined,
+    defaultConfig: undefined,
+    dbConfig: undefined,
+    queryConfig: undefined,
+    requestUrl: undefined,
+    requestAuth: undefined
+  }) as T;
+
+/**
+ * 生成可返回客户端的系统默认模型配置。默认模型只表示系统配置，不代表当前用户具备使用权限。
+ */
+export const desensitizeSystemDefaultModels = (
+  defaultModels: SystemDefaultModelType
+): SystemDefaultModelType => ({
+  [ModelTypeEnum.llm]: defaultModels.llm && desensitizeSystemModel(defaultModels.llm),
+  datasetTextLLM:
+    defaultModels.datasetTextLLM && desensitizeSystemModel(defaultModels.datasetTextLLM),
+  datasetImageLLM:
+    defaultModels.datasetImageLLM && desensitizeSystemModel(defaultModels.datasetImageLLM),
+  chatTitleLLM: defaultModels.chatTitleLLM && desensitizeSystemModel(defaultModels.chatTitleLLM),
+  [ModelTypeEnum.embedding]:
+    defaultModels.embedding && desensitizeSystemModel(defaultModels.embedding),
+  [ModelTypeEnum.tts]: defaultModels.tts && desensitizeSystemModel(defaultModels.tts),
+  [ModelTypeEnum.stt]: defaultModels.stt && desensitizeSystemModel(defaultModels.stt),
+  [ModelTypeEnum.rerank]: defaultModels.rerank && desensitizeSystemModel(defaultModels.rerank)
+});
+
+/**
+ * 生成允许持久化的严格模型配置。运行时字段和废弃字段会被移除，明确默认值由统一 Schema 填充。
+ */
+export const parsePersistedSystemModelConfig = ({
+  model,
+  metadata
+}: {
+  model: string;
+  metadata: Record<string, unknown>;
+}): SystemModelItemType => {
+  const normalizedModel = model.trim();
+  const persistedMetadata = {
+    ...metadata,
+    model: normalizedModel,
+    name: typeof metadata.name === 'string' ? metadata.name.trim() : metadata.name
+  };
+
+  return PersistedSystemModelItemSchema.parse(persistedMetadata);
+};
+
+/**
+ * 规范化插件与数据库配置合并后的运行时模型。
+ * 插件协议可能使用 null 表示未配置，最终对外模型统一使用字段缺失表示可选值不存在。
+ */
+export const normalizeRuntimeSystemModelConfig = <
+  T extends { type?: unknown; maxTemperature?: unknown }
+>(
+  model: T
+): T => {
+  if (model.type !== ModelTypeEnum.llm || model.maxTemperature !== null) {
+    return model;
+  }
+
+  const normalizedModel = { ...model };
+  delete normalizedModel.maxTemperature;
+  return normalizedModel;
+};
 
 export const loadSystemModels = async (init = false, language = 'en') => {
   if (!init && global.systemModelList) return;
@@ -28,18 +103,19 @@ export const loadSystemModels = async (init = false, language = 'en') => {
   try {
     await preloadModelProviders();
   } catch (error) {
-    console.log('Load systen model error, please check fastgpt-plugin', error);
+    const logger = getLogger(LogCategories.MODULE.AI.CONFIG);
+    logger.error('System model provider preload failed', { error });
     return Promise.reject(error);
   }
 
-  let _systemModelList: SystemModelItemType[] = [];
-  let _systemActiveModelList: SystemModelItemType[] = [];
-  let _llmModelMap = new Map<string, LLMModelItemType>();
-  let _embeddingModelMap = new Map<string, EmbeddingModelItemType>();
-  let _ttsModelMap = new Map<string, TTSModelType>();
-  let _sttModelMap = new Map<string, STTModelType>();
-  let _reRankModelMap = new Map<string, RerankModelItemType>();
-  let _systemDefaultModel: SystemDefaultModelType = {};
+  const _systemModelList: SystemModelItemType[] = [];
+  const _systemActiveModelList: SystemModelItemType[] = [];
+  const _llmModelMap = new Map<string, LLMModelItemType>();
+  const _embeddingModelMap = new Map<string, EmbeddingModelItemType>();
+  const _ttsModelMap = new Map<string, TTSModelType>();
+  const _sttModelMap = new Map<string, STTModelType>();
+  const _reRankModelMap = new Map<string, RerankModelItemType>();
+  const _systemDefaultModel: SystemDefaultModelType = {};
 
   if (!global.systemModelList) {
     global.systemModelList = [];
@@ -56,19 +132,12 @@ export const loadSystemModels = async (init = false, language = 'en') => {
   const pushModel = (model: SystemModelItemType) => {
     _systemModelList.push(model);
 
-    // Add default value
-    if (model.type === ModelTypeEnum.llm) {
-      model.datasetProcess = model.datasetProcess ?? true;
-      model.usedInClassify = model.usedInClassify ?? true;
-      model.usedInExtractFields = model.usedInExtractFields ?? true;
-      model.usedInToolCall = model.usedInToolCall ?? true;
-      model.useInEvaluation = model.useInEvaluation ?? true;
-    }
-
     if (model.isActive) {
       _systemActiveModelList.push(model);
 
       if (model.type === ModelTypeEnum.llm) {
+        model.priceTiers = getRuntimeResolvedPriceTiers(model);
+
         _llmModelMap.set(model.model, model);
         _llmModelMap.set(model.name, model);
         if (model.isDefault) {
@@ -79,6 +148,9 @@ export const loadSystemModels = async (init = false, language = 'en') => {
         }
         if (model.isDefaultDatasetImageModel) {
           _systemDefaultModel.datasetImageLLM = model;
+        }
+        if (model.isDefaultChatTitleModel) {
+          _systemDefaultModel.chatTitleLLM = model;
         }
       } else if (model.type === ModelTypeEnum.embedding) {
         _embeddingModelMap.set(model.model, model);
@@ -112,49 +184,53 @@ export const loadSystemModels = async (init = false, language = 'en') => {
     // Get model from db and plugin
     const [dbModels, systemModels] = await Promise.all([
       MongoSystemModel.find({}).lean(),
-      // 如果 PLUGIN_BASE_URL 为空，跳过从插件获取模型
-      process.env.PLUGIN_BASE_URL
-        ? pluginClient.model.list().then((res) => {
-            if (res.status === 200) return res.body;
-            console.error('Get fastGPT plugin model error');
-            return [];
-          })
-        : Promise.resolve([])
+      pluginClient
+        .listModels()
+        .then((res) => res)
+        .catch(() => [])
     ]);
 
     // Load system model from local
-    await Promise.all(
-      systemModels.map(async (model) => {
-        const mergeObject = (obj1: any, obj2: any) => {
-          if (!obj1 && !obj2) return undefined;
-          const formatObj1 = typeof obj1 === 'object' ? obj1 : {};
-          const formatObj2 = typeof obj2 === 'object' ? obj2 : {};
-          return { ...formatObj1, ...formatObj2 };
-        };
+    systemModels.forEach((model) => {
+      const dbModel = dbModels.find((item) => item.model === model.model);
+      const provider = getModelProvider(dbModel?.metadata?.provider || model.provider, language);
+      const dbLlmMetadata =
+        dbModel?.metadata?.type === ModelTypeEnum.llm ? dbModel.metadata : undefined;
 
-        const dbModel = dbModels.find((item) => item.model === model.model);
-        const provider = getModelProvider(dbModel?.metadata?.provider || model.provider, language);
+      const modelData: any = {
+        ...model,
+        ...dbModel?.metadata,
+        provider: provider.id,
+        avatar: provider.avatar,
+        type: dbModel?.metadata?.type || model.type,
+        isCustom: false,
 
-        const modelData: any = {
-          ...model,
-          ...dbModel?.metadata,
-          provider: provider.id,
-          avatar: provider.avatar,
-          type: dbModel?.metadata?.type || model.type,
-          isCustom: false,
+        ...(model.type === ModelTypeEnum.llm && {
+          maxResponse: model.maxTokens ?? 16000,
+          maxTemperature: dbLlmMetadata?.maxTemperature ?? model.maxTemperature ?? undefined,
+          reasoning: dbLlmMetadata?.reasoning ?? model.reasoning ?? false,
+          reasoningEffort: dbLlmMetadata?.reasoningEffort ?? model.reasoningEffort ?? false
+        }),
 
-          ...(model.type === ModelTypeEnum.llm && dbModel?.metadata?.type === ModelTypeEnum.llm
-            ? {
-                maxResponse: dbModel?.metadata?.maxResponse ?? model.maxTokens ?? 1000,
-                defaultConfig: mergeObject(model.defaultConfig, dbModel?.metadata?.defaultConfig),
-                fieldMap: mergeObject(model.fieldMap, dbModel?.metadata?.fieldMap),
-                maxTokens: undefined
-              }
-            : {})
-        };
-        pushModel(modelData);
-      })
-    );
+        ...(model.type === ModelTypeEnum.llm && dbModel?.metadata?.type === ModelTypeEnum.llm
+          ? {
+              maxResponse: dbModel?.metadata?.maxResponse ?? model.maxTokens ?? 8000,
+              defaultConfig:
+                typeof dbModel?.metadata?.defaultConfig === 'object'
+                  ? dbModel?.metadata?.defaultConfig
+                  : model.defaultConfig,
+              fieldMap:
+                typeof dbModel?.metadata?.fieldMap === 'object'
+                  ? dbModel?.metadata?.fieldMap
+                  : model.fieldMap,
+              /** @deprecated */
+              maxTokens: undefined
+            }
+          : {})
+      };
+      // 仅兼容插件协议使用 null 表示不支持温度的历史数据。
+      pushModel(normalizeRuntimeSystemModelConfig(modelData));
+    });
 
     // Custom model(Not in system config)
     dbModels.forEach((dbModel) => {
@@ -166,15 +242,20 @@ export const loadSystemModels = async (init = false, language = 'en') => {
       });
     });
 
+    // Sort model list
+    _systemActiveModelList.sort((a, b) => {
+      const providerA = getModelProvider(a.provider, language);
+      const providerB = getModelProvider(b.provider, language);
+      return providerA.order - providerB.order;
+    });
+
     // Default model check
     {
       if (!_systemDefaultModel.llm) {
         _systemDefaultModel.llm = Array.from(_llmModelMap.values())[0];
       }
       if (!_systemDefaultModel.datasetTextLLM) {
-        _systemDefaultModel.datasetTextLLM = Array.from(_llmModelMap.values()).find(
-          (item) => item.datasetProcess
-        );
+        _systemDefaultModel.datasetTextLLM = Array.from(_llmModelMap.values())[0];
       }
       if (!_systemDefaultModel.datasetImageLLM) {
         _systemDefaultModel.datasetImageLLM = Array.from(_llmModelMap.values()).find(
@@ -195,13 +276,6 @@ export const loadSystemModels = async (init = false, language = 'en') => {
       }
     }
 
-    // Sort model list
-    _systemActiveModelList.sort((a, b) => {
-      const providerA = getModelProvider(a.provider, language);
-      const providerB = getModelProvider(b.provider, language);
-      return providerA.order - providerB.order;
-    });
-
     // Set global value
     {
       global.systemModelList = _systemModelList;
@@ -212,35 +286,18 @@ export const loadSystemModels = async (init = false, language = 'en') => {
       global.sttModelMap = _sttModelMap;
       global.reRankModelMap = _reRankModelMap;
       global.systemDefaultModel = _systemDefaultModel;
-      global.systemActiveDesensitizedModels = _systemActiveModelList.map((model) => ({
-        ...model,
-        defaultSystemChatPrompt: undefined,
-        fieldMap: undefined,
-        defaultConfig: undefined,
-        weight: undefined,
-        dbConfig: undefined,
-        queryConfig: undefined,
-        requestUrl: undefined,
-        requestAuth: undefined
-      })) as SystemModelItemType[];
+      global.systemActiveDesensitizedModels = _systemActiveModelList.map(desensitizeSystemModel);
     }
 
-    console.log(
-      JSON.stringify(
-        _systemActiveModelList.map((item) => ({
-          provider: item.provider,
-          model: item.model,
-          name: item.name
-        })),
-        null,
-        2
-      ),
-      `Load models success, total: ${_systemModelList.length}, active: ${_systemActiveModelList.length}`
-    );
+    const logger = getLogger(LogCategories.MODULE.AI.CONFIG);
+    logger.debug('System models loaded', {
+      total: _systemModelList.length,
+      active: _systemActiveModelList.length
+    });
   } catch (error) {
-    console.error('Load models error', error);
-    // @ts-ignore
-    global.systemModelList = undefined;
+    const logger = getLogger(LogCategories.MODULE.AI.CONFIG);
+    logger.error('System models load failed', { error });
+
     return Promise.reject(error);
   }
 };
@@ -250,22 +307,10 @@ export const getSystemModelConfig = async (model: string): Promise<SystemModelIt
   if (!modelData) return Promise.reject('Model is not found');
   if (modelData.isCustom) return Promise.reject('Custom model not data');
 
-  // 如果 PLUGIN_BASE_URL 为空，返回基本配置
-  if (!process.env.PLUGIN_BASE_URL) {
-    return {
-      ...modelData,
-      isCustom: false
-    } as SystemModelItemType;
-  }
-
   // Read file
-  const modelDefaulConfig = await pluginClient.model.list().then((res) => {
-    if (res.status === 200) {
-      return res.body.find((item) => item.model === model) as SystemModelItemType;
-    }
-
-    return Promise.reject('Can not get model config from plugin');
-  });
+  const modelDefaulConfig = await pluginClient
+    .listModels()
+    .then((models) => models.find((item) => item.model === model) as SystemModelItemType);
 
   return {
     ...modelDefaulConfig,
@@ -285,7 +330,7 @@ export const watchSystemModelUpdate = () => {
         await loadSystemModels(true);
         // All node reaload buffer
         await reloadFastGPTConfigBuffer();
-      } catch (error) {}
+      } catch {}
     }, 500)
   );
 };

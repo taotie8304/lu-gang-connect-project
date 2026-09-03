@@ -4,7 +4,7 @@ export enum SystemConfigsTypeEnum {
   systemMsgModal = 'systemMsgModal',
   license = 'license',
   operationalAd = 'operationalAd',
-  lugangRegister = 'lugangRegister'  // 鲁港通注册配置
+  activityAd = 'activityAd'
 }
 
 export const SystemConfigsTypeMap = {
@@ -23,7 +23,7 @@ export const SystemConfigsTypeMap = {
   [SystemConfigsTypeEnum.operationalAd]: {
     label: 'operationalAd'
   },
-  [SystemConfigsTypeEnum.lugangRegister]: {
-    label: 'lugangRegister'
+  [SystemConfigsTypeEnum.activityAd]: {
+    label: 'activityAd'
   }
 };

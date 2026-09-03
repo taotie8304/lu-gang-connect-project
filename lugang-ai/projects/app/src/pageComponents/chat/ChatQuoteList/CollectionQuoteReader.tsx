@@ -1,53 +1,56 @@
-import { Box, Flex, HStack } from '@chakra-ui/react';
-import {
-  type DatasetCiteItemType,
-  type SearchDataResponseItemType
-} from '@fastgpt/global/core/dataset/type';
-import { getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
+import { Box, Flex } from '@chakra-ui/react';
+import { type SearchDataResponseQuoteListItemType } from '@fastgpt/global/core/dataset/type';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import DownloadButton from './DownloadButton';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { downloadFetch } from '@/web/common/system/utils';
 import { useMemo, useState } from 'react';
-import { getDatasetDataPermission } from '@/web/core/dataset/api';
-import ScoreTag from './ScoreTag';
-import { formatScore } from '@/components/core/dataset/QuoteItem';
+import { getDatasetPermission } from '@/web/core/dataset/api';
 import NavButton from './NavButton';
 import { useLinkedScroll } from '@fastgpt/web/hooks/useLinkedScroll';
 import CollectionQuoteItem from './CollectionQuoteItem';
 import { type GetCollectionQuoteDataProps } from '@/web/core/chat/context/chatItemContext';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import { getCollectionQuote } from '@/web/core/chat/api';
-import MyIconButton from '@fastgpt/web/components/common/Icon/button';
+import { getCollectionQuote } from '@/web/core/chat/record/api';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { getCollectionSourceAndOpen } from '@/web/core/dataset/hooks/readCollectionSource';
+import { useContextSelector } from 'use-context-selector';
+import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
+import { getChatAuthTargetInput } from '@/web/core/chat/utils';
 
 const CollectionReader = ({
   rawSearch,
   metadata,
-  onClose
+  singleQuote = false,
+  onClose,
+  onBack
 }: {
-  rawSearch: SearchDataResponseItemType[];
+  rawSearch: SearchDataResponseQuoteListItemType[];
   metadata: GetCollectionQuoteDataProps;
+  singleQuote?: boolean;
   onClose: () => void;
+  onBack?: () => void;
 }) => {
   const { t } = useTranslation();
   const router = useRouter();
   const { userInfo } = useUserStore();
 
-  const { collectionId, datasetId, chatItemDataId, sourceId, sourceName, quoteId } = metadata;
-  const [quoteIndex, setQuoteIndex] = useState(0);
+  const canDownloadSource = useContextSelector(ChatItemContext, (v) => v.canDownloadSource);
+
+  const { collectionId, datasetId, chatItemDataId, sourceName, quoteId } = metadata;
+  const chatAuthTarget = useMemo(() => getChatAuthTargetInput(metadata), [metadata]);
+  const [selectedQuote, setSelectedQuote] = useState<{ sourceQuoteId?: string; id: string }>();
 
   // Get dataset permission
-  const { data: datasetData } = useRequest2(async () => await getDatasetDataPermission(datasetId), {
+  const { data: datasetData } = useRequest(async () => await getDatasetPermission(datasetId), {
     manual: !userInfo || !datasetId,
     refreshDeps: [datasetId, userInfo]
   });
 
   const filterResults = useMemo(() => {
-    const res = rawSearch
+    return rawSearch
       .filter((item) => item.collectionId === collectionId)
       .sort((a, b) => {
         const chunkDiff = (a.chunkIndex || 0) - (b.chunkIndex || 0);
@@ -55,15 +58,28 @@ const CollectionReader = ({
 
         return a.id.localeCompare(b.id);
       });
+  }, [collectionId, rawSearch]);
 
-    if (quoteId) {
-      setQuoteIndex(res.findIndex((item) => item.id === quoteId));
-    } else {
-      setQuoteIndex(0);
-    }
+  const quoteIndex = useMemo(() => {
+    const selectedQuoteId =
+      selectedQuote && selectedQuote.sourceQuoteId === quoteId ? selectedQuote.id : quoteId;
+    if (!selectedQuoteId) return 0;
 
-    return res;
-  }, [collectionId, quoteId, rawSearch]);
+    return Math.max(
+      filterResults.findIndex((item) => item.id === selectedQuoteId),
+      0
+    );
+  }, [filterResults, quoteId, selectedQuote]);
+
+  const setQuoteIndex = (index: number) => {
+    const nextQuote = filterResults[index];
+    if (!nextQuote) return;
+
+    setSelectedQuote({
+      sourceQuoteId: quoteId,
+      id: nextQuote.id
+    });
+  };
 
   const currentQuoteItem = useMemo(() => {
     const item = filterResults[quoteIndex];
@@ -80,12 +96,11 @@ const CollectionReader = ({
   const params = useMemo(
     () => ({
       collectionId,
-      chatItemDataId,
+      ...chatAuthTarget,
       chatId: metadata.chatId,
-      appId: metadata.appId,
-      ...metadata.outLinkAuthData
+      chatItemDataId
     }),
-    [chatItemDataId, collectionId, metadata.appId, metadata.chatId, metadata.outLinkAuthData]
+    [chatAuthTarget, chatItemDataId, collectionId, metadata.chatId]
   );
 
   const {
@@ -96,7 +111,8 @@ const CollectionReader = ({
     loadInitData
   } = useLinkedScroll(getCollectionQuote, {
     params,
-    currentData: currentQuoteItem
+    currentData: currentQuoteItem,
+    enablePagination: !singleQuote
   });
 
   const isDeleted = useMemo(
@@ -104,181 +120,194 @@ const CollectionReader = ({
     [datasetDataList, currentQuoteItem?.id, isLoading]
   );
 
-  const formatedDataList = useMemo(
-    () =>
-      datasetDataList.map((item: DatasetCiteItemType) => {
-        const isCurrentSelected = currentQuoteItem?.id === item._id;
-        const quoteIndex = filterResults.findIndex((res) => res.id === item._id);
+  const formatedDataList = useMemo(() => {
+    // 分块接口会同时返回锚点前后的数据，单条模式只保留当前引用对应的分块。
+    const visibleDataList = singleQuote
+      ? datasetDataList.filter((item) => item._id === currentQuoteItem?.id)
+      : datasetDataList;
 
-        return {
-          ...item,
-          isCurrentSelected,
-          quoteIndex
-        };
-      }),
-    [currentQuoteItem?.id, datasetDataList, filterResults]
+    return visibleDataList.map((item) => {
+      const isCurrentSelected = currentQuoteItem?.id === item._id;
+      const quoteIndex = filterResults.findIndex((res) => res.id === item._id);
+
+      return {
+        ...item,
+        isCurrentSelected,
+        quoteIndex
+      };
+    });
+  }, [currentQuoteItem?.id, datasetDataList, filterResults, singleQuote]);
+
+  const canShowSourceActions = useMemo(
+    () =>
+      canDownloadSource &&
+      !!metadata.chatId &&
+      !!chatItemDataId &&
+      !!(
+        chatAuthTarget.appId ||
+        chatAuthTarget.skillId ||
+        (chatAuthTarget.outLinkAuthData?.shareId && chatAuthTarget.outLinkAuthData.outLinkUid)
+      ),
+    [canDownloadSource, chatAuthTarget, chatItemDataId, metadata.chatId]
   );
 
-  const { runAsync: handleDownload } = useRequest2(async () => {
+  const { runAsync: handleDownload } = useRequest(async () => {
+    if (!canShowSourceActions) return;
+
     await downloadFetch({
       url: '/api/core/dataset/collection/export',
       filename: 'data.csv',
       body: {
-        appId: metadata.appId,
+        ...chatAuthTarget,
         chatId: metadata.chatId,
         chatItemDataId,
-        collectionId,
-        ...metadata.outLinkAuthData
+        collectionId
       }
     });
   });
 
   const handleRead = getCollectionSourceAndOpen({
-    appId: metadata.appId,
+    ...chatAuthTarget,
     chatId: metadata.chatId,
     chatItemDataId,
-    collectionId,
-    ...metadata.outLinkAuthData
+    collectionId
   });
 
   return (
-    <MyBox display={'flex'} flexDirection={'column'} h={'full'}>
+    <MyBox display={'flex'} flexDirection={'column'} minH={'full'} h={'full'}>
       {/* title */}
-      <Box borderBottom={'1px solid'} borderBottomColor={'myGray.150'} px={3} py={2}>
-        {/* name */}
-        <HStack>
-          <Flex alignItems={'center'} flex={'1 0 0'} w={0}>
-            <MyIcon
-              name={getSourceNameIcon({ sourceId, sourceName }) as any}
-              w={['1rem', '1.25rem']}
-              color={'primary.600'}
-            />
-            <Box
-              ml={1}
-              maxW={['200px', '220px']}
-              className={'textEllipsis'}
-              wordBreak={'break-all'}
-              fontSize={'sm'}
-              color={'myGray.900'}
-              fontWeight={'medium'}
-              {...(!!userInfo &&
-                datasetData?.permission?.hasReadPer && {
-                  cursor: 'pointer',
-                  _hover: { color: 'primary.600', textDecoration: 'underline' },
-                  onClick: () => {
-                    router.push(
-                      `/dataset/detail?datasetId=${datasetId}&currentTab=dataCard&collectionId=${collectionId}`
-                    );
-                  }
-                })}
+      <Box>
+        <Flex
+          alignItems={'center'}
+          h={'56px'}
+          px={4}
+          borderBottom={'1px solid'}
+          borderColor={'myGray.150'}
+        >
+          {onBack && (
+            <Flex
+              alignItems={'center'}
+              justifyContent={'center'}
+              boxSize={'28px'}
+              borderRadius={'6px'}
+              cursor={'pointer'}
+              _hover={{ bg: 'myGray.100' }}
+              onClick={onBack}
             >
-              {sourceName || t('common:unknow_source')}
-            </Box>
-            <Box ml={3}>
+              <MyIcon name={'core/workflow/undo'} w={'16px'} color={'myGray.600'} />
+            </Flex>
+          )}
+
+          <Box
+            flex={1}
+            minW={0}
+            mx={3}
+            textAlign={'center'}
+            className={'textEllipsis'}
+            wordBreak={'break-all'}
+            fontSize={'16px'}
+            lineHeight={'24px'}
+            color={'myGray.900'}
+            fontWeight={500}
+          >
+            {sourceName || t('common:unknow_source')}
+          </Box>
+
+          <Flex alignItems={'center'} gap={'8px'}>
+            {canShowSourceActions && (
               <DownloadButton
                 canAccessRawData={true}
                 onDownload={handleDownload}
                 onRead={handleRead}
-              />
-            </Box>
-          </Flex>
-          <MyIconButton
-            icon={'common/closeLight'}
-            size={'1.25rem'}
-            color={'myGray.900'}
-            onClick={onClose}
-          />
-        </HStack>
-        {datasetData?.permission?.hasReadPer && (
-          <Box
-            fontSize={'mini'}
-            color={'myGray.500'}
-            {...(!!userInfo
-              ? {
-                  cursor: 'pointer',
-                  _hover: { color: 'primary.600', textDecoration: 'underline' },
-                  onClick: () => {
-                    router.push(`/dataset/detail?datasetId=${datasetId}`);
-                  }
+                onRouteToDataset={
+                  !!userInfo && datasetData?.permission?.hasReadPer
+                    ? () => {
+                        router.push(
+                          `/dataset/detail?datasetId=${datasetId}&currentTab=dataCard&collectionId=${collectionId}`
+                        );
+                      }
+                    : undefined
                 }
-              : {})}
-          >
-            {t('chat:data_source', {
-              name: datasetData.datasetName
-            })}
-          </Box>
-        )}
+              />
+            )}
+            <Flex
+              alignItems={'center'}
+              justifyContent={'center'}
+              boxSize={'28px'}
+              borderRadius={'6px'}
+              cursor={'pointer'}
+              _hover={{ bg: 'myGray.100' }}
+              onClick={onClose}
+            >
+              <MyIcon name={'common/closeLight'} color={'myGray.600'} w={'16px'} />
+            </Flex>
+          </Flex>
+        </Flex>
       </Box>
 
       {/* header control */}
-      {datasetDataList.length > 0 && (
-        <Box>
-          <Flex
-            w={'full'}
-            px={4}
-            py={2}
-            alignItems={'center'}
-            borderBottom={'1px solid'}
-            borderColor={'myGray.150'}
-          >
-            {/* 引用序号 */}
-            <Flex fontSize={'mini'} mr={3} alignItems={'center'} gap={1}>
-              <Box as={'span'} color={'myGray.900'}>
-                {t('common:core.chat.Quote')} {quoteIndex + 1}
-              </Box>
-              <Box as={'span'} color={'myGray.500'}>
-                /
-              </Box>
-              <Box as={'span'} color={'myGray.500'}>
-                {filterResults.length}
-              </Box>
-            </Flex>
-
-            {/* 检索分数 */}
-            {currentQuoteItem?.score ? (
-              <ScoreTag {...formatScore(currentQuoteItem?.score)} />
-            ) : isDeleted ? (
-              <Flex
-                borderRadius={'sm'}
-                py={1}
-                px={2}
-                color={'red.600'}
-                bg={'red.50'}
-                alignItems={'center'}
-                fontSize={'11px'}
-              >
-                <MyIcon name="common/info" w={'14px'} mr={1} color={'red.600'} />
-                {t('chat:chat.quote.deleted')}
-              </Flex>
-            ) : null}
-
-            <Box flex={1} />
-
-            {/* 检索按钮 */}
-            <Flex gap={1}>
-              <NavButton
-                direction="up"
-                isDisabled={quoteIndex === 0}
-                onClick={() => setQuoteIndex(quoteIndex - 1)}
-              />
-              <NavButton
-                direction="down"
-                isDisabled={quoteIndex === filterResults.length - 1}
-                onClick={() => setQuoteIndex(quoteIndex + 1)}
-              />
-            </Flex>
+      {!singleQuote && datasetDataList.length > 0 && (
+        <Flex
+          w={'full'}
+          h={'56px'}
+          px={4}
+          gap={3}
+          alignItems={'center'}
+          borderBottom={'1px solid'}
+          borderColor={'myGray.150'}
+        >
+          {/* 引用序号 */}
+          <Flex fontSize={'16px'} lineHeight={'24px'} alignItems={'center'} gap={1}>
+            <Box as={'span'} color={'myGray.900'}>
+              {t('common:core.chat.Quote')} {quoteIndex + 1}
+            </Box>
+            <Box as={'span'} color={'myGray.500'}>
+              /
+            </Box>
+            <Box as={'span'} color={'myGray.500'}>
+              {filterResults.length}
+            </Box>
           </Flex>
-          <Box fontSize={'mini'} color={'myGray.500'} bg={'myGray.25'} px={4} py={1}>
-            {t('common:core.chat.quote.Quote Tip')}
-          </Box>
-        </Box>
+
+          {isDeleted ? (
+            <Flex
+              gap={1}
+              borderRadius={'sm'}
+              py={1}
+              px={2}
+              color={'red.600'}
+              bg={'red.50'}
+              alignItems={'center'}
+              fontSize={'11px'}
+            >
+              <MyIcon name="common/info" w={'14px'} color={'red.600'} />
+              {t('chat:chat.quote.deleted')}
+            </Flex>
+          ) : null}
+
+          <Box flex={1} />
+
+          {/* 检索按钮 */}
+          <Flex gap={'8px'}>
+            <NavButton
+              direction="up"
+              isDisabled={quoteIndex === 0}
+              onClick={() => setQuoteIndex(quoteIndex - 1)}
+            />
+            <NavButton
+              direction="down"
+              isDisabled={quoteIndex === filterResults.length - 1}
+              onClick={() => setQuoteIndex(quoteIndex + 1)}
+            />
+          </Flex>
+        </Flex>
       )}
 
       {/* quote list */}
-      {isLoading || datasetDataList.length > 0 ? (
-        <ScrollData flex={'1 0 0'} mt={2} px={5} py={1}>
-          <Flex flexDir={'column'}>
-            {formatedDataList.map((item, index) => (
+      {isLoading || formatedDataList.length > 0 ? (
+        <ScrollData flex={'1 0 0'} p={'12px'}>
+          <Flex flexDir={'column'} gap={'12px'}>
+            {formatedDataList.map((item) => (
               <CollectionQuoteItem
                 key={item._id}
                 quoteRefs={itemRefs as React.MutableRefObject<Map<string, HTMLDivElement | null>>}
@@ -292,6 +321,7 @@ const CollectionReader = ({
                 dataId={item._id}
                 collectionId={collectionId}
                 canEdit={!!userInfo && !!datasetData?.permission?.hasWritePer}
+                alwaysShowCopy={singleQuote}
               />
             ))}
           </Flex>
@@ -311,6 +341,14 @@ const CollectionReader = ({
             {t('chat:chat.quote.No Data')}
           </Box>
         </Flex>
+      )}
+
+      {!singleQuote && (
+        <Box px={5} py={3}>
+          <Flex fontSize={'mini'} justifyContent={'center'} color={'myGray.500'}>
+            {t('chat:quote_result_notice')}
+          </Flex>
+        </Box>
       )}
     </MyBox>
   );

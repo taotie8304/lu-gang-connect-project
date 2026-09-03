@@ -3,7 +3,7 @@
   1. type=standard: There will only be 1, and each team will have one
   2. type=extraDatasetSize/extraPoints: Can buy multiple
 */
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 const { Schema } = connectionMongo;
 import { TeamCollectionName } from '@fastgpt/global/support/user/team/constant';
 import {
@@ -11,7 +11,7 @@ import {
   SubModeEnum,
   SubTypeEnum
 } from '@fastgpt/global/support/wallet/sub/constants';
-import type { TeamSubSchema } from '@fastgpt/global/support/wallet/sub/type';
+import type { TeamSubSchemaType } from '@fastgpt/global/support/wallet/sub/type';
 
 export const subCollectionName = 'team_subscriptions';
 
@@ -66,44 +66,44 @@ const SubSchema = new Schema({
   ticketResponseTime: Number,
   customDomain: Number,
 
+  maxUploadFileSize: Number,
+  maxUploadFileCount: Number,
+
+  enableSandbox: Boolean, // 虚拟机
+
   // stand sub and extra points sub. Plan total points
-  totalPoints: {
-    type: Number
-  },
-  surplusPoints: {
-    // plan surplus points
-    type: Number
-  },
+  totalPoints: Number,
+  // plan surplus points
+  surplusPoints: Number,
 
   // extra dataset size
-  currentExtraDatasetSize: {
-    type: Number
+  currentExtraDatasetSize: Number
+});
+
+// Get plan by expiredTime
+defineIndex(SubSchema, { key: { expiredTime: -1, currentSubLevel: 1 } });
+
+// Admin plan list pagination.
+defineIndex(SubSchema, { key: { startTime: -1, _id: -1 } });
+
+// Get team plan
+defineIndex(SubSchema, { key: { teamId: 1, type: 1, expiredTime: -1 } });
+// timer task. Get standard plan;Get free plan;Clear expired extract plan
+defineIndex(SubSchema, {
+  key: { type: 1, expiredTime: -1, currentSubLevel: 1 }
+});
+
+// 修改后的唯一索引
+defineIndex(SubSchema, {
+  key: {
+    teamId: 1,
+    type: 1,
+    currentSubLevel: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: { type: SubTypeEnum.standard }
   }
 });
 
-try {
-  // Get plan by expiredTime
-  SubSchema.index({ expiredTime: -1, currentSubLevel: 1 });
-
-  // Get team plan
-  SubSchema.index({ teamId: 1, type: 1, expiredTime: -1 });
-  // timer task. Get standard plan;Get free plan;Clear expired extract plan
-  SubSchema.index({ type: 1, expiredTime: -1, currentSubLevel: 1 });
-
-  // 修改后的唯一索引
-  SubSchema.index(
-    {
-      teamId: 1,
-      type: 1,
-      currentSubLevel: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: { type: SubTypeEnum.standard }
-    }
-  );
-} catch (error) {
-  console.log(error);
-}
-
-export const MongoTeamSub = getMongoModel<TeamSubSchema>(subCollectionName, SubSchema);
+export const MongoTeamSub = getMongoModel<TeamSubSchemaType>(subCollectionName, SubSchema);

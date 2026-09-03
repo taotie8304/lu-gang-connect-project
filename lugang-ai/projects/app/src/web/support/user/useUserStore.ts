@@ -6,18 +6,20 @@ import type { OrgType } from '@fastgpt/global/support/user/team/org/type';
 import type { UserType } from '@fastgpt/global/support/user/type';
 import type { ClientTeamPlanStatusType } from '@fastgpt/global/support/wallet/sub/type';
 import { getTeamPlanStatus } from './team/api';
-import { setLangToStorage, getLangMapping } from '@fastgpt/web/i18n/utils';
+import { setCurrentAuthTmbId } from './currentAuthTmbId';
 
 type State = {
   systemMsgReadId: string;
   setSysMsgReadId: (id: string) => void;
+  enterpriseAuthNoticeReadTeamIds: string[];
+  setEnterpriseAuthNoticeRead: (teamId: string) => void;
 
   isUpdateNotification: boolean;
   setIsUpdateNotification: (val: boolean) => void;
 
   userInfo: UserType | null;
   isTeamAdmin: boolean;
-  initUserInfo: () => Promise<any>;
+  initUserInfo: () => Promise<UserType | null>;
   setUserInfo: (user: UserType | null) => void;
   updateUserInfo: (user: UserUpdateParams) => Promise<void>;
 
@@ -35,6 +37,15 @@ export const useUserStore = create<State>()(
         setSysMsgReadId(id: string) {
           set((state) => {
             state.systemMsgReadId = id;
+          });
+        },
+        enterpriseAuthNoticeReadTeamIds: [],
+        setEnterpriseAuthNoticeRead(teamId: string) {
+          if (!teamId) return;
+
+          set((state) => {
+            if (state.enterpriseAuthNoticeReadTeamIds.includes(teamId)) return;
+            state.enterpriseAuthNoticeReadTeamIds.push(teamId);
           });
         },
 
@@ -63,20 +74,14 @@ export const useUserStore = create<State>()(
             return res;
           } catch (error) {
             console.log('[Init user] error', error);
-            // 用户未登录时，确保 userInfo 为 null
-            get().setUserInfo(null);
             return null;
           }
         },
         setUserInfo(user: UserType | null) {
+          setCurrentAuthTmbId(user?.team?.tmbId);
           set((state) => {
             state.userInfo = user ? user : null;
             state.isTeamAdmin = !!user?.team?.permission?.hasManagePer;
-            const lang = user?.language;
-            if (lang) {
-              const mappedLang = getLangMapping(lang);
-              setLangToStorage(mappedLang);
-            }
           });
         },
         async updateUserInfo(user: UserUpdateParams) {
@@ -114,6 +119,7 @@ export const useUserStore = create<State>()(
         name: 'userStore',
         partialize: (state) => ({
           systemMsgReadId: state.systemMsgReadId,
+          enterpriseAuthNoticeReadTeamIds: state.enterpriseAuthNoticeReadTeamIds,
           isUpdateNotification: state.isUpdateNotification
         })
       }

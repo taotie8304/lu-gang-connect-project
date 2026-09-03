@@ -1,25 +1,30 @@
-import type { AppChatConfigType, AppSimpleEditFormType } from '../app/type';
-import { FlowNodeTypeEnum } from '../workflow/node/constant';
-import { FlowNodeTemplateTypeEnum, NodeInputKeyEnum } from '../workflow/constants';
-import type { FlowNodeInputItemType } from '../workflow/type/io.d';
-import { getAppChatConfig } from '../workflow/utils';
-import { type StoreNodeItemType } from '../workflow/type/node';
+import type { AppFormEditFormType } from './formEdit/type';
 import { DatasetSearchModeEnum } from '../dataset/constants';
+import { NodeInputKeyEnum } from '../workflow/constants';
 import { type WorkflowTemplateBasicType } from '../workflow/type';
 import { AppTypeEnum } from './constants';
 import appErrList from '../../common/error/code/app';
 import pluginErrList from '../../common/error/code/plugin';
+import { i18nT } from '../../common/i18n/utils';
 
-export const getDefaultAppForm = (): AppSimpleEditFormType => {
+const deletedPluginErrorList = new Set([
+  'plugin.team_not_installed',
+  'plugin.team_source_forbidden',
+  'plugin.team_id_required',
+  'plugin.team_source_install_failed',
+  'plugin.version_required'
+]);
+
+/** 判断工具错误是否代表工具已被删除、卸载或当前来源不可用。 */
+export const isToolNotExistError = (error?: unknown) =>
+  typeof error === 'string' && deletedPluginErrorList.has(error);
+
+export const getDefaultAppForm = (): AppFormEditFormType => {
   return {
     aiSettings: {
       model: '',
-      systemPrompt: '',
-      temperature: 0,
       isResponseAnswerText: true,
-      maxHistories: 6,
-      maxToken: 4000,
-      aiChatReasoning: true
+      maxHistories: 6
     },
     dataset: {
       datasets: [],
@@ -30,150 +35,16 @@ export const getDefaultAppForm = (): AppSimpleEditFormType => {
       rerankModel: '',
       rerankWeight: 0.5,
       datasetSearchUsingExtensionQuery: true,
-      datasetSearchExtensionBg: ''
+      datasetSearchExtensionBg: '',
+      [NodeInputKeyEnum.authTmbId]: false
     },
     selectedTools: [],
+    selectedAgentSkills: [],
     chatConfig: {}
   };
 };
 
-/* format app nodes to edit form */
-export const appWorkflow2Form = ({
-  nodes,
-  chatConfig
-}: {
-  nodes: StoreNodeItemType[];
-  chatConfig: AppChatConfigType;
-}) => {
-  const defaultAppForm = getDefaultAppForm();
-  const findInputValueByKey = (inputs: FlowNodeInputItemType[], key: string) => {
-    return inputs.find((item) => item.key === key)?.value;
-  };
-
-  nodes.forEach((node) => {
-    if (
-      node.flowNodeType === FlowNodeTypeEnum.chatNode ||
-      node.flowNodeType === FlowNodeTypeEnum.agent
-    ) {
-      defaultAppForm.aiSettings.model = findInputValueByKey(node.inputs, NodeInputKeyEnum.aiModel);
-      defaultAppForm.aiSettings.systemPrompt = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiSystemPrompt
-      );
-      defaultAppForm.aiSettings.temperature = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatTemperature
-      );
-      defaultAppForm.aiSettings.maxToken = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatMaxToken
-      );
-      defaultAppForm.aiSettings.maxHistories = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.history
-      );
-      defaultAppForm.aiSettings.aiChatReasoning = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatReasoning
-      );
-      defaultAppForm.aiSettings.aiChatTopP = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatTopP
-      );
-      defaultAppForm.aiSettings.aiChatStopSign = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatStopSign
-      );
-      defaultAppForm.aiSettings.aiChatResponseFormat = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatResponseFormat
-      );
-      defaultAppForm.aiSettings.aiChatJsonSchema = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.aiChatJsonSchema
-      );
-    } else if (node.flowNodeType === FlowNodeTypeEnum.datasetSearchNode) {
-      defaultAppForm.dataset.datasets = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSelectList
-      );
-      defaultAppForm.dataset.similarity = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSimilarity
-      );
-      defaultAppForm.dataset.limit = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetMaxTokens
-      );
-      defaultAppForm.dataset.searchMode =
-        findInputValueByKey(node.inputs, NodeInputKeyEnum.datasetSearchMode) ||
-        DatasetSearchModeEnum.embedding;
-      defaultAppForm.dataset.embeddingWeight = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchEmbeddingWeight
-      );
-      // Rerank
-      defaultAppForm.dataset.usingReRank = !!findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchUsingReRank
-      );
-      defaultAppForm.dataset.rerankModel = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchRerankModel
-      );
-      defaultAppForm.dataset.rerankWeight = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchRerankWeight
-      );
-      // Query extension
-      defaultAppForm.dataset.datasetSearchUsingExtensionQuery = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchUsingExtensionQuery
-      );
-      defaultAppForm.dataset.datasetSearchExtensionModel = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchExtensionModel
-      );
-      defaultAppForm.dataset.datasetSearchExtensionBg = findInputValueByKey(
-        node.inputs,
-        NodeInputKeyEnum.datasetSearchExtensionBg
-      );
-    } else if (
-      node.flowNodeType === FlowNodeTypeEnum.pluginModule ||
-      node.flowNodeType === FlowNodeTypeEnum.appModule ||
-      node.flowNodeType === FlowNodeTypeEnum.tool ||
-      node.flowNodeType === FlowNodeTypeEnum.toolSet
-    ) {
-      if (!node.pluginId) return;
-
-      defaultAppForm.selectedTools.push({
-        id: node.nodeId,
-        pluginId: node.pluginId,
-        name: node.name,
-        avatar: node.avatar,
-        intro: node.intro || '',
-        flowNodeType: node.flowNodeType,
-        showStatus: node.showStatus,
-        version: node.version,
-        inputs: node.inputs,
-        outputs: node.outputs,
-        templateType: FlowNodeTemplateTypeEnum.other,
-        pluginData: node.pluginData,
-        toolConfig: node.toolConfig
-      });
-    } else if (node.flowNodeType === FlowNodeTypeEnum.systemConfig) {
-      defaultAppForm.chatConfig = getAppChatConfig({
-        chatConfig,
-        systemConfigNode: node,
-        isPublicFetch: true
-      });
-    }
-  });
-
-  return defaultAppForm;
-};
-
-export const getAppType = (config?: WorkflowTemplateBasicType | AppSimpleEditFormType) => {
+export const getAppType = (config?: WorkflowTemplateBasicType | AppFormEditFormType) => {
   if (!config) return '';
 
   if ('aiSettings' in config) {
@@ -192,6 +63,8 @@ export const getAppType = (config?: WorkflowTemplateBasicType | AppSimpleEditFor
 
 export const formatToolError = (error?: any) => {
   if (!error || typeof error !== 'string') return;
+
+  if (isToolNotExistError(error)) return i18nT('common:error.tool_not_exist');
 
   const errorText = appErrList[error]?.message || pluginErrList[error]?.message;
 

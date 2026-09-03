@@ -1,6 +1,6 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { authChatCrud } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud } from '@/service/support/permission/auth/chat';
 import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
 import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
 import {
@@ -8,16 +8,18 @@ import {
   GetFeedbackRecordIdsResponseSchema,
   type GetFeedbackRecordIdsResponseType
 } from '@fastgpt/global/openapi/core/chat/feedback/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { buildChatSourceQuery } from '@fastgpt/service/core/chat/source';
 
-async function handler(
-  req: ApiRequestProps,
-  _res: ApiResponseType<any>
-): Promise<GetFeedbackRecordIdsResponseType> {
-  const { appId, chatId, feedbackType, unreadOnly } = GetFeedbackRecordIdsBodySchema.parse(
-    req.body
-  );
+async function handler(req: ApiRequestProps): Promise<GetFeedbackRecordIdsResponseType> {
+  const { sourceType, sourceId, chatId, feedbackType, unreadOnly, outLinkAuthData } = parseApiInput(
+    {
+      req,
+      bodySchema: GetFeedbackRecordIdsBodySchema
+    }
+  ).body;
 
-  if (!appId || !chatId) {
+  if (!chatId) {
     return {
       total: 0,
       dataIds: []
@@ -25,12 +27,16 @@ async function handler(
   }
 
   // Auth check
-  await authChatCrud({
+  const authRes = await authChatTargetCrud({
     req,
     authToken: true,
     authApiKey: true,
-    ...req.body
+    sourceType,
+    sourceId,
+    chatId,
+    outLinkAuthData
   });
+  const resolvedSourceId = authRes.sourceId;
 
   // Build feedback filter condition
   const buildFeedbackCondition = () => {
@@ -71,13 +77,15 @@ async function handler(
   };
 
   const feedbackCondition = buildFeedbackCondition();
+  const chatSourceQuery = buildChatSourceQuery({ sourceType, sourceId: resolvedSourceId });
+  const feedbackQuery = { $and: [chatSourceQuery, { chatId }, feedbackCondition] };
 
   // Query feedback records, only return dataId field
   const [items, total] = await Promise.all([
-    MongoChatItem.find({ appId, chatId, ...feedbackCondition }, 'dataId')
+    MongoChatItem.find(feedbackQuery, 'dataId')
       .sort({ _id: 1 }) // Sort in chronological order
       .lean(),
-    MongoChatItem.countDocuments({ appId, chatId, ...feedbackCondition })
+    MongoChatItem.countDocuments(feedbackQuery)
   ]);
 
   const dataIds = items.map((item) => item.dataId).filter(Boolean);

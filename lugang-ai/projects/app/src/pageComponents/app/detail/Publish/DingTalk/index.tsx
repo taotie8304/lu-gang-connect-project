@@ -19,7 +19,7 @@ import { useLoading } from '@fastgpt/web/hooks/useLoading';
 import { getShareChatList, delShareChatById } from '@/web/support/outLink/api';
 import { formatTimeToChatTime } from '@fastgpt/global/common/string/time';
 import { defaultDingtalkOutlinkForm } from '@/web/core/app/constants';
-import type { DingtalkAppType, OutLinkEditType } from '@fastgpt/global/support/outLink/type.d';
+import type { DingtalkAppType, OutLinkEditType } from '@fastgpt/global/support/outLink/type';
 import { PublishChannelEnum } from '@fastgpt/global/support/outLink/constant';
 import { useTranslation } from 'next-i18next';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -27,13 +27,19 @@ import dayjs from 'dayjs';
 import dynamic from 'next/dynamic';
 import MyMenu from '@fastgpt/web/components/common/MyMenu';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getDocPath } from '@/web/common/system/doc';
 
 const DingTalkEditModal = dynamic(() => import('./DingTalkEditModal'));
 const ShowShareLinkModal = dynamic(() => import('../components/showShareLinkModal'));
 
-const DingTalk = ({ appId }: { appId: string }) => {
+const DingTalk = ({
+  appId,
+  onRefreshOutLinkCounts
+}: {
+  appId: string;
+  onRefreshOutLinkCounts: () => Promise<unknown>;
+}) => {
   const { t } = useTranslation();
   const { Loading, setIsLoading } = useLoading();
   const { feConfigs } = useSystemStore();
@@ -50,7 +56,7 @@ const DingTalk = ({ appId }: { appId: string }) => {
     data: shareChatList = [],
     loading: isFetching,
     runAsync: refetchShareChatList
-  } = useRequest2(
+  } = useRequest(
     () => getShareChatList<DingtalkAppType>({ appId, type: PublishChannelEnum.dingtalk }),
     {
       manual: false
@@ -66,15 +72,15 @@ const DingTalk = ({ appId }: { appId: string }) => {
   const [showShareLink, setShowShareLink] = useState<string | null>(null);
 
   return (
-    <Box position={'relative'} pt={3} px={5} minH={'50vh'}>
+    <Box position={'relative'} p={6} minH={'50vh'}>
       <Flex justifyContent={'space-between'} flexDirection="row">
         <HStack>
-          <Box fontWeight={'bold'} fontSize={['md', 'lg']}>
+          <Box color={'myGray.900'} fontWeight={'medium'} fontSize={'lg'}>
             {t('publish:dingtalk.title')}
           </Box>
           {feConfigs?.docUrl && (
             <Link
-              href={getDocPath('/docs/use-cases/external-integration/dingtalk/')}
+              href={getDocPath('/guide/build/publish/dingtalk')}
               target={'_blank'}
               color={'primary.500'}
               fontSize={'sm'}
@@ -112,11 +118,9 @@ const DingTalk = ({ appId }: { appId: string }) => {
             <Tr>
               <Th>{t('common:Name')}</Th>
               <Th>{t('common:support.outlink.Usage points')}</Th>
-              {/* 鲁港通 - 显示高级发布配置 */}
-              <Th>{t('common:core.app.share.Ip limit title')}</Th>
-              <Th>{t('common:expired_time')}</Th>
+              {feConfigs?.isPlus && <Th>{t('common:expired_time')}</Th>}
               <Th>{t('common:last_use_time')}</Th>
-              <Th></Th>
+              <Th>{t('common:Action')}</Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -125,20 +129,21 @@ const DingTalk = ({ appId }: { appId: string }) => {
                 <Td>{item.name}</Td>
                 <Td>
                   {Math.round(item.usagePoints)}
-                  {/* 鲁港通 - 显示使用点数限制 */}
-                  {`${
-                    item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
-                      ? ` / ${item.limit.maxUsagePoints}`
-                      : ` / ${t('common:Unlimited')}`
-                  }`}
+                  {feConfigs?.isPlus
+                    ? `${
+                        item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
+                          ? ` / ${item.limit.maxUsagePoints}`
+                          : ` / ${t('common:Unlimited')}`
+                      }`
+                    : ''}
                 </Td>
-                {/* 鲁港通 - 显示高级配置 */}
-                <Td>{item?.limit?.QPM || '-'}</Td>
-                <Td>
-                  {item?.limit?.expiredTime
-                    ? dayjs(item.limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
-                    : '-'}
-                </Td>
+                {feConfigs?.isPlus && (
+                  <Td>
+                    {item.limit?.expiredTime
+                      ? dayjs(item.limit.expiredTime).format('YYYY/MM/DD\nHH:mm')
+                      : '-'}
+                  </Td>
+                )}
                 <Td>
                   {item.lastTime
                     ? t(formatTimeToChatTime(item.lastTime) as any).replace('#', ':')
@@ -179,7 +184,7 @@ const DingTalk = ({ appId }: { appId: string }) => {
                                 name: item.name,
                                 limit: item.limit,
                                 app: item.app,
-                                responseDetail: item.responseDetail,
+                                showCite: item.showCite,
                                 defaultResponse: item.defaultResponse,
                                 immediateResponse: item.immediateResponse
                               });
@@ -193,7 +198,10 @@ const DingTalk = ({ appId }: { appId: string }) => {
                               setIsLoading(true);
                               try {
                                 await delShareChatById(item._id);
-                                refetchShareChatList();
+                                void Promise.all([
+                                  refetchShareChatList(),
+                                  onRefreshOutLinkCounts()
+                                ]);
                               } catch (error) {
                                 console.log(error);
                               }
@@ -214,7 +222,10 @@ const DingTalk = ({ appId }: { appId: string }) => {
         <DingTalkEditModal
           appId={appId}
           defaultData={editDingTalkLinkData}
-          onCreate={() => Promise.all([refetchShareChatList(), setEditDingTalkLinkData(undefined)])}
+          onCreate={() => {
+            void Promise.all([refetchShareChatList(), onRefreshOutLinkCounts()]);
+            setEditDingTalkLinkData(undefined);
+          }}
           onEdit={() => Promise.all([refetchShareChatList(), setEditDingTalkLinkData(undefined)])}
           onClose={() => setEditDingTalkLinkData(undefined)}
           isEdit={isEdit}

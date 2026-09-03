@@ -1,5 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useChatStore, createCustomStorage } from '@/web/core/chat/context/useChatStore';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import { ChatSidebarPaneEnum } from '@/pageComponents/chat/constants';
 
@@ -19,7 +18,13 @@ const mockStorage = {
 vi.stubGlobal('sessionStorage', mockStorage);
 vi.stubGlobal('localStorage', mockStorage);
 
+const { useChatStore, createCustomStorage } = await import('@/web/core/chat/context/useChatStore');
+
 describe('useChatStore', () => {
+  beforeAll(async () => {
+    await useChatStore.persist.rehydrate();
+  });
+
   beforeEach(() => {
     mockStorage.clear.mockClear();
     mockStorage.getItem.mockClear();
@@ -28,14 +33,41 @@ describe('useChatStore', () => {
 
     // Reset the store
     useChatStore.setState({
+      loaded: false,
       source: undefined,
       appId: '',
       lastChatAppId: '',
       lastChatId: '',
       chatId: '',
+      appChatIdMap: {},
+      sourceChatIdMap: {},
       lastPane: undefined,
       outLinkAuthData: {}
     });
+  });
+
+  it('should mark the store as loaded after persistence hydration', async () => {
+    await useChatStore.persist.rehydrate();
+
+    expect(useChatStore.getState().loaded).toBe(true);
+  });
+
+  it('should finish hydration when storage access fails', async () => {
+    mockStorage.getItem.mockImplementationOnce(() => {
+      throw new Error('storage unavailable');
+    });
+
+    await useChatStore.persist.rehydrate();
+
+    expect(useChatStore.getState().loaded).toBe(true);
+  });
+
+  it('should finish hydration when persisted data is invalid JSON', async () => {
+    mockStorage.getItem.mockReturnValueOnce('{invalid json');
+
+    await useChatStore.persist.rehydrate();
+
+    expect(useChatStore.getState().loaded).toBe(true);
   });
 
   it('should set and get source', () => {
@@ -50,6 +82,155 @@ describe('useChatStore', () => {
     const newState = useChatStore.getState();
     expect(newState.appId).toBe('test-app-id');
     expect(newState.lastChatAppId).toBe('test-app-id');
+  });
+
+  it('should use a new chatId when switching to app without saved chat', () => {
+    const store = useChatStore.getState();
+    store.setSource(ChatSourceEnum.online);
+    store.setAppId('app-a');
+    store.setChatId('chat-from-app-a');
+
+    store.setAppId('app-b');
+
+    const newState = useChatStore.getState();
+    expect(newState.appId).toBe('app-b');
+    expect(newState.chatId).toBe('test-generated-id');
+    expect(newState.chatId).not.toBe('chat-from-app-a');
+    expect(newState.lastChatId).toBe(`${ChatSourceEnum.online}-test-generated-id`);
+  });
+
+  it('should save and restore chatId per app when switching appId', () => {
+    const store = useChatStore.getState();
+    store.setSource(ChatSourceEnum.online);
+    store.setAppId('app-a');
+    store.setChatId('chat-a');
+
+    store.setAppId('app-b');
+    store.setChatId('chat-b');
+
+    store.setAppId('app-a');
+    expect(useChatStore.getState().chatId).toBe('chat-a');
+
+    store.setAppId('app-b');
+    expect(useChatStore.getState().chatId).toBe('chat-b');
+  });
+
+  it('should manage sourceKey chatId independently from the main chatId', () => {
+    const store = useChatStore.getState();
+
+    store.setSource(ChatSourceEnum.online);
+    store.setAppId('app-a');
+    store.setChatId('debug-chat-id');
+
+    store.setSourceChatId('chatAgentHelper:app-a', 'helper-chat-id');
+
+    const newState = useChatStore.getState();
+    expect(newState.chatId).toBe('debug-chat-id');
+    expect(newState.sourceChatIdMap['chatAgentHelper:app-a']).toBe('helper-chat-id');
+    expect(useChatStore.getState().ensureSourceChatId('chatAgentHelper:app-a')).toBe(
+      'helper-chat-id'
+    );
+    expect(store.ensureSourceChatId('chatAgentHelper:app-b')).toBe('test-generated-id');
+    expect(useChatStore.getState().ensureSourceChatId('chatAgentHelper:app-b')).toBe(
+      'test-generated-id'
+    );
+  });
+
+  it('should namespace app chat cache by source', () => {
+    const store = useChatStore.getState();
+
+    store.setSource(ChatSourceEnum.online);
+    store.setAppId('app-a');
+    store.setChatId('online-chat-id');
+
+    store.setSource(ChatSourceEnum.api);
+    store.setAppId('app-b');
+    store.setChatId('api-chat-id');
+
+    expect(useChatStore.getState().appChatIdMap).toMatchObject({
+      [`${ChatSourceEnum.online}:app-a`]: 'online-chat-id',
+      [`${ChatSourceEnum.api}:app-b`]: 'api-chat-id'
+    });
+  });
+
+  it('should not restore app cached chatId for share source', () => {
+    const store = useChatStore.getState();
+
+    useChatStore.setState({
+      source: ChatSourceEnum.share,
+      appChatIdMap: {
+        [`${ChatSourceEnum.online}:app-a`]: 'normal-chat-id',
+        [`${ChatSourceEnum.share}:app-a`]: 'legacy-share-chat-id',
+        [`${ChatSourceEnum.share}:share-a:user-a:app-a`]: 'share-chat-id'
+      }
+    });
+
+    store.setAppId('app-a');
+
+    const newState = useChatStore.getState();
+    expect(newState.chatId).toBe('test-generated-id');
+    expect(newState.chatId).not.toBe('normal-chat-id');
+    expect(newState.chatId).not.toBe('legacy-share-chat-id');
+    expect(newState.chatId).not.toBe('share-chat-id');
+  });
+
+  it('should save share chatId with share identity namespace', () => {
+    const store = useChatStore.getState();
+
+    store.setSource(ChatSourceEnum.share);
+    store.setAppId('app-a');
+    store.setOutLinkAuthData({ shareId: 'share-a', outLinkUid: 'user-a' });
+    store.setChatId('share-chat-id');
+
+    expect(useChatStore.getState().appChatIdMap).toEqual({
+      [`${ChatSourceEnum.share}:share-a:user-a:app-a`]: 'share-chat-id'
+    });
+  });
+
+  it('should restore share chatId only with matched share identity namespace', () => {
+    const store = useChatStore.getState();
+
+    useChatStore.setState({
+      source: ChatSourceEnum.share,
+      appId: 'app-a',
+      chatId: 'new-chat-id',
+      appChatIdMap: {
+        [`${ChatSourceEnum.share}:share-a:user-a:app-a`]: 'matched-share-chat',
+        [`${ChatSourceEnum.share}:share-a:user-b:app-a`]: 'other-user-chat'
+      }
+    });
+
+    store.setOutLinkAuthData({ shareId: 'share-a', outLinkUid: 'user-a' });
+
+    expect(useChatStore.getState().chatId).toBe('matched-share-chat');
+  });
+
+  it('should not restore last chatId for share source', () => {
+    const store = useChatStore.getState();
+
+    useChatStore.setState({
+      source: undefined,
+      chatId: '',
+      lastChatId: `${ChatSourceEnum.share}-cached-share-chat`
+    });
+
+    store.setSource(ChatSourceEnum.share);
+
+    const newState = useChatStore.getState();
+    expect(newState.chatId).toBe('test-generated-id');
+    expect(newState.chatId).not.toBe('cached-share-chat');
+  });
+
+  it('should keep chatId when setting the same appId', () => {
+    const store = useChatStore.getState();
+    store.setSource(ChatSourceEnum.online);
+    store.setAppId('app-a');
+    store.setChatId('stable-chat-id');
+
+    store.setAppId('app-a');
+
+    const newState = useChatStore.getState();
+    expect(newState.chatId).toBe('stable-chat-id');
   });
 
   it('should set and get chatId', () => {
@@ -76,7 +257,7 @@ describe('useChatStore', () => {
 
   it('should restore last chat when setting same source and lastChatId with different id', () => {
     const store = useChatStore.getState();
-    const source = ChatSourceEnum.share;
+    const source = ChatSourceEnum.online;
     const chatId = 'test';
     useChatStore.setState({
       lastChatId: `${source}-${chatId}`,
@@ -91,7 +272,7 @@ describe('useChatStore', () => {
   // The expected value should be 'test', not 'test-generated-id', since lastChatId is '${source}-test'
   it('should restore last chat when setting same source and lastChatId with id that matches getNanoid', () => {
     const store = useChatStore.getState();
-    const source = ChatSourceEnum.share;
+    const source = ChatSourceEnum.online;
     const chatId = 'test';
 
     useChatStore.setState({
@@ -155,7 +336,7 @@ describe('useChatStore', () => {
     expect(useChatStore.getState().lastChatId).toBe(`${ChatSourceEnum.api}-test-generated-id`);
   });
 
-  it('should set appId from lastChatAppId if not set', () => {
+  it('should not set appId from lastChatAppId when source changes', () => {
     useChatStore.setState({
       appId: '',
       lastChatAppId: 'last-app-id',
@@ -167,7 +348,41 @@ describe('useChatStore', () => {
     });
     const store = useChatStore.getState();
     store.setSource(ChatSourceEnum.api);
-    expect(useChatStore.getState().appId).toBe('last-app-id');
+    expect(useChatStore.getState().appId).toBe('');
+    expect(useChatStore.getState().lastChatAppId).toBe('last-app-id');
+  });
+
+  it('should reset chat cache', () => {
+    const store = useChatStore.getState();
+    useChatStore.setState({
+      source: ChatSourceEnum.share,
+      appId: 'app-id',
+      lastChatAppId: 'last-app-id',
+      chatId: 'chat-id',
+      lastChatId: `${ChatSourceEnum.share}-chat-id`,
+      sourceChatIdMap: {
+        'chatAgentHelper:app-a': 'helper-chat-id'
+      },
+      lastPane: ChatSidebarPaneEnum.RECENTLY_USED_APPS,
+      outLinkAuthData: {
+        shareId: 'share-id',
+        outLinkUid: 'outlink-uid'
+      }
+    });
+
+    store.resetChatCache();
+
+    expect(useChatStore.getState()).toMatchObject({
+      source: undefined,
+      appId: '',
+      lastChatAppId: '',
+      chatId: '',
+      lastChatId: '',
+      appChatIdMap: {},
+      sourceChatIdMap: {},
+      lastPane: ChatSidebarPaneEnum.HOME,
+      outLinkAuthData: {}
+    });
   });
 
   it('should set lastPane to undefined by default', () => {

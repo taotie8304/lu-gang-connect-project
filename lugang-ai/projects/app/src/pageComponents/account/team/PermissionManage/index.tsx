@@ -14,8 +14,8 @@ import {
   Flex,
   Button
 } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import {
   deleteMemberPermission,
   getTeamClbs,
@@ -36,6 +36,8 @@ import {
   TeamDatasetCreateRoleVal,
   TeamManagePermissionVal,
   TeamManageRoleVal,
+  TeamSkillCreatePermissionVal,
+  TeamSkillCreateRoleVal,
   TeamRoleList
 } from '@fastgpt/global/support/permission/user/constant';
 import { TeamPermission } from '@fastgpt/global/support/permission/user/controller';
@@ -45,14 +47,39 @@ import MyBox from '@fastgpt/web/components/common/MyBox';
 import CollaboratorContextProvider, {
   CollaboratorContext
 } from '@/components/support/permission/MemberManager/context';
-import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useContextSelector } from 'use-context-selector';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
-import { GetSearchUserGroupOrg } from '@/web/support/user/api';
+import { getSearchMembersOrgsGroups } from '@/web/support/user/api';
 import { type PermissionValueType } from '@fastgpt/global/support/permission/type';
-import { type CollaboratorItemType } from '@fastgpt/global/support/permission/collaborator';
 import type { Permission } from '@fastgpt/global/support/permission/controller';
 import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
+
+const PermissionTableHeaderLabel = ({
+  children,
+  tip,
+  isCentered = true
+}: {
+  children: React.ReactNode;
+  tip: React.ReactNode;
+  isCentered?: boolean;
+}) => {
+  return (
+    <Flex
+      align={'center'}
+      gap={1}
+      mx={isCentered ? 'auto' : undefined}
+      w={'fit-content'}
+      maxW={'100%'}
+    >
+      <Box as="span" lineHeight={'1.25'}>
+        {children}
+      </Box>
+      <Box as="span" display={'inline-flex'} alignItems={'center'} lineHeight={0} flexShrink={0}>
+        <QuestionTip label={tip} />
+      </Box>
+    </Flex>
+  );
+};
 
 function PermissionManage({
   Tabs,
@@ -61,7 +88,7 @@ function PermissionManage({
   Tabs: React.ReactNode;
   onOpenAddMember: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['account_team', 'user']);
   const { userInfo } = useUserStore();
 
   const collaboratorList = useContextSelector(
@@ -83,7 +110,7 @@ function PermissionManage({
 
   const [searchKey, setSearchKey] = useState('');
 
-  const { data: searchResult } = useRequest2(() => GetSearchUserGroupOrg(searchKey), {
+  const { data: searchResult } = useRequest(() => getSearchMembersOrgsGroups(searchKey), {
     manual: false,
     throttleWait: 500,
     debounceWait: 200,
@@ -114,7 +141,7 @@ function PermissionManage({
     };
   }, [collaboratorList, searchResult, searchKey]);
 
-  const { runAsync: onUpdatePermission, loading: addLoading } = useRequest2(
+  const { runAsync: onUpdatePermission, loading: addLoading } = useRequest(
     async ({ id, type, per }: { id: string; type: 'add' | 'remove'; per: PermissionValueType }) => {
       const clb = collaboratorList.find(
         (clb) => clb.tmbId === id || clb.groupId === id || clb.orgId === id
@@ -141,7 +168,7 @@ function PermissionManage({
     }
   );
 
-  const { runAsync: onDeleteMemberPermission, loading: deleteLoading } = useRequest2(
+  const { runAsync: onDeleteMemberPermission, loading: deleteLoading } = useRequest(
     async (props) => {
       if (onDelOneCollaborator) {
         return await onDelOneCollaborator(props);
@@ -195,60 +222,89 @@ function PermissionManage({
 
   return (
     <>
-      <Flex justify={'space-between'} align={'center'} pb={'1rem'}>
-        {Tabs}
-        <Box ml="auto">
-          <SearchInput
-            placeholder={t('user:search_group_org_user')}
-            w="200px"
-            value={searchKey}
-            onChange={(e) => setSearchKey(e.target.value)}
-          />
-        </Box>
-        {userInfo?.team.permission.hasManagePer && (
-          <Button
-            variant={'primary'}
-            size="md"
-            borderRadius={'md'}
-            ml={3}
-            onClick={onOpenAddMember}
-          >
-            {t('account_team:manage_per')}
-          </Button>
-        )}
+      <Flex
+        px={6}
+        justify={'space-between'}
+        align={['stretch', 'center']}
+        flexDirection={['column', 'row']}
+        pb={'1rem'}
+      >
+        <Box w={['100%', 'auto']}>{Tabs}</Box>
+        <Flex
+          mt={[3, 0]}
+          ml={['initial', 'auto']}
+          w={['100%', 'auto']}
+          flexDirection={['column', 'row']}
+          justifyContent={'flex-end'}
+          gap={3}
+          flexWrap={'wrap'}
+        >
+          <Box w={['100%', '200px']} flexShrink={0}>
+            <SearchInput
+              bg={'white'}
+              placeholder={t('user:search_group_org_user')}
+              w={'100%'}
+              value={searchKey}
+              onChange={(e) => setSearchKey(e.target.value)}
+            />
+          </Box>
+          {userInfo?.team.permission.hasManagePer && (
+            <Button
+              w={['100%', 'auto']}
+              variant={'primary'}
+              size="md"
+              borderRadius={'md'}
+              onClick={onOpenAddMember}
+            >
+              {t('account_team:manage_per')}
+            </Button>
+          )}
+        </Flex>
       </Flex>
-      <MyBox isLoading={addLoading || deleteLoading}>
+      <MyBox
+        px={6}
+        flex={['0 0 auto', '1 0 0']}
+        h={['auto', 0]}
+        minH={0}
+        overflowY={['visible', 'auto']}
+        isLoading={addLoading || deleteLoading}
+      >
         <TableContainer fontSize={'sm'}>
           <Table>
             <Thead>
               <Tr bg={'white !important'}>
                 <Th bg="myGray.100" borderLeftRadius="md" maxW={'150px'}>
-                  {`${t('user:team.group.members')} / ${t('user:team.org.org')} / ${t('user:team.group.group')}`}
-                  <QuestionTip ml="1" label={t('user:team.group.permission_tip')} />
+                  <PermissionTableHeaderLabel
+                    isCentered={false}
+                    tip={t('user:team.group.permission_tip')}
+                  >
+                    {`${t('user:team.group.members')} / ${t('user:team.org.org')} / ${t('user:team.group.group')}`}
+                  </PermissionTableHeaderLabel>
                 </Th>
                 <Th bg="myGray.100">
-                  <Box mx="auto" w="fit-content">
+                  <PermissionTableHeaderLabel tip={t('account_team:permission_appCreate_tip')}>
                     {t('account_team:permission_appCreate')}
-                    <QuestionTip ml="1" label={t('account_team:permission_appCreate_tip')} />
-                  </Box>
+                  </PermissionTableHeaderLabel>
                 </Th>
                 <Th bg="myGray.100">
-                  <Box mx="auto" w="fit-content">
+                  <PermissionTableHeaderLabel tip={t('account_team:permission_skillCreate_Tip')}>
+                    {t('account_team:permission_skillCreate')}
+                  </PermissionTableHeaderLabel>
+                </Th>
+                <Th bg="myGray.100">
+                  <PermissionTableHeaderLabel tip={t('account_team:permission_datasetCreate_Tip')}>
                     {t('account_team:permission_datasetCreate')}
-                    <QuestionTip ml="1" label={t('account_team:permission_datasetCreate_Tip')} />
-                  </Box>
+                  </PermissionTableHeaderLabel>
                 </Th>
                 <Th bg="myGray.100">
-                  <Box mx="auto" w="fit-content">
+                  <PermissionTableHeaderLabel tip={t('account_team:permission_apikeyCreate_Tip')}>
                     {t('account_team:permission_apikeyCreate')}
-                    <QuestionTip ml="1" label={t('account_team:permission_apikeyCreate_Tip')} />
-                  </Box>
+                  </PermissionTableHeaderLabel>
                 </Th>
                 <Th bg="myGray.100">
-                  <Box mx="auto" w="fit-content">
+                  <PermissionTableHeaderLabel tip={t('account_team:permission_manage_tip')}>
                     {t('account_team:permission_manage')}
-                    <QuestionTip ml="1" label={t('account_team:permission_manage_tip')} />
-                  </Box>
+                  </PermissionTableHeaderLabel>
                 </Th>
                 <Th bg="myGray.100" borderRightRadius="md">
                   <Box mx="auto" w="fit-content">
@@ -280,6 +336,12 @@ function PermissionManage({
                       <PermissionCheckBox
                         isDisabled={member.permission.hasManagePer && !userInfo?.permission.isOwner}
                         role={TeamAppCreateRoleVal}
+                        clbPer={member.permission}
+                        id={member.tmbId!}
+                      />
+                      <PermissionCheckBox
+                        isDisabled={member.permission.hasManagePer && !userInfo?.permission.isOwner}
+                        role={TeamSkillCreateRoleVal}
                         clbPer={member.permission}
                         id={member.tmbId!}
                       />
@@ -342,6 +404,12 @@ function PermissionManage({
                       />
                       <PermissionCheckBox
                         isDisabled={org.permission.isOwner || !userManage}
+                        role={TeamSkillCreatePermissionVal}
+                        clbPer={org.permission}
+                        id={org.orgId!}
+                      />
+                      <PermissionCheckBox
+                        isDisabled={org.permission.isOwner || !userManage}
                         role={TeamDatasetCreatePermissionVal}
                         clbPer={org.permission}
                         id={org.orgId!}
@@ -390,7 +458,7 @@ function PermissionManage({
                         <MemberTag
                           name={
                             group.name === DefaultGroupName
-                              ? userInfo?.team.teamName ?? ''
+                              ? (userInfo?.team.teamName ?? '')
                               : group.name
                           }
                           avatar={group.avatar}
@@ -399,6 +467,12 @@ function PermissionManage({
                       <PermissionCheckBox
                         isDisabled={group.permission.isOwner || !userManage}
                         role={TeamAppCreatePermissionVal}
+                        clbPer={group.permission}
+                        id={group.groupId!}
+                      />
+                      <PermissionCheckBox
+                        isDisabled={group.permission.isOwner || !userManage}
+                        role={TeamSkillCreatePermissionVal}
                         clbPer={group.permission}
                         id={group.groupId!}
                       />

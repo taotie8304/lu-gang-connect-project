@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Flex, Tab, TabIndicator, TabList, Tabs } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useContextSelector } from 'use-context-selector';
@@ -13,12 +13,17 @@ import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
 import NextHead from '@/components/common/NextHead';
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import ChatSliderMobileDrawer from '@/pageComponents/chat/slider/ChatSliderMobileDrawer';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
 
-const MyApps = () => {
+type MyAppsProps = {
+  hideMobileHeader?: boolean;
+  mobileSearchKey?: string;
+};
+
+const MyApps = ({ hideMobileHeader = false, mobileSearchKey }: MyAppsProps) => {
   const { t } = useTranslation();
   const router = useRouter();
   const { isPc } = useSystem();
@@ -29,13 +34,19 @@ const MyApps = () => {
     (v) => v
   );
 
-  const chatSettings = useContextSelector(ChatSettingContext, (v) => v.chatSettings);
+  const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
 
   const onOpenSlider = useContextSelector(ChatContext, (v) => v.onOpenSlider);
+
+  useEffect(() => {
+    if (mobileSearchKey === undefined) return;
+    setSearchKey(mobileSearchKey);
+  }, [mobileSearchKey, setSearchKey]);
 
   const map = useMemo(
     () => ({
       all: t('common:core.module.template.all_team_app'),
+      [AppTypeEnum.chatAgent]: t('app:type.Chat_Agent_v2'),
       [AppTypeEnum.simple]: t('app:type.Chat_Agent'),
       [AppTypeEnum.workflow]: t('app:type.Workflow bot'),
       [AppTypeEnum.workflowTool]: t('app:toolType_workflow'),
@@ -50,15 +61,22 @@ const MyApps = () => {
   );
 
   const [appType, setAppType] = useState<AppTypeEnum | 'all'>('all');
-  const tabs = ['all' as const, AppTypeEnum.simple, AppTypeEnum.workflow, AppTypeEnum.workflowTool];
+  const tabs = [
+    'all' as const,
+    AppTypeEnum.chatAgent,
+    AppTypeEnum.simple,
+    AppTypeEnum.workflow,
+    AppTypeEnum.workflowTool
+  ];
 
   return (
     <Flex flexDirection={'column'} h={'100%'}>
       <NextHead title={chatSettings?.homeTabTitle} icon={getWebReqUrl(feConfigs?.favicon)} />
 
-      {!isPc && (
+      {!isPc && !hideMobileHeader && (
         <Flex
           py={4}
+          px={3}
           color="myGray.900"
           gap={2}
           alignItems={'center'}
@@ -66,7 +84,6 @@ const MyApps = () => {
           justifyContent={'space-between'}
         >
           <MyIcon
-            ml={3}
             w="20px"
             color="myGray.500"
             name="core/chat/sidebar/menu"
@@ -75,6 +92,9 @@ const MyApps = () => {
 
           <Box w="70%">
             <SearchInput
+              h="36px"
+              lineHeight="36px"
+              py={0}
               onChange={(e) => setSearchKey(e.target.value)}
               placeholder={t('app:search_app')}
               maxLength={30}
@@ -110,36 +130,62 @@ const MyApps = () => {
 
       <Flex gap={5} flex={'1 0 0'} h={0}>
         <Flex
-          px={[3, 6]}
+          px={isPc ? 6 : 4}
           flex={'1 0 0'}
           flexDirection={'column'}
           h={'100%'}
           overflowY={'auto'}
           overflowX={'hidden'}
         >
-          <Flex pt={paths.length > 0 ? 3 : [0, 6]} alignItems={'center'} gap={3}>
-            {isPc && (
-              <Tabs variant="unstyled" onChange={(index) => setAppType(tabs[index])}>
-                <TabList gap={5}>
-                  {tabs.map((item, index) => (
-                    <Tab
-                      key={item}
-                      color={appType === item ? 'primary.700' : 'myGray.500'}
-                      fontWeight={500}
-                      px={0}
-                    >
-                      {map[item as keyof typeof map]}
-                    </Tab>
-                  ))}
-                </TabList>
-                <TabIndicator mt="-1.5px" height="2px" bg="primary.600" borderRadius="1px" />
-              </Tabs>
-            )}
+          <Flex
+            pt={paths.length > 0 ? 3 : isPc ? '20px' : 2}
+            pb={isPc ? 0 : 2}
+            alignItems={'center'}
+            gap={3}
+          >
+            <Tabs
+              variant="unstyled"
+              w={['100%', 'auto']}
+              onChange={(index) => setAppType(tabs[index])}
+            >
+              <TabList
+                gap={5}
+                p="4px"
+                h="40px"
+                overflowX="auto"
+                overflowY="hidden"
+                flexWrap="nowrap"
+                position="relative"
+                css={{
+                  scrollbarWidth: 'none',
+                  msOverflowStyle: 'none',
+                  '&::-webkit-scrollbar': { display: 'none' }
+                }}
+              >
+                {tabs.map((item) => (
+                  <Tab
+                    key={item}
+                    h="32px"
+                    flexShrink="0"
+                    color={appType === item ? 'primary.700' : 'myGray.500'}
+                    fontWeight={500}
+                    px={0}
+                  >
+                    {map[item as keyof typeof map]}
+                  </Tab>
+                ))}
+                <TabIndicator bottom="0" height="2px" bg="primary.600" borderRadius="1px" />
+              </TabList>
+            </Tabs>
+
             <Box flex={1} />
 
             {isPc && (
               <SearchInput
                 maxW={['auto', '250px']}
+                h="36px"
+                lineHeight="36px"
+                py={0}
                 onChange={(e) => setSearchKey(e.target.value)}
                 placeholder={t('app:search_app')}
                 maxLength={30}
@@ -156,10 +202,10 @@ const MyApps = () => {
   );
 };
 
-function ContextRender() {
+function ContextRender(props: MyAppsProps) {
   return (
     <AppListContextProvider>
-      <MyApps />
+      <MyApps {...props} />
     </AppListContextProvider>
   );
 }

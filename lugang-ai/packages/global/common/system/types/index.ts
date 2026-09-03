@@ -1,0 +1,249 @@
+import type { SubPlanType } from '../../../support/wallet/sub/type';
+import type { AccountCancellationVerificationCapabilities } from '../../../support/user/account/cancellation/type';
+import type {
+  LLMModelItemType,
+  EmbeddingModelItemType,
+  TTSModelType,
+  STTModelType,
+  RerankModelItemType
+} from '../../../core/ai/model.schema';
+
+export type NavbarItemType = {
+  id: string;
+  name: string;
+  avatar: string;
+  url: string;
+  isActive: boolean;
+};
+
+export type ExternalProviderWorkflowVarType = {
+  name: string;
+  key: string;
+  intro: string;
+  isOpen: boolean;
+  url?: string;
+};
+
+export type FastGPTRegisterMethodType = 'email' | 'phone';
+export type FastGPTRegisterMethodCompatType = FastGPTRegisterMethodType | 'sync';
+export type FastGPTTeamModeType = 'multi' | 'single' | 'sync';
+
+/* fastgpt main */
+export type FastGPTConfigFileType = {
+  feConfigs: FastGPTFeConfigsType;
+  systemEnv: SystemEnvType;
+  subPlans?: SubPlanType;
+
+  // Abandon
+  llmModels?: LLMModelItemType[];
+  vectorModels?: EmbeddingModelItemType[];
+  reRankModels?: RerankModelItemType[];
+  audioSpeechModels?: TTSModelType[];
+  whisperModel?: STTModelType;
+};
+
+export type FastGPTFeConfigsType = {
+  show_workorder?: boolean;
+  show_emptyChat?: boolean;
+  isPlus?: boolean;
+  hideChatCopyrightSetting?: boolean;
+  /**
+   * 用户自助注册方式。兼容期允许读取旧配置中的 sync，但新配置不再写入 sync。
+   */
+  register_method?: FastGPTRegisterMethodCompatType[];
+  teamMode?: FastGPTTeamModeType;
+  login_method?: FastGPTRegisterMethodType[]; // Attention: login method is different with oauth
+  find_password_method?: FastGPTRegisterMethodType[];
+  bind_notification_method?: FastGPTRegisterMethodType[];
+  /**
+   * @deprecated MCP SSE 代理地址已迁移到环境变量 SSE_MCP_SERVER_PROXY_ENDPOINT。
+   * 运行时配置以环境变量为准，admin 不再支持写入该字段。
+   */
+  mcpServerProxyEndpoint?: string;
+
+  chineseRedirectUrl?: string;
+  botIframeUrl?: string;
+
+  show_appStore?: boolean;
+  show_git?: boolean;
+  show_pay?: boolean;
+  show_openai_account?: boolean;
+  show_compliance_copywriting?: boolean;
+  show_aiproxy?: boolean;
+  show_coupon?: boolean;
+  show_discount_coupon?: boolean;
+  show_enterprise_auth?: boolean;
+  showWecomConfig?: boolean;
+  wecomLoginAutoRedirect?: boolean;
+  accountCancellation?: {
+    enabled?: boolean;
+  };
+  /** 仅暴露注销验证的布尔能力，不包含任何 Provider 密钥。 */
+  accountVerification?: {
+    accountCancellation?: AccountCancellationVerificationCapabilities;
+  };
+
+  show_dataset_feishu?: boolean;
+  show_dataset_yuque?: boolean;
+  show_dataset_dingtalk?: boolean;
+  show_publish_feishu?: boolean;
+  show_publish_dingtalk?: boolean;
+  show_publish_wecom?: boolean;
+  show_publish_offiaccount?: boolean;
+  show_publish_wechat?: boolean;
+  show_agent_sandbox?: boolean;
+  pluginRemoteDebug?: boolean;
+  enable_team_plugin_upload?: boolean;
+
+  show_dataset_enhance?: boolean;
+  show_batch_eval?: boolean;
+
+  concatMd?: string;
+  docUrl?: string;
+  loginGuideDocUrl?: string;
+  openAPIDocUrl?: string;
+  appTemplateCourse?: string;
+  marketplaceUrl?: string;
+  customApiDomain?: string;
+  customSharePageDomain?: string;
+
+  systemTitle?: string;
+  scripts?: { [key: string]: string }[];
+  favicon?: string;
+
+  sso?: {
+    icon?: string;
+    title?: string;
+    url?: string;
+    autoLogin?: boolean;
+  };
+  oauth?: {
+    github?: string;
+    google?: string;
+    wechat?: string;
+    microsoft?: {
+      clientId?: string;
+      tenantId?: string;
+      customButton?: string;
+    };
+    wecom?: boolean;
+  };
+  limit?: {
+    exportDatasetLimitMinutes?: number;
+    websiteSyncLimitMinuted?: number;
+    agentSandboxMaxEditDebug?: number;
+    agentSandboxMaxSessionRuntime?: number;
+    agentSandboxArchiveMaxBytes?: number;
+    skillSandboxMaxBytes?: number;
+    agentSandboxMaxFileBytes?: number;
+    workflowParallelRunMaxConcurrency?: number;
+    maxFolderDepth?: number;
+  };
+
+  uploadFileMaxAmount: number;
+  uploadFileMaxSize: number; // MB
+  evalFileMaxLines?: number;
+
+  // Compute by systemEnv.customPdfParse
+  showCustomPdfParse?: boolean;
+  customPdfParsePrice?: number;
+
+  navbarItems?: NavbarItemType[];
+  externalProviderWorkflowVariables?: ExternalProviderWorkflowVarType[];
+
+  payConfig?: {
+    wx?: boolean;
+    alipay?: boolean;
+    bank?: boolean;
+  };
+  payFormUrl?: string;
+  fileUrlWhitelist?: string[];
+  customDomain?: {
+    enable?: boolean;
+    domain?: {
+      aliyun?: string;
+      tencent?: string;
+      volcengine?: string;
+    };
+  };
+
+  ip_whitelist?: string;
+
+  // tmp
+  agentSandboxFree?: boolean;
+  agentSandboxProxyUrl?: string;
+};
+
+export type SystemEnvType = {
+  openapiPrefix?: string;
+
+  datasetParseMaxProcess: number;
+  vectorMaxProcess: number;
+  qaMaxProcess: number;
+  vlmMaxProcess: number;
+
+  hnswEfSearch: number;
+  hnswMaxScanTuples: number;
+
+  oneapiUrl?: string;
+  chatApiKey?: string;
+
+  customPdfParse?: customPdfParseType;
+  fileUrlWhitelist?: string[];
+  customDomain?: customDomainType;
+  workflowHttpNode?: {
+    /** 是否允许工作流 HTTP 节点忽略 HTTPS 证书校验。 */
+    ignoreHttpsCertificate?: boolean;
+  };
+};
+
+export type customDomainType = {
+  kc?: {
+    aliyun?: string;
+    tencent?: string;
+    volcengine?: string;
+  };
+  domain?: {
+    aliyun?: string;
+    tencent?: string;
+    volcengine?: string;
+  };
+  issuerServiceName?: {
+    aliyun?: string;
+    tencent?: string;
+    volcengine?: string;
+  };
+  nginxServiceName?: {
+    aliyun?: string;
+    tencent?: string;
+    volcengine?: string;
+  };
+};
+
+export type customPdfParseType = {
+  url?: string;
+  key?: string;
+  somarkApiKey?: string;
+  doc2xKey?: string;
+  textinAppId?: string;
+  textinSecretCode?: string;
+  price?: number;
+};
+
+export type LicenseDataType = {
+  startTime: string;
+  expiredTime: string;
+  company: string;
+  description?: string; // 描述
+  hosts?: string[]; // 管理端有效域名
+  maxUsers?: number; // 最大用户数，不填默认不上限
+  maxApps?: number; // 最大应用数，不填默认不上限
+  maxDatasets?: number; // 最大数据集数，不填默认不上限
+  functions: {
+    sso: boolean;
+    pay: boolean;
+    customTemplates: boolean;
+    datasetEnhance: boolean;
+    batchEval: boolean;
+  };
+};

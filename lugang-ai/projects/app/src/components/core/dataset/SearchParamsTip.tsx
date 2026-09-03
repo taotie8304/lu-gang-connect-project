@@ -5,7 +5,7 @@ import {
   DatasetSearchModeMap
 } from '@fastgpt/global/core/dataset/constants';
 import { useTranslation } from 'next-i18next';
-import React, { useEffect, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { getWebLLMModel } from '@/web/common/system/utils';
 
@@ -15,7 +15,7 @@ const SearchParamsTip = ({
   limit = 5000,
   responseEmptyText,
   usingReRank = false,
-  datasetSearchUsingExtensionQuery,
+  usingExtensionQuery,
   queryExtensionModel
 }: {
   searchMode: `${DatasetSearchModeEnum}`;
@@ -23,7 +23,7 @@ const SearchParamsTip = ({
   limit?: number;
   responseEmptyText?: string;
   usingReRank?: boolean;
-  datasetSearchUsingExtensionQuery?: boolean;
+  usingExtensionQuery?: boolean;
   queryExtensionModel?: string;
 }) => {
   const { t } = useTranslation();
@@ -34,8 +34,8 @@ const SearchParamsTip = ({
   const hasSimilarityMode = usingReRank || searchMode === DatasetSearchModeEnum.embedding;
 
   const extensionModelName = useMemo(
-    () => getWebLLMModel(queryExtensionModel)?.name,
-    [queryExtensionModel]
+    () => (usingExtensionQuery ? getWebLLMModel(queryExtensionModel)?.name : ''),
+    [usingExtensionQuery, queryExtensionModel]
   );
 
   return (
@@ -45,6 +45,15 @@ const SearchParamsTip = ({
       borderWidth={'1px'}
       borderColor={'primary.1'}
       sx={{
+        '& thead > tr': {
+          borderBottom: 'none !important'
+        },
+        '& thead > tr > th': {
+          borderBottom: 'none !important'
+        },
+        '& tbody > tr:first-of-type > td, & tbody > tr:first-of-type > th': {
+          borderTop: 'none !important'
+        },
         '&::-webkit-scrollbar': {
           height: '6px',
           borderRadius: '4px'
@@ -94,7 +103,7 @@ const SearchParamsTip = ({
               </Td>
             )}
             <Td pt={0} pb={2} fontSize={'mini'}>
-              {extensionModelName ? extensionModelName : '❌'}
+              {extensionModelName || '❌'}
             </Td>
             {hasEmptyResponseMode && <Th>{responseEmptyText !== '' ? '✅' : '❌'}</Th>}
           </Tr>

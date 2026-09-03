@@ -19,16 +19,16 @@ import {
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import MyModal from '@fastgpt/web/components/common/MyModal';
 import MySelect from '@fastgpt/web/components/common/MySelect';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { AddModelButton } from '../AddModelBox';
 import dynamic from 'next/dynamic';
 import { type SystemModelItemType } from '@fastgpt/service/core/ai/type';
-import type { ModelTypeEnum } from '@fastgpt/global/core/ai/model';
+import { ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { getSystemModelList } from '@/web/core/ai/config';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyAvatar from '@fastgpt/web/components/common/Avatar';
 import MyTag from '@fastgpt/web/components/common/Tag/index';
@@ -57,8 +57,8 @@ const EditChannelModal = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
-  const { t, i18n } = useTranslation();
-  const { defaultModels, aiproxyIdMap, getModelProvider } = useSystemStore();
+  const { t, i18n } = useClientTranslation('config_model');
+  const { defaultModels, aiproxyChannels, getModelProvider } = useSystemStore();
   const isEdit = defaultConfig.id !== 0;
 
   const { register, handleSubmit, watch, setValue } = useForm({
@@ -66,27 +66,28 @@ const EditChannelModal = ({
   });
 
   const providerType = watch('type');
-  const { data: providerList = [] } = useRequest2(
+  const { data: providerList = [] } = useRequest(
     () =>
       getChannelProviders().then((res) => {
-        return Object.entries(res)
-          .map(([key, value]) => {
-            const mapData = aiproxyIdMap[key as any] ?? {
-              name: value.name,
-              provider: 'Other'
-            };
-            const provider = getModelProvider(mapData.provider, i18n.language);
+        return aiproxyChannels
+          .map((channel) => {
+            const mapData = res[channel.channelId];
 
-            return {
-              order: provider.order,
-              defaultBaseUrl: value.defaultBaseUrl,
-              keyHelp: value.keyHelp,
-              icon: mapData?.avatar ?? provider.avatar,
-              label: parseI18nString(mapData.name, i18n.language as localeType),
-              value: Number(key)
-            };
+            if (!mapData) {
+              return [];
+            }
+
+            return [
+              {
+                defaultBaseUrl: mapData.defaultBaseUrl,
+                keyHelp: mapData.keyHelp,
+                icon: channel.avatar,
+                label: parseI18nString(channel.name, i18n.language as localeType),
+                value: channel.channelId
+              }
+            ];
           })
-          .sort((a, b) => a.order - b.order);
+          .flat();
       }),
     {
       manual: false
@@ -112,6 +113,13 @@ const EditChannelModal = ({
 
       isCustom: true,
       isActive: true,
+      ...(type === ModelTypeEnum.llm
+        ? {
+            vision: false,
+            audio: false,
+            video: false
+          }
+        : {}),
       // @ts-ignore
       type
     });
@@ -122,38 +130,28 @@ const EditChannelModal = ({
     data: systemModelList = [],
     runAsync: refreshSystemModelList,
     loading: loadingModels
-  } = useRequest2(getSystemModelList, {
+  } = useRequest(getSystemModelList, {
     manual: false
   });
   const modelList = useMemo(() => {
-    const currentProvider = aiproxyIdMap[providerType] ?? defaultProvider;
-    return systemModelList
-      .map((item) => {
-        const provider = getModelProvider(item.provider, i18n.language);
+    return systemModelList.map((item) => {
+      const provider = getModelProvider(item.provider, i18n.language);
 
-        return {
-          provider: item.provider,
-          icon: provider?.avatar,
-          label: item.model,
-          value: item.model
-        };
-      })
-      .sort((a, b) => {
-        // sort by provider, same provider first
-        if (a.provider === currentProvider.provider && b.provider !== currentProvider.provider)
-          return -1;
-        if (a.provider !== currentProvider.provider && b.provider === currentProvider.provider)
-          return 1;
-        return 0;
-      });
-  }, [aiproxyIdMap, getModelProvider, i18n.language, providerType, systemModelList]);
+      return {
+        provider: item.provider,
+        icon: provider?.avatar,
+        label: item.model,
+        value: item.model
+      };
+    });
+  }, [getModelProvider, i18n.language, systemModelList]);
 
   const modelMapping = watch('model_mapping');
 
-  const { runAsync: onSubmit, loading: loadingCreate } = useRequest2(
+  const { runAsync: onSubmit, loading: loadingCreate } = useRequest(
     (data: ChannelInfoType) => {
       if (data.models.length === 0) {
-        return Promise.reject(t('account_model:selected_model_empty'));
+        return Promise.reject(t('config_model:selected_model_empty'));
       }
       return isEdit ? putChannel(data) : postCreateChannel(data);
     },
@@ -174,7 +172,7 @@ const EditChannelModal = ({
       <MyModal
         isLoading={isLoading}
         iconSrc={'modal/setting'}
-        title={t('account_model:edit_channel')}
+        title={t('config_model:edit_channel')}
         onClose={onClose}
         w={'100%'}
         maxW={['90vw', '800px']}
@@ -183,19 +181,19 @@ const EditChannelModal = ({
           {/* Chnnel name */}
           <Box>
             <FormLabel required {...LabelStyles}>
-              {t('account_model:channel_name')}
+              {t('config_model:channel_name')}
             </FormLabel>
             <Input mt={1} {...register('name', { required: true })} />
           </Box>
           {/* Provider */}
           <Box alignItems={'center'} mt={4}>
             <FormLabel required {...LabelStyles}>
-              {t('account_model:channel_type')}
+              {t('config_model:channel_type')}
             </FormLabel>
             <Box mt={1}>
               <MySelect
                 list={providerList}
-                placeholder={t('account_model:select_provider_placeholder')}
+                placeholder={t('config_model:select_provider_placeholder')}
                 value={providerType}
                 isSearch
                 onChange={(val) => {
@@ -208,12 +206,12 @@ const EditChannelModal = ({
           <Box mt={4}>
             <Flex alignItems={'center'}>
               <FormLabel required flex={'1 0 0'}>
-                {t('account_model:model')}({models.length})
+                {t('config_model:model')}({models.length})
               </FormLabel>
 
               <AddModelButton onCreate={onCreateModel} size={'sm'} variant={'outline'} />
               <Button ml={2} size={'sm'} variant={'outline'} onClick={() => setValue('models', [])}>
-                {t('account_model:clear_model')}
+                {t('config_model:clear_model')}
               </Button>
             </Flex>
             <Box mt={2}>
@@ -229,8 +227,8 @@ const EditChannelModal = ({
           {/* Mapping */}
           <Box mt={4}>
             <HStack>
-              <FormLabel>{t('account_model:mapping')}</FormLabel>
-              <QuestionTip label={t('account_model:mapping_tip')} />
+              <FormLabel>{t('config_model:mapping')}</FormLabel>
+              <QuestionTip label={t('config_model:mapping_tip')} />
             </HStack>
             <Box mt={2}>
               <JsonEditor
@@ -250,11 +248,11 @@ const EditChannelModal = ({
           {/* url and key */}
           <Box mt={4}>
             <Flex alignItems={'center'}>
-              <FormLabel>{t('account_model:base_url')}</FormLabel>
+              <FormLabel>{t('config_model:base_url')}</FormLabel>
               {selectedProvider && (
                 <Flex alignItems={'center'} fontSize={'xs'}>
                   <Box>{'('}</Box>
-                  <Box mr={1}>{t('account_model:default_url')}:</Box>
+                  <Box mr={1}>{t('config_model:default_url')}:</Box>
                   <CopyBox value={selectedProvider?.defaultBaseUrl || ''}>
                     {selectedProvider?.defaultBaseUrl || ''}
                   </CopyBox>
@@ -270,11 +268,11 @@ const EditChannelModal = ({
           </Box>
           <Box mt={4}>
             <Flex alignItems={'center'}>
-              <FormLabel>{t('account_model:api_key')}</FormLabel>
+              <FormLabel>{t('config_model:api_key')}</FormLabel>
               {selectedProvider?.keyHelp && (
                 <Flex alignItems={'center'} fontSize={'xs'}>
                   <Box>{'('}</Box>
-                  <Box mr={1}>{t('account_model:key_type')}</Box>
+                  <Box mr={1}>{t('config_model:key_type')}</Box>
                   <Box>{selectedProvider.keyHelp}</Box>
                   <Box>{')'}</Box>
                 </Flex>
@@ -333,7 +331,7 @@ const MultipleSelect = ({ value = [], list = [], onSelect }: SelectProps) => {
   const ref = useRef<HTMLDivElement>(null);
   const BoxRef = useRef<HTMLDivElement>(null);
 
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('config_model');
   const { isOpen, onOpen, onClose } = useDisclosure();
   const { copyData } = useCopyData();
 
@@ -413,7 +411,7 @@ const MultipleSelect = ({ value = [], list = [], onSelect }: SelectProps) => {
           >
             {value.length === 0 ? (
               <Box flex={'1 0 0'} color={'myGray.500'} fontSize={'xs'}>
-                {t('account_model:select_model_placeholder')}
+                {t('config_model:select_model_placeholder')}
               </Box>
             ) : (
               <Flex flex={'1 0 0'} alignItems={'center'} gap={2} flexWrap={'wrap'}>
@@ -429,7 +427,7 @@ const MultipleSelect = ({ value = [], list = [], onSelect }: SelectProps) => {
                     }}
                     onClick={(e) => {
                       e.stopPropagation();
-                      copyData(item, t('account_model:copy_model_id_success'));
+                      copyData(item, t('config_model:copy_model_id_success'));
                     }}
                   >
                     <Box>{item}</Box>
@@ -457,7 +455,7 @@ const MultipleSelect = ({ value = [], list = [], onSelect }: SelectProps) => {
                     autoFocus
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t('account_model:search_model')}
+                    placeholder={t('config_model:search_model')}
                     onClick={(e) => {
                       e.stopPropagation();
                     }}

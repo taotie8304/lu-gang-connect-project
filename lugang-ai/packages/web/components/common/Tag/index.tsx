@@ -1,7 +1,18 @@
 import React, { useMemo } from 'react';
 import { Box, type BoxProps, Flex, type FlexProps } from '@chakra-ui/react';
 
-type ColorSchemaType = 'white' | 'blue' | 'green' | 'red' | 'yellow' | 'gray' | 'purple' | 'adora';
+export type ColorSchemaType =
+  | 'white'
+  | 'blue'
+  | 'cyan'
+  | 'green'
+  | 'red'
+  | 'lightRed'
+  | 'yellow'
+  | 'gray'
+  | 'lightGray'
+  | 'purple'
+  | 'adora';
 
 export type TagProps = FlexProps & {
   children: React.ReactNode | React.ReactNode[];
@@ -48,6 +59,21 @@ const colorMap: Record<
     borderColor: 'primary.200',
     bg: 'primary.50',
     color: 'primary.600'
+  },
+  cyan: {
+    borderColor: '#BCE7FF',
+    bg: '#F0FBFF',
+    color: '#0884DD'
+  },
+  lightRed: {
+    borderColor: 'red.200',
+    bg: 'red.50',
+    color: 'red.500'
+  },
+  lightGray: {
+    borderColor: 'myGray.200',
+    bg: 'myGray.100',
+    color: 'myGray.500'
   },
   purple: {
     borderColor: '#ECF',

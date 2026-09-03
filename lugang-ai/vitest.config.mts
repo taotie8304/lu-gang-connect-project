@@ -1,38 +1,66 @@
 import { resolve } from 'path';
 import { defineConfig } from 'vitest/config';
+import { getTestMaxWorkers } from './test/vitestWorkers';
 
 export default defineConfig({
   resolve: {
     alias: {
       '@': resolve('projects/app/src'),
+      '@fastgpt-sdk/storage/access-link': resolve('sdk/storage/src/access-link/index.ts'),
+      '@fastgpt-sdk/storage': resolve('sdk/storage/src/index.ts'),
+      '@fastgpt-sdk/otel/logger': resolve('sdk/otel/src/logger-entry.ts'),
+      '@fastgpt-sdk/otel/metrics': resolve('sdk/otel/src/metrics-entry.ts'),
+      '@fastgpt-sdk/otel/tracing': resolve('sdk/otel/src/tracing-entry.ts'),
+      '@fastgpt-sdk/otel': resolve('sdk/otel/src/index.ts'),
       '@fastgpt': resolve('packages'),
       '@test': resolve('test')
     }
   },
   test: {
-    environment: 'jsdom',
+    env: {
+      FILE_TOKEN_KEY:
+        process.env.FILE_TOKEN_KEY ??
+        'bfd697e7e798f75deaf2d31210bc93a2e41ad4eed9e7831071d77821b7b97cff',
+      AES256_SECRET_KEY: process.env.AES256_SECRET_KEY ?? 'fastgpt_test_aes256_secret_key',
+      INVOKE_TOKEN_SECRET: process.env.INVOKE_TOKEN_SECRET ?? 'fastgpt_test_invoke_token_secret_32',
+      FE_DOMAIN: process.env.FE_DOMAIN ?? 'https://fastgpt.example.com'
+    },
     coverage: {
       enabled: true,
       reporter: ['html', 'json-summary', 'json'],
+      // reporter: ['text', 'text-summary', 'html', 'json-summary', 'json'],
       reportOnFailure: true,
-      include: ['projects/**/*.ts', 'packages/**/*.ts'],
+      include: ['projects/app/**/*.ts', 'packages/**/*.ts'],
+      exclude: [
+        '**/node_modules/**',
+        '**/*.spec.ts',
+        '**/*/*.d.ts',
+        '**/test/**',
+        '**/*.test.ts',
+        '**/*/constants.ts',
+        '**/*/*.const.ts',
+        '**/*/type.ts',
+        '**/*/types.ts',
+        '**/*/type/*',
+        '**/*/schema.ts',
+        '**/*/*.schema.ts',
+        'packages/global/openapi/**/*',
+        'packages/global/core/workflow/template/**/*'
+      ],
       cleanOnRerun: false
     },
     outputFile: 'test-results.json',
     setupFiles: 'test/setup.ts',
     globalSetup: 'test/globalSetup.ts',
-    // fileParallelism: false,
-    maxConcurrency: 5,
+    fileParallelism: true,
+    maxWorkers: getTestMaxWorkers(),
+    // Test-level execution within a file: parallel (up to 5 concurrent tests)
+    maxConcurrency: 10,
     pool: 'threads',
-    include: [
-      'test/test.ts',
-      'test/cases/**/*.test.ts',
-      'projects/app/test/**/*.test.ts',
-      'projects/sandbox/test/**/*.test.ts',
-      'projects/marketplace/test/**/*.test.ts',
-      'packages/**/*.test.ts'
-    ],
     testTimeout: 20000,
-    reporters: ['github-actions', 'default']
+    hookTimeout: 30000,
+    passWithNoTests: true,
+    reporters: ['github-actions', 'default'],
+    include: ['test/**/*.test.ts']
   }
 });

@@ -1,4 +1,4 @@
-import { i18nT } from '../../../web/i18n/utils';
+import { i18nT } from '../../common/i18n/utils';
 import type { JsonSchemaPropertiesItemType } from '../app/jsonschema';
 
 export enum FlowNodeTemplateTypeEnum {
@@ -114,6 +114,7 @@ export const valueTypeJsonSchemaMap: Record<string, JsonSchemaPropertiesItemType
 export enum NodeInputKeyEnum {
   // old
   welcomeText = 'welcomeText',
+  welcomeQuestions = 'welcomeQuestions',
   switch = 'switch', // a trigger switch
   history = 'history',
   answerText = 'text',
@@ -161,12 +162,24 @@ export enum NodeInputKeyEnum {
   aiChatQuotePrompt = 'quotePrompt',
   aiChatDatasetQuote = 'quoteQA',
   aiChatVision = 'aiChatVision',
+  aiChatAudio = 'aiChatAudio',
+  aiChatVideo = 'aiChatVideo',
+  aiChatExtractFiles = 'aiChatExtractFiles',
   stringQuoteText = 'stringQuoteText',
   aiChatReasoning = 'aiChatReasoning',
+  aiChatReasoningEffort = 'aiChatReasoningEffort',
   aiChatTopP = 'aiChatTopP',
   aiChatStopSign = 'aiChatStopSign',
   aiChatResponseFormat = 'aiChatResponseFormat',
   aiChatJsonSchema = 'aiChatJsonSchema',
+
+  // agent
+  selectedTools = 'agent_selectedTools',
+  datasetParams = 'agent_datasetParams',
+  skills = 'skills',
+  useAgentSandbox = 'useAgentSandbox',
+  sandboxEntrypoint = 'sandboxEntrypoint',
+  editSkillId = 'editSkillId',
 
   // dataset
   datasetSelectList = 'datasets',
@@ -182,6 +195,7 @@ export enum NodeInputKeyEnum {
   datasetSearchUsingExtensionQuery = 'datasetSearchUsingExtensionQuery',
   datasetSearchExtensionModel = 'datasetSearchExtensionModel',
   datasetSearchExtensionBg = 'datasetSearchExtensionBg',
+  datasetSearchInput = 'datasetSearchInput',
   collectionFilterMatch = 'collectionFilterMatch',
   authTmbId = 'authTmbId',
   datasetDeepSearch = 'datasetDeepSearch',
@@ -231,17 +245,25 @@ export enum NodeInputKeyEnum {
   // user select
   userSelectOptions = 'userSelectOptions',
 
-  // loop
-  loopInputArray = 'loopInputArray',
+  // nested container (loop / parallelRun)
+  nestedInputArray = 'loopInputArray',
   childrenNodeIdList = 'childrenNodeIdList',
   nodeWidth = 'nodeWidth',
   nodeHeight = 'nodeHeight',
-  loopNodeInputHeight = 'loopNodeInputHeight',
-  // loop start
-  loopStartInput = 'loopStartInput',
-  loopStartIndex = 'loopStartIndex',
-  // loop end
-  loopEndInput = 'loopEndInput',
+  nestedNodeInputHeight = 'loopNodeInputHeight',
+  // nested start
+  nestedStartInput = 'loopStartInput',
+  nestedStartIndex = 'loopStartIndex',
+  // nested end
+  nestedEndInput = 'loopEndInput',
+  // parallel run
+  parallelRunMaxConcurrency = 'parallelRunMaxConcurrency',
+  parallelRunMaxRetryTimes = 'parallelRunMaxRetryTimes',
+
+  // loopRun
+  loopRunMode = 'loopRunMode',
+  loopRunInputArray = 'loopRunInputArray',
+  loopCustomOutputs = 'loopCustomOutputs',
 
   // form input
   userInputForms = 'userInputForms',
@@ -266,8 +288,10 @@ export enum NodeOutputKeyEnum {
   text = 'system_text',
   addOutputParam = 'system_addOutputParam',
   rawResponse = 'system_rawResponse',
+
   systemError = 'system_error',
   errorText = 'system_error_text',
+  error = 'error',
 
   // start
   userFiles = 'userFiles',
@@ -289,6 +313,7 @@ export enum NodeOutputKeyEnum {
 
   // http
   httpRawResponse = 'httpRawResponse',
+  httpRawError = 'system_httpRawError',
 
   // plugin
   pluginStart = 'pluginStart',
@@ -299,20 +324,33 @@ export enum NodeOutputKeyEnum {
   //user select
   selectResult = 'selectResult',
 
-  // loop
-  loopArray = 'loopArray',
-  // loop start
-  loopStartInput = 'loopStartInput',
-  loopStartIndex = 'loopStartIndex',
+  // nested container result (loop)
+  nestedArrayResult = 'loopArray',
+  // nested start
+  nestedStartInput = 'loopStartInput',
+  nestedStartIndex = 'loopStartIndex',
+
+  // parallel run outputs
+  parallelSuccessResults = 'parallelSuccessResults',
+  parallelFullResults = 'parallelFullResults',
+  parallelStatus = 'parallelStatus',
+
+  // loopRunStart dynamic outputs
+  currentIndex = 'currentIndex',
+  currentItem = 'currentItem',
+  currentIteration = 'currentIteration',
 
   // form input
   formInputResult = 'formInputResult',
 
   // File
-  fileTitle = 'fileTitle',
+  fileTitle = 'fileTitle'
+}
 
-  // @deprecated
-  error = 'error'
+export enum ParallelRunStatusEnum {
+  success = 'success',
+  partial_success = 'partial_success',
+  failed = 'failed'
 }
 
 export enum VariableInputEnum {
@@ -341,6 +379,15 @@ type VariableConfigType = {
   defaultValueType: WorkflowIOValueTypeEnum;
   description?: string;
 };
+
+export const textInputVariableValueTypes: WorkflowIOValueTypeEnum[] = [
+  WorkflowIOValueTypeEnum.string,
+  WorkflowIOValueTypeEnum.object,
+  WorkflowIOValueTypeEnum.arrayString,
+  WorkflowIOValueTypeEnum.arrayNumber,
+  WorkflowIOValueTypeEnum.arrayBoolean,
+  WorkflowIOValueTypeEnum.arrayObject
+];
 
 export const variableConfigs: VariableConfigType[][] = [
   [
@@ -443,13 +490,6 @@ export const variableMap: Record<VariableInputEnum, VariableConfigType> = {
 
 // Keep backward compatibility
 export const variableMapGroups = variableConfigs;
-
-/* run time */
-export enum RuntimeEdgeStatusEnum {
-  'waiting' = 'waiting',
-  'active' = 'active',
-  'skipped' = 'skipped'
-}
 
 export const VARIABLE_NODE_ID = 'VARIABLE_NODE_ID';
 export const DYNAMIC_INPUT_REFERENCE_KEY = 'DYNAMIC_INPUT_REFERENCE_KEY';

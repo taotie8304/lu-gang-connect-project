@@ -5,17 +5,14 @@ import { Box, Button, Flex, Grid, HStack } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
-import {
-  type AppTemplateSchemaType,
-  type TemplateTypeSchemaType
-} from '@fastgpt/global/core/app/type';
-import { appWorkflow2Form } from '@fastgpt/global/core/app/utils';
-import { form2AppWorkflow } from '@/web/core/app/utils';
+import { type TemplateTypeSchemaType } from '@fastgpt/global/core/app/type';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
+import type { AppTemplateListItemType } from '@fastgpt/global/openapi/core/app/template/api';
+import { form2AppWorkflow } from '@/pageComponents/app/detail/Edit/SimpleApp/utils';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getTemplateMarketItemDetail } from '@/web/core/app/api/template';
 import { postCreateApp } from '@/web/core/app/api';
 import { webPushTrack } from '@/web/common/middle/tracks/utils';
@@ -29,6 +26,7 @@ import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { appTypeTagMap } from '@/pageComponents/dashboard/constant';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import { getAppDetailRoute, isWorkflowAppType } from '@/web/core/app/utils';
 const UseGuideModal = dynamic(() => import('@/components/common/Modal/UseGuideModal'), {
   ssr: false
 });
@@ -38,7 +36,7 @@ const TemplateMarket = ({
   templateTags,
   MenuIcon
 }: {
-  templateList: AppTemplateSchemaType[];
+  templateList: AppTemplateListItemType[];
   templateTags: TemplateTypeSchemaType[];
   MenuIcon: JSX.Element;
 }) => {
@@ -66,36 +64,46 @@ const TemplateMarket = ({
       .filter((item) => item.templates.length > 0);
   }, [templateList, templateTags]);
 
-  const { runAsync: onUseTemplate, loading: isCreating } = useRequest2(
-    async (template: AppTemplateSchemaType) => {
+  const { runAsync: onUseTemplate, loading: isCreating } = useRequest(
+    async (template: AppTemplateListItemType) => {
       const templateDetail = await getTemplateMarketItemDetail(template.templateId);
 
       if (template.type === AppTypeEnum.simple) {
-        const completeWorkflow = form2AppWorkflow(templateDetail.workflow, t);
+        // TODO: 特殊类型
+        const completeWorkflow = form2AppWorkflow(
+          templateDetail.workflow as unknown as AppFormEditFormType,
+          t
+        );
         templateDetail.workflow = completeWorkflow;
       }
 
-      return postCreateApp({
+      const appType = template.type as AppTypeEnum;
+      const appId = await postCreateApp({
         parentId,
         avatar: template.avatar,
         name: template.name,
-        type: template.type as AppTypeEnum,
+        type: appType,
         modules: templateDetail.workflow.nodes || [],
         edges: templateDetail.workflow.edges || [],
         chatConfig: templateDetail.workflow.chatConfig,
         templateId: templateDetail.templateId
-      }).then((res) => {
-        webPushTrack.useAppTemplate({
-          id: res,
-          name: template.name
-        });
-
-        return res;
       });
+
+      webPushTrack.useAppTemplate({
+        id: appId,
+        name: template.name
+      });
+
+      return { appId, appType };
     },
     {
-      onSuccess(id: string) {
-        router.push(`/app/detail?appId=${id}`);
+      onSuccess({ appId, appType }) {
+        router.push(
+          getAppDetailRoute({
+            appId,
+            openSystemConfig: isWorkflowAppType(appType)
+          })
+        );
       },
       successToast: t('common:create_success'),
       errorToast: t('common:create_failed')
@@ -103,7 +111,7 @@ const TemplateMarket = ({
   );
 
   const TemplateCard = useCallback(
-    ({ item }: { item: AppTemplateSchemaType }) => {
+    ({ item }: { item: AppTemplateListItemType }) => {
       const { t } = useTranslation();
       const icon = appTypeTagMap[item.type as keyof typeof appTypeTagMap]?.icon;
 
@@ -375,7 +383,7 @@ const TemplateMarket = ({
   );
 };
 
-const TemplateMarketContainer = ({ children }: { children: React.ReactNode }) => {
+const TemplateMarketContainer = () => {
   return (
     <DashboardContainer>
       {({ templateTags, templateList, MenuIcon }) => (

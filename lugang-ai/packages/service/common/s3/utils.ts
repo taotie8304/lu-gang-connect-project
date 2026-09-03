@@ -1,19 +1,89 @@
-import jwt from 'jsonwebtoken';
-import { isAfter, differenceInSeconds } from 'date-fns';
-import { ERROR_ENUM } from '@fastgpt/global/common/error/errorCode';
+import { isAfter } from 'date-fns';
 import type { ClientSession } from 'mongoose';
-import { MongoS3TTL } from './schema';
-import { S3Buckets } from './constants';
+import { buffer as consumeStreamToBuffer } from 'node:stream/consumers';
+import type { Readable } from 'node:stream';
+import { MongoS3TTL } from './models/ttl';
+import { S3Buckets } from './config/constants';
 import { S3PrivateBucket } from './buckets/private';
-import { S3Sources, type UploadImage2S3BucketParams } from './type';
+import {
+  S3Sources,
+  type UploadImage2S3BucketParams,
+  UploadImage2S3BucketParamsSchema
+} from './contracts/type';
 import { S3PublicBucket } from './buckets/public';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import path from 'node:path';
 import type { ParsedFileContentS3KeyParams } from './sources/dataset/type';
-import { EndpointUrl } from '@fastgpt/global/common/file/constants';
+import { encodeS3ObjectKey } from './keySanitizer';
+import { createOpaqueS3FileKey, getS3ParsedPrefix } from './opaqueKey';
+import { encodeS3Filename, getS3UploadContentDisposition } from './filename';
+import { assertStorageObjectKey } from '@fastgpt-sdk/storage';
 
 // S3文件名最大长度配置
 export const S3_FILENAME_MAX_LENGTH = 50;
+
+/**
+ * 将 S3 下载流读取为 Buffer。
+ *
+ * 普通小文件可以直接用 node:stream/consumers；但 archive/Skill 包这类受环境变量限制的对象，
+ * 需要在读取过程中按 chunk 检查上限并提前销毁流，避免异常对象被完整读入内存。
+ */
+export async function readStreamToBuffer(params: {
+  stream: Readable;
+  maxBytes?: number;
+  exceededMessage?: string;
+  signal?: AbortSignal;
+  /** 在当前累计字节写入 chunks 前同步执行，用于流式资源记账或硬限制。 */
+  onReadBytes?: (readBytes: number) => void;
+}): Promise<Buffer> {
+  const { stream, maxBytes, exceededMessage, signal, onReadBytes } = params;
+
+  const createAbortError = () => {
+    const error = new Error('File stream reading was aborted');
+    error.name = 'AbortError';
+    return error;
+  };
+  if (signal?.aborted) {
+    stream.destroy();
+    throw createAbortError();
+  }
+  const onAbort = () => stream.destroy(createAbortError());
+  signal?.addEventListener('abort', onAbort, { once: true });
+
+  try {
+    if (maxBytes === undefined && !onReadBytes) {
+      return await consumeStreamToBuffer(stream);
+    }
+
+    const chunks: Buffer[] = [];
+    let totalSize = 0;
+
+    for await (const chunk of stream) {
+      const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      totalSize += buffer.length;
+
+      if (maxBytes !== undefined && totalSize > maxBytes) {
+        stream.destroy();
+        throw new Error(
+          exceededMessage ?? `S3 object exceeds maximum allowed size (${maxBytes} bytes)`
+        );
+      }
+
+      try {
+        onReadBytes?.(totalSize);
+      } catch (error) {
+        stream.destroy(error instanceof Error ? error : undefined);
+        throw error;
+      }
+
+      chunks.push(buffer);
+    }
+
+    return Buffer.concat(chunks, totalSize);
+  } finally {
+    signal?.removeEventListener('abort', onAbort);
+  }
+}
 
 /**
  * 截断文件名，确保不超过最大长度，同时保留扩展名
@@ -49,33 +119,6 @@ export function truncateFilename(
   const truncatedName = nameWithoutExt.substring(0, maxNameLength);
 
   return truncatedName + extension;
-}
-
-/**
- *
- * @param objectKey
- * @param expiredTime
- * @returns
- */
-export function jwtSignS3ObjectKey(objectKey: string, expiredTime: Date) {
-  const secret = process.env.FILE_TOKEN_KEY as string;
-  const expiresIn = differenceInSeconds(expiredTime, new Date());
-  const token = jwt.sign({ objectKey }, secret, { expiresIn });
-
-  return `${EndpointUrl}/api/system/file/${token}`;
-}
-
-export function jwtVerifyS3ObjectKey(token: string) {
-  const secret = process.env.FILE_TOKEN_KEY as string;
-  return new Promise<{ objectKey: string }>((resolve, reject) => {
-    jwt.verify(token, secret, (err, payload) => {
-      if (err || !payload || !(payload as jwt.JwtPayload).objectKey) {
-        reject(ERROR_ENUM.unAuthFile);
-      }
-
-      resolve(payload as { objectKey: string });
-    });
-  });
 }
 
 export function removeS3TTL({
@@ -114,17 +157,35 @@ export async function uploadImage2S3Bucket(
   bucketName: keyof typeof S3Buckets,
   params: UploadImage2S3BucketParams
 ) {
-  const { base64Img, filename, mimetype, uploadKey, expiredTime } = params;
+  const {
+    base64Img,
+    buffer: inputBuffer,
+    filename,
+    mimetype,
+    uploadKey,
+    expiredTime
+  } = UploadImage2S3BucketParamsSchema.parse(params);
 
   const bucket = bucketName === 'private' ? new S3PrivateBucket() : new S3PublicBucket();
 
-  const base64Data = base64Img.split(',')[1] || base64Img;
-  const buffer = Buffer.from(base64Data, 'base64');
+  const buffer = (() => {
+    if (inputBuffer) return inputBuffer;
+    const base64Data = base64Img?.split(',')[1] || base64Img;
+    if (!base64Data) {
+      throw new Error('base64Img or buffer is required');
+    }
+    return Buffer.from(base64Data, 'base64');
+  })();
 
-  await bucket.putObject(uploadKey, buffer, buffer.length, {
-    'content-type': mimetype,
-    'upload-time': new Date().toISOString(),
-    'origin-filename': encodeURIComponent(filename)
+  await bucket.client.uploadObject({
+    key: uploadKey,
+    body: buffer,
+    contentType: mimetype,
+    contentDisposition: getS3UploadContentDisposition({ filename, type: 'attachment' }),
+    metadata: {
+      uploadTime: new Date().toISOString(),
+      originFilename: encodeS3Filename(filename)
+    }
   });
 
   const now = new Date();
@@ -139,7 +200,11 @@ export async function uploadImage2S3Bucket(
   return uploadKey;
 }
 
-const getFormatedFilename = (filename?: string) => {
+/**
+ * 保留历史的 filename-based 格式化能力，供旧业务数据和兼容测试使用。
+ * 新上传对象必须使用 createOpaqueS3FileKey，不能重新依赖该函数生成 object key。
+ */
+export const getFormatedFilename = (filename?: string) => {
   if (!filename) {
     return {
       formatedFilename: getNanoid(12),
@@ -150,38 +215,44 @@ const getFormatedFilename = (filename?: string) => {
   const id = getNanoid(6);
   // 先截断文件名，再进行格式化
   const truncatedFilename = truncateFilename(filename);
-  const extension = path.extname(truncatedFilename); // 带.
-  const name = path.basename(truncatedFilename, extension);
+  // 移除扩展名
+  const extension = path.extname(truncatedFilename);
+  let name = path.basename(truncatedFilename, extension);
+
+  // 移除末尾的 (_随机数)
+  const splitName = name.split('_');
+  if (splitName.length > 1 && splitName[splitName.length - 1]?.length === 6) {
+    splitName.pop();
+    name = splitName.join('_');
+  }
+
   return {
-    formatedFilename: `${id}-${name}`,
+    formatedFilename: `${name}_${id}`,
     extension: extension.replace('.', '')
   };
 };
 
 export const getFileS3Key = {
+  // temp/avatar/chat/dataset 生成调用都会创建新的 opaque key；已有 key 必须传给 s3Key，
+  // 不要尝试用相同 scope 和 filename 重新计算 object key。
   // 临时的文件路径（比如 evaluation)
   temp: ({ teamId, filename }: { teamId: string; filename?: string }) => {
-    const { formatedFilename, extension } = getFormatedFilename(filename);
-
+    const { objectKey, parsedPrefix } = createOpaqueS3FileKey({
+      prefix: [S3Sources.temp, teamId],
+      filename
+    });
     return {
-      fileKey: [
-        S3Sources.temp,
-        teamId,
-        `${formatedFilename}${extension ? `.${extension}` : ''}`
-      ].join('/'),
-      fileParsedPrefix: [S3Sources.temp, teamId, `${formatedFilename}-parsed`].join('/')
+      fileKey: objectKey,
+      fileParsedPrefix: parsedPrefix
     };
   },
 
   avatar: ({ teamId, filename }: { teamId: string; filename?: string }) => {
-    const { formatedFilename, extension } = getFormatedFilename(filename);
-    return {
-      fileKey: [
-        S3Sources.avatar,
-        teamId,
-        `${formatedFilename}${extension ? `.${extension}` : ''}`
-      ].join('/')
-    };
+    const { objectKey } = createOpaqueS3FileKey({
+      prefix: [S3Sources.avatar, teamId],
+      filename
+    });
+    return { fileKey: objectKey };
   },
 
   // 对话中上传的文件的解析结果的图片的 Key
@@ -194,42 +265,44 @@ export const getFileS3Key = {
     chatId: string;
     uId: string;
     appId: string;
-    filename: string;
+    filename?: string;
   }) => {
-    const { formatedFilename, extension } = getFormatedFilename(filename);
-    const basePrefix = [S3Sources.chat, appId, uId, chatId].filter(Boolean).join('/');
-
+    const prefix = [S3Sources.chat, appId, uId, chatId].filter(Boolean);
+    const { objectKey, parsedPrefix } = createOpaqueS3FileKey({
+      prefix,
+      filename
+    });
     return {
-      fileKey: [basePrefix, `${formatedFilename}${extension ? `.${extension}` : ''}`].join('/'),
-      fileParsedPrefix: [basePrefix, `${formatedFilename}-parsed`].join('/')
+      fileKey: objectKey,
+      fileParsedPrefix: parsedPrefix
     };
   },
 
   // 上传数据集的文件的解析结果的图片的 Key
   dataset: (params: ParsedFileContentS3KeyParams) => {
     const { datasetId, filename } = params;
-    const { formatedFilename, extension } = getFormatedFilename(filename);
-
+    const { objectKey, parsedPrefix } = createOpaqueS3FileKey({
+      prefix: [S3Sources.dataset, datasetId],
+      filename
+    });
     return {
-      fileKey: [
-        S3Sources.dataset,
-        datasetId,
-        `${formatedFilename}${extension ? `.${extension}` : ''}`
-      ].join('/'),
-      fileParsedPrefix: [S3Sources.dataset, datasetId, `${formatedFilename}-parsed`].join('/')
+      fileKey: objectKey,
+      fileParsedPrefix: parsedPrefix
     };
   },
 
   s3Key: (key: string) => {
-    const prefix = `${path.dirname(key)}/${path.basename(key, path.extname(key))}-parsed`;
+    assertStorageObjectKey(key);
     return {
       fileKey: key,
-      fileParsedPrefix: prefix
+      fileParsedPrefix: getS3ParsedPrefix(key)
     };
   },
 
   rawText: ({ hash, customPdfParse }: { hash: string; customPdfParse?: boolean }) => {
-    return [S3Sources.rawText, `${hash}${customPdfParse ? '-true' : ''}`].join('/');
+    return encodeS3ObjectKey(
+      [S3Sources.rawText, `${hash}${customPdfParse ? '-true' : ''}`].join('/')
+    );
   }
 };
 
@@ -245,3 +318,5 @@ export function isS3ObjectKey<T extends keyof typeof S3Sources>(
 ): key is `${T}/${string}` {
   return typeof key === 'string' && key.startsWith(`${S3Sources[source]}/`);
 }
+
+export { encodeS3ObjectKey } from './keySanitizer';

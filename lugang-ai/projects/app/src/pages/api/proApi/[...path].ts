@@ -1,165 +1,9 @@
-// 鲁港通 - 商业版 API 代理
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
 import { FastGPTProUrl } from '@fastgpt/service/common/system/constants';
+import { buildSameOriginUrl } from '@fastgpt/service/common/security/network';
 import { Readable } from 'stream';
-
-// 鲁港通 - 根据 API 路径返回合适的空数据
-function getEmptyResponse(apiPath: string, method: string = 'GET'): any {
-  // 通知相关
-  if (apiPath.includes('inform/countUnread')) {
-    return { unReadCount: 0, importantInforms: [] };
-  }
-  if (apiPath.includes('inform/getSystemMsgModal')) {
-    return null;
-  }
-  if (apiPath.includes('inform/getOperationalAd')) {
-    return null;
-  }
-  if (apiPath.includes('inform/list')) {
-    return { total: 0, list: [] };
-  }
-  
-  // 团队相关
-  if (apiPath.includes('team/list')) {
-    return [];
-  }
-  if (apiPath.includes('team/member/count')) {
-    return { count: 0 };
-  }
-  if (apiPath.includes('team/member/list')) {
-    return { total: 0, list: [] };
-  }
-  if (apiPath.includes('team/member/export')) {
-    return { csv: '' };
-  }
-  if (apiPath.includes('team/org/list')) {
-    return [];
-  }
-  if (apiPath.includes('team/group/list')) {
-    return [];
-  }
-  if (apiPath.includes('team/collaborator/list')) {
-    return { clbs: [], parentClbs: [] };
-  }
-  if (apiPath.includes('team/tag/list')) {
-    return [];
-  }
-  if (apiPath.includes('team/invitationLink/list')) {
-    return [];
-  }
-  if (apiPath.includes('team/plan/getTeamPlans')) {
-    return [];
-  }
-  if (apiPath.includes('team/invoiceAccount/getTeamInvoiceHeader')) {
-    return null;
-  }
-  
-  // 应用相关
-  if (apiPath.includes('app/evaluation/list')) {
-    return { total: 0, list: [] };
-  }
-  if (apiPath.includes('app/evaluation/listItems')) {
-    return { total: 0, list: [] };
-  }
-  if (apiPath.includes('app/collaborator/list')) {
-    return { clbs: [], parentClbs: [] };
-  }
-  if (apiPath.includes('app/template/getTemplateTypes')) {
-    return [];
-  }
-  if (apiPath.includes('app/logs/getTotalData')) {
-    return { totalUsers: 0, totalChats: 0, totalPoints: 0 };
-  }
-  if (apiPath.includes('app/logs/getChartData')) {
-    return { userData: [], chatData: [], appData: [] };
-  }
-  
-  // 聊天相关
-  if (apiPath.includes('chat/setting/detail')) {
-    // 鲁港通 - 返回完整的 ChatSettingType 结构，避免前端字段缺失导致崩溃
-    // appId 必须有值，否则 /api/v2/chat/completions 会报 'appId is empty'
-    const defaultAppId = process.env.DEFAULT_APP_ID || '';
-    return {
-      _id: defaultAppId,
-      appId: defaultAppId,
-      teamId: '',
-      quickAppList: [],
-      selectedTools: [],
-      favouriteTags: [],
-      enableHome: true,
-      homeTabTitle: '鲁港通',
-      slogan: '',
-      dialogTips: ''
-    };
-  }
-  if (apiPath.includes('chat/setting/favourite/list')) {
-    return [];
-  }
-  if (apiPath.includes('chat/team/getApps')) {
-    return [];
-  }
-  if (apiPath.includes('chat/initTeamChat')) {
-    return null;
-  }
-  
-  // 知识库相关
-  if (apiPath.includes('dataset/collaborator/list')) {
-    return { clbs: [], parentClbs: [] };
-  }
-  if (apiPath.includes('dataset/tag/list')) {
-    return { total: 0, list: [] };
-  }
-  if (apiPath.includes('dataset/tag/getAllTags')) {
-    return { list: [] };
-  }
-  if (apiPath.includes('dataset/tag/tagUsage')) {
-    return [];
-  }
-  
-  // 使用记录
-  if (apiPath.includes('wallet/usage/getUsage')) {
-    return { total: 0, list: [] };
-  }
-  if (apiPath.includes('wallet/usage/getDashboardData')) {
-    return [];
-  }
-  if (apiPath.includes('wallet/discountCoupon/list')) {
-    return [];
-  }
-  
-  // 系统相关
-  if (apiPath.includes('system/model/collaborator/list')) {
-    return { clbs: [], parentClbs: [] };
-  }
-  
-  // 用户搜索
-  if (apiPath.includes('user/search')) {
-    return { members: [], groups: [], orgs: [] };
-  }
-  
-  // 工单
-  if (apiPath.includes('workorder/create')) {
-    return { redirectUrl: '' };
-  }
-  
-  // 自定义域名
-  if (apiPath.includes('customDomain/list')) {
-    return [];
-  }
-  
-  // 审计日志
-  if (apiPath.includes('audit/list')) {
-    return { total: 0, list: [] };
-  }
-  
-  // 默认返回空对象或空数组
-  if (method === 'GET') {
-    return apiPath.includes('list') ? [] : null;
-  }
-  
-  return { success: true };
-}
+import { FASTGPT_PRO_TOKEN_HEADER } from '@fastgpt/global/common/system/constants';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
@@ -169,31 +13,28 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!requestPath) {
       throw new Error('url is empty');
     }
-    
-    // 鲁港通 - 未配置商业版时返回空数据（优雅降级）
     if (!FastGPTProUrl) {
-      // 根据不同的 API 路径返回合适的空数据
-      const apiPath = path?.join('/') || '';
-      
-      // 返回空的成功响应
-      return jsonRes(res, {
-        code: 200,
-        data: getEmptyResponse(apiPath, req.method)
-      });
+      throw new Error(`未配置商业版链接: ${path}`);
     }
 
-    const targetUrl = new URL(requestPath, FastGPTProUrl);
+    // 防御 protocol-relative URL 覆盖主机(如 path 含空段 → `//169.254...`)
+    const targetUrl = buildSameOriginUrl(requestPath, FastGPTProUrl);
 
-    // 鲁港通 - 过滤敏感请求头
     const headers: Record<string, string> = {};
     for (const [key, value] of Object.entries(req.headers)) {
-      if (key === 'rootkey' || key === 'host' || key === 'connection') continue;
+      if (
+        key === 'rootkey' ||
+        key === FASTGPT_PRO_TOKEN_HEADER ||
+        key === 'host' ||
+        key === 'connection'
+      ) {
+        continue;
+      }
       if (value) {
         headers[key] = Array.isArray(value) ? value.join(', ') : value;
       }
     }
 
-    // 鲁港通 - 使用 fetch API 代理请求
     const request = new Request(targetUrl, {
       // @ts-ignore
       duplex: 'half',
@@ -204,7 +45,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     const response = await fetch(request);
 
-    // 鲁港通 - 复制响应头（排除编码相关）
     response.headers.forEach((value, key) => {
       const lowerKey = key.toLowerCase();
       if (lowerKey === 'content-encoding' || lowerKey === 'transfer-encoding') return;
@@ -213,7 +53,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     res.status(response.status);
 
-    // 鲁港通 - 流式返回响应体
     if (response.body) {
       const nodeStream = Readable.fromWeb(response.body as any);
       nodeStream.pipe(res);

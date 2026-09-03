@@ -1,37 +1,39 @@
-// 鲁港通 - 系统白名单（自动从环境变量提取）
-const systemWhiteList = (() => {
-  const list: string[] = [];
-  if (process.env.S3_ENDPOINT) {
-    list.push(process.env.S3_ENDPOINT);
-  }
-  if (process.env.S3_EXTERNAL_BASE_URL) {
-    try {
-      const urlData = new URL(process.env.S3_EXTERNAL_BASE_URL);
-      list.push(urlData.hostname);
-    } catch (error) {}
-  }
-  if (process.env.FE_DOMAIN) {
-    try {
-      const urlData = new URL(process.env.FE_DOMAIN);
-      list.push(urlData.hostname);
-    } catch (error) {}
-  }
-  // 鲁港通 - 添加商业版 URL 到白名单
-  if (process.env.PRO_URL) {
-    try {
-      const urlData = new URL(process.env.PRO_URL);
-      list.push(urlData.hostname);
-    } catch (error) {
-      // 鲁港通 - 静默处理无效 URL
+import { serviceEnv } from '../../env';
+
+const appendHost = ({
+  list,
+  value,
+  allowRawHost = false
+}: {
+  list: string[];
+  value?: string;
+  allowRawHost?: boolean;
+}) => {
+  if (!value) return;
+
+  try {
+    list.push(new URL(value).hostname);
+  } catch {
+    if (allowRawHost && !value.includes('://')) {
+      list.push(value);
     }
   }
+};
+
+const systemWhiteList = (() => {
+  const list: string[] = [];
+  appendHost({ list, value: serviceEnv.STORAGE_S3_ENDPOINT, allowRawHost: true });
+  appendHost({ list, value: serviceEnv.STORAGE_EXTERNAL_ENDPOINT });
+  appendHost({ list, value: serviceEnv.STORAGE_R2_PUBLIC_ENDPOINT });
+  appendHost({ list, value: serviceEnv.STORAGE_S3_CDN_ENDPOINT });
+  appendHost({ list, value: serviceEnv.FE_DOMAIN });
+  appendHost({ list, value: serviceEnv.PRO_URL });
   return list;
 })();
 
-// 鲁港通 - 验证文件 URL 域名是否在白名单中
 export const validateFileUrlDomain = (url: string): boolean => {
   try {
-    // 鲁港通 - 如果白名单为空，允许所有 URL
+    // Allow all URLs if the whitelist is empty
     if ((global.systemEnv?.fileUrlWhitelist || []).length === 0) {
       return true;
     }

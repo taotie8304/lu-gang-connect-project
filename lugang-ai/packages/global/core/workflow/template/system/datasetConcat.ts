@@ -11,9 +11,10 @@ import {
   NodeOutputKeyEnum,
   FlowNodeTemplateTypeEnum
 } from '../../constants';
+import { createHideInContext } from '../context';
 import { getNanoid } from '../../../../common/string/tools';
-import { type FlowNodeInputItemType } from '../../type/io.d';
-import { i18nT } from '../../../../../web/i18n/utils';
+import { type FlowNodeInputItemType } from '../../type/io';
+import { i18nT } from '../../../../common/i18n/utils';
 
 export const getOneQuoteInputTemplate = ({
   key = getNanoid(),
@@ -27,7 +28,8 @@ export const getOneQuoteInputTemplate = ({
   label: `${i18nT('workflow:quote_num')}-${index}`,
   debugLabel: i18nT('workflow:knowledge_base_reference'),
   canEdit: true,
-  valueType: WorkflowIOValueTypeEnum.datasetQuote
+  valueType: WorkflowIOValueTypeEnum.datasetQuote,
+  required: true
 });
 
 export const DatasetConcatModule: FlowNodeTemplateType = {
@@ -37,11 +39,16 @@ export const DatasetConcatModule: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/datasetConcat',
+  avatarLinear: 'core/workflow/template/datasetConcatLinear',
+  colorSchema: 'blue',
   name: i18nT('workflow:knowledge_base_search_merge'),
   intro: i18nT('workflow:intro_knowledge_base_search_merge'),
 
   showStatus: false,
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/knowledge_base_search_merge/',
+  isShowInContext: createHideInContext([
+    { sourceType: FlowNodeTypeEnum.toolCall, handleId: NodeOutputKeyEnum.selectedTools }
+  ]),
+  courseUrl: '/guide/build/workflow/nodes/knowledge_base_search_merge',
   inputs: [
     {
       key: NodeInputKeyEnum.datasetMaxTokens,

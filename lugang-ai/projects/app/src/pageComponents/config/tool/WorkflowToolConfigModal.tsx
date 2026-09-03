@@ -1,46 +1,48 @@
 import React, { useMemo, useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type DefaultValues } from 'react-hook-form';
 import {
   Box,
   Button,
   Flex,
   HStack,
   Input,
-  ModalBody,
-  ModalFooter,
   Switch,
   Textarea,
   useDisclosure
 } from '@chakra-ui/react';
-import MyModal from '@fastgpt/web/components/common/MyModal';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import { useUploadAvatar } from '@fastgpt/web/common/file/hooks/useUploadAvatar';
 import { getUploadAvatarPresignedUrl } from '@/web/common/file/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { getPluginToolTags } from '@/web/core/plugin/toolTag/api';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyNumberInput from '@fastgpt/web/components/common/Input/NumberInput';
-import { PluginStatusEnum } from '@fastgpt/global/core/plugin/type';
+import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
+import { PluginStatusEnum, type PluginStatusType } from '@fastgpt/global/core/plugin/type';
 import MySelect from '@fastgpt/web/components/common/MySelect';
 import MultipleSelect, {
   useMultipleSelect
 } from '@fastgpt/web/components/common/MySelect/MultipleSelect';
-import { useTranslation } from 'next-i18next';
-import type { UpdateToolBodyType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import type {
+  CreateAppToolBodyType,
+  UpdateWorkflowToolBodyType
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
 import {
-  delAdminSystemTool,
   getAdminAllSystemAppTool,
   getAdminSystemToolDetail,
   postAdminCreateAppTypeTool,
-  putAdminUpdateTool
+  putAdminUpdateWorkflowTool
 } from '@/web/core/plugin/admin/tool/api';
 import { parseI18nString } from '@fastgpt/global/common/i18n/utils';
+import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import CopyBox from '@fastgpt/web/components/common/String/CopyBox';
+import MyIcon from '@fastgpt/web/components/common/Icon';
 
-export const defaultForm: UpdateToolBodyType = {
-  pluginId: '',
-  defaultInstalled: false,
+export const defaultForm: UpdateWorkflowToolBodyType = {
+  id: '',
   name: '',
   avatar: 'core/app/type/pluginFill',
   intro: '',
@@ -62,47 +64,57 @@ const WorkflowToolConfigModal = ({
   onSuccess: () => void;
   onClose: () => void;
 }) => {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useClientTranslation('app');
   const { toast } = useToast();
 
   const { value: selectedTags, setValue: setSelectedTags } = useMultipleSelect<string>([], false);
 
-  const { register, reset, setValue, watch, handleSubmit } = useForm<UpdateToolBodyType>({
-    defaultValues: defaultForm
+  const { register, reset, setValue, watch, handleSubmit } = useForm<UpdateWorkflowToolBodyType>({
+    defaultValues: defaultForm as DefaultValues<UpdateWorkflowToolBodyType>
   });
   const name = watch('name');
   const avatar = watch('avatar');
   const associatedPluginId = watch('associatedPluginId');
+  const intro = watch('intro');
   const currentCost = watch('currentCost');
   const status = watch('status');
-  const defaultInstalled = watch('defaultInstalled');
+  const hasTokenFee = watch('hasTokenFee');
+  const isToolOffline = status === PluginStatusEnum.Offline;
+  const [toolVersion, setToolVersion] = useState('');
+  const isEdit = !!toolId;
+  // 编辑时先等待工具详情返回关联 App ID，避免先用空关键字重复请求一次 systemApps。
+  const [searchKey, setSearchKey] = useState<string | undefined>(toolId ? undefined : '');
+  const [lastPluginId, setLastPluginId] = useState<string | undefined>('');
+  const { openConfirm: openUninstallConfirm, ConfirmModal: UninstallConfirmModal } = useConfirm({
+    type: 'delete'
+  });
 
   React.useEffect(() => {
-    setValue('tagIds', selectedTags);
+    setValue('tags', selectedTags);
   }, [selectedTags, setValue]);
 
-  useRequest2(
+  const { loading: loadingToolDetail } = useRequest(
     async () => {
       if (toolId) {
         const res = await getAdminSystemToolDetail({ toolId });
-        const form: UpdateToolBodyType = {
-          pluginId: res.id,
+        setToolVersion(res.version);
+        const form: UpdateWorkflowToolBodyType = {
+          id: res.id,
           status: res.status,
-          defaultInstalled: res.defaultInstalled,
           originCost: res.originCost,
           currentCost: res.currentCost,
           systemKeyCost: res.systemKeyCost,
           hasTokenFee: res.hasTokenFee,
-          inputListVal: res.inputListVal,
           name: res.name,
           avatar: res.avatar,
           intro: res.intro,
-          tagIds: res.tags || [],
-          associatedPluginId: res.associatedPluginId,
+          tags: res.tags || [],
           userGuide: res.userGuide || '',
-          author: res.author
+          author: res.author,
+          associatedPluginId: res.associatedPluginId
         };
         setSelectedTags(res.tags || []);
+        setSearchKey(res.associatedPluginId || '');
         return form;
       }
       return defaultForm;
@@ -115,20 +127,13 @@ const WorkflowToolConfigModal = ({
     }
   );
 
-  const isEdit = !!toolId;
+  const { data: apps = [] } = useRequest(() => getAdminAllSystemAppTool({ searchKey }), {
+    manual: false,
+    ready: searchKey !== undefined,
+    refreshDeps: [searchKey]
+  });
 
-  const [searchKey, setSearchKey] = useState('');
-  const [lastPluginId, setLastPluginId] = useState<string | undefined>('');
-
-  const { data: apps = [], loading: loadingPlugins } = useRequest2(
-    () => getAdminAllSystemAppTool({ searchKey }),
-    {
-      manual: false,
-      refreshDeps: [searchKey]
-    }
-  );
-
-  const { data: tags = [], loading: loadingTags } = useRequest2(getPluginToolTags, {
+  const { data: tags = [], loading: loadingTags } = useRequest(getPluginToolTags, {
     manual: false
   });
   const pluginTypeSelectList = useMemo(
@@ -138,6 +143,26 @@ const WorkflowToolConfigModal = ({
         value: tag.tagId
       })) || [],
     [i18n.language, tags]
+  );
+  const pluginStatusSelectList = useMemo(
+    () => [
+      {
+        label: t('app:toolkit_status_normal'),
+        description: t('app:toolkit_status_normal_description'),
+        value: PluginStatusEnum.Normal
+      },
+      {
+        label: t('app:toolkit_status_hidden'),
+        description: t('app:toolkit_status_hidden_description'),
+        value: PluginStatusEnum.Hidden
+      },
+      {
+        label: t('app:toolkit_status_soon_offline'),
+        description: t('app:toolkit_status_soon_offline_description'),
+        value: PluginStatusEnum.SoonOffline
+      }
+    ],
+    [t]
   );
 
   const currentApp = useMemo(() => {
@@ -160,22 +185,41 @@ const WorkflowToolConfigModal = ({
     }
   });
 
-  const { runAsync: onSubmit, loading: isSubmitting } = useRequest2(
-    (data: UpdateToolBodyType) => {
-      if (!data.associatedPluginId) {
+  const { runAsync: onSubmit, loading: isSubmitting } = useRequest(
+    (data: UpdateWorkflowToolBodyType) => {
+      if (!isEdit && !data.associatedPluginId) {
         return Promise.reject(t('app:custom_plugin_associated_plugin_required'));
       }
+      const associatedPluginId = data.associatedPluginId;
 
-      const formatData: UpdateToolBodyType = {
+      const formatData: UpdateWorkflowToolBodyType = {
         ...data,
-        pluginId: toolId
+        id: toolId
       };
 
-      if (formatData.pluginId) {
-        return putAdminUpdateTool(formatData);
+      if (formatData.id) {
+        return putAdminUpdateWorkflowTool(formatData);
       }
 
-      return postAdminCreateAppTypeTool(formatData);
+      const createData: CreateAppToolBodyType = {
+        name: data.name || '',
+        avatar: data.avatar || '',
+        intro: data.intro || '',
+        status: data.status,
+        hasTokenFee: data.hasTokenFee,
+        originCost: data.originCost,
+        currentCost: data.currentCost,
+        systemKeyCost: data.systemKeyCost,
+        secretsVal: data.secretsVal,
+        tags: data.tags,
+        associatedPluginId: associatedPluginId!,
+        userGuide: data.userGuide,
+        author: data.author,
+        promoteTags: data.promoteTags,
+        hideTags: data.hideTags
+      };
+
+      return postAdminCreateAppTypeTool(createData);
     },
     {
       manual: true,
@@ -189,31 +233,178 @@ const WorkflowToolConfigModal = ({
     }
   );
 
-  const { runAsync: onDelete, loading: isDeleting } = useRequest2(delAdminSystemTool, {
-    onSuccess() {
-      toast({
-        title: t('app:custom_plugin_delete_success'),
-        status: 'success'
-      });
-      onSuccess();
-      onClose();
+  const { runAsync: onUninstall, loading: isUninstalling } = useRequest(
+    () =>
+      putAdminUpdateWorkflowTool({
+        id: toolId,
+        status: PluginStatusEnum.Offline
+      }),
+    {
+      successToast: t('app:custom_plugin_uninstall_success'),
+      onSuccess() {
+        onSuccess();
+        onClose();
+      }
     }
-  });
+  );
+
+  const { runAsync: onReinstall, loading: isReinstalling } = useRequest(
+    () =>
+      putAdminUpdateWorkflowTool({
+        id: toolId,
+        status: PluginStatusEnum.Normal
+      }),
+    {
+      successToast: t('app:custom_plugin_install_success'),
+      onSuccess() {
+        onSuccess();
+        onClose();
+      }
+    }
+  );
+
+  const openToolUninstallConfirm = () => {
+    openUninstallConfirm({
+      title: t('app:toolkit_uninstall'),
+      customContent: t('app:confirm_uninstall_tool'),
+      confirmText: t('app:toolkit_uninstall'),
+      confirmButtonVariant: 'dangerOutline',
+      inputConfirmText: name || toolId,
+      onConfirm: onUninstall
+    })();
+  };
+
+  const offlineVersionInfoSection = (
+    <Box border={'1px solid'} borderColor={'myGray.200'} borderRadius={'8px'} p={4}>
+      <Flex alignItems={'flex-start'} justifyContent={'space-between'} gap={4} mb={4}>
+        <Box color={'myGray.400'} fontSize={'10px'} lineHeight={'14px'} fontWeight={'500'}>
+          {t('app:toolkit_version_info')}
+        </Box>
+        <Flex alignItems={'center'} gap={2} minW={0}>
+          <Box color={'myGray.400'} fontSize={'10px'} lineHeight={'14px'} flexShrink={0}>
+            {t('app:toolkit_id')}:
+          </Box>
+          <Box
+            color={'myGray.500'}
+            fontSize={'10px'}
+            lineHeight={'14px'}
+            overflow={'hidden'}
+            textOverflow={'ellipsis'}
+            whiteSpace={'nowrap'}
+          >
+            {toolId}
+          </Box>
+          <CopyBox value={toolId} lineHeight={0}>
+            <MyIcon name={'copy'} w={'12px'} color={'myGray.400'} />
+          </CopyBox>
+        </Flex>
+      </Flex>
+      <Flex flexDirection={'column'} gap={4}>
+        <Flex alignItems={'center'} gap={4} minH={9}>
+          <Box flex={'0 0 160px'} color={'#24282C'} fontSize={'14px'} fontWeight={'500'}>
+            {t('app:toolkit_plugin_version')}
+          </Box>
+          <Box flex={1} minW={0}>
+            <MySelect<string>
+              width={'100%'}
+              h={9}
+              value={toolVersion || '-'}
+              list={[
+                {
+                  label: toolVersion || '-',
+                  value: toolVersion || '-'
+                }
+              ]}
+              isDisabled
+              onChange={setToolVersion}
+            />
+          </Box>
+        </Flex>
+        <Flex alignItems={'center'} gap={4} minH={9}>
+          <Box flex={'0 0 160px'} color={'#24282C'} fontSize={'14px'} fontWeight={'500'}>
+            {t('app:toolkit_plugin_name')}
+          </Box>
+          <Box flex={1} minW={0} color={'#24282C'} fontSize={'14px'} lineHeight={'20px'}>
+            {name || '-'}
+          </Box>
+        </Flex>
+        <Flex alignItems={'flex-start'} gap={4} minH={9}>
+          <Box flex={'0 0 160px'} color={'#24282C'} fontSize={'14px'} fontWeight={'500'}>
+            {t('app:toolkit_plugin_intro')}
+          </Box>
+          <Box
+            flex={1}
+            minW={0}
+            color={'#24282C'}
+            fontSize={'14px'}
+            lineHeight={'20px'}
+            whiteSpace={'pre-wrap'}
+          >
+            {intro || '-'}
+          </Box>
+        </Flex>
+      </Flex>
+    </Box>
+  );
 
   return (
     <MyModal
       isCentered
       isOpen
       title={t('app:custom_plugin_config_title', { name: name || t('app:custom_plugin') })}
-      maxW={['90vw', '900px']}
-      w={'100%'}
-      iconSrc={avatar}
-      position={'relative'}
+      size={'md'}
       onClose={onClose}
-      isLoading={loadingPlugins || loadingTags}
+      isLoading={!isToolOffline && (loadingToolDetail || loadingTags)}
+      bodyStyles={{ pb: 8 }}
+      footerStyles={{ justifyContent: 'space-between', pt: 4 }}
+      footer={
+        isToolOffline ? (
+          <>
+            <Box color={'myGray.500'} fontSize={'14px'} lineHeight={'20px'}>
+              {t('app:toolkit_uninstalled_reinstall_tip')}
+            </Box>
+            <Flex gap={3}>
+              <Button variant={'whiteBase'} h={'32px'} w={'64px'} onClick={onClose}>
+                {t('common:Cancel')}
+              </Button>
+              <Button h={'32px'} w={'64px'} isLoading={isReinstalling} onClick={onReinstall}>
+                {t('app:toolkit_install')}
+              </Button>
+            </Flex>
+          </>
+        ) : (
+          <>
+            {toolId ? (
+              <Button
+                variant={'dangerOutline'}
+                isLoading={isUninstalling}
+                onClick={openToolUninstallConfirm}
+              >
+                {t('app:toolkit_uninstall')}
+              </Button>
+            ) : (
+              <Box />
+            )}
+
+            <Flex gap={4}>
+              <Button variant={'whiteBase'} onClick={onClose}>
+                {t('common:Close')}
+              </Button>
+              <Button
+                isLoading={isSubmitting || isUploadingAvatar}
+                onClick={handleSubmit(onSubmit)}
+              >
+                {isEdit ? t('app:custom_plugin_update') : t('app:custom_plugin_create')}
+              </Button>
+            </Flex>
+          </>
+        )
+      }
     >
-      <ModalBody flex={1} w={'full'}>
-        <Flex w={'full'} gap={5}>
+      <Box flex={1} w={'full'}>
+        {isToolOffline ? (
+          offlineVersionInfoSection
+        ) : (
           <Box w={'full'}>
             <Box color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
               {t('app:custom_plugin_name_label')}
@@ -231,10 +422,12 @@ const WorkflowToolConfigModal = ({
                   src={avatar}
                   w={['28px', '36px']}
                   h={['28px', '36px']}
-                  cursor={isUploadingAvatar ? 'not-allowed' : 'pointer'}
+                  cursor={isUploadingAvatar || isToolOffline ? 'not-allowed' : 'pointer'}
                   borderRadius={'md'}
-                  onClick={isUploadingAvatar ? undefined : handleAvatarSelectorOpen}
-                  opacity={isUploadingAvatar ? 0.6 : 1}
+                  onClick={
+                    isUploadingAvatar || isToolOffline ? undefined : handleAvatarSelectorOpen
+                  }
+                  opacity={isUploadingAvatar || isToolOffline ? 0.6 : 1}
                 />
               </MyTooltip>
               <Input
@@ -245,6 +438,7 @@ const WorkflowToolConfigModal = ({
                 {...register('name', {
                   required: t('app:custom_plugin_name_required')
                 })}
+                isDisabled={isToolOffline}
               />
             </Flex>
             <Box mt={6}>
@@ -255,13 +449,14 @@ const WorkflowToolConfigModal = ({
                 {...register('intro')}
                 bg={'myGray.50'}
                 placeholder={t('app:custom_plugin_intro_placeholder')}
+                isDisabled={isToolOffline}
               />
             </Box>
             <HStack mt={6}>
               <Box flex={'0 0 160px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
                 {t('app:custom_plugin_associated_plugin_label')}
               </Box>
-              <Flex flex={'1 0 0'} flexDirection={'column'}>
+              <Flex flex={'1 0 0'} flexDirection={'column'} position={'relative'}>
                 {associatedPluginId && (
                   <Avatar
                     src={currentApp?.avatar}
@@ -292,8 +487,9 @@ const WorkflowToolConfigModal = ({
                     setValue('associatedPluginId', lastPluginId);
                   }}
                   bg={'myGray.50'}
+                  isDisabled={isToolOffline}
                 />
-                {isOpenAppListMenu && apps.length > 0 && (
+                {isOpenAppListMenu && !isToolOffline && apps.length > 0 && (
                   <Flex
                     position={'absolute'}
                     mt={9}
@@ -319,7 +515,6 @@ const WorkflowToolConfigModal = ({
                         borderRadius="sm"
                         cursor={'pointer'}
                         onMouseDown={() => {
-                          setSearchKey(item.name);
                           setValue('associatedPluginId', item._id);
                           onCloseAppListMenu();
                         }}
@@ -333,6 +528,22 @@ const WorkflowToolConfigModal = ({
                   </Flex>
                 )}
               </Flex>
+            </HStack>
+            <HStack mt={6}>
+              <Box flex={'0 0 160px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
+                {t('app:custom_plugin_plugin_status_label')}
+              </Box>
+              <Box flex={'1 0 0'}>
+                <MySelect<PluginStatusType>
+                  value={status}
+                  w={'full'}
+                  bg={'myGray.50'}
+                  list={pluginStatusSelectList}
+                  isDisabled={isToolOffline}
+                  onChange={(e) => setValue('status', e)}
+                  fontWeight={'normal'}
+                />
+              </Box>
             </HStack>
             <HStack mt={6}>
               <Box
@@ -358,77 +569,26 @@ const WorkflowToolConfigModal = ({
                   setSelectedTags(newTags);
                 }}
                 placeholder={t('app:custom_plugin_tags_label')}
-                maxW={270}
+                w={'full'}
                 h={9}
                 borderRadius={'sm'}
                 bg={'myGray.50'}
+                isDisabled={isToolOffline}
               />
             </HStack>
             <HStack mt={6}>
-              <Box flex={'0 0 160px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-                {t('app:custom_plugin_author_label')}
-              </Box>
-              <Box flex={1}>
-                <Input
-                  placeholder={t('app:custom_plugin_author_placeholder')}
-                  h={9}
-                  bg={'myGray.50'}
-                  {...register('author')}
-                />
-              </Box>
-            </HStack>
-            <HStack mt={6}>
-              <Box flex={'0 0 160px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-                {t('app:custom_plugin_plugin_status_label')}
-              </Box>
-              <Box flex={'1 0 0'}>
-                <MySelect<PluginStatusEnum>
-                  value={status}
-                  w={'full'}
-                  bg={'myGray.50'}
-                  list={[
-                    { label: t('app:toolkit_status_normal'), value: PluginStatusEnum.Normal },
-                    {
-                      label: t('app:toolkit_status_soon_offline'),
-                      value: PluginStatusEnum.SoonOffline
-                    },
-                    { label: t('app:toolkit_status_offline'), value: PluginStatusEnum.Offline }
-                  ]}
-                  onChange={(e) => {
-                    setValue('status', e);
-                    if (e !== PluginStatusEnum.Normal) {
-                      setValue('defaultInstalled', false);
-                    }
-                  }}
-                  fontWeight={'normal'}
-                />
-              </Box>
-            </HStack>
-            <HStack mt={6}>
-              <Box flex={1} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-                {t('app:custom_plugin_default_installed_label')}
-              </Box>
-              <Switch
-                isChecked={defaultInstalled}
-                onChange={(e) => {
-                  const newDefaultInstalled = e.target.checked;
-                  setValue('defaultInstalled', newDefaultInstalled);
-                  if (newDefaultInstalled && status !== PluginStatusEnum.Normal) {
-                    setValue('status', PluginStatusEnum.Normal);
-                  }
-                }}
-              />
-            </HStack>
-            <HStack mt={6}>
-              <Box flex={1} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-                {t('app:custom_plugin_has_token_fee_label')}
-              </Box>
-              <Switch {...register('hasTokenFee')} />
-            </HStack>
-            <HStack mt={6}>
-              <Box flex={'0 0 160px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-                {t('app:custom_plugin_call_price_label')}
-              </Box>
+              <Flex
+                flex={'0 0 160px'}
+                color={'myGray.900'}
+                fontWeight={'medium'}
+                fontSize={'sm'}
+                alignItems={'center'}
+              >
+                <Box as={'span'} lineHeight={'20px'}>
+                  {t('app:custom_plugin_call_price_label')}
+                </Box>
+                <QuestionTip ml={1} flexShrink={0} label={t('app:custom_plugin_call_price_tip')} />
+              </Flex>
               <Box flex={'1 0 0'}>
                 <MyNumberInput
                   value={currentCost ?? 0}
@@ -438,49 +598,47 @@ const WorkflowToolConfigModal = ({
                   step={0.1}
                   w={'full'}
                   h={9}
+                  isDisabled={isToolOffline}
                 />
               </Box>
             </HStack>
-          </Box>
-          <Box w={'full'}>
-            <Box mb={'9px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
-              {t('app:custom_plugin_user_guide_label')}
+            <HStack mt={6}>
+              <Flex
+                flex={'0 0 160px'}
+                color={'myGray.900'}
+                fontWeight={'medium'}
+                fontSize={'sm'}
+                alignItems={'center'}
+              >
+                <Box as={'span'} lineHeight={'20px'}>
+                  {t('app:custom_plugin_has_token_fee_label')}
+                </Box>
+                <QuestionTip ml={1} flexShrink={0} label={t('app:toolkit_token_fee_tip')} />
+              </Flex>
+              <Box flex={'1 0 0'}>
+                <Switch
+                  isChecked={!!hasTokenFee}
+                  isDisabled={isToolOffline}
+                  onChange={(e) => setValue('hasTokenFee', e.target.checked)}
+                />
+              </Box>
+            </HStack>
+            <Box mt={6}>
+              <Box mb={'9px'} color={'myGray.900'} fontWeight={'medium'} fontSize={'sm'}>
+                {t('app:custom_plugin_user_guide_label')}
+              </Box>
+              <Textarea
+                {...register('userGuide')}
+                placeholder={t('app:custom_plugin_user_guide_placeholder')}
+                bg={'myGray.50'}
+                rows={6}
+                isDisabled={isToolOffline}
+              />
             </Box>
-            <Textarea
-              {...register('userGuide')}
-              placeholder={t('app:custom_plugin_user_guide_placeholder')}
-              bg={'myGray.50'}
-              minH={'562px'}
-              maxH={'562px'}
-            />
           </Box>
-        </Flex>
-      </ModalBody>
-      <ModalFooter justifyContent={'space-between'}>
-        {toolId ? (
-          <PopoverConfirm
-            type="delete"
-            content={t('app:confirm_delete_tool')}
-            onConfirm={() => onDelete({ toolId })}
-            Trigger={
-              <Button variant={'whiteDanger'} isLoading={isDeleting}>
-                {t('common:Delete')}
-              </Button>
-            }
-          />
-        ) : (
-          <Box />
         )}
-
-        <Flex gap={4}>
-          <Button variant={'whiteBase'} onClick={onClose}>
-            {t('common:Close')}
-          </Button>
-          <Button isLoading={isSubmitting || isUploadingAvatar} onClick={handleSubmit(onSubmit)}>
-            {isEdit ? t('app:custom_plugin_update') : t('app:custom_plugin_create')}
-          </Button>
-        </Flex>
-      </ModalFooter>
+      </Box>
+      <UninstallConfirmModal isLoading={isUninstalling} />
       <AvatarUploader />
     </MyModal>
   );

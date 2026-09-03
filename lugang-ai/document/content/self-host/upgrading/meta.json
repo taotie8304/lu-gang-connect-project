@@ -1,0 +1,14 @@
+{
+  "title": "版本列表",
+  "description": "FastGPT 版本列表",
+  "pages": [
+    "version-timeline",
+    "upgrade-instruction",
+    "4-16",
+    "4-15",
+    "4-14",
+    "4-13",
+    "4-12",
+    "outdated"
+  ]
+}

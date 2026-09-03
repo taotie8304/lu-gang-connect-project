@@ -1,0 +1,64 @@
+import { MongoOutLink } from '@fastgpt/service/support/outLink/schema';
+import { authApp } from '@fastgpt/service/support/permission/app/auth';
+import { PublishChannelEnum } from '@fastgpt/global/support/outLink/constant';
+import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
+import type { ApiRequestProps } from '@fastgpt/next/type';
+import { NextAPI } from '@/service/middleware/entry';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  PlaygroundUpdateResponseSchema,
+  UpdatePlaygroundVisibilityConfigParamsSchema,
+  type UpdatePlaygroundVisibilityConfigParamsType,
+  type PlaygroundUpdateResponseType
+} from '@fastgpt/global/openapi/core/app/publishChannel/playground/api';
+
+async function handler(
+  req: ApiRequestProps<UpdatePlaygroundVisibilityConfigParamsType, Record<string, never>>
+): Promise<PlaygroundUpdateResponseType> {
+  const {
+    appId,
+    showRunningStatus,
+    showSkillReferences,
+    showCite,
+    showFullText,
+    canDownloadSource,
+    showWholeResponse
+  } = parseApiInput({
+    req,
+    bodySchema: UpdatePlaygroundVisibilityConfigParamsSchema
+  }).body;
+
+  const { teamId, tmbId } = await authApp({
+    req,
+    authToken: true,
+    appId,
+    per: WritePermissionVal
+  });
+
+  await MongoOutLink.updateOne(
+    { appId, type: PublishChannelEnum.playground },
+    {
+      $setOnInsert: {
+        shareId: `playground-${appId}`,
+        teamId,
+        tmbId,
+        name: 'Playground Chat'
+      },
+      $set: {
+        appId,
+        type: PublishChannelEnum.playground,
+        showRunningStatus: showRunningStatus,
+        showSkillReferences: showSkillReferences,
+        showCite: showCite,
+        showFullText: showFullText,
+        canDownloadSource: canDownloadSource,
+        showWholeResponse: showWholeResponse
+      }
+    },
+    { upsert: true }
+  );
+
+  return PlaygroundUpdateResponseSchema.parse(undefined);
+}
+
+export default NextAPI(handler);

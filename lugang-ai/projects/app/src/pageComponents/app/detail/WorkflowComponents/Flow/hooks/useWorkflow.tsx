@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useRef, useEffect } from 'react';
+import React, { useCallback, useRef, useEffect, type MutableRefObject } from 'react';
 import {
   type Connection,
   type NodeChange,
@@ -14,14 +14,20 @@ import {
   type NodeSelectionChange,
   type EdgeRemoveChange
 } from 'reactflow';
-import { EDGE_TYPE, FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
+import {
+  EDGE_TYPE,
+  FlowNodeTypeEnum,
+  isNestedParentNodeType
+} from '@fastgpt/global/core/workflow/node/constant';
+import { LoopRunModeEnum } from '@fastgpt/global/core/workflow/template/system/loopRun/loopRun';
 import 'reactflow/dist/style.css';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useTranslation } from 'next-i18next';
 import { useKeyboard } from './useKeyboard';
 import { useContextSelector } from 'use-context-selector';
 import { type THelperLine } from '@/web/core/workflow/type';
-import { NodeInputKeyEnum, NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
+import { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
+import { collectWorkflowStartInputAutoFillPatches } from '@/web/core/workflow/workflowStartAutoFill';
 import { useDebounceEffect, useMemoizedFn } from 'ahooks';
 import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import {
@@ -36,28 +42,112 @@ import { WorkflowActionsContext } from '../../context/workflowActionsContext';
 import { WorkflowUIContext } from '../../context/workflowUIContext';
 import { WorkflowModalContext } from '../../context/workflowModalContext';
 import { WorkflowLayoutContext } from '../../context/workflowComputeContext';
+import { type HelperLinesController } from '../components/HelperLines';
+import {
+  buildNodeTemplateContext,
+  getNodeContainerCheckError,
+  isNodeConnectionAllowed,
+  translateNodeContainerCheckError
+} from '@fastgpt/global/core/workflow/template/context';
+import { moduleTemplatesFlat } from '@fastgpt/global/core/workflow/template/constants';
 
-/* 
+/*
+  限定容量的最大堆,根为当前最大距离。保留为通用最近邻筛选工具,
+  辅助线拖动热路径不再依赖该结构。
+*/
+export const createBoundedMaxHeap = <T,>(capacity: number) => {
+  const data: Array<{ value: T; key: number }> = [];
+
+  const siftUp = (i: number) => {
+    while (i > 0) {
+      const p = (i - 1) >> 1;
+      if (data[p].key >= data[i].key) break;
+      const tmp = data[p];
+      data[p] = data[i];
+      data[i] = tmp;
+      i = p;
+    }
+  };
+
+  const siftDown = (i: number) => {
+    const n = data.length;
+    while (true) {
+      const l = i * 2 + 1;
+      const r = l + 1;
+      let largest = i;
+      if (l < n && data[l].key > data[largest].key) largest = l;
+      if (r < n && data[r].key > data[largest].key) largest = r;
+      if (largest === i) break;
+      const tmp = data[i];
+      data[i] = data[largest];
+      data[largest] = tmp;
+      i = largest;
+    }
+  };
+
+  return {
+    tryAdd(value: T, key: number) {
+      if (data.length < capacity) {
+        data.push({ value, key });
+        siftUp(data.length - 1);
+      } else if (capacity > 0 && key < data[0].key) {
+        data[0] = { value, key };
+        siftDown(0);
+      }
+    },
+    values(): T[] {
+      return data.map((item) => item.value);
+    }
+  };
+};
+
+/** 筛选限定范围内曼哈顿距离最近的前 k 个节点。 */
+export const collectNearestNodes = (
+  rawNodes: Node[],
+  dragPos: XYPosition,
+  limit: number,
+  k: number
+): Node[] => {
+  const heap = createBoundedMaxHeap<Node>(k);
+  for (const n of rawNodes) {
+    const dx = Math.abs(n.position.x - dragPos.x);
+    const dy = Math.abs(n.position.y - dragPos.y);
+    if (dx > limit || dy > limit) continue;
+    heap.tryAdd(n, dx + dy);
+  }
+  return heap.values();
+};
+
+/*
   Compute helper lines for snapping nodes to each other
   Refer: https://reactflow.dev/examples/interaction/helper-lines
 */
-type GetHelperLinesResult = {
+export type GetHelperLinesResult = {
   horizontal?: THelperLine;
   vertical?: THelperLine;
   snapPosition: Partial<XYPosition>;
 };
-const computeHelperLines = (
-  change: NodePositionChange,
-  nodes: Node[],
-  distance = 8 // distance to snap
-): GetHelperLinesResult => {
-  const nodeA = nodes.find((node) => node.id === change.id);
+
+type CreateHelperLineScannerParams = {
+  change: NodePositionChange;
+  node?: Node;
+  distance?: number;
+};
+
+/** 创建单次扫描器，调用方可在遍历节点的同时完成其他拖动计算。 */
+export const createHelperLineScanner = ({
+  change,
+  node: nodeA,
+  distance = 8
+}: CreateHelperLineScannerParams) => {
+  const result: GetHelperLinesResult = {
+    snapPosition: { x: undefined, y: undefined }
+  };
 
   if (!nodeA || !change.position) {
     return {
-      horizontal: undefined,
-      vertical: undefined,
-      snapPosition: { x: undefined, y: undefined }
+      scanNode: (_node: Node) => {},
+      getResult: () => result
     };
   }
 
@@ -75,204 +165,224 @@ const computeHelperLines = (
   let horizontalDistance = distance;
   let verticalDistance = distance;
 
-  return nodes
-    .filter((node) => node.id !== nodeA.id)
-    .reduce<GetHelperLinesResult>(
-      (result, nodeB) => {
-        if (!result.vertical) {
-          result.vertical = {
-            position: nodeABounds.centerX,
-            nodes: []
-          };
-        }
+  const scanNode = (nodeB: Node) => {
+    if (nodeB.id === nodeA.id) return;
 
-        if (!result.horizontal) {
-          result.horizontal = {
-            position: nodeABounds.centerY,
-            nodes: []
-          };
-        }
+    if (!result.vertical) {
+      result.vertical = {
+        position: nodeABounds.centerX,
+        nodes: []
+      };
+    }
 
-        const nodeBBounds = {
-          left: nodeB.position.x,
-          right: nodeB.position.x + (nodeB.width ?? 0),
-          top: nodeB.position.y,
-          bottom: nodeB.position.y + (nodeB.height ?? 0),
-          width: nodeB.width ?? 0,
-          height: nodeB.height ?? 0,
-          centerX: nodeB.position.x + (nodeB.width ?? 0) / 2,
-          centerY: nodeB.position.y + (nodeB.height ?? 0) / 2
-        };
+    if (!result.horizontal) {
+      result.horizontal = {
+        position: nodeABounds.centerY,
+        nodes: []
+      };
+    }
 
-        const distanceLeftLeft = Math.abs(nodeABounds.left - nodeBBounds.left);
-        const distanceRightRight = Math.abs(nodeABounds.right - nodeBBounds.right);
-        const distanceLeftRight = Math.abs(nodeABounds.left - nodeBBounds.right);
-        const distanceRightLeft = Math.abs(nodeABounds.right - nodeBBounds.left);
-        const distanceTopTop = Math.abs(nodeABounds.top - nodeBBounds.top);
-        const distanceBottomTop = Math.abs(nodeABounds.bottom - nodeBBounds.top);
-        const distanceBottomBottom = Math.abs(nodeABounds.bottom - nodeBBounds.bottom);
-        const distanceTopBottom = Math.abs(nodeABounds.top - nodeBBounds.bottom);
-        const distanceCenterXCenterX = Math.abs(nodeABounds.centerX - nodeBBounds.centerX);
-        const distanceCenterYCenterY = Math.abs(nodeABounds.centerY - nodeBBounds.centerY);
+    const nodeBBounds = {
+      left: nodeB.position.x,
+      right: nodeB.position.x + (nodeB.width ?? 0),
+      top: nodeB.position.y,
+      bottom: nodeB.position.y + (nodeB.height ?? 0),
+      width: nodeB.width ?? 0,
+      height: nodeB.height ?? 0,
+      centerX: nodeB.position.x + (nodeB.width ?? 0) / 2,
+      centerY: nodeB.position.y + (nodeB.height ?? 0) / 2
+    };
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |
-        //  |___________|
-        //  |
-        //  |
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     B     |
-        //  |___________|
-        if (distanceLeftLeft < verticalDistance) {
-          result.snapPosition.x = nodeBBounds.left;
-          result.vertical.position = nodeBBounds.left;
-          result.vertical.nodes = [nodeABounds, nodeBBounds];
-          verticalDistance = distanceLeftLeft;
-        } else if (distanceLeftLeft === verticalDistance) {
-          result.vertical.nodes.push(nodeBBounds);
-        }
+    const distanceLeftLeft = Math.abs(nodeABounds.left - nodeBBounds.left);
+    const distanceRightRight = Math.abs(nodeABounds.right - nodeBBounds.right);
+    const distanceLeftRight = Math.abs(nodeABounds.left - nodeBBounds.right);
+    const distanceRightLeft = Math.abs(nodeABounds.right - nodeBBounds.left);
+    const distanceTopTop = Math.abs(nodeABounds.top - nodeBBounds.top);
+    const distanceBottomTop = Math.abs(nodeABounds.bottom - nodeBBounds.top);
+    const distanceBottomBottom = Math.abs(nodeABounds.bottom - nodeBBounds.bottom);
+    const distanceTopBottom = Math.abs(nodeABounds.top - nodeBBounds.bottom);
+    const distanceCenterXCenterX = Math.abs(nodeABounds.centerX - nodeBBounds.centerX);
+    const distanceCenterYCenterY = Math.abs(nodeABounds.centerY - nodeBBounds.centerY);
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |
-        //  |___________|
-        //              |
-        //              |
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     B     |
-        //  |___________|
-        if (distanceRightRight < verticalDistance) {
-          result.snapPosition.x = nodeBBounds.right - nodeABounds.width;
-          result.vertical.position = nodeBBounds.right;
-          result.vertical.nodes = [nodeABounds, nodeBBounds];
-          verticalDistance = distanceRightRight;
-        } else if (distanceRightRight === verticalDistance) {
-          result.vertical.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |
+    //  |___________|
+    //  |
+    //  |
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     B     |
+    //  |___________|
+    if (distanceLeftLeft < verticalDistance) {
+      result.snapPosition.x = nodeBBounds.left;
+      result.vertical.position = nodeBBounds.left;
+      result.vertical.nodes = [nodeABounds, nodeBBounds];
+      verticalDistance = distanceLeftLeft;
+    } else if (distanceLeftLeft === verticalDistance) {
+      result.vertical.nodes.push(nodeBBounds);
+    }
 
-        //              |‾‾‾‾‾‾‾‾‾‾‾|
-        //              |     A     |
-        //              |___________|
-        //              |
-        //              |
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     B     |
-        //  |___________|
-        if (distanceLeftRight < verticalDistance) {
-          result.snapPosition.x = nodeBBounds.right;
-          result.vertical.position = nodeBBounds.right;
-          result.vertical.nodes = [nodeABounds, nodeBBounds];
-          verticalDistance = distanceLeftRight;
-        } else if (distanceLeftRight === verticalDistance) {
-          result.vertical.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |
+    //  |___________|
+    //              |
+    //              |
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     B     |
+    //  |___________|
+    if (distanceRightRight < verticalDistance) {
+      result.snapPosition.x = nodeBBounds.right - nodeABounds.width;
+      result.vertical.position = nodeBBounds.right;
+      result.vertical.nodes = [nodeABounds, nodeBBounds];
+      verticalDistance = distanceRightRight;
+    } else if (distanceRightRight === verticalDistance) {
+      result.vertical.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |
-        //  |___________|
-        //              |
-        //              |
-        //              |‾‾‾‾‾‾‾‾‾‾‾|
-        //              |     B     |
-        //              |___________|
-        if (distanceRightLeft < verticalDistance) {
-          result.snapPosition.x = nodeBBounds.left - nodeABounds.width;
-          result.vertical.position = nodeBBounds.left;
-          result.vertical.nodes = [nodeABounds, nodeBBounds];
-          verticalDistance = distanceRightLeft;
-        } else if (distanceRightLeft === verticalDistance) {
-          result.vertical.nodes.push(nodeBBounds);
-        }
+    //              |‾‾‾‾‾‾‾‾‾‾‾|
+    //              |     A     |
+    //              |___________|
+    //              |
+    //              |
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     B     |
+    //  |___________|
+    if (distanceLeftRight < verticalDistance) {
+      result.snapPosition.x = nodeBBounds.right;
+      result.vertical.position = nodeBBounds.right;
+      result.vertical.nodes = [nodeABounds, nodeBBounds];
+      verticalDistance = distanceLeftRight;
+    } else if (distanceLeftRight === verticalDistance) {
+      result.vertical.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |     |     B     |
-        //  |___________|     |___________|
-        if (distanceTopTop < horizontalDistance) {
-          result.snapPosition.y = nodeBBounds.top;
-          result.horizontal.position = nodeBBounds.top;
-          result.horizontal.nodes = [nodeABounds, nodeBBounds];
-          horizontalDistance = distanceTopTop;
-        } else if (distanceTopTop === horizontalDistance) {
-          result.horizontal.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |
+    //  |___________|
+    //              |
+    //              |
+    //              |‾‾‾‾‾‾‾‾‾‾‾|
+    //              |     B     |
+    //              |___________|
+    if (distanceRightLeft < verticalDistance) {
+      result.snapPosition.x = nodeBBounds.left - nodeABounds.width;
+      result.vertical.position = nodeBBounds.left;
+      result.vertical.nodes = [nodeABounds, nodeBBounds];
+      verticalDistance = distanceRightLeft;
+    } else if (distanceRightLeft === verticalDistance) {
+      result.vertical.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |
-        //  |___________|_________________
-        //                    |           |
-        //                    |     B     |
-        //                    |___________|
-        if (distanceBottomTop < horizontalDistance) {
-          result.snapPosition.y = nodeBBounds.top - nodeABounds.height;
-          result.horizontal.position = nodeBBounds.top;
-          result.horizontal.nodes = [nodeABounds, nodeBBounds];
-          horizontalDistance = distanceBottomTop;
-        } else if (distanceBottomTop === horizontalDistance) {
-          result.horizontal.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |     |     B     |
+    //  |___________|     |___________|
+    if (distanceTopTop < horizontalDistance) {
+      result.snapPosition.y = nodeBBounds.top;
+      result.horizontal.position = nodeBBounds.top;
+      result.horizontal.nodes = [nodeABounds, nodeBBounds];
+      horizontalDistance = distanceTopTop;
+    } else if (distanceTopTop === horizontalDistance) {
+      result.horizontal.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|     |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |     |     B     |
-        //  |___________|_____|___________|
-        if (distanceBottomBottom < horizontalDistance) {
-          result.snapPosition.y = nodeBBounds.bottom - nodeABounds.height;
-          result.horizontal.position = nodeBBounds.bottom;
-          result.horizontal.nodes = [nodeABounds, nodeBBounds];
-          horizontalDistance = distanceBottomBottom;
-        } else if (distanceBottomBottom === horizontalDistance) {
-          result.horizontal.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |
+    //  |___________|_________________
+    //                    |           |
+    //                    |     B     |
+    //                    |___________|
+    if (distanceBottomTop < horizontalDistance) {
+      result.snapPosition.y = nodeBBounds.top - nodeABounds.height;
+      result.horizontal.position = nodeBBounds.top;
+      result.horizontal.nodes = [nodeABounds, nodeBBounds];
+      horizontalDistance = distanceBottomTop;
+    } else if (distanceBottomTop === horizontalDistance) {
+      result.horizontal.nodes.push(nodeBBounds);
+    }
 
-        //                    |‾‾‾‾‾‾‾‾‾‾‾|
-        //                    |     B     |
-        //                    |           |
-        //  |‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
-        //  |     A     |
-        //  |___________|
-        if (distanceTopBottom < horizontalDistance) {
-          result.snapPosition.y = nodeBBounds.bottom;
-          result.horizontal.position = nodeBBounds.bottom;
-          result.horizontal.nodes = [nodeABounds, nodeBBounds];
-          horizontalDistance = distanceTopBottom;
-        } else if (distanceTopBottom === horizontalDistance) {
-          result.horizontal.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|     |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |     |     B     |
+    //  |___________|_____|___________|
+    if (distanceBottomBottom < horizontalDistance) {
+      result.snapPosition.y = nodeBBounds.bottom - nodeABounds.height;
+      result.horizontal.position = nodeBBounds.bottom;
+      result.horizontal.nodes = [nodeABounds, nodeBBounds];
+      horizontalDistance = distanceBottomBottom;
+    } else if (distanceBottomBottom === horizontalDistance) {
+      result.horizontal.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |
-        //  |___________|
-        //        |
-        //        |
-        //  |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     B     |
-        //  |___________|
-        if (distanceCenterXCenterX < verticalDistance) {
-          result.snapPosition.x = nodeBBounds.centerX - nodeABounds.width / 2;
-          result.vertical.position = nodeBBounds.centerX;
-          result.vertical.nodes = [nodeABounds, nodeBBounds];
-          verticalDistance = distanceCenterXCenterX;
-        } else if (distanceCenterXCenterX === verticalDistance) {
-          result.vertical.nodes.push(nodeBBounds);
-        }
+    //                    |‾‾‾‾‾‾‾‾‾‾‾|
+    //                    |     B     |
+    //                    |           |
+    //  |‾‾‾‾‾‾‾‾‾‾‾|‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾
+    //  |     A     |
+    //  |___________|
+    if (distanceTopBottom < horizontalDistance) {
+      result.snapPosition.y = nodeBBounds.bottom;
+      result.horizontal.position = nodeBBounds.bottom;
+      result.horizontal.nodes = [nodeABounds, nodeBBounds];
+      horizontalDistance = distanceTopBottom;
+    } else if (distanceTopBottom === horizontalDistance) {
+      result.horizontal.nodes.push(nodeBBounds);
+    }
 
-        //  |‾‾‾‾‾‾‾‾‾‾‾|    |‾‾‾‾‾‾‾‾‾‾‾|
-        //  |     A     |----|     B     |
-        //  |___________|    |___________|
-        if (distanceCenterYCenterY < horizontalDistance) {
-          result.snapPosition.y = nodeBBounds.centerY - nodeABounds.height / 2;
-          result.horizontal.position = nodeBBounds.centerY;
-          result.horizontal.nodes = [nodeABounds, nodeBBounds];
-          horizontalDistance = distanceCenterYCenterY;
-        } else if (distanceCenterYCenterY === horizontalDistance) {
-          result.horizontal.nodes.push(nodeBBounds);
-        }
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |
+    //  |___________|
+    //        |
+    //        |
+    //  |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     B     |
+    //  |___________|
+    if (distanceCenterXCenterX < verticalDistance) {
+      result.snapPosition.x = nodeBBounds.centerX - nodeABounds.width / 2;
+      result.vertical.position = nodeBBounds.centerX;
+      result.vertical.nodes = [nodeABounds, nodeBBounds];
+      verticalDistance = distanceCenterXCenterX;
+    } else if (distanceCenterXCenterX === verticalDistance) {
+      result.vertical.nodes.push(nodeBBounds);
+    }
 
-        return result;
-      },
-      { snapPosition: { x: undefined, y: undefined } } as GetHelperLinesResult
-    );
+    //  |‾‾‾‾‾‾‾‾‾‾‾|    |‾‾‾‾‾‾‾‾‾‾‾|
+    //  |     A     |----|     B     |
+    //  |___________|    |___________|
+    if (distanceCenterYCenterY < horizontalDistance) {
+      result.snapPosition.y = nodeBBounds.centerY - nodeABounds.height / 2;
+      result.horizontal.position = nodeBBounds.centerY;
+      result.horizontal.nodes = [nodeABounds, nodeBBounds];
+      horizontalDistance = distanceCenterYCenterY;
+    } else if (distanceCenterYCenterY === horizontalDistance) {
+      result.horizontal.nodes.push(nodeBBounds);
+    }
+  };
+
+  return {
+    scanNode,
+    getResult: () => result
+  };
 };
 
-const useRAF = () => {
+type ComputeHelperLinesParams = CreateHelperLineScannerParams & {
+  nodes: Node[];
+  isCandidate?: (node: Node) => boolean;
+};
+
+/** 单次遍历候选节点并计算吸附位置及辅助线。 */
+export const computeHelperLines = ({
+  change,
+  node,
+  nodes,
+  isCandidate,
+  distance
+}: ComputeHelperLinesParams): GetHelperLinesResult => {
+  const scanner = createHelperLineScanner({ change, node, distance });
+  for (const candidate of nodes) {
+    if (!isCandidate || isCandidate(candidate)) scanner.scanNode(candidate);
+  }
+  return scanner.getResult();
+};
+
+export const useRAF = () => {
   const { resetParentNodeSizeAndPosition } = useContextSelector(WorkflowLayoutContext, (v) => v);
 
   // Loop child drag RAF 节流相关
@@ -302,110 +412,48 @@ const useRAF = () => {
     [resetParentNodeSizeAndPosition]
   );
 
-  // Helper line RAF 节流相关
-  const helperLineRafIdRef = useRef<number>();
-  const pendingHelperLineRef = useRef<{
-    change: NodeChange;
-    nodes: Node[];
-    setHorizontal: (line?: THelperLine) => void;
-    setVertical: (line?: THelperLine) => void;
-  } | null>(null);
-
-  const scheduleHelperLineUpdate = useCallback(
-    (
-      change: NodeChange,
-      nodes: Node[],
-      setHorizontal: (line?: THelperLine) => void,
-      setVertical: (line?: THelperLine) => void
-    ) => {
-      // 记录待更新的辅助线信息
-      pendingHelperLineRef.current = { change, nodes, setHorizontal, setVertical };
-
-      // 如果已有待执行的 RAF,不重复请求
-      if (helperLineRafIdRef.current) return;
-
-      // 请求下一帧执行更新
-      helperLineRafIdRef.current = requestAnimationFrame(() => {
-        helperLineRafIdRef.current = undefined;
-
-        if (pendingHelperLineRef.current) {
-          const { change, nodes, setHorizontal, setVertical } = pendingHelperLineRef.current;
-          pendingHelperLineRef.current = null;
-
-          // 执行实际的辅助线计算
-          const positionChange = change.type === 'position' && change.dragging ? change : undefined;
-
-          if (positionChange?.position) {
-            const dragPos = positionChange.position;
-
-            // 一次遍历: 过滤 3000px 范围内的节点 + 计算距离
-            const candidateNodes: Array<{ node: Node; distance: number }> = [];
-
-            for (const node of nodes) {
-              const dx = Math.abs(node.position.x - dragPos.x);
-              const dy = Math.abs(node.position.y - dragPos.y);
-
-              if (dx <= 3000 && dy <= 3000) {
-                const distance = dx + dy;
-                candidateNodes.push({ node, distance });
-              }
-            }
-
-            // 部分排序: 按距离从近到远排序,只取前 15 个
-            candidateNodes.sort((a, b) => a.distance - b.distance);
-            const filterNodes = candidateNodes.slice(0, 15).map((item) => item.node);
-
-            const helperLines = computeHelperLines(positionChange, filterNodes);
-
-            positionChange.position.x = helperLines.snapPosition.x ?? positionChange.position.x;
-            positionChange.position.y = helperLines.snapPosition.y ?? positionChange.position.y;
-
-            setHorizontal(helperLines.horizontal);
-            setVertical(helperLines.vertical);
-          } else {
-            setHorizontal(undefined);
-            setVertical(undefined);
-          }
-        }
-      });
-    },
-    []
-  );
-
   useEffect(() => {
     return () => {
       if (childRafIdRef.current) {
         cancelAnimationFrame(childRafIdRef.current);
       }
-      if (helperLineRafIdRef.current) {
-        cancelAnimationFrame(helperLineRafIdRef.current);
-      }
     };
   }, []);
 
   return {
-    scheduleParentSizeUpdate,
-    scheduleHelperLineUpdate
+    scheduleParentSizeUpdate
   };
 };
 
 export const popoverWidth = 400;
 export const popoverHeight = 600;
-// Loop 类型的父节点类型集合
-const PARENT_NODE_TYPES = new Set([FlowNodeTypeEnum.loop]);
 
-export const useWorkflow = () => {
+type UseWorkflowParams = {
+  helperLinesRef: MutableRefObject<HelperLinesController | null>;
+};
+
+export const useWorkflow = ({ helperLinesRef }: UseWorkflowParams) => {
   const { toast } = useToast();
   const { t } = useTranslation();
 
   const appDetail = useContextSelector(AppContext, (e) => e.appDetail);
 
   const { nodes, getRawNodeById } = useContextSelector(WorkflowInitContext, (state) => state);
-  const { onNodesChange, workflowStartNode, getNodeById, edges, setEdges, onEdgesChange } =
-    useContextSelector(WorkflowBufferDataContext, (state) => state);
+  const {
+    onNodesChange,
+    setNodes,
+    workflowStartNode,
+    getNodeById,
+    edges,
+    setEdges,
+    onEdgesChange
+  } = useContextSelector(WorkflowBufferDataContext, (state) => state);
   const selectedNodesMap = useContextSelector(WorkflowNodeDataContext, (v) => v.selectedNodesMap);
 
-  const { setConnectingEdge, onChangeNode } = useContextSelector(WorkflowActionsContext, (v) => v);
+  const { setConnectingEdge, onChangeNode, onUpdateNodeError } = useContextSelector(
+    WorkflowActionsContext,
+    (v) => v
+  );
   const pushPastSnapshot = useContextSelector(WorkflowSnapshotContext, (v) => v.pushPastSnapshot);
 
   const { setHoverEdgeId, setMenu } = useContextSelector(WorkflowUIContext, (v) => v);
@@ -414,44 +462,60 @@ export const useWorkflow = () => {
   const { getIntersectingNodes, flowToScreenPosition, getZoom } = useReactFlow();
   const { isDowningCtrl } = useKeyboard();
 
-  const { scheduleParentSizeUpdate, scheduleHelperLineUpdate } = useRAF();
+  const { scheduleParentSizeUpdate } = useRAF();
 
-  /* helper line */
-  const [helperLineHorizontal, setHelperLineHorizontal] = useState<THelperLine>();
-  const [helperLineVertical, setHelperLineVertical] = useState<THelperLine>();
+  /** 同步应用吸附结果，并命令式绘制当前帧辅助线。 */
+  const applyHelperLineResult = useMemoizedFn(
+    (change: NodePositionChange, helperLines: GetHelperLinesResult) => {
+      if (!change.dragging || !change.position) {
+        helperLinesRef.current?.clear();
+        return;
+      }
 
-  const checkNodeHelpLine = useCallback(
-    (change: NodeChange, nodes: Node[]) => {
-      scheduleHelperLineUpdate(change, nodes, setHelperLineHorizontal, setHelperLineVertical);
-    },
-    [scheduleHelperLineUpdate]
+      change.position.x = helperLines.snapPosition.x ?? change.position.x;
+      change.position.y = helperLines.snapPosition.y ?? change.position.y;
+      helperLinesRef.current?.draw(helperLines);
+    }
   );
 
-  // Check if a node is placed on top of a loop node
+  // Check if a node is placed on top of a nested parent node (loop / parallelRun / loopRun)
   const checkNodeOverLoopNode = useMemoizedFn((node: Node) => {
-    const unSupportedTypes = [
-      FlowNodeTypeEnum.workflowStart,
-      FlowNodeTypeEnum.loop,
-      FlowNodeTypeEnum.pluginInput,
-      FlowNodeTypeEnum.pluginOutput,
-      FlowNodeTypeEnum.systemConfig
-    ];
-
     if (!node || node.data.parentNodeId) return;
 
-    // 获取所有与当前节点相交的节点
+    // 获取所有与当前节点相交的节点中，类型为嵌套父容器且未折叠的节点
     const intersections = getIntersectingNodes(node);
-    // 获取所有与当前节点相交的节点中，类型为 loop 的节点且它不能是折叠状态
     const parentNode = intersections.find(
-      (item) => !item.data.isFolded && item.type === FlowNodeTypeEnum.loop
+      (item) => !item.data.isFolded && isNestedParentNodeType(item.type ?? '')
     );
 
     if (parentNode) {
-      if (unSupportedTypes.includes(node.type as FlowNodeTypeEnum)) {
-        return toast({
-          status: 'warning',
-          title: t('workflow:can_not_loop')
+      const containerChildNodes = nodes.filter(
+        (item) => item.data.parentNodeId === parentNode.data.nodeId
+      );
+      const containerContext = buildNodeTemplateContext({
+        sourceNode: undefined,
+        edges,
+        getNodeById,
+        isSidebar: true,
+        targetParentType: parentNode.data.flowNodeType,
+        hasToolNode: containerChildNodes.some(
+          (item) => item.data.flowNodeType === FlowNodeTypeEnum.toolCall
+        ),
+        hasLoopRunNode: containerChildNodes.some(
+          (item) => item.data.flowNodeType === FlowNodeTypeEnum.loopRun
+        )
+      });
+      if (containerContext) {
+        const checkError = getNodeContainerCheckError({
+          node: node.data,
+          context: containerContext
         });
+        if (checkError) {
+          return toast({
+            status: 'warning',
+            title: translateNodeContainerCheckError(checkError, t)
+          });
+        }
       }
 
       onChangeNode({
@@ -563,14 +627,49 @@ export const useWorkflow = () => {
     if (change.selected === false && isDowningCtrl) {
       change.selected = true;
     }
+
+    // 错误节点失焦（取消选中）时清除标红，与原版点击节点取消标红行为一致。
+    if (!change.selected) {
+      const node = getRawNodeById(change.id);
+      if (node?.data.isError) {
+        onUpdateNodeError(node.data.nodeId, false);
+      }
+      return;
+    }
+
+    // 父子互斥(后操作优先): 选父则取消其已选 children;选子则取消已选父。
+    const node = getRawNodeById(change.id);
+    if (!node) return;
+
+    if (isNestedParentNodeType(node.data.flowNodeType)) {
+      setNodes((curr) =>
+        curr.map((n) =>
+          n.data.parentNodeId === node.id && n.selected ? { ...n, selected: false } : n
+        )
+      );
+    } else if (node.data.parentNodeId) {
+      const parent = getRawNodeById(node.data.parentNodeId);
+      if (parent?.selected) {
+        setNodes((curr) => curr.map((n) => (n.id === parent.id ? { ...n, selected: false } : n)));
+      }
+    }
   });
   const handlePositionNode = useMemoizedFn(
     (change: NodePositionChange, node: Node<FlowNodeItemType>) => {
       // 场景1: 子节点拖拽 - 在父节点内移动
       if (node.data.parentNodeId) {
         const parentId = node.data.parentNodeId;
-        const childNodes = nodes.filter((n) => n.data.parentNodeId === parentId);
-        checkNodeHelpLine(change, childNodes);
+        if (change.dragging && change.position) {
+          const helperLines = computeHelperLines({
+            change,
+            node,
+            nodes,
+            isCandidate: (candidate) => candidate.data.parentNodeId === parentId
+          });
+          applyHelperLineResult(change, helperLines);
+        } else {
+          helperLinesRef.current?.clear();
+        }
 
         // 使用 RAF 节流的更新
         scheduleParentSizeUpdate(parentId);
@@ -578,26 +677,30 @@ export const useWorkflow = () => {
       }
 
       // 场景2: Loop 父节点拖拽 - 联动子节点
-      if (PARENT_NODE_TYPES.has(node.data.flowNodeType)) {
+      if (isNestedParentNodeType(node.data.flowNodeType)) {
         const parentId = node.id;
+        const helperLineScanner =
+          change.dragging && change.position
+            ? createHelperLineScanner({ change, node })
+            : undefined;
 
-        // 一次 reduce 同时获取 topLevelNodes 和 childNodes
-        const { topLevelNodes, childNodes } = nodes.reduce(
-          (acc, n) => {
-            if (n.data.parentNodeId === parentId) {
-              acc.childNodes.push(n);
-            } else if (!n.data.parentNodeId) {
-              acc.topLevelNodes.push(n);
-            }
-            return acc;
-          },
-          { topLevelNodes: [] as Node[], childNodes: [] as Node[] }
-        );
+        // 一次遍历同时收集子节点并扫描顶层吸附候选。
+        const childNodes: Node[] = [];
+        for (const n of nodes) {
+          if (n.data.parentNodeId === parentId) {
+            childNodes.push(n);
+          } else if (!n.data.parentNodeId) {
+            helperLineScanner?.scanNode(n);
+          }
+        }
 
-        // 计算对齐辅助线 (仅针对顶层节点)
-        checkNodeHelpLine(change, topLevelNodes);
+        if (helperLineScanner) {
+          applyHelperLineResult(change, helperLineScanner.getResult());
+        } else {
+          helperLinesRef.current?.clear();
+        }
 
-        // 计算子节点的位置变化
+        // 计算子节点的位置变化 (此处 change.position 已是吸附后值)
         if (childNodes.length > 0) {
           const initPosition = node.position;
           const deltaX = change.position?.x ? change.position.x - initPosition.x : 0;
@@ -628,16 +731,26 @@ export const useWorkflow = () => {
       }
 
       // 场景3: 普通节点拖拽 - 显示对齐辅助线
-      checkNodeHelpLine(
-        change,
-        nodes.filter((node) => !node.data.parentNodeId)
-      );
+      if (change.dragging && change.position) {
+        const helperLines = computeHelperLines({
+          change,
+          node,
+          nodes,
+          isCandidate: (candidate) => !candidate.data.parentNodeId
+        });
+        applyHelperLineResult(change, helperLines);
+      } else {
+        helperLinesRef.current?.clear();
+      }
 
       return [];
     }
   );
   const handleNodesChange = useMemoizedFn((changes: NodeChange[]) => {
     const childChanges: NodeChange[] = [];
+    const removedIds = new Set(
+      changes.filter((c): c is NodeRemoveChange => c.type === 'remove').map((c) => c.id)
+    );
 
     for (const change of changes) {
       if (change.type === 'remove') {
@@ -654,6 +767,35 @@ export const useWorkflow = () => {
             title: t('common:core.workflow.Can not delete node')
           });
           continue;
+        }
+        // Conditional loopRun must retain at least one loopRunBreak child.
+        if (
+          node.data.flowNodeType === FlowNodeTypeEnum.loopRunBreak &&
+          node.data.parentNodeId &&
+          !parentNodeDeleted
+        ) {
+          const parent = getRawNodeById(node.data.parentNodeId);
+          const parentMode = parent?.data.inputs.find((i) => i.key === NodeInputKeyEnum.loopRunMode)
+            ?.value as LoopRunModeEnum | undefined;
+          if (
+            parent?.data.flowNodeType === FlowNodeTypeEnum.loopRun &&
+            parentMode === LoopRunModeEnum.conditional
+          ) {
+            const remainingBreak = nodes.some(
+              (n) =>
+                n.data.parentNodeId === parent.id &&
+                n.data.flowNodeType === FlowNodeTypeEnum.loopRunBreak &&
+                !removedIds.has(n.id)
+            );
+            if (!remainingBreak) {
+              toast({
+                status: 'warning',
+                title: t('workflow:loop_run_conditional_requires_break')
+              });
+              removedIds.delete(change.id);
+              continue;
+            }
+          }
         }
         handleRemoveNode(change, node.id);
       } else if (change.type === 'select') {
@@ -685,16 +827,17 @@ export const useWorkflow = () => {
 
   const onNodeDragStop = useCallback(
     (_: any, node: Node) => {
+      helperLinesRef.current?.clear();
       checkNodeOverLoopNode(node);
     },
-    [checkNodeOverLoopNode]
+    [checkNodeOverLoopNode, helperLinesRef]
   );
 
   /* connect */
   const onConnectStart = useCallback(
     (event: any, params: OnConnectStartParams) => {
       const { nodeId, handleId } = params;
-      if (!nodeId) return;
+      if (!nodeId || params.handleType === 'target') return;
 
       // If node is folded, unfold it when connecting
       const sourceNode = getNodeById(nodeId);
@@ -754,6 +897,14 @@ export const useWorkflow = () => {
   }, [setConnectingEdge]);
   const onConnect = useCallback(
     ({ connect }: { connect: Connection }) => {
+      const nextEdges = addEdge(
+        {
+          ...connect,
+          type: EDGE_TYPE
+        },
+        edges
+      );
+
       setEdges((state) =>
         addEdge(
           {
@@ -764,32 +915,19 @@ export const useWorkflow = () => {
         )
       );
 
-      // Add default input
-      const node = getNodeById(connect.target);
-      if (!node) return;
+      if (!workflowStartNode) return;
 
-      // 1. Add file input
-      if (
-        node.flowNodeType === FlowNodeTypeEnum.chatNode ||
-        node.flowNodeType === FlowNodeTypeEnum.agent ||
-        node.flowNodeType === FlowNodeTypeEnum.appModule
-      ) {
-        const input = node.inputs.find((i) => i.key === NodeInputKeyEnum.fileUrlList);
-        if (input && (!input?.value || input.value.length === 0)) {
-          if (!workflowStartNode) return;
-          onChangeNode({
-            nodeId: node.nodeId,
-            type: 'updateInput',
-            key: NodeInputKeyEnum.fileUrlList,
-            value: {
-              ...input,
-              value: [[workflowStartNode.nodeId, NodeOutputKeyEnum.userFiles]]
-            }
-          });
-        }
+      const patches = collectWorkflowStartInputAutoFillPatches({
+        nodes,
+        edges: nextEdges,
+        workflowStartNode
+      });
+
+      if (patches.length > 0) {
+        onChangeNode(patches.map((patch) => ({ ...patch, type: 'updateInput' as const })));
       }
     },
-    [setEdges, getNodeById, workflowStartNode, onChangeNode]
+    [edges, nodes, onChangeNode, setEdges, workflowStartNode]
   );
   const customOnConnect = useCallback(
     (connect: Connection) => {
@@ -803,11 +941,31 @@ export const useWorkflow = () => {
         });
       }
 
+      const sourceNode = getNodeById(connect.source);
+      const targetNode = getNodeById(connect.target);
+      const targetTemplate = targetNode
+        ? moduleTemplatesFlat.find((item) => item.id === targetNode.flowNodeType)
+        : undefined;
+      if (
+        !sourceNode ||
+        !targetNode ||
+        !isNodeConnectionAllowed({
+          targetTemplate,
+          targetNode,
+          sourceNode,
+          edges,
+          handleId: connect.sourceHandle,
+          getNodeById
+        })
+      ) {
+        return;
+      }
+
       onConnect({
         connect
       });
     },
-    [onConnect, t, toast]
+    [edges, getNodeById, onConnect, t, toast]
   );
 
   /* edge */
@@ -827,10 +985,27 @@ export const useWorkflow = () => {
       // Prevent native context menu from showing
       e.preventDefault();
 
-      setMenu({
-        top: e.clientY - 64,
-        left: e.clientX - 12
-      });
+      // Context menu dimensions
+      const contextMenuWidth = 120;
+      const contextMenuHeight = 120;
+
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      const margin = 10;
+
+      let top = e.clientY + 6;
+      let left = e.clientX - 12;
+
+      // Check right boundary
+      if (left + contextMenuWidth + margin > viewportWidth) {
+        left = Math.max(margin, e.clientX - contextMenuWidth);
+      }
+
+      // Check bottom boundary
+      if (top + contextMenuHeight + margin > viewportHeight) {
+        top = Math.max(margin, viewportHeight - contextMenuHeight - margin);
+      }
+      setMenu({ top, left });
     },
     [setMenu]
   );
@@ -864,8 +1039,6 @@ export const useWorkflow = () => {
     customOnConnect,
     onEdgeMouseEnter,
     onEdgeMouseLeave,
-    helperLineHorizontal,
-    helperLineVertical,
     onNodeDragStop,
     onPaneContextMenu,
     onPaneClick

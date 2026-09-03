@@ -4,7 +4,7 @@ import Papa from 'papaparse';
 export const loadFile2Buffer = ({ file, onError }: { file: File; onError?: (err: any) => void }) =>
   new Promise<ArrayBuffer>((resolve, reject) => {
     try {
-      let reader = new FileReader();
+      const reader = new FileReader();
       reader.readAsArrayBuffer(file);
       reader.onload = async ({ target }) => {
         if (!target?.result) {
@@ -40,7 +40,7 @@ export const readFileRawText = ({
 }) => {
   return new Promise<string>((resolve, reject) => {
     try {
-      let reader = new FileReader();
+      const reader = new FileReader();
       reader.onload = async ({ target }) => {
         if (!target?.result) {
           onError?.('Load file error');
@@ -85,7 +85,7 @@ async function detectFileEncoding(file: File): Promise<string> {
   const buffer = await loadFile2Buffer({ file });
   const encoding = (() => {
     const encodings = ['utf-8', 'iso-8859-1', 'windows-1252'];
-    for (let encoding of encodings) {
+    for (const encoding of encodings) {
       try {
         const decoder = new TextDecoder(encoding, { fatal: true });
         decoder.decode(buffer);

@@ -1,15 +1,15 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import type { BoxProps } from '@chakra-ui/react';
 import { Flex, Box, HStack, Image } from '@chakra-ui/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'next-i18next';
 import Avatar from '@fastgpt/web/components/common/Avatar';
-import { type AppListItemType } from '@fastgpt/global/core/app/type';
 import MyDivider from '@fastgpt/web/components/common/MyDivider';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import UserAvatarPopover from '@/pageComponents/chat/UserAvatarPopover';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import MyIcon from '@fastgpt/web/components/common/Icon';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import {
   ChatSidebarPaneEnum,
   DEFAULT_LOGO_BANNER_COLLAPSED_URL,
@@ -17,12 +17,11 @@ import {
 } from '@/pageComponents/chat/constants';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useContextSelector } from 'use-context-selector';
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import { usePathname } from 'next/navigation';
 
 type Props = {
   activeAppId: string;
-  apps: AppListItemType[];
 };
 
 const MotionBox = motion(Box);
@@ -148,13 +147,13 @@ const AnimatedText: React.FC<AnimatedTextProps> = ({ show, children, className, 
 );
 
 const LogoSection = () => {
-  const isCollapsed = useContextSelector(ChatSettingContext, (v) => v.collapse === 1);
-  const logos = useContextSelector(ChatSettingContext, (v) => v.logos);
+  const isCollapsed = useContextSelector(ChatPageContext, (v) => v.collapse === 1);
+  const logos = useContextSelector(ChatPageContext, (v) => v.logos);
   const isHomeActive = useContextSelector(
-    ChatSettingContext,
+    ChatPageContext,
     (v) => v.pane === ChatSidebarPaneEnum.HOME
   );
-  const onTriggerCollapse = useContextSelector(ChatSettingContext, (v) => v.onTriggerCollapse);
+  const onTriggerCollapse = useContextSelector(ChatPageContext, (v) => v.onTriggerCollapse);
   const wideLogoSrc = logos.wideLogoUrl;
   const squareLogoSrc = logos.squareLogoUrl;
 
@@ -218,6 +217,9 @@ const ActionButton: React.FC<{
   return (
     <Flex
       p={2}
+      gap={isCollapsed ? 0 : 2}
+      h={'44px'}
+      minH={'44px'}
       flex={1}
       cursor={'pointer'}
       borderRadius={'8px'}
@@ -232,12 +234,13 @@ const ActionButton: React.FC<{
             bg: 'transparent',
             color: 'myGray.500',
             _hover: {
-              bg: isCollapsed ? 'myGray.200' : 'primary.100'
+              bg: 'transparent',
+              color: 'myGray.500'
             }
           })}
       onClick={onClick}
     >
-      <MyIcon w="20px" h="20px" name={icon} viewBox="0 0 20 20" mr={isCollapsed ? 0 : 2} />
+      <MyIcon w="20px" h="20px" name={icon} viewBox="0 0 20 20" />
       <AnimatedText
         show={!isCollapsed && !!text}
         fontSize="sm"
@@ -254,79 +257,26 @@ const ActionButton: React.FC<{
 const NavigationSection = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
-  const { userInfo } = useUserStore();
-  const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
-  // 鲁港通 - 仅 root 管理员显示完整导航（团队应用、精选应用）
-  // hasManagePer 对所有团队 owner 都为 true，不能用来区分管理员
-  const isRootAdmin = userInfo?.username === 'root';
-  const showSimplifiedNav = enableUserChatOnly || !isRootAdmin;
 
   const isEnableHome = useContextSelector(
-    ChatSettingContext,
+    ChatPageContext,
     (v) => v.chatSettings?.enableHome ?? true
   );
-  const isCollapsed = useContextSelector(ChatSettingContext, (v) => v.collapse === 1);
-  const onTriggerCollapse = useContextSelector(ChatSettingContext, (v) => v.onTriggerCollapse);
+  const isCollapsed = useContextSelector(ChatPageContext, (v) => v.collapse === 1);
+  const onTriggerCollapse = useContextSelector(ChatPageContext, (v) => v.onTriggerCollapse);
   const isHomeActive = useContextSelector(
-    ChatSettingContext,
+    ChatPageContext,
     (v) => v.pane === ChatSidebarPaneEnum.HOME
   );
-  const isTeamAppsActive = useContextSelector(
-    ChatSettingContext,
-    (v) => v.pane === ChatSidebarPaneEnum.TEAM_APPS
+  const isAllAppsActive = useContextSelector(
+    ChatPageContext,
+    (v) => v.pane === ChatSidebarPaneEnum.ALL_APPS
   );
-  const isFavouriteAppsActive = useContextSelector(
-    ChatSettingContext,
-    (v) => v.pane === ChatSidebarPaneEnum.FAVORITE_APPS
-  );
-  const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
-
-  // 鲁港通 - 简化导航：纯聊天模式或非管理员用户隐藏团队应用、收藏应用等管理入口
-  if (showSimplifiedNav) {
-    return (
-      <Flex mt={4} flexDirection={'column'} gap={1} px={4}>
-        <AnimatedSection show={isCollapsed}>
-          <ActionButton isCollapsed icon="core/chat/sidebar/expand" onClick={onTriggerCollapse} />
-        </AnimatedSection>
-
-        <AnimatePresence mode="wait">
-          {isCollapsed ? (
-            <AnimatedSection show={true}>
-              <Flex flexDir="column" gap={2}>
-                {/* 鲁港通 - 启用首页导航 */}
-                {isEnableHome && (
-                  <ActionButton
-                    icon="core/chat/sidebar/home"
-                    isCollapsed={true}
-                    isActive={isHomeActive}
-                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
-                  />
-                )}
-              </Flex>
-            </AnimatedSection>
-          ) : (
-            <AnimatedSection show={true}>
-              <Flex flexDir="column" gap={2}>
-                {/* 鲁港通 - 启用首页导航 */}
-                {isEnableHome && (
-                  <ActionButton
-                    icon="core/chat/sidebar/home"
-                    text={t('chat:sidebar.home')}
-                    isCollapsed={false}
-                    isActive={isHomeActive}
-                    onClick={() => handlePaneChange(ChatSidebarPaneEnum.HOME)}
-                  />
-                )}
-              </Flex>
-            </AnimatedSection>
-          )}
-        </AnimatePresence>
-      </Flex>
-    );
-  }
+  const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
+  const showHome = feConfigs.isPlus && isEnableHome;
 
   return (
-    <Flex mt={4} flexDirection={'column'} gap={1} px={4}>
+    <Flex mt={4} flexDirection={'column'} gap={'12px'} px={4}>
       <AnimatedSection show={isCollapsed}>
         <ActionButton isCollapsed icon="core/chat/sidebar/expand" onClick={onTriggerCollapse} />
       </AnimatedSection>
@@ -334,9 +284,8 @@ const NavigationSection = () => {
       <AnimatePresence mode="wait">
         {isCollapsed ? (
           <AnimatedSection show={true}>
-            <Flex flexDir="column" gap={2}>
-              {/* 鲁港通 - 启用完整导航功能 */}
-              {isEnableHome && (
+            <Flex flexDir="column" gap={0}>
+              {showHome && (
                 <ActionButton
                   icon="core/chat/sidebar/home"
                   isCollapsed={true}
@@ -346,25 +295,17 @@ const NavigationSection = () => {
               )}
 
               <ActionButton
-                icon="core/chat/sidebar/star"
-                isCollapsed={true}
-                isActive={isFavouriteAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
-              />
-
-              <ActionButton
                 icon="common/app"
                 isCollapsed={true}
-                isActive={isTeamAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS)}
+                isActive={isAllAppsActive}
+                onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
               />
             </Flex>
           </AnimatedSection>
         ) : (
           <AnimatedSection show={true}>
-            <Flex flexDir="column" gap={2}>
-              {/* 鲁港通 - 启用完整导航功能 */}
-              {isEnableHome && (
+            <Flex flexDir="column" gap={0}>
+              {showHome && (
                 <ActionButton
                   icon="core/chat/sidebar/home"
                   text={t('chat:sidebar.home')}
@@ -375,19 +316,11 @@ const NavigationSection = () => {
               )}
 
               <ActionButton
-                icon="core/chat/sidebar/star"
-                text={t('chat:sidebar.favourite_apps')}
-                isCollapsed={false}
-                isActive={isFavouriteAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.FAVORITE_APPS)}
-              />
-
-              <ActionButton
                 icon="common/app"
-                text={t('chat:sidebar.team_apps')}
+                text={t('chat:sidebar.all_apps')}
                 isCollapsed={false}
-                isActive={isTeamAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS)}
+                isActive={isAllAppsActive}
+                onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
               />
             </Flex>
           </AnimatedSection>
@@ -401,24 +334,20 @@ const BottomSection = () => {
   const pathname = usePathname();
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
-  const enableUserChatOnly = !!feConfigs.enableUserChatOnly;
+  const isProVersion = !!feConfigs.isPlus;
 
   const { userInfo } = useUserStore();
   const isLoggedIn = !!userInfo;
   const avatar = userInfo?.avatar;
-  // 鲁港通 - 仅 root 管理员显示设置按钮
-  const isRootAdmin = userInfo?.username === 'root';
+  const isAdmin = !!userInfo?.team.permission.hasManagePer;
   const isShare = pathname === '/chat/share';
 
-  const isCollapsed = useContextSelector(ChatSettingContext, (v) => v.collapse === 1);
+  const isCollapsed = useContextSelector(ChatPageContext, (v) => v.collapse === 1);
   const isSettingActive = useContextSelector(
-    ChatSettingContext,
+    ChatPageContext,
     (v) => v.pane === ChatSidebarPaneEnum.SETTING
   );
-  const onSettingClick = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
-
-  // 鲁港通 - 仅 root 管理员显示设置按钮，纯聊天模式下隐藏
-  const showSettingButton = isRootAdmin && !isShare && !enableUserChatOnly;
+  const onSettingClick = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
 
   return (
     <MotionBox mt={'auto'} px={3} py={4} layout={false}>
@@ -431,7 +360,7 @@ const BottomSection = () => {
         h={isCollapsed ? 'auto' : '40px'}
         minH="40px"
       >
-        {showSettingButton && (
+        {isAdmin && isProVersion && !isShare && (
           <MotionBox
             order={isCollapsed ? 1 : 2}
             layout={false}
@@ -533,13 +462,18 @@ const BottomSection = () => {
   );
 };
 
-const ChatSlider = ({ apps, activeAppId }: Props) => {
+const ChatSlider = ({ activeAppId }: Props) => {
   const { t } = useTranslation();
 
-  const isCollapsed = useContextSelector(ChatSettingContext, (v) => v.collapse === 1);
-  const pane = useContextSelector(ChatSettingContext, (v) => v.pane);
+  const isCollapsed = useContextSelector(ChatPageContext, (v) => v.collapse === 1);
+  const pane = useContextSelector(ChatPageContext, (v) => v.pane);
+  const myApps = useContextSelector(ChatPageContext, (v) => v.myApps);
+  const upsertRecentlyUsedAppPlaceholder = useContextSelector(
+    ChatPageContext,
+    (v) => v.upsertRecentlyUsedAppPlaceholder
+  );
 
-  const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
+  const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
 
   return (
     <MotionFlex
@@ -564,9 +498,11 @@ const ChatSlider = ({ apps, activeAppId }: Props) => {
 
       {/* recently used apps */}
       <AnimatedSection show={!isCollapsed} display={'flex'} flexDir={'column'} flex={'1 0 0'}>
-        <MyDivider h={1} my={1} mx="16px" w="calc(100% - 32px)" />
+        <Box px="16px" py={1}>
+          <MyDivider h={1} />
+        </Box>
 
-        <HStack px={3} my={2} color={'myGray.500'} fontSize={'sm'} justifyContent={'space-between'}>
+        <HStack px={3} py={2} color={'myGray.500'} fontSize={'sm'} justifyContent={'space-between'}>
           <Box
             whiteSpace={'nowrap'}
             overflow={'hidden'}
@@ -578,29 +514,41 @@ const ChatSlider = ({ apps, activeAppId }: Props) => {
           </Box>
         </HStack>
 
-        <MyBox flex={'1 0 0'} h={0} overflow={'overlay'} px={4} position={'relative'}>
-          {apps.map((item) => (
+        <MyBox
+          flex={'1 0 0'}
+          h={0}
+          overflow={'overlay'}
+          px={4}
+          position={'relative'}
+          display={'flex'}
+          flexDirection={'column'}
+          gap={'12px'}
+        >
+          {myApps.map((item) => (
             <Flex
-              key={item._id}
-              py={2}
-              px={2}
-              mb={3}
+              key={item.appId}
+              p={2}
+              gap={2}
+              h={'44px'}
+              minH={'44px'}
               cursor={'pointer'}
               borderRadius={'md'}
               alignItems={'center'}
               fontSize={'sm'}
-              {...(pane === ChatSidebarPaneEnum.RECENTLY_USED_APPS && item._id === activeAppId
+              {...(pane === ChatSidebarPaneEnum.RECENTLY_USED_APPS && item.appId === activeAppId
                 ? { bg: 'primary.100', color: 'primary.600' }
                 : {
                     _hover: { bg: 'primary.100' },
-                    onClick: () =>
-                      handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, item._id)
+                    onClick: () => {
+                      upsertRecentlyUsedAppPlaceholder(item);
+                      handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, item.appId);
+                    }
                   })}
             >
-              <Avatar src={item.avatar} w={'1.5rem'} borderRadius={'md'} />
-              <Box ml={2} className={'textEllipsis'}>
-                {item.name}
-              </Box>
+              <Avatar src={item.avatar} w={'20px'} h={'20px'} borderRadius={'6px'} />
+              <MyTooltip label={item.name} showOnlyWhenOverflow>
+                <Box className={'textEllipsis'}>{item.name}</Box>
+              </MyTooltip>
             </Flex>
           ))}
         </MyBox>

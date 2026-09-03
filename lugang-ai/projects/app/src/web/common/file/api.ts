@@ -1,49 +1,55 @@
 import { POST } from '@/web/common/api/request';
-import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
-import type { CreatePostPresignedUrlResult } from '@fastgpt/service/common/s3/type';
-import { type AxiosProgressEvent } from 'axios';
+import type {
+  PresignChatFileGetUrlParams,
+  PresignChatFilePostUrlParams,
+  PresignDraftChatFilePostUrlParams
+} from '@fastgpt/global/openapi/core/chat/file/api';
+import type {
+  CreatePostPresignedUrlResponseType,
+  PresignFileUploadParams
+} from '@fastgpt/global/common/file/s3/type';
 
-export const postS3UploadFile = (
-  postURL: string,
-  form: FormData,
-  onUploadProgress?: (progressEvent: AxiosProgressEvent) => void
-) =>
-  POST(postURL, form, {
-    timeout: 600000,
-    onUploadProgress
-  });
-
-export const getUploadAvatarPresignedUrl = (params: {
-  filename: string;
-  autoExpired?: boolean;
-}) => {
-  return POST<CreatePostPresignedUrlResult>('/common/file/presignAvatarPostUrl', params);
+export const getUploadAvatarPresignedUrl = (
+  params: PresignFileUploadParams & {
+    autoExpired?: boolean;
+  }
+) => {
+  return POST<CreatePostPresignedUrlResponseType>('/common/file/presignAvatarPostUrl', params);
 };
 
-export const getUploadChatFilePresignedUrl = (params: {
-  filename: string;
-  appId: string;
-  chatId: string;
-  outLinkAuthData?: OutLinkChatAuthProps;
-}) => {
-  return POST<CreatePostPresignedUrlResult>('/core/chat/presignChatFilePostUrl', params);
+export const getUploadChatFilePresignedUrl = (
+  params: PresignChatFilePostUrlParams,
+  config?: Parameters<typeof POST>[2]
+) => {
+  return POST<CreatePostPresignedUrlResponseType>(
+    '/core/chat/file/presignChatFilePostUrl',
+    params,
+    config
+  );
 };
 
-export const getPresignedChatFileGetUrl = (params: {
-  key: string;
-  appId: string;
-  outLinkAuthData?: OutLinkChatAuthProps;
-}) => {
-  return POST<string>('/core/chat/presignChatFileGetUrl', params);
+export const getUploadDraftChatFilePresignedUrl = (
+  params: PresignDraftChatFilePostUrlParams,
+  config?: Parameters<typeof POST>[2]
+) => {
+  return POST<CreatePostPresignedUrlResponseType>(
+    '/core/chat/file/presignDraftChatFilePostUrl',
+    params,
+    config
+  );
 };
 
-export const getUploadDatasetFilePresignedUrl = (params: {
-  filename: string;
-  datasetId: string;
-}) => {
-  return POST<CreatePostPresignedUrlResult>('/core/dataset/presignDatasetFilePostUrl', params);
+export const getPresignedChatFileGetUrl = (params: PresignChatFileGetUrlParams) => {
+  return POST<string>('/core/chat/file/presignChatFileGetUrl', params);
 };
 
-export const getUploadTempFilePresignedUrl = (params: { filename: string }) => {
-  return POST<CreatePostPresignedUrlResult>('/common/file/presignTempFilePostUrl', params);
+export const getUploadTempFilePresignedUrl = (
+  params: PresignFileUploadParams,
+  config?: Parameters<typeof POST>[2]
+) => {
+  return POST<CreatePostPresignedUrlResponseType>(
+    '/common/file/presignTempFilePostUrl',
+    params,
+    config
+  );
 };

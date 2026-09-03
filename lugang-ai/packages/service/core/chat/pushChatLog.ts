@@ -1,9 +1,18 @@
-import { addLog } from '../../common/system/log';
 import { MongoChatItem } from './chatItemSchema';
 import { MongoChat } from './chatSchema';
-import axios from 'axios';
-import { type AIChatItemType, type UserChatItemType } from '@fastgpt/global/core/chat/type';
-import { ChatItemValueTypeEnum } from '@fastgpt/global/core/chat/constants';
+import { axios } from '../../common/api/axios';
+import {
+  type AIChatItemType,
+  type ChatItemDBSchemaType,
+  type UserChatItemType
+} from '@fastgpt/global/core/chat/type';
+import { getLogger, LogCategories } from '../../common/logger';
+import { serviceEnv } from '../../env';
+import { getChatItemResponseData } from './nodeResponseStorage';
+import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+import { buildChatSourceQuery } from './source';
+
+const logger = getLogger(LogCategories.MODULE.CHAT.RECORD);
 
 export type Metadata = {
   [key: string]: {
@@ -25,10 +34,11 @@ export const pushChatLog = ({
   appId: string;
   metadata?: Metadata;
 }) => {
-  const interval = Number(process.env.CHAT_LOG_INTERVAL);
-  const url = process.env.CHAT_LOG_URL;
-  if (!isNaN(interval) && interval > 0 && url) {
-    addLog.debug(`[ChatLogPush] push chat log after ${interval}ms`, {
+  const interval = serviceEnv.CHAT_LOG_INTERVAL;
+  const url = serviceEnv.CHAT_LOG_URL;
+  if (interval && interval > 0 && url) {
+    logger.debug('Chat log push scheduled', {
+      intervalMs: interval,
       appId,
       chatItemIdHuman,
       chatItemIdAi
@@ -71,18 +81,22 @@ const pushChatLogInternal = async ({
 }) => {
   try {
     const [chatItemHuman, chatItemAi] = await Promise.all([
-      MongoChatItem.findById(chatItemIdHuman).lean() as Promise<UserChatItemType>,
-      MongoChatItem.findById(chatItemIdAi).lean() as Promise<AIChatItemType>
+      MongoChatItem.findById(chatItemIdHuman).lean() as Promise<
+        (UserChatItemType & ChatItemDBSchemaType) | null
+      >,
+      MongoChatItem.findById(chatItemIdAi).lean() as Promise<
+        (AIChatItemType & ChatItemDBSchemaType) | null
+      >
     ]);
 
     if (!chatItemHuman || !chatItemAi) {
       return;
     }
 
-    const chat = await MongoChat.findOne({ chatId }).lean();
-
-    // addLog.warn('ChatLogDebug', chat);
-    // addLog.warn('ChatLogDebug', { chatItemHuman, chatItemAi });
+    const chat = await MongoChat.findOne({
+      ...buildChatSourceQuery({ sourceType: ChatSourceTypeEnum.app, sourceId: appId }),
+      chatId
+    }).lean();
 
     if (!chat) {
       return;
@@ -94,9 +108,9 @@ const pushChatLogInternal = async ({
     // Pop last two items
     const question = chatItemHuman.value
       .map((item) => {
-        if (item.type === ChatItemValueTypeEnum.text) {
+        if (item.text) {
           return item.text?.content;
-        } else if (item.type === ChatItemValueTypeEnum.file) {
+        } else if (item.file) {
           if (item.file?.type === 'image') {
             return `![${item.file?.name}](${item.file?.url})`;
           }
@@ -139,19 +153,23 @@ ${JSON.stringify(item.interactive, null, 2)}
       .join('\n');
 
     if (!question || !answer) {
-      addLog.error('[ChatLogPush] question or answer is empty', {
+      logger.error('Chat log push payload is empty', {
+        chatId,
         question: chatItemHuman.value,
         answer: chatItemAi.value
       });
       return;
     }
 
-    // computed response time
-    const responseData = chatItemAi.responseData;
-    const responseTime =
-      responseData?.reduce((acc, item) => acc + (item?.runningTime ?? 0), 0) || 0;
+    const responseData = await getChatItemResponseData({
+      sourceType: ChatSourceTypeEnum.app,
+      sourceId: appId,
+      chatId,
+      chatItemDataId: chatItemAi.dataId
+    });
+    const responseTime = responseData.reduce((acc, item) => acc + (item?.runningTime ?? 0), 0) || 0;
 
-    const sourceIdPrefix = process.env.CHAT_LOG_SOURCE_ID_PREFIX ?? 'fastgpt-';
+    const sourceIdPrefix = serviceEnv.CHAT_LOG_SOURCE_ID_PREFIX;
 
     const chatLog: ChatLog = {
       title: chat.title,
@@ -178,6 +196,6 @@ ${JSON.stringify(item.interactive, null, 2)}
     };
     await axios.post(`${url}/api/chat/push`, chatLog);
   } catch (e) {
-    addLog.error('[ChatLogPush] error', e);
+    logger.error('Chat log push failed', { chatId, error: e });
   }
 };

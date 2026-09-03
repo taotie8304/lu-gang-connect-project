@@ -13,31 +13,33 @@ import {
 } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { useTranslation } from 'next-i18next';
 import React, { useMemo } from 'react';
-import { getQuoteData } from '@/web/core/dataset/api';
+import { getQuoteData } from '@/web/core/dataset/api/data';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { getCollectionSourceData } from '@fastgpt/global/core/dataset/collection/utils';
 import Markdown from '.';
 import { getSourceNameIcon } from '@fastgpt/global/core/dataset/utils';
 import { isObjectId } from '@fastgpt/global/common/string/utils';
-import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
-import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
-import { useUserStore } from '@/web/support/user/useUserStore';
+import type { ChatAuthTargetInput } from '@/web/core/chat/utils';
+
+type MarkdownChatAuthData = ChatAuthTargetInput & {
+  chatId: string;
+  chatItemDataId: string;
+};
 
 export type AProps = {
-  chatAuthData?: {
-    appId: string;
-    chatId: string;
-    chatItemDataId: string;
-  } & OutLinkChatAuthProps;
+  chatAuthData?: MarkdownChatAuthData;
+  allowedCitationIds?: Set<string>;
   onOpenCiteModal?: (e?: {
     collectionId?: string;
     sourceId?: string;
     sourceName?: string;
     datasetId?: string;
     quoteId?: string;
+    singleQuote?: boolean;
   }) => void;
 };
 
@@ -58,6 +60,18 @@ const EmptyHrefLink = function EmptyHrefLink({ content }: { content: string }) {
   );
 };
 
+const getLinkTextContent = (children: React.ReactNode): string => {
+  if (children === undefined || children === null || typeof children === 'boolean') return '';
+  if (typeof children === 'string' || typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(getLinkTextContent).join('');
+
+  if (React.isValidElement<{ children?: React.ReactNode }>(children)) {
+    return getLinkTextContent(children.props.children);
+  }
+
+  return '';
+};
+
 const CiteLink = React.memo(function CiteLink({
   id,
   chatAuthData,
@@ -65,26 +79,14 @@ const CiteLink = React.memo(function CiteLink({
   showAnimation
 }: { id: string; showAnimation?: boolean } & AProps) {
   const { t } = useTranslation();
-  // 鲁港通 - 获取用户角色
-  const { userInfo } = useUserStore();
-  const isRoot = userInfo?.username === 'root';
+  const { isPc } = useSystem();
 
   const { isOpen, onOpen, onClose } = useDisclosure();
-
-  if (!isObjectId(id)) {
-    return <></>;
-  }
-
-  // 鲁港通 - 普通用户完全隐藏引用内容（Requirements 5.1, 5.2, 5.3）
-  if (!isRoot) {
-    return null;
-  }
-
   const {
     data: datasetCiteData,
     loading,
     runAsync: getQuoteDataById
-  } = useRequest2((id: string) => getQuoteData({ id, ...chatAuthData }), {
+  } = useRequest((id: string) => getQuoteData({ id, ...chatAuthData }), {
     manual: true
   });
   const sourceData = useMemo(
@@ -96,10 +98,53 @@ const CiteLink = React.memo(function CiteLink({
     [sourceData]
   );
 
-  const isLinkType = datasetCiteData?.collection?.type === DatasetCollectionTypeEnum.link;
-  const rawLink = datasetCiteData?.collection?.rawLink;
+  const handleOpenMobileQuote = () => {
+    onOpenCiteModal?.({
+      quoteId: id,
+      singleQuote: true
+    });
+  };
 
-  // 管理员：显示完整的引用预览（原始行为）
+  if (!isObjectId(id)) {
+    return <></>;
+  }
+
+  const citeButton = (
+    <Button
+      variant={'unstyled'}
+      display={'inline-flex'}
+      minH={0}
+      minW={0}
+      ml={'4px'}
+      boxSize={'20px'}
+      p={'4px'}
+      borderRadius={'full'}
+      bg={'myGray.150'}
+      alignItems={'center'}
+      justifyContent={'center'}
+      cursor={'pointer'}
+      aria-label={t('common:chat.quote_detail_title')}
+      onClick={!isPc ? handleOpenMobileQuote : undefined}
+      _hover={{
+        '.cite-link-icon': {
+          color: 'primary.600'
+        }
+      }}
+    >
+      <MyIcon
+        className="cite-link-icon"
+        name={'common/link'}
+        w={'12px'}
+        h={'12px'}
+        color={'myGray.400'}
+      />
+    </Button>
+  );
+
+  if (!isPc) {
+    return onOpenCiteModal ? citeButton : null;
+  }
+
   return (
     <Popover
       isLazy
@@ -116,16 +161,7 @@ const CiteLink = React.memo(function CiteLink({
       trigger={'hover'}
       gutter={4}
     >
-      <PopoverTrigger>
-        <Button variant={'unstyled'} minH={0} minW={0} h={'auto'}>
-          <MyIcon
-            name={'core/chat/quoteSign'}
-            w={'1rem'}
-            color={'primary.700'}
-            cursor={'pointer'}
-          />
-        </Button>
-      </PopoverTrigger>
+      <PopoverTrigger>{citeButton}</PopoverTrigger>
       <PopoverContent boxShadow={'lg'} w={'500px'} maxW={'90vw'} py={4}>
         <MyBox isLoading={loading || showAnimation}>
           <PopoverArrow />
@@ -140,13 +176,6 @@ const CiteLink = React.memo(function CiteLink({
                 display={'inline-flex'}
                 height={6}
                 mr={1}
-                {...(isLinkType && rawLink
-                  ? {
-                      cursor: 'pointer',
-                      _hover: { color: 'primary.600', textDecoration: 'underline' },
-                      onClick: () => window.open(rawLink, '_blank')
-                    }
-                  : {})}
               >
                 <Flex px={1.5}>
                   <MyIcon name={icon as any} mr={1} flexShrink={0} w={'12px'} />
@@ -161,37 +190,23 @@ const CiteLink = React.memo(function CiteLink({
                   </Box>
                 </Flex>
               </Box>
-              {isLinkType && rawLink ? (
-                <Button
-                  variant={'ghost'}
-                  color={'primary.600'}
-                  size={'xs'}
-                  onClick={() => {
-                    onClose();
-                    window.open(rawLink, '_blank');
-                  }}
-                >
-                  {t('common:open_link')}
-                </Button>
-              ) : (
-                <Button
-                  variant={'ghost'}
-                  color={'primary.600'}
-                  size={'xs'}
-                  onClick={() => {
-                    onClose();
-                    onOpenCiteModal?.({
-                      quoteId: id,
-                      sourceId: sourceData.sourceId,
-                      sourceName: sourceData.sourceName,
-                      datasetId: datasetCiteData?.collection.datasetId,
-                      collectionId: datasetCiteData?.collection._id
-                    });
-                  }}
-                >
-                  {t('common:all_quotes')}
-                </Button>
-              )}
+              <Button
+                variant={'ghost'}
+                color={'primary.600'}
+                size={'xs'}
+                onClick={() => {
+                  onClose();
+                  onOpenCiteModal?.({
+                    quoteId: id,
+                    sourceId: sourceData.sourceId,
+                    sourceName: sourceData.sourceName,
+                    datasetId: datasetCiteData?.collection.datasetId,
+                    collectionId: datasetCiteData?.collection._id
+                  });
+                }}
+              >
+                {t('chat:view_all_citations')}
+              </Button>
             </Flex>
             <Box h={'300px'} overflow={'auto'} px={4}>
               <Markdown source={datasetCiteData?.q} />
@@ -207,6 +222,7 @@ const CiteLink = React.memo(function CiteLink({
 const A = ({
   children,
   chatAuthData,
+  allowedCitationIds,
   onOpenCiteModal,
   showAnimation,
   ...props
@@ -215,7 +231,7 @@ const A = ({
   showAnimation: boolean;
   [key: string]: any;
 }) => {
-  const content = useMemo(() => (children === undefined ? '' : String(children)), [children]);
+  const content = useMemo(() => getLinkTextContent(children), [children]);
 
   // empty href link
   if (!props.href && typeof children?.[0] === 'string') {
@@ -227,6 +243,10 @@ const A = ({
     (props.href?.startsWith('CITE') || props.href?.startsWith('QUOTE')) &&
     typeof content === 'string'
   ) {
+    if (allowedCitationIds && !allowedCitationIds.has(content)) {
+      return null;
+    }
+
     return (
       <CiteLink
         id={content}

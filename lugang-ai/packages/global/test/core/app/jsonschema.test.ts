@@ -1,0 +1,2081 @@
+import { describe, expect, it } from 'vitest';
+import type {
+  JSONSchemaInputType,
+  JSONSchemaOutputType
+} from '@fastgpt/global/core/app/jsonschema';
+import {
+  buildModelVisibleToolJsonSchema,
+  jsonSchema2NodeInput,
+  jsonSchema2NodeOutput,
+  jsonSchema2SecretInput,
+  inputConfigs2JsonSchema,
+  getNodeInputTypeFromSchemaInputType,
+  getSchemaValueType,
+  nodeInputs2JsonSchema,
+  nodeOutputs2JsonSchema,
+  parseToolParamJsonSchema,
+  str2OpenApiSchema
+} from '@fastgpt/global/core/app/jsonschema';
+import { bundleOpenAPISchema } from '@fastgpt/global/common/string/swagger';
+import { WorkflowIOValueTypeEnum } from '@fastgpt/global/core/workflow/constants';
+import {
+  FlowNodeInputItemTypeSchema,
+  InputConfigInputTypeEnum
+} from '@fastgpt/global/core/workflow/type/io';
+import type { FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io';
+import {
+  FlowNodeInputTypeEnum,
+  FlowNodeOutputTypeEnum
+} from '@fastgpt/global/core/workflow/node/constant';
+
+describe('parseToolParamJsonSchema', () => {
+  it('should parse a recursively valid property schema', () => {
+    const result = parseToolParamJsonSchema(
+      JSON.stringify({
+        type: 'object',
+        description: ' User information ',
+        properties: {
+          name: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } }
+        },
+        required: ['name']
+      })
+    );
+
+    expect(result.description).toBe('User information');
+    expect(result.valueType).toBe(WorkflowIOValueTypeEnum.object);
+    expect(result.schema.properties?.tags).toEqual({
+      type: 'array',
+      items: { type: 'string' }
+    });
+  });
+
+  it.each([
+    ['invalid JSON', '{'],
+    ['missing root type', JSON.stringify({ description: 'Missing type' })],
+    ['invalid root type', JSON.stringify({ type: 'invalid', description: 'Invalid type' })],
+    [
+      'missing nested type',
+      JSON.stringify({
+        type: 'object',
+        description: 'Object',
+        properties: { name: {} }
+      })
+    ],
+    [
+      'invalid nested type',
+      JSON.stringify({
+        type: 'object',
+        description: 'Object',
+        properties: { name: { type: 'invalid' } }
+      })
+    ],
+    [
+      'properties on a non-object',
+      JSON.stringify({ type: 'string', description: 'String', properties: {} })
+    ],
+    ['array without items', JSON.stringify({ type: 'array', description: 'Array' })],
+    [
+      'undefined required field',
+      JSON.stringify({
+        type: 'object',
+        description: 'Object',
+        properties: { name: { type: 'string' } },
+        required: ['missing']
+      })
+    ],
+    ['missing description', JSON.stringify({ type: 'string' })]
+  ])('should reject %s', (_case, schema) => {
+    expect(() => parseToolParamJsonSchema(schema)).toThrow();
+  });
+});
+
+describe('jsonSchema2NodeInput', () => {
+  const omitPreservedSchema = (inputs: FlowNodeInputItemType[]) =>
+    inputs.map(({ customJsonSchema: _customJsonSchema, ...input }) => input);
+
+  it('preserves the complete property schema for manual validation', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            pattern: '^[a-z]+$',
+            minLength: 3,
+            maxLength: 20
+          }
+        }
+      }
+    });
+
+    expect(result[0].customJsonSchema).toEqual({
+      type: 'string',
+      pattern: '^[a-z]+$',
+      minLength: 3,
+      maxLength: 20
+    });
+  });
+
+  it.each([
+    {
+      name: 'mixed union',
+      schema: { oneOf: [{ type: 'string' }, { type: 'number' }] }
+    },
+    {
+      name: 'union with an unresolved branch',
+      schema: {
+        anyOf: [{ type: 'string' }, { $ref: '#/$defs/customInput' }],
+        $defs: { customInput: { type: 'string' } }
+      }
+    },
+    {
+      name: 'tuple array',
+      schema: { type: 'array', items: [{ type: 'string' }, { type: 'number' }] }
+    }
+  ])('locks $name parameters to agent generated mode', ({ schema }) => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: { value: schema }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      key: 'value',
+      renderTypeList: [FlowNodeInputTypeEnum.agentGenerated],
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      defaultToAgentGenerated: true,
+      customJsonSchema: schema
+    });
+  });
+
+  it('projects nullable unions with one non-null base type', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            anyOf: [{ type: 'string' }, { type: 'null' }]
+          }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      valueType: WorkflowIOValueTypeEnum.string,
+      renderTypeList: [FlowNodeInputTypeEnum.input, FlowNodeInputTypeEnum.reference]
+    });
+  });
+
+  it('projects nullable type arrays with the non-null value type', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: ['string', 'null']
+          }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      valueType: WorkflowIOValueTypeEnum.string,
+      renderTypeList: [FlowNodeInputTypeEnum.input, FlowNodeInputTypeEnum.reference]
+    });
+  });
+
+  it('keeps non-string enum values in typed manual controls', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          count: { type: 'number', enum: [1, 2] },
+          enabled: { type: 'boolean', enum: [true, false] },
+          levels: { type: 'array', items: { type: 'number', enum: [1, 2] } }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      value: 1,
+      valueType: WorkflowIOValueTypeEnum.number,
+      renderTypeList: [FlowNodeInputTypeEnum.numberInput, FlowNodeInputTypeEnum.reference]
+    });
+    expect(result[1]).toMatchObject({
+      value: true,
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      renderTypeList: [FlowNodeInputTypeEnum.switch, FlowNodeInputTypeEnum.reference]
+    });
+    expect(result[2]).toMatchObject({
+      value: [],
+      valueType: WorkflowIOValueTypeEnum.arrayNumber,
+      renderTypeList: [FlowNodeInputTypeEnum.JSONEditor, FlowNodeInputTypeEnum.reference]
+    });
+  });
+
+  it('should map isToolParam from input schema properties to NodeIO defaults', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'systemTool',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Search query',
+            toolDescription: 'Query generated by agent',
+            isToolParam: true
+          }
+        },
+        required: ['query']
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      key: 'query',
+      toolDescription: 'Query generated by agent',
+      defaultToAgentGenerated: true,
+      required: true,
+      renderTypeList: ['input', 'reference']
+    });
+  });
+
+  it('should render integer schema fields as number input', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          count: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 10
+          }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      key: 'count',
+      valueType: WorkflowIOValueTypeEnum.number,
+      renderTypeList: [FlowNodeInputTypeEnum.numberInput, FlowNodeInputTypeEnum.reference],
+      min: 1,
+      max: 10
+    });
+  });
+
+  it('should return correct node input for http schema', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        select: { type: 'string', enum: ['11', '22'] },
+        age: { type: 'number', minimum: 0, maximum: 100 },
+        boolean: { type: 'boolean' },
+        object: { type: 'object' },
+        strArr: { type: 'array', items: { type: 'string' } },
+        numArr: { type: 'array', items: { type: 'number' } },
+        boolArr: { type: 'array', items: { type: 'boolean' } },
+        objArr: { type: 'array', items: { type: 'object' } },
+        anyArr: { type: 'array', items: { type: 'array' } }
+      },
+      required: ['name', 'age']
+    };
+    const expectResponse = [
+      {
+        key: 'name',
+        label: 'name',
+        valueType: 'string',
+        toolDescription: undefined,
+        required: true,
+        renderTypeList: ['input', 'reference']
+      },
+      {
+        key: 'select',
+        label: 'select',
+        valueType: 'string',
+        toolDescription: undefined,
+        required: false,
+        value: '11',
+        renderTypeList: ['select', 'reference'],
+        list: [
+          {
+            label: '11',
+            value: '11'
+          },
+          {
+            label: '22',
+            value: '22'
+          }
+        ]
+      },
+      {
+        key: 'age',
+        label: 'age',
+        valueType: 'number',
+        toolDescription: undefined,
+        required: true,
+        renderTypeList: ['numberInput', 'reference'],
+        max: 100,
+        min: 0
+      },
+      {
+        key: 'boolean',
+        label: 'boolean',
+        valueType: 'boolean',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['switch', 'reference']
+      },
+      {
+        key: 'object',
+        label: 'object',
+        valueType: 'object',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['JSONEditor', 'reference']
+      },
+      {
+        key: 'strArr',
+        label: 'strArr',
+        valueType: 'arrayString',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['JSONEditor', 'reference']
+      },
+      {
+        key: 'numArr',
+        label: 'numArr',
+        valueType: 'arrayNumber',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['JSONEditor', 'reference']
+      },
+      {
+        key: 'boolArr',
+        label: 'boolArr',
+        valueType: 'arrayBoolean',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['JSONEditor', 'reference']
+      },
+      {
+        key: 'objArr',
+        label: 'objArr',
+        valueType: 'arrayObject',
+        toolDescription: undefined,
+        required: false,
+        renderTypeList: ['JSONEditor', 'reference']
+      },
+      {
+        key: 'anyArr',
+        label: 'anyArr',
+        valueType: 'arrayAny',
+        toolDescription: undefined,
+        defaultToAgentGenerated: true,
+        required: false,
+        renderTypeList: ['agentGenerated'],
+        selectedType: 'agentGenerated'
+      }
+    ];
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'http' });
+
+    expect(omitPreservedSchema(result)).toEqual(expectResponse);
+  });
+
+  it('should return correct node input for mcp schema', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'User name' },
+        age: { type: 'number', minimum: 0, maximum: 100 },
+        withoutDesc: { type: 'string' }
+      },
+      required: ['name']
+    };
+    const expectResponse = [
+      {
+        key: 'name',
+        label: 'name',
+        valueType: 'string',
+        description: 'User name',
+        toolDescription: 'User name',
+        required: true,
+        renderTypeList: ['input', 'reference']
+      },
+      {
+        key: 'age',
+        label: 'age',
+        valueType: 'number',
+        toolDescription: 'age',
+        required: false,
+        renderTypeList: ['numberInput', 'reference'],
+        max: 100,
+        min: 0
+      },
+      {
+        key: 'withoutDesc',
+        label: 'withoutDesc',
+        valueType: 'string',
+        toolDescription: 'withoutDesc',
+        required: false,
+        renderTypeList: ['input', 'reference']
+      }
+    ];
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(omitPreservedSchema(result)).toEqual(expectResponse);
+  });
+
+  it('should return multiple select node input for array enum items', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        sources: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['36kr', 'zhihu', 'weibo', 'juejin', 'toutiao']
+          },
+          title: '热榜来源',
+          description: '选择热榜来源网站（可多选）'
+        }
+      },
+      required: ['sources']
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(omitPreservedSchema(result)).toEqual([
+      {
+        key: 'sources',
+        label: '热榜来源',
+        valueType: WorkflowIOValueTypeEnum.arrayString,
+        description: '选择热榜来源网站（可多选）',
+        toolDescription: '选择热榜来源网站（可多选）',
+        required: true,
+        value: [],
+        renderTypeList: ['multipleSelect', 'reference'],
+        list: [
+          { label: '36kr', value: '36kr' },
+          { label: 'zhihu', value: 'zhihu' },
+          { label: 'weibo', value: 'weibo' },
+          { label: 'juejin', value: 'juejin' },
+          { label: 'toutiao', value: 'toutiao' }
+        ]
+      }
+    ]);
+  });
+
+  it('should keep standard description as tool description for system tool schema', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        sources: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['36kr', 'zhihu', 'weibo']
+          },
+          title: '热榜来源',
+          description: '选择热榜来源网站（可多选）'
+        }
+      },
+      required: ['sources']
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'systemTool' });
+
+    expect(omitPreservedSchema(result)).toEqual([
+      {
+        key: 'sources',
+        label: '热榜来源',
+        valueType: WorkflowIOValueTypeEnum.arrayString,
+        description: '选择热榜来源网站（可多选）',
+        toolDescription: '选择热榜来源网站（可多选）',
+        required: true,
+        value: [],
+        renderTypeList: ['multipleSelect', 'reference'],
+        list: [
+          { label: '36kr', value: '36kr' },
+          { label: 'zhihu', value: 'zhihu' },
+          { label: 'weibo', value: 'weibo' }
+        ]
+      }
+    ]);
+  });
+
+  it('should normalize open scalar unions to the shared value type and keep enum candidates', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          source: {
+            anyOf: [{ type: 'string' }, { type: 'string', enum: ['a', 'b'] }]
+          }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      valueType: WorkflowIOValueTypeEnum.string,
+      renderTypeList: ['input', 'select', 'reference'],
+      list: [
+        { label: 'a', value: 'a' },
+        { label: 'b', value: 'b' }
+      ]
+    });
+    expect(result[0]).not.toHaveProperty('value');
+  });
+
+  it('should normalize open array item unions to arrayString without strict multi-select', () => {
+    const result = jsonSchema2NodeInput({
+      schemaType: 'mcp',
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          sources: {
+            type: 'array',
+            items: {
+              anyOf: [{ type: 'string' }, { type: 'string', enum: ['a', 'b'] }]
+            }
+          }
+        }
+      }
+    });
+
+    expect(result[0]).toMatchObject({
+      valueType: WorkflowIOValueTypeEnum.arrayString,
+      renderTypeList: ['JSONEditor', 'multipleSelect', 'reference'],
+      list: [
+        { label: 'a', value: 'a' },
+        { label: 'b', value: 'b' }
+      ]
+    });
+  });
+
+  it('should keep non-string enums compatible with typed node inputs', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        count: {
+          type: 'number',
+          enum: [1, 2],
+          description: 'Number enum'
+        },
+        flags: {
+          type: 'array',
+          items: {
+            type: 'boolean',
+            enum: [true, false]
+          }
+        }
+      }
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    result.forEach((item) => expect(() => FlowNodeInputItemTypeSchema.parse(item)).not.toThrow());
+    expect(result).toMatchObject([
+      {
+        key: 'count',
+        value: 1,
+        valueType: WorkflowIOValueTypeEnum.number,
+        renderTypeList: ['numberInput', 'reference'],
+        list: [
+          { label: '1', value: '1' },
+          { label: '2', value: '2' }
+        ]
+      },
+      {
+        key: 'flags',
+        valueType: WorkflowIOValueTypeEnum.arrayBoolean,
+        renderTypeList: ['JSONEditor', 'reference']
+      }
+    ]);
+  });
+});
+
+describe('getNodeInputTypeFromSchemaInputType', () => {
+  it('should return string type for string input', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'string' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.string);
+  });
+
+  it('should return number type for number input', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'number' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.number);
+  });
+
+  it('should return number type for integer input', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'integer' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.number);
+  });
+
+  it('should return boolean type for boolean input', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'boolean' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.boolean);
+  });
+
+  it('should return object type for object input', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'object' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.object);
+  });
+
+  it('should return arrayAny when array type without items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({ type: 'array' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayAny);
+  });
+
+  it('should return arrayString for array with string items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'string' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayString);
+  });
+
+  it('should return arrayNumber for array with number items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'number' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayNumber);
+  });
+
+  it('should return arrayNumber for array with integer items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'integer' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayNumber);
+  });
+
+  it('should return arrayBoolean for array with boolean items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'boolean' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayBoolean);
+  });
+
+  it('should return arrayObject for array with object items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'object' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayObject);
+  });
+
+  it('should return arrayAny for array with array items', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: 'array',
+      arrayItems: { type: 'array' }
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayAny);
+  });
+
+  it('should return any when type is undefined (for anyOf/oneOf)', () => {
+    const result = getNodeInputTypeFromSchemaInputType({
+      type: undefined,
+      arrayItems: undefined
+    });
+    expect(result).toBe(WorkflowIOValueTypeEnum.any);
+  });
+});
+
+describe('jsonSchema2NodeInput with anyOf/oneOf (union types)', () => {
+  it('should project Optional[str] with anyOf as string type', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        optional_field: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          description: 'An optional string field'
+        }
+      },
+      required: []
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].key).toBe('optional_field');
+    expect(result[0].valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(result[0].required).toBe(false);
+    expect(result[0].description).toBe('An optional string field');
+  });
+
+  it('should project oneOf with null as its non-null type', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        optional_number: {
+          oneOf: [{ type: 'number' }, { type: 'null' }]
+        }
+      }
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(result[0].valueType).toBe(WorkflowIOValueTypeEnum.number);
+  });
+
+  it('should handle mixed schema with anyOf and regular types', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        required_field: {
+          type: 'string',
+          description: 'A required string'
+        },
+        optional_field: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          description: 'An optional string'
+        },
+        number_field: {
+          type: 'number'
+        }
+      },
+      required: ['required_field']
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(result).toHaveLength(3);
+
+    const requiredField = result.find((i) => i.key === 'required_field');
+    expect(requiredField?.valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(requiredField?.required).toBe(true);
+
+    const optionalField = result.find((i) => i.key === 'optional_field');
+    expect(optionalField?.valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(optionalField?.required).toBe(false);
+
+    const numberField = result.find((i) => i.key === 'number_field');
+    expect(numberField?.valueType).toBe(WorkflowIOValueTypeEnum.number);
+  });
+
+  it('should handle weather API real-world example', () => {
+    const jsonSchema: JSONSchemaInputType = {
+      type: 'object',
+      properties: {
+        location: {
+          type: 'string',
+          description: '地点名称'
+        },
+        date: {
+          anyOf: [{ type: 'string' }, { type: 'null' }],
+          description: '日期（可选）'
+        },
+        forecast_type: {
+          type: 'string',
+          enum: ['daily', 'hourly', 'weekly']
+        }
+      },
+      required: ['location']
+    };
+
+    const result = jsonSchema2NodeInput({ jsonSchema, schemaType: 'mcp' });
+
+    expect(result).toHaveLength(3);
+
+    const location = result.find((i) => i.key === 'location');
+    expect(location?.valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(location?.required).toBe(true);
+
+    const date = result.find((i) => i.key === 'date');
+    expect(date?.valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(date?.required).toBe(false);
+
+    const forecastType = result.find((i) => i.key === 'forecast_type');
+    expect(forecastType?.valueType).toBe(WorkflowIOValueTypeEnum.string);
+    expect(forecastType?.list).toHaveLength(3);
+  });
+});
+
+describe('jsonSchema2NodeOutput', () => {
+  it('should return empty array when properties is undefined', () => {
+    const jsonSchema: JSONSchemaOutputType = {
+      type: 'object'
+    };
+    const result = jsonSchema2NodeOutput({ jsonSchema });
+    expect(result).toEqual([]);
+  });
+
+  it('should return correct node output for basic types', () => {
+    const jsonSchema: JSONSchemaOutputType = {
+      type: 'object',
+      properties: {
+        result: { type: 'string', description: 'Result value' },
+        count: { type: 'number' }
+      },
+      required: ['result']
+    };
+    const result = jsonSchema2NodeOutput({ jsonSchema });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      id: 'result',
+      key: 'result',
+      label: 'result',
+      required: true,
+      valueType: WorkflowIOValueTypeEnum.string,
+      description: 'Result value'
+    });
+    expect(result[1]).toMatchObject({
+      id: 'count',
+      key: 'count',
+      label: 'count',
+      required: false,
+      valueType: WorkflowIOValueTypeEnum.number,
+      description: undefined
+    });
+  });
+
+  it('should use x-tool-description when available', () => {
+    const jsonSchema: JSONSchemaOutputType = {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'object',
+          description: 'Data object',
+          'x-tool-description': 'Custom tool description'
+        }
+      }
+    };
+    const result = jsonSchema2NodeOutput({ jsonSchema });
+
+    expect(result[0].description).toBe('Data object');
+  });
+
+  it('should handle array types correctly', () => {
+    const jsonSchema: JSONSchemaOutputType = {
+      type: 'object',
+      properties: {
+        items: { type: 'array', items: { type: 'string' } }
+      }
+    };
+    const result = jsonSchema2NodeOutput({ jsonSchema });
+
+    expect(result[0].valueType).toBe(WorkflowIOValueTypeEnum.arrayString);
+  });
+
+  it('should normalize open array item unions to arrayString', () => {
+    const result = jsonSchema2NodeOutput({
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          sources: {
+            type: 'array',
+            items: {
+              anyOf: [{ type: 'string' }, { type: 'string', enum: ['a', 'b'] }]
+            }
+          }
+        }
+      }
+    });
+
+    expect(result[0].valueType).toBe(WorkflowIOValueTypeEnum.arrayString);
+  });
+});
+
+describe('nodeInputs2JsonSchema', () => {
+  it.each([
+    ['tool description', 'Tool description', 'UI description', 'Field label', 'Tool description'],
+    ['UI description', undefined, 'UI description', 'Field label', 'UI description'],
+    ['field label', undefined, undefined, 'Field label', 'Field label'],
+    ['field key', undefined, undefined, '', 'fieldKey']
+  ])(
+    'should fall back to the %s for the property description',
+    (_case, toolDescription, description, label, expected) => {
+      const result = nodeInputs2JsonSchema({
+        inputs: [
+          {
+            key: 'fieldKey',
+            label,
+            valueType: WorkflowIOValueTypeEnum.string,
+            toolDescription,
+            description,
+            renderTypeList: [FlowNodeInputTypeEnum.agentGenerated]
+          }
+        ]
+      });
+
+      expect(result.properties?.fieldKey?.description).toBe(expected);
+    }
+  );
+
+  it('should expose only agent generated and schema-only tool parameters to the model', () => {
+    const generatedInput: FlowNodeInputItemType = {
+      key: 'query',
+      label: 'Query',
+      valueType: WorkflowIOValueTypeEnum.string,
+      renderTypeList: [FlowNodeInputTypeEnum.agentGenerated, FlowNodeInputTypeEnum.input],
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      required: true
+    };
+    const manualInput: FlowNodeInputItemType = {
+      key: 'apiKey',
+      label: 'API key',
+      valueType: WorkflowIOValueTypeEnum.string,
+      renderTypeList: [FlowNodeInputTypeEnum.password],
+      selectedType: FlowNodeInputTypeEnum.password,
+      required: true
+    };
+
+    const result = buildModelVisibleToolJsonSchema({
+      inputs: [generatedInput, manualInput],
+      toolParams: [generatedInput],
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+          apiKey: { type: 'string' },
+          schemaOnly: { type: 'string', isToolParam: true }
+        },
+        required: ['query', 'apiKey', 'schemaOnly']
+      }
+    });
+
+    expect(result.properties).toEqual({
+      query: { type: 'string' },
+      schemaOnly: { type: 'string' }
+    });
+    expect(result.required).toEqual(['query', 'schemaOnly']);
+  });
+
+  it('should preserve a custom property schema and use the input required switch', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'userInfo',
+          label: 'userInfo',
+          valueType: WorkflowIOValueTypeEnum.object,
+          toolDescription: 'User information',
+          required: false,
+          renderTypeList: ['reference'],
+          customJsonSchema: {
+            type: 'object',
+            description: 'User information',
+            properties: {
+              name: { type: 'string' }
+            },
+            additionalProperties: false
+          }
+        }
+      ]
+    });
+
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        userInfo: {
+          type: 'object',
+          description: 'User information',
+          properties: {
+            name: { type: 'string' }
+          },
+          additionalProperties: false
+        }
+      }
+    });
+  });
+
+  it('should convert node inputs to json schema properties', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'query',
+          label: 'Query',
+          valueType: WorkflowIOValueTypeEnum.string,
+          toolDescription: 'Search query',
+          defaultToAgentGenerated: true,
+          description: 'UI description',
+          required: true,
+          renderTypeList: ['input', 'reference']
+        },
+        {
+          key: 'platform',
+          label: 'Platform',
+          valueType: WorkflowIOValueTypeEnum.arrayString,
+          toolDescription: 'Select platforms',
+          required: false,
+          renderTypeList: ['multipleSelect', 'reference'],
+          list: [
+            { label: 'Zhihu', value: 'zhihu' },
+            { label: 'Weibo', value: 'weibo' }
+          ]
+        },
+        {
+          key: 'legacy',
+          label: 'Legacy',
+          valueType: WorkflowIOValueTypeEnum.string,
+          toolDescription: 'Legacy enum',
+          required: false,
+          renderTypeList: ['select', 'reference'],
+          enum: 'a\nb'
+        }
+      ]
+    });
+
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          title: 'Query',
+          description: 'Search query',
+          toolDescription: 'Search query',
+          isToolParam: true
+        },
+        platform: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['zhihu', 'weibo']
+          },
+          title: 'Platform',
+          description: 'Select platforms',
+          toolDescription: 'Select platforms'
+        },
+        legacy: {
+          type: 'string',
+          enum: ['a', 'b'],
+          title: 'Legacy',
+          description: 'Legacy enum',
+          toolDescription: 'Legacy enum'
+        }
+      },
+      required: ['query']
+    });
+  });
+
+  it('should convert select options from list and enums to json schema enum', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'singleSelection',
+          label: 'singleSelection',
+          valueType: WorkflowIOValueTypeEnum.string,
+          toolDescription: 'Select one option',
+          renderTypeList: ['select', 'reference'],
+          list: [
+            { label: 'Option A', value: 'A' },
+            { label: 'Option B', value: 'B' }
+          ]
+        },
+        {
+          key: 'fallbackSelection',
+          label: 'fallbackSelection',
+          valueType: WorkflowIOValueTypeEnum.string,
+          toolDescription: 'Select one fallback option',
+          renderTypeList: ['select', 'reference'],
+          list: [],
+          enums: [
+            { label: 'Option C', value: 'C' },
+            { label: 'Option D', value: 'D' }
+          ]
+        }
+      ]
+    });
+
+    expect(result.properties).toMatchObject({
+      singleSelection: {
+        type: 'string',
+        enum: ['A', 'B']
+      },
+      fallbackSelection: {
+        type: 'string',
+        enum: ['C', 'D']
+      }
+    });
+  });
+
+  it('should preserve strict select options when the tool input is agent generated', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'singleSelection',
+          label: 'Single selection',
+          valueType: WorkflowIOValueTypeEnum.string,
+          renderTypeList: ['agentGenerated', 'select', 'reference'],
+          selectedType: FlowNodeInputTypeEnum.agentGenerated,
+          list: [
+            { label: 'Option A', value: 'A' },
+            { label: 'Option B', value: 'B' }
+          ]
+        },
+        {
+          key: 'multipleSelection',
+          label: 'Multiple selection',
+          valueType: WorkflowIOValueTypeEnum.arrayString,
+          renderTypeList: ['agentGenerated', 'multipleSelect', 'reference'],
+          selectedType: FlowNodeInputTypeEnum.agentGenerated,
+          list: [
+            { label: 'Option A', value: 'A' },
+            { label: 'Option B', value: 'B' }
+          ]
+        }
+      ]
+    });
+
+    expect(result.properties).toMatchObject({
+      singleSelection: {
+        type: 'string',
+        enum: ['A', 'B']
+      },
+      multipleSelection: {
+        type: 'array',
+        items: {
+          type: 'string',
+          enum: ['A', 'B']
+        }
+      }
+    });
+  });
+
+  it('should not narrow open input candidates to a strict enum schema', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'source',
+          label: 'Source',
+          valueType: WorkflowIOValueTypeEnum.string,
+          renderTypeList: ['agentGenerated', 'input', 'select', 'reference'],
+          selectedType: FlowNodeInputTypeEnum.agentGenerated,
+          list: [
+            { label: 'Option A', value: 'a' },
+            { label: 'Option B', value: 'b' }
+          ]
+        }
+      ]
+    });
+
+    expect(result.properties?.source).toMatchObject({ type: 'string' });
+    expect(result.properties?.source).not.toHaveProperty('enum');
+  });
+
+  it('should keep non-string workflow value types from falling back to string schema', () => {
+    const result = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'items',
+          label: 'Items',
+          valueType: WorkflowIOValueTypeEnum.arrayObject,
+          renderTypeList: ['JSONEditor', 'reference']
+        },
+        {
+          key: 'history',
+          label: 'History',
+          valueType: WorkflowIOValueTypeEnum.chatHistory,
+          renderTypeList: ['JSONEditor', 'reference']
+        },
+        {
+          key: 'quote',
+          label: 'Quote',
+          valueType: WorkflowIOValueTypeEnum.datasetQuote,
+          renderTypeList: ['JSONEditor', 'reference']
+        },
+        {
+          key: 'dynamic',
+          label: 'Dynamic',
+          valueType: WorkflowIOValueTypeEnum.dynamic,
+          renderTypeList: ['JSONEditor', 'reference']
+        },
+        {
+          key: 'dataset',
+          label: 'Dataset',
+          valueType: WorkflowIOValueTypeEnum.selectDataset,
+          renderTypeList: ['JSONEditor', 'reference']
+        },
+        {
+          key: 'app',
+          label: 'App',
+          valueType: WorkflowIOValueTypeEnum.selectApp,
+          renderTypeList: ['JSONEditor', 'reference']
+        }
+      ]
+    });
+
+    expect(result.properties).toEqual({
+      items: {
+        type: 'array',
+        items: { type: 'object' },
+        title: 'Items',
+        description: 'Items'
+      },
+      history: {
+        type: 'array',
+        items: { type: 'object' },
+        title: 'History',
+        description: 'History'
+      },
+      quote: {
+        type: 'array',
+        items: { type: 'object' },
+        title: 'Quote',
+        description: 'Quote'
+      },
+      dynamic: {
+        title: 'Dynamic',
+        description: 'Dynamic'
+      },
+      dataset: {
+        title: 'Dataset',
+        description: 'Dataset'
+      },
+      app: {
+        title: 'App',
+        description: 'App'
+      }
+    });
+  });
+
+  it('should preserve workflow node input metadata when requested', () => {
+    const input = {
+      key: 'count',
+      label: 'Count',
+      valueType: WorkflowIOValueTypeEnum.number,
+      required: true,
+      defaultValue: 2,
+      value: 8,
+      description: 'UI description',
+      toolDescription: 'Tool description',
+      defaultToAgentGenerated: true,
+      renderTypeList: [
+        FlowNodeInputTypeEnum.agentGenerated,
+        FlowNodeInputTypeEnum.numberInput,
+        FlowNodeInputTypeEnum.reference
+      ],
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      valueDesc: 'Generated count',
+      min: 1,
+      max: 10,
+      precision: 2,
+      canEdit: false
+    } satisfies FlowNodeInputItemType;
+
+    const jsonSchema = nodeInputs2JsonSchema({
+      inputs: [input],
+      includeNodeMetadata: true
+    });
+    const restored = jsonSchema2NodeInput({
+      jsonSchema,
+      schemaType: 'systemTool'
+    });
+
+    expect(jsonSchema.properties?.count).toMatchObject({
+      type: 'number',
+      minimum: 1,
+      maximum: 10,
+      toolDescription: 'Tool description',
+      isToolParam: true,
+      'x-fastgpt-node-input': {
+        valueType: WorkflowIOValueTypeEnum.number,
+        renderTypeList: [
+          FlowNodeInputTypeEnum.agentGenerated,
+          FlowNodeInputTypeEnum.numberInput,
+          FlowNodeInputTypeEnum.reference
+        ],
+        selectedType: FlowNodeInputTypeEnum.agentGenerated,
+        valueDesc: 'Generated count',
+        min: 1,
+        max: 10,
+        precision: 2,
+        description: 'UI description',
+        canEdit: false,
+        defaultValue: 2
+      }
+    });
+    expect(jsonSchema.properties?.count).not.toHaveProperty('defaultToAgentGenerated');
+    expect(jsonSchema.properties?.count?.['x-fastgpt-node-input']).not.toHaveProperty('value');
+    expect(restored[0]).toMatchObject({
+      key: 'count',
+      valueType: WorkflowIOValueTypeEnum.number,
+      description: 'UI description',
+      toolDescription: 'Tool description',
+      defaultToAgentGenerated: true,
+      renderTypeList: [
+        FlowNodeInputTypeEnum.agentGenerated,
+        FlowNodeInputTypeEnum.numberInput,
+        FlowNodeInputTypeEnum.reference
+      ],
+      selectedType: FlowNodeInputTypeEnum.agentGenerated,
+      defaultValue: 2,
+      valueDesc: 'Generated count',
+      min: 1,
+      max: 10,
+      precision: 2,
+      canEdit: false
+    });
+  });
+
+  it('should preserve supported workflow input types and ignore special types', () => {
+    const supportedRenderTypes = [
+      FlowNodeInputTypeEnum.reference,
+      FlowNodeInputTypeEnum.input,
+      FlowNodeInputTypeEnum.password,
+      FlowNodeInputTypeEnum.numberInput,
+      FlowNodeInputTypeEnum.select,
+      FlowNodeInputTypeEnum.multipleSelect,
+      FlowNodeInputTypeEnum.switch,
+      FlowNodeInputTypeEnum.timePointSelect,
+      FlowNodeInputTypeEnum.timeRangeSelect,
+      FlowNodeInputTypeEnum.customVariable
+    ];
+    const supportedValueTypes = [
+      WorkflowIOValueTypeEnum.string,
+      WorkflowIOValueTypeEnum.string,
+      WorkflowIOValueTypeEnum.string,
+      WorkflowIOValueTypeEnum.number,
+      WorkflowIOValueTypeEnum.string,
+      WorkflowIOValueTypeEnum.arrayString,
+      WorkflowIOValueTypeEnum.boolean,
+      WorkflowIOValueTypeEnum.string,
+      WorkflowIOValueTypeEnum.arrayString,
+      WorkflowIOValueTypeEnum.string
+    ];
+    const ignoredRenderTypes = [
+      FlowNodeInputTypeEnum.fileSelect,
+      FlowNodeInputTypeEnum.selectLLMModel,
+      FlowNodeInputTypeEnum.selectDataset,
+      FlowNodeInputTypeEnum.addInputParam
+    ];
+    const inputs = [
+      ...supportedRenderTypes.map((renderType, index) => ({
+        key: `supported_${index}`,
+        label: renderType,
+        valueType: supportedValueTypes[index],
+        renderTypeList: [renderType],
+        selectedType: renderType
+      })),
+      ...ignoredRenderTypes.map((renderType, index) => ({
+        key: `ignored_${index}`,
+        label: renderType,
+        valueType: WorkflowIOValueTypeEnum.string,
+        renderTypeList: [renderType]
+      })),
+      {
+        key: 'internal',
+        label: 'internal',
+        valueType: WorkflowIOValueTypeEnum.string,
+        renderTypeList: [FlowNodeInputTypeEnum.hidden]
+      }
+    ] as FlowNodeInputItemType[];
+
+    const jsonSchema = nodeInputs2JsonSchema({
+      inputs,
+      includeNodeMetadata: true,
+      filterInternalInputs: true
+    });
+    const restored = jsonSchema2NodeInput({
+      jsonSchema,
+      schemaType: 'systemTool'
+    });
+
+    expect(
+      restored.slice(0, supportedRenderTypes.length).map((input) => input.renderTypeList)
+    ).toEqual(supportedRenderTypes.map((renderType) => [renderType]));
+    ignoredRenderTypes.forEach((_, index) => {
+      expect(jsonSchema.properties?.[`ignored_${index}`]).not.toHaveProperty(
+        'x-fastgpt-node-input'
+      );
+    });
+    expect(jsonSchema.properties?.internal).toBeUndefined();
+  });
+
+  it('should preserve hidden input metadata and default values when internal inputs are retained', () => {
+    const jsonSchema = nodeInputs2JsonSchema({
+      inputs: [
+        {
+          key: 'internal',
+          label: 'Internal',
+          valueType: WorkflowIOValueTypeEnum.number,
+          defaultValue: 7,
+          renderTypeList: [FlowNodeInputTypeEnum.hidden]
+        }
+      ],
+      includeNodeMetadata: true
+    });
+    const restored = jsonSchema2NodeInput({
+      jsonSchema,
+      schemaType: 'systemTool'
+    });
+
+    expect(jsonSchema.properties?.internal).toMatchObject({
+      type: 'number',
+      default: 7,
+      'x-fastgpt-node-input': {
+        valueType: WorkflowIOValueTypeEnum.number,
+        defaultValue: 7,
+        renderTypeList: [FlowNodeInputTypeEnum.hidden]
+      }
+    });
+    expect(restored[0]).toMatchObject({
+      key: 'internal',
+      valueType: WorkflowIOValueTypeEnum.number,
+      defaultValue: 7,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden]
+    });
+  });
+});
+
+describe('nodeOutputs2JsonSchema', () => {
+  it('should convert node outputs to json schema properties', () => {
+    const result = nodeOutputs2JsonSchema({
+      outputs: [
+        {
+          id: 'result',
+          key: 'result',
+          label: 'Result',
+          type: 'static',
+          valueType: WorkflowIOValueTypeEnum.object,
+          description: 'Result object',
+          required: true
+        }
+      ]
+    });
+
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        result: {
+          type: 'object',
+          title: 'Result',
+          description: 'Result object'
+        }
+      },
+      required: ['result']
+    });
+  });
+
+  it('should convert arrayObject node outputs to array object schema', () => {
+    const result = nodeOutputs2JsonSchema({
+      outputs: [
+        {
+          id: 'items',
+          key: 'items',
+          label: 'Items',
+          type: 'static',
+          valueType: WorkflowIOValueTypeEnum.arrayObject,
+          description: 'Object list'
+        }
+      ]
+    });
+
+    expect(result.properties?.items).toEqual({
+      type: 'array',
+      items: { type: 'object' },
+      title: 'Items',
+      description: 'Object list'
+    });
+  });
+
+  it('should preserve workflow node output metadata when requested', () => {
+    const output = {
+      id: 'quote',
+      key: 'quote',
+      label: 'Quote',
+      type: FlowNodeOutputTypeEnum.dynamic,
+      valueType: WorkflowIOValueTypeEnum.datasetQuote,
+      valueDesc: 'Dataset quote',
+      defaultValue: [],
+      customFieldConfig: {
+        showDescription: true
+      },
+      deprecated: true,
+      required: true
+    };
+
+    const jsonSchema = nodeOutputs2JsonSchema({
+      outputs: [output],
+      includeNodeMetadata: true
+    });
+    const restored = jsonSchema2NodeOutput({ jsonSchema });
+
+    expect(jsonSchema.properties?.quote).toMatchObject({
+      'x-fastgpt-node-output': {
+        type: FlowNodeOutputTypeEnum.dynamic,
+        valueType: WorkflowIOValueTypeEnum.datasetQuote,
+        valueDesc: 'Dataset quote',
+        defaultValue: [],
+        customFieldConfig: {
+          showDescription: true
+        },
+        deprecated: true
+      }
+    });
+    expect(restored[0]).toMatchObject({
+      id: 'quote',
+      key: 'quote',
+      type: FlowNodeOutputTypeEnum.dynamic,
+      valueType: WorkflowIOValueTypeEnum.datasetQuote,
+      valueDesc: 'Dataset quote',
+      defaultValue: [],
+      customFieldConfig: {
+        showDescription: true
+      },
+      deprecated: true,
+      required: true
+    });
+  });
+});
+
+describe('inputConfigs2JsonSchema', () => {
+  it('should convert input config to secret schema', () => {
+    const result = inputConfigs2JsonSchema({
+      inputConfigs: [
+        {
+          key: 'apiKey',
+          label: 'API Key',
+          inputType: InputConfigInputTypeEnum.secret,
+          description: 'Secret key',
+          required: true
+        },
+        {
+          key: 'region',
+          label: 'Region',
+          inputType: InputConfigInputTypeEnum.select,
+          list: [
+            { label: 'US', value: 'us' },
+            { label: 'EU', value: 'eu' }
+          ]
+        }
+      ]
+    });
+
+    expect(result).toEqual({
+      type: 'object',
+      properties: {
+        apiKey: {
+          type: 'string',
+          isSecret: true,
+          title: 'API Key',
+          description: 'Secret key'
+        },
+        region: {
+          type: 'string',
+          enum: ['us', 'eu'],
+          title: 'Region',
+          description: ''
+        }
+      },
+      required: ['apiKey']
+    });
+  });
+});
+
+describe('jsonSchema2SecretInput', () => {
+  it('should convert scalar and array enums to select options', () => {
+    const result = jsonSchema2SecretInput({
+      jsonSchema: {
+        type: 'object',
+        properties: {
+          region: {
+            type: 'string',
+            title: 'Region',
+            enum: ['us', 'eu']
+          },
+          scopes: {
+            type: 'array',
+            title: 'Scopes',
+            items: {
+              type: 'string',
+              enum: ['read', 'write']
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toEqual([
+      {
+        inputType: InputConfigInputTypeEnum.select,
+        key: 'region',
+        label: 'Region',
+        description: undefined,
+        required: undefined,
+        list: [
+          { label: 'us', value: 'us' },
+          { label: 'eu', value: 'eu' }
+        ]
+      },
+      {
+        inputType: InputConfigInputTypeEnum.select,
+        key: 'scopes',
+        label: 'Scopes',
+        description: undefined,
+        required: undefined,
+        list: [
+          { label: 'read', value: 'read' },
+          { label: 'write', value: 'write' }
+        ]
+      }
+    ]);
+  });
+});
+
+describe('getSchemaValueType', () => {
+  it('should return number for integer type', () => {
+    const result = getSchemaValueType({ type: 'integer' });
+    expect(result).toBe(WorkflowIOValueTypeEnum.number);
+  });
+
+  it('should return arrayString for array with string items', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'string' } });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayString);
+  });
+
+  it('should return arrayNumber for array with number items', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'number' } });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayNumber);
+  });
+
+  it('should return arrayNumber for array with integer items', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'integer' } });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayNumber);
+  });
+
+  it('should return arrayBoolean for array with boolean items', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'boolean' } });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayBoolean);
+  });
+
+  it('should return arrayObject for array with object items', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'object' } });
+    expect(result).toBe(WorkflowIOValueTypeEnum.arrayObject);
+  });
+
+  it('should return the type directly for non-integer non-array types', () => {
+    expect(getSchemaValueType({ type: 'string' })).toBe('string');
+    expect(getSchemaValueType({ type: 'number' })).toBe('number');
+    expect(getSchemaValueType({ type: 'boolean' })).toBe('boolean');
+    expect(getSchemaValueType({ type: 'object' })).toBe('object');
+  });
+
+  it('should return array type when items type is not in typeMap', () => {
+    const result = getSchemaValueType({ type: 'array', items: { type: 'any' } });
+    expect(result).toBe('array');
+  });
+});
+
+describe('str2OpenApiSchema', () => {
+  it('should dereference local refs without resolving remote refs', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          post: {
+            operationId: 'createUser',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    $ref: '#/components/schemas/User'
+                  }
+                }
+              }
+            },
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' }
+            }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData[0].request.content['application/json'].schema.properties.name).toEqual({
+      type: 'string'
+    });
+  });
+
+  it('should reject remote refs without resolving them', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {},
+      components: {
+        schemas: {
+          Leak: {
+            $ref: 'http://169.254.169.254/latest/meta-data/iam/security-credentials/'
+          }
+        }
+      }
+    });
+
+    await expect(str2OpenApiSchema(openApiJson)).rejects.toBe('common:plugin.Invalid Schema');
+  });
+
+  it('should parse valid OpenAPI 3.0 JSON schema', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      servers: [{ url: 'https://api.example.com/v1' }],
+      paths: {
+        '/users': {
+          get: {
+            operationId: 'getUsers',
+            summary: 'Get all users',
+            responses: { '200': { description: 'Success' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.serverPath).toBe('https://api.example.com/v1');
+    expect(result.pathData).toHaveLength(1);
+    expect(result.pathData[0]).toMatchObject({
+      path: '/users',
+      method: 'get',
+      name: 'getUsers',
+      description: 'Get all users'
+    });
+  });
+
+  it('should parse valid YAML schema', async () => {
+    const openApiYaml = `
+openapi: '3.0.0'
+info:
+  title: Test API
+  version: '1.0.0'
+servers:
+  - url: https://api.example.com
+paths:
+  /items:
+    post:
+      operationId: createItem
+      description: Create a new item
+      responses:
+        '201':
+          description: Created
+`;
+
+    const result = await str2OpenApiSchema(openApiYaml);
+
+    expect(result.serverPath).toBe('https://api.example.com');
+    expect(result.pathData).toHaveLength(1);
+    expect(result.pathData[0]).toMatchObject({
+      path: '/items',
+      method: 'post',
+      name: 'createItem',
+      description: 'Create a new item'
+    });
+  });
+
+  it('should handle Swagger 2.0 host and basePath', async () => {
+    const swagger2Json = JSON.stringify({
+      swagger: '2.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      host: 'api.example.com',
+      basePath: '/v2',
+      schemes: ['https'],
+      paths: {
+        '/test': {
+          get: {
+            operationId: 'testEndpoint',
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(swagger2Json);
+
+    expect(result.serverPath).toBe('https://api.example.com/v2');
+  });
+
+  it('should default to https when no schemes provided in Swagger 2.0', async () => {
+    const swagger2Json = JSON.stringify({
+      swagger: '2.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      host: 'api.example.com',
+      basePath: '/api',
+      paths: {
+        '/test': {
+          get: {
+            operationId: 'testEndpoint',
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(swagger2Json);
+
+    expect(result.serverPath).toBe('https://api.example.com/api');
+  });
+
+  it('should handle multiple HTTP methods', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/resource': {
+          get: { operationId: 'getResource', responses: { '200': { description: 'OK' } } },
+          post: { operationId: 'createResource', responses: { '201': { description: 'Created' } } },
+          put: { operationId: 'updateResource', responses: { '200': { description: 'OK' } } },
+          delete: {
+            operationId: 'deleteResource',
+            responses: { '204': { description: 'No Content' } }
+          },
+          patch: { operationId: 'patchResource', responses: { '200': { description: 'OK' } } }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData).toHaveLength(5);
+    const methods = result.pathData.map((p) => p.method);
+    expect(methods).toContain('get');
+    expect(methods).toContain('post');
+    expect(methods).toContain('put');
+    expect(methods).toContain('delete');
+    expect(methods).toContain('patch');
+  });
+
+  it('should filter out deprecated methods', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          get: { operationId: 'getUsers', responses: { '200': { description: 'OK' } } },
+          post: {
+            operationId: 'createUser',
+            deprecated: true,
+            responses: { '201': { description: 'Created' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData).toHaveLength(1);
+    expect(result.pathData[0].name).toBe('getUsers');
+  });
+
+  it('should handle requestBody in OpenAPI 3.0', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          post: {
+            operationId: 'createUser',
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { name: { type: 'string' } }
+                  }
+                }
+              }
+            },
+            responses: { '201': { description: 'Created' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData[0].request).toBeDefined();
+    expect(result.pathData[0].request.content).toBeDefined();
+  });
+
+  it('should handle body parameter in Swagger 2.0 style', async () => {
+    const swagger2Json = JSON.stringify({
+      swagger: '2.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          post: {
+            operationId: 'createUser',
+            parameters: [
+              {
+                in: 'body',
+                name: 'body',
+                schema: {
+                  type: 'object',
+                  properties: { name: { type: 'string' } }
+                }
+              }
+            ],
+            responses: { '201': { description: 'Created' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(swagger2Json);
+
+    expect(result.pathData[0].request).toBeDefined();
+    expect(result.pathData[0].request.content['application/json']).toBeDefined();
+  });
+
+  it('should use path as name when operationId is not provided', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          get: {
+            summary: 'Get users',
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData[0].name).toBe('/users');
+  });
+
+  it('should use summary as description when description is not provided', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          get: {
+            operationId: 'getUsers',
+            summary: 'Get all users summary',
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData[0].description).toBe('Get all users summary');
+  });
+
+  it('should return empty serverPath when no servers or host configured', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/test': {
+          get: { operationId: 'test', responses: { '200': { description: 'OK' } } }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.serverPath).toBe('');
+  });
+
+  it('should reject invalid schema', async () => {
+    const invalidSchema = 'this is not valid json or yaml {{{';
+
+    await expect(str2OpenApiSchema(invalidSchema)).rejects.toBeDefined();
+  });
+
+  it('should handle empty string input', async () => {
+    await expect(str2OpenApiSchema('')).rejects.toBeDefined();
+  });
+
+  it('should filter out non-HTTP methods', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users': {
+          get: { operationId: 'getUsers', responses: { '200': { description: 'OK' } } },
+          parameters: [{ name: 'id', in: 'query' }],
+          summary: 'User operations'
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData).toHaveLength(1);
+    expect(result.pathData[0].method).toBe('get');
+  });
+
+  it('should handle parameters in path operations', async () => {
+    const openApiJson = JSON.stringify({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {
+        '/users/{id}': {
+          get: {
+            operationId: 'getUserById',
+            parameters: [
+              { name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+              { name: 'include', in: 'query', schema: { type: 'string' } }
+            ],
+            responses: { '200': { description: 'OK' } }
+          }
+        }
+      }
+    });
+
+    const result = await str2OpenApiSchema(openApiJson);
+
+    expect(result.pathData[0].params).toHaveLength(2);
+  });
+});
+
+describe('bundleOpenAPISchema', () => {
+  it('should bundle local refs from an already loaded schema object', async () => {
+    const result = await bundleOpenAPISchema({
+      openapi: '3.0.0',
+      info: { title: 'Test API', version: '1.0.0' },
+      paths: {},
+      components: {
+        schemas: {
+          User: { type: 'object', properties: { name: { type: 'string' } } },
+          Payload: { $ref: '#/components/schemas/User' }
+        }
+      }
+    });
+
+    expect(result.components.schemas.Payload).toEqual({ $ref: '#/components/schemas/User' });
+  });
+
+  it('should reject remote refs when bundling an already loaded schema object', async () => {
+    await expect(
+      bundleOpenAPISchema({
+        openapi: '3.0.0',
+        info: { title: 'Test API', version: '1.0.0' },
+        paths: {},
+        components: {
+          schemas: {
+            Leak: {
+              $ref: 'http://169.254.169.254/latest/meta-data/iam/security-credentials/'
+            }
+          }
+        }
+      })
+    ).rejects.toThrow('Unable to resolve $ref pointer');
+  });
+});

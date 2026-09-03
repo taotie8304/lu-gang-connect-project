@@ -19,7 +19,7 @@ import {
   Input_Template_UserChatInput,
   Input_Template_File_Link
 } from '../../input';
-import { i18nT } from '../../../../../../web/i18n/utils';
+import { i18nT } from '../../../../../common/i18n/utils';
 import { Output_Template_Error_Message } from '../../output';
 
 export const AiChatQuoteRole = {
@@ -49,11 +49,13 @@ export const AiChatModule: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/aiChat',
+  avatarLinear: 'core/workflow/template/aiChatLinear',
+  colorSchema: 'blueDark',
   name: i18nT('workflow:template.ai_chat'),
   intro: i18nT('workflow:template.ai_chat_intro'),
   showStatus: true,
   isTool: true,
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/ai_chat/',
+  courseUrl: '/guide/build/workflow/nodes/ai_chat',
   version: '4.9.7',
   catchError: false,
   inputs: [
@@ -90,11 +92,38 @@ export const AiChatModule: FlowNodeTemplateType = {
       value: true
     },
     {
+      key: NodeInputKeyEnum.aiChatAudio,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: false
+    },
+    {
+      key: NodeInputKeyEnum.aiChatVideo,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: false
+    },
+    {
+      key: NodeInputKeyEnum.aiChatExtractFiles,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: true
+    },
+    {
       key: NodeInputKeyEnum.aiChatReasoning,
       renderTypeList: [FlowNodeInputTypeEnum.hidden],
       label: '',
       valueType: WorkflowIOValueTypeEnum.boolean,
       value: true
+    },
+    {
+      key: NodeInputKeyEnum.aiChatReasoningEffort,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
     },
     {
       key: NodeInputKeyEnum.aiChatTopP,
@@ -125,7 +154,7 @@ export const AiChatModule: FlowNodeTemplateType = {
     Input_Template_History,
     Input_Template_Dataset_Quote,
     Input_Template_File_Link,
-    { ...Input_Template_UserChatInput, toolDescription: i18nT('workflow:user_question') }
+    Input_Template_UserChatInput
   ],
   outputs: [
     {
@@ -151,13 +180,13 @@ export const AiChatModule: FlowNodeTemplateType = {
       id: NodeOutputKeyEnum.reasoningText,
       key: NodeOutputKeyEnum.reasoningText,
       required: false,
-      label: i18nT('workflow:reasoning_text'),
+      label: i18nT('workflow:reasoning_content'),
       valueType: WorkflowIOValueTypeEnum.string,
       type: FlowNodeOutputTypeEnum.static,
       invalid: true,
-      invalidCondition: ({ inputs, llmModelList }) => {
+      invalidCondition: ({ inputs, llmModelMap }) => {
         const model = inputs.find((item) => item.key === NodeInputKeyEnum.aiModel)?.value;
-        const modelItem = llmModelList.find((item) => item.model === model);
+        const modelItem = llmModelMap[model];
         return modelItem?.reasoning !== true;
       }
     },

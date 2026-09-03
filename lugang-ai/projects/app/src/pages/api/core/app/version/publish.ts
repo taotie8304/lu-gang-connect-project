@@ -1,32 +1,62 @@
-import type { NextApiResponse } from 'next';
 import { NextAPI } from '@/service/middleware/entry';
 import { authApp } from '@fastgpt/service/support/permission/app/auth';
 import { MongoAppVersion } from '@fastgpt/service/core/app/version/schema';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
-import { beforeUpdateAppFormat } from '@fastgpt/service/core/app/controller';
+import {
+  beforeUpdateAppFormat,
+  validatePublishAppAgentSkillReadPermissions
+} from '@fastgpt/service/core/app/controller';
+import { migrateWorkflowToCurrent } from '@fastgpt/global/core/workflow/migration';
 import { getNextTimeByCronStringAndTimezone } from '@fastgpt/global/common/string/time';
 import { type PostPublishAppProps } from '@/global/core/app/api';
 import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { getI18nAppType } from '@fastgpt/service/support/user/audit/util';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
+import { updateParentFoldersUpdateTime } from '@fastgpt/service/core/app/controller';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { extractAppResourceRefsFromNodes } from '@fastgpt/service/core/app/resourceRefs';
+import {
+  PublishAppBodySchema,
+  PublishAppQuerySchema,
+  PublishAppResponseSchema
+} from '@fastgpt/global/openapi/core/app/version/api';
 
-async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiResponse<any>) {
-  const { appId } = req.query as { appId: string };
-  const { nodes = [], edges = [], chatConfig, isPublish, versionName, autoSave } = req.body;
+async function handler(req: ApiRequestProps<PostPublishAppProps>) {
+  const {
+    query: { appId },
+    body: { nodes = [], edges = [], chatConfig, isPublish, versionName, autoSave }
+  } = parseApiInput({
+    req,
+    querySchema: PublishAppQuerySchema,
+    bodySchema: PublishAppBodySchema
+  });
 
-  const { app, tmbId, teamId } = await authApp({
+  const { app, tmbId, teamId, isRoot } = await authApp({
     appId,
     req,
     per: WritePermissionVal,
     authToken: true
   });
 
-  beforeUpdateAppFormat({
-    nodes
+  const normalizedWorkflow = migrateWorkflowToCurrent({ nodes, edges, chatConfig });
+  await beforeUpdateAppFormat({
+    nodes: normalizedWorkflow.nodes,
+    teamId
+  });
+  if (isPublish) {
+    await validatePublishAppAgentSkillReadPermissions({
+      nodes: normalizedWorkflow.nodes,
+      tmbId,
+      isRoot
+    });
+  }
+  const resourceRefs = extractAppResourceRefsFromNodes(normalizedWorkflow.nodes);
+  updateParentFoldersUpdateTime({
+    parentId: app.parentId
   });
 
   if (autoSave) {
@@ -39,11 +69,12 @@ async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiRe
         {
           tmbId,
           appId,
-          nodes,
-          edges,
-          chatConfig,
+          nodes: normalizedWorkflow.nodes,
+          edges: normalizedWorkflow.edges,
+          chatConfig: normalizedWorkflow.chatConfig,
           versionName: i18nT('app:auto_save'),
-          time: new Date()
+          time: new Date(),
+          resourceRefs
         },
 
         { session, upsert: true }
@@ -52,9 +83,9 @@ async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiRe
       await MongoApp.updateOne(
         { _id: appId },
         {
-          modules: nodes,
-          edges,
-          chatConfig,
+          modules: normalizedWorkflow.nodes,
+          edges: normalizedWorkflow.edges,
+          chatConfig: normalizedWorkflow.chatConfig,
           updateTime: new Date()
         },
         {
@@ -75,7 +106,7 @@ async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiRe
       }
     });
 
-    return;
+    return PublishAppResponseSchema.parse(undefined);
   }
 
   await mongoSessionRun(async (session) => {
@@ -84,39 +115,43 @@ async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiRe
       [
         {
           appId,
-          nodes: nodes,
-          edges,
-          chatConfig,
+          nodes: normalizedWorkflow.nodes,
+          edges: normalizedWorkflow.edges,
+          chatConfig: normalizedWorkflow.chatConfig,
           isPublish,
           versionName,
-          tmbId
+          tmbId,
+          resourceRefs
         }
       ],
       { session, ordered: true }
     );
 
     // update app
+    const setUpdate = {
+      modules: normalizedWorkflow.nodes,
+      edges: normalizedWorkflow.edges,
+      chatConfig: normalizedWorkflow.chatConfig,
+      updateTime: new Date(),
+      version: 'v2',
+      ...(isPublish && { resourceRefs }),
+      ...(isPublish && normalizedWorkflow.chatConfig.scheduledTriggerConfig?.cronString
+        ? {
+            scheduledTriggerConfig: normalizedWorkflow.chatConfig.scheduledTriggerConfig,
+            scheduledTriggerNextTime: getNextTimeByCronStringAndTimezone(
+              normalizedWorkflow.chatConfig.scheduledTriggerConfig
+            )
+          }
+        : {}),
+      'pluginData.nodeVersion': _id
+    };
     await MongoApp.updateOne(
       { _id: appId },
       {
-        modules: nodes,
-        edges,
-        chatConfig,
-        updateTime: new Date(),
-        version: 'v2',
-        // 只有发布才会更新定时器
-        ...(isPublish &&
-          (chatConfig?.scheduledTriggerConfig?.cronString
-            ? {
-                $set: {
-                  scheduledTriggerConfig: chatConfig.scheduledTriggerConfig,
-                  scheduledTriggerNextTime: getNextTimeByCronStringAndTimezone(
-                    chatConfig.scheduledTriggerConfig
-                  )
-                }
-              }
-            : { $unset: { scheduledTriggerConfig: '', scheduledTriggerNextTime: '' } })),
-        'pluginData.nodeVersion': _id
+        $set: setUpdate,
+        ...(isPublish && !normalizedWorkflow.chatConfig.scheduledTriggerConfig?.cronString
+          ? { $unset: { scheduledTriggerConfig: '', scheduledTriggerNextTime: '' } }
+          : {})
       },
       {
         session
@@ -139,6 +174,8 @@ async function handler(req: ApiRequestProps<PostPublishAppProps>, res: NextApiRe
       }
     });
   })();
+
+  return PublishAppResponseSchema.parse(undefined);
 }
 
 export default NextAPI(handler);

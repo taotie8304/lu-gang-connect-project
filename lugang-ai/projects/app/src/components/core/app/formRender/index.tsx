@@ -13,10 +13,11 @@ import TimeInput from './TimeInput';
 import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
 import { isSecretValue } from '@fastgpt/global/common/secret/utils';
 import FileSelector from '../FileSelector/index';
-import { formatTime2YMDHMS } from '@fastgpt/global/common/string/time';
+import { formatTime2YMDHMS, formatToISOWithTimezone } from '@fastgpt/global/common/string/time';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import type { SelectedDatasetType } from '@fastgpt/global/core/workflow/type/io';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { getFileSelectRenderProps } from './utils';
 
 const InputRender = (props: InputRenderProps) => {
   const {
@@ -27,7 +28,8 @@ const InputRender = (props: InputRenderProps) => {
     isDisabled,
     isInvalid,
     placeholder,
-    bg = 'white'
+    bg = 'white',
+    modelList
   } = props;
 
   const { t } = useSafeTranslation();
@@ -36,14 +38,19 @@ const InputRender = (props: InputRenderProps) => {
   // Password
   const [isPasswordEditing, setIsPasswordEditing] = useState(false);
 
-  const isSelectAll = useMemo(() => {
+  const multipleSelectList = useMemo(() => {
+    if (inputType !== InputTypeEnum.multipleSelect) return [];
     return (
-      inputType === InputTypeEnum.multipleSelect &&
-      Array.isArray(value) &&
-      value.length === (props.list?.length || 0)
+      props.list ?? props.enums?.map((item) => ({ label: item.value, value: item.value })) ?? []
     );
-    // @ts-ignore
-  }, [inputType, value, props.list?.length]);
+  }, [inputType, props.list, props.enums]);
+
+  const isSelectAll = useMemo(() => {
+    if (inputType !== InputTypeEnum.multipleSelect) return false;
+    if (!Array.isArray(value) || multipleSelectList.length === 0) return false;
+    const valueSet = new Set(value);
+    return multipleSelectList.every((item) => valueSet.has(item.value));
+  }, [inputType, value, multipleSelectList]);
 
   const commonProps = useMemoEnhance(
     () => ({
@@ -101,7 +108,7 @@ const InputRender = (props: InputRenderProps) => {
         {...commonProps}
         onChange={(e) => {
           const val = e.target.value;
-          onChange({
+          onChange?.({
             value: val,
             secret: ''
           });
@@ -156,7 +163,7 @@ const InputRender = (props: InputRenderProps) => {
         min={props.min}
         max={props.max}
         bg={undefined}
-        inputFieldProps={{ bg: bg }}
+        inputFieldProps={{ bg: bg, px: 3 }}
       />
     );
   }
@@ -165,28 +172,32 @@ const InputRender = (props: InputRenderProps) => {
     return (
       <Switch
         isChecked={value}
-        onChange={(e) => onChange(e.target.checked)}
+        onChange={(e) => onChange?.(e.target.checked)}
         isDisabled={isDisabled}
       />
     );
   }
 
   if (inputType === InputTypeEnum.select) {
-    const list =
+    const rawList: { label: string; value: string; icon?: string; description?: string }[] =
       props.list || props.enums?.map((item) => ({ label: item.value, value: item.value })) || [];
-    return <MySelect {...commonProps} list={list} h={10} />;
+    const list = rawList.map((item) => ({
+      ...item,
+      label: typeof item.label === 'string' ? t(item.label as any) : item.label,
+      description:
+        typeof item.description === 'string' ? t(item.description as any) : item.description
+    }));
+    return <MySelect {...commonProps} list={list} h={10} menuPlacement={props.menuPlacement} />;
   }
 
   if (inputType === InputTypeEnum.multipleSelect) {
-    const list =
-      props.list || props.enums?.map((item) => ({ label: item.value, value: item.value })) || [];
     return (
       <MultipleSelect<string>
         {...commonProps}
         h={10}
-        list={list}
+        list={multipleSelectList}
         value={value}
-        onSelect={onChange}
+        onSelect={(e) => onChange?.(e)}
         isSelectAll={isSelectAll}
         itemWrap
       />
@@ -202,32 +213,33 @@ const InputRender = (props: InputRenderProps) => {
       <AIModelSelector
         {...commonProps}
         cacheModel={false}
-        list={
-          llmModelList?.map((item) => ({
-            value: item.model,
-            label: item.name
-          })) || []
-        }
+        list={(modelList || llmModelList).map((item) => ({
+          value: item.model,
+          label: item.name
+        }))}
       />
     );
   }
 
   if (inputType === InputTypeEnum.fileSelect) {
     const files = Array.isArray(value) ? value : [];
+    const fileSelectProps = getFileSelectRenderProps(props);
     return (
       <FileSelector
         value={files}
         onChange={onChange}
         isDisabled={isDisabled}
-        maxFiles={props.maxFiles}
-        canSelectFile={props.canSelectFile}
-        canSelectImg={props.canSelectImg}
-        canSelectVideo={props.canSelectVideo}
-        canSelectAudio={props.canSelectAudio}
-        canSelectCustomFileExtension={props.canSelectCustomFileExtension}
-        customFileExtensionList={props.customFileExtensionList}
-        canLocalUpload={props.canLocalUpload}
-        canUrlUpload={props.canUrlUpload}
+        isInvalid={isInvalid}
+        maxFiles={fileSelectProps.maxFiles}
+        canSelectFile={fileSelectProps.canSelectFile}
+        canSelectImg={fileSelectProps.canSelectImg}
+        canSelectVideo={fileSelectProps.canSelectVideo}
+        canSelectAudio={fileSelectProps.canSelectAudio}
+        canSelectCustomFileExtension={fileSelectProps.canSelectCustomFileExtension}
+        customFileExtensionList={fileSelectProps.customFileExtensionList}
+        canLocalUpload={fileSelectProps.canLocalUpload}
+        canUrlUpload={fileSelectProps.canUrlUpload}
+        onFileErrorChange={props.onFileErrorChange}
       />
     );
   }
@@ -251,7 +263,7 @@ const InputRender = (props: InputRenderProps) => {
         list={list ?? []}
         value={selectedValues}
         onSelect={(selectedVals) => {
-          onChange(
+          onChange?.(
             selectedVals.map((val) => {
               const selectedItem = list?.find((item) => item.value === val);
               return {
@@ -274,10 +286,11 @@ const InputRender = (props: InputRenderProps) => {
     return (
       <TimeInput
         value={val ? new Date(val) : undefined}
-        onDateTimeChange={(date) => onChange(date ? date.toISOString() : undefined)}
+        onDateTimeChange={(date) => onChange?.(date ? formatToISOWithTimezone(date) : undefined)}
         timeGranularity={props.timeGranularity}
         minDate={timeRangeStart ? new Date(timeRangeStart) : undefined}
         maxDate={timeRangeEnd ? new Date(timeRangeEnd) : undefined}
+        isDisabled={isDisabled}
       />
     );
   }
@@ -296,14 +309,15 @@ const InputRender = (props: InputRenderProps) => {
             value={startDate ? new Date(formatTime2YMDHMS(startDate)) : undefined}
             onDateTimeChange={(date) => {
               const newArray = [...rangeArray];
-              newArray[0] = date ? date.toISOString() : undefined;
-              onChange(newArray);
+              newArray[0] = date ? formatToISOWithTimezone(date) : undefined;
+              onChange?.(newArray);
             }}
             timeGranularity={props.timeGranularity}
             maxDate={
               endDate ? new Date(endDate) : timeRangeEnd ? new Date(timeRangeEnd) : undefined
             }
             minDate={timeRangeStart ? new Date(timeRangeStart) : undefined}
+            isDisabled={isDisabled}
           />
         </Box>
         <Box>
@@ -314,8 +328,8 @@ const InputRender = (props: InputRenderProps) => {
             value={endDate ? new Date(formatTime2YMDHMS(endDate)) : undefined}
             onDateTimeChange={(date) => {
               const newArray = [...rangeArray];
-              newArray[1] = date ? date.toISOString() : undefined;
-              onChange(newArray);
+              newArray[1] = date ? formatToISOWithTimezone(date) : undefined;
+              onChange?.(newArray);
             }}
             timeGranularity={props.timeGranularity}
             minDate={
@@ -326,6 +340,7 @@ const InputRender = (props: InputRenderProps) => {
                   : undefined
             }
             maxDate={timeRangeEnd ? new Date(timeRangeEnd) : undefined}
+            isDisabled={isDisabled}
           />
         </Box>
       </Box>

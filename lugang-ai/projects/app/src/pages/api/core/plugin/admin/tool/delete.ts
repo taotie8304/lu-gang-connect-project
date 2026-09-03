@@ -1,34 +1,33 @@
 import { NextAPI } from '@/service/middleware/entry';
 import { MongoSystemTool } from '@fastgpt/service/core/plugin/tool/systemToolSchema';
 import { MongoTeamInstalledPlugin } from '@fastgpt/service/core/plugin/schema/teamInstalledPluginSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
-import { refreshVersionKey } from '@fastgpt/service/common/cache';
-import { SystemCacheKeyEnum } from '@fastgpt/service/common/cache/type';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { DeleteSystemToolQueryType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import {
+  DeleteSystemToolQuerySchema,
+  type DeleteSystemToolQueryType
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
 export type deletePluginQuery = DeleteSystemToolQueryType;
 
-export type deletePluginBody = {};
+export type deletePluginBody = Record<string, never>;
 
-export type deletePluginResponse = {};
+export type deletePluginResponse = Record<string, never>;
 
 async function handler(
   req: ApiRequestProps<deletePluginBody, deletePluginQuery>,
-  res: ApiResponseType<any>
+  _res: ApiResponseType<any>
 ): Promise<deletePluginResponse> {
   await authSystemAdmin({ req });
 
-  const toolId = req.query.toolId;
+  const { toolId } = parseApiInput({ req, querySchema: DeleteSystemToolQuerySchema }).query;
 
   await mongoSessionRun(async (session) => {
     await MongoSystemTool.deleteOne({ pluginId: toolId }, { session });
     await MongoTeamInstalledPlugin.deleteMany({ pluginId: toolId }, { session });
   });
-
-  await refreshVersionKey(SystemCacheKeyEnum.systemTool);
-
   return {};
 }
 

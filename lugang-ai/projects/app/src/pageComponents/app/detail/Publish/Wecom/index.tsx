@@ -18,7 +18,7 @@ import { useLoading } from '@fastgpt/web/hooks/useLoading';
 import { getShareChatList, delShareChatById } from '@/web/support/outLink/api';
 import { formatTimeToChatTime } from '@fastgpt/global/common/string/time';
 import { defaultOutLinkForm } from '@/web/core/app/constants';
-import type { WecomAppType, OutLinkEditType } from '@fastgpt/global/support/outLink/type.d';
+import type { WecomAppType, OutLinkEditType } from '@fastgpt/global/support/outLink/type';
 import { PublishChannelEnum } from '@fastgpt/global/support/outLink/constant';
 import { Trans, useTranslation } from 'next-i18next';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -26,14 +26,21 @@ import dayjs from 'dayjs';
 import dynamic from 'next/dynamic';
 import MyMenu from '@fastgpt/web/components/common/MyMenu';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getDocPath } from '@/web/common/system/doc';
 import { listCustomDomain } from '@/web/support/customDomain/api';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 const WecomEditModal = dynamic(() => import('./WecomEditModal'));
 const ShowShareLinkModal = dynamic(() => import('../components/showShareLinkModal'));
 
-const Wecom = ({ appId }: { appId: string }) => {
+const Wecom = ({
+  appId,
+  onRefreshOutLinkCounts
+}: {
+  appId: string;
+  onRefreshOutLinkCounts: () => Promise<unknown>;
+}) => {
   const { t } = useTranslation();
   const { Loading, setIsLoading } = useLoading();
   const { feConfigs } = useSystemStore();
@@ -49,7 +56,7 @@ const Wecom = ({ appId }: { appId: string }) => {
     data: shareChatList = [],
     loading: isFetching,
     runAsync: refetchShareChatList
-  } = useRequest2(() => getShareChatList<WecomAppType>({ appId, type: PublishChannelEnum.wecom }), {
+  } = useRequest(() => getShareChatList<WecomAppType>({ appId, type: PublishChannelEnum.wecom }), {
     manual: false
   });
 
@@ -61,21 +68,21 @@ const Wecom = ({ appId }: { appId: string }) => {
 
   const [showShareLink, setShowShareLink] = useState<string | null>(null);
 
-  const { data: customDomains = [] } = useRequest2(listCustomDomain, {
+  const { data: customDomains = [] } = useRequest(listCustomDomain, {
     manual: false,
     refreshOnWindowFocus: true
   });
 
   return (
-    <Box position={'relative'} pt={3} px={5} minH={'50vh'}>
+    <Box position={'relative'} p={6} minH={'50vh'}>
       <Flex justifyContent={'space-between'} flexDirection="row">
         <Flex alignItems={'center'}>
-          <Box fontWeight={'bold'} fontSize={['md', 'lg']}>
+          <Box color={'myGray.900'} fontWeight={'medium'} fontSize={'lg'}>
             {t('publish:wecom.title')}
           </Box>
           {feConfigs?.docUrl && (
             <Link
-              href={getDocPath('/docs/use-cases/external-integration/wecom')}
+              href={getDocPath('/guide/build/publish/wecom')}
               target={'_blank'}
               ml={2}
               color={'primary.500'}
@@ -126,11 +133,9 @@ const Wecom = ({ appId }: { appId: string }) => {
             <Tr>
               <Th>{t('common:Name')} </Th>
               <Th> {t('common:support.outlink.Usage points')} </Th>
-              {/* 鲁港通 - 显示高级发布配置 */}
-              <Th>{t('common:core.app.share.Ip limit title')} </Th>
-              <Th> {t('common:expired_time')} </Th>
+              {feConfigs?.isPlus && <Th>{t('common:expired_time')} </Th>}
               <Th>{t('common:last_use_time')} </Th>
-              <Th> </Th>
+              <Th>{t('common:Action')} </Th>
             </Tr>
           </Thead>
           <Tbody>
@@ -139,20 +144,21 @@ const Wecom = ({ appId }: { appId: string }) => {
                 <Td>{item.name} </Td>
                 <Td>
                   {Math.round(item.usagePoints)}
-                  {/* 鲁港通 - 显示使用点数限制 */}
-                  {`${
-                    item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
-                      ? ` / ${item.limit.maxUsagePoints}`
-                      : ` / ${t('common:Unlimited')}`
-                  }`}
+                  {feConfigs?.isPlus
+                    ? `${
+                        item.limit?.maxUsagePoints && item.limit.maxUsagePoints > -1
+                          ? ` / ${item.limit.maxUsagePoints}`
+                          : ` / ${t('common:Unlimited')}`
+                      }`
+                    : ''}
                 </Td>
-                {/* 鲁港通 - 显示高级配置 */}
-                <Td>{item?.limit?.QPM || '-'} </Td>
-                <Td>
-                  {item?.limit?.expiredTime
-                    ? dayjs(item.limit?.expiredTime).format('YYYY/MM/DD\nHH:mm')
-                    : '-'}
-                </Td>
+                {feConfigs?.isPlus && (
+                  <Td>
+                    {item.limit?.expiredTime
+                      ? dayjs(item.limit.expiredTime).format('YYYY/MM/DD\nHH:mm')
+                      : '-'}
+                  </Td>
+                )}
                 <Td>
                   {item.lastTime
                     ? t(formatTimeToChatTime(item.lastTime) as any).replace('#', ':')
@@ -193,7 +199,7 @@ const Wecom = ({ appId }: { appId: string }) => {
                                 name: item.name,
                                 limit: item.limit,
                                 app: item.app,
-                                responseDetail: item.responseDetail,
+                                showCite: item.showCite,
                                 defaultResponse: item.defaultResponse,
                                 immediateResponse: item.immediateResponse
                               });
@@ -207,7 +213,10 @@ const Wecom = ({ appId }: { appId: string }) => {
                               setIsLoading(true);
                               try {
                                 await delShareChatById(item._id);
-                                refetchShareChatList();
+                                void Promise.all([
+                                  refetchShareChatList(),
+                                  onRefreshOutLinkCounts()
+                                ]);
                               } catch (error) {
                                 console.log(error);
                               }
@@ -229,7 +238,7 @@ const Wecom = ({ appId }: { appId: string }) => {
           appId={appId}
           defaultData={editWecomData}
           onCreate={async (shareId: string) => {
-            const newList = await refetchShareChatList();
+            const [newList] = await Promise.all([refetchShareChatList(), onRefreshOutLinkCounts()]);
             const newItem = newList.find((item) => item.shareId === shareId);
             return newItem?._id;
           }}
@@ -245,7 +254,7 @@ const Wecom = ({ appId }: { appId: string }) => {
             : {
                 text: (
                   <Trans
-                    i18nKey="app:publish_channel.wecom.empty"
+                    i18nKey={i18nT('app:publish_channel.wecom.empty')}
                     components={{
                       a: (
                         <Link

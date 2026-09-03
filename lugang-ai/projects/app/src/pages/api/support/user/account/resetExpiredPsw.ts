@@ -1,24 +1,22 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { NextAPI } from '@/service/middleware/entry';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { checkPswExpired } from '@/service/support/user/account/password';
 import { delUserAllSession } from '@fastgpt/service/support/user/session';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  ResetExpiredPswBodySchema,
+  ResetExpiredPswResponseSchema,
+  type ResetExpiredPswResponseType
+} from '@fastgpt/global/openapi/support/user/account/password/api';
 
-export type resetExpiredPswQuery = {};
-
-export type resetExpiredPswBody = {
-  newPsw: string;
-};
-
-export type resetExpiredPswResponse = {};
-
-async function resetExpiredPswHandler(
-  req: ApiRequestProps<resetExpiredPswBody, resetExpiredPswQuery>,
-  res: ApiResponseType<resetExpiredPswResponse>
-): Promise<resetExpiredPswResponse> {
-  const newPsw = req.body.newPsw;
+async function resetExpiredPswHandler(req: ApiRequestProps): Promise<ResetExpiredPswResponseType> {
+  const { newPsw } = parseApiInput({
+    req,
+    bodySchema: ResetExpiredPswBodySchema
+  }).body;
   const { userId, sessionId } = await authCert({ req, authToken: true });
   const user = await MongoUser.findById(userId, 'passwordUpdateTime').lean();
 
@@ -46,7 +44,7 @@ async function resetExpiredPswHandler(
 
   await delUserAllSession(userId, [sessionId]);
 
-  return {};
+  return ResetExpiredPswResponseSchema.parse(undefined);
 }
 
 export default NextAPI(resetExpiredPswHandler);

@@ -1,0 +1,86 @@
+import { describe, expect, it } from 'vitest';
+import { openAPIDocument } from '@fastgpt/global/openapi/provider/devapi';
+import { apiDocOpenAPIDocument } from '@fastgpt/global/openapi/provider/systemopenapi';
+import { GetPreviewNodeQuerySchema } from '@fastgpt/global/openapi/core/app/tool/api';
+
+describe('GetPreviewNodeQuerySchema', () => {
+  it('accepts versionId, including empty string', () => {
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather',
+        versionId: '',
+        source: 'debug:tmbId:tmb-1'
+      }).success
+    ).toBe(true);
+
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather',
+        versionId: '68ad85a7463006c963799a05'
+      }).success
+    ).toBe(true);
+  });
+
+  it('accepts getLatestVersion only when versionId is omitted', () => {
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather',
+        getLatestVersion: true
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects missing or duplicated version selectors', () => {
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather'
+      }).success
+    ).toBe(false);
+
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather',
+        versionId: '',
+        getLatestVersion: true
+      }).success
+    ).toBe(false);
+  });
+
+  it('rejects getLatestVersion=false', () => {
+    expect(
+      GetPreviewNodeQuerySchema.safeParse({
+        appId: 'systemTool-weather',
+        getLatestVersion: false
+      }).success
+    ).toBe(false);
+  });
+
+  it('keeps full OpenAPI document generation compatible with query params', () => {
+    expect(openAPIDocument.paths['/core/app/tool/getPreviewNode']?.get).toBeDefined();
+  });
+
+  it('does not expose SystemOpenAPI filter tags in dev API document', () => {
+    const tags = openAPIDocument.paths['/core/chat/history/getHistories']?.post?.tags ?? [];
+
+    expect(tags).toContain('会话管理');
+    expect(tags.some((tag) => tag.startsWith('systemOpenAPI:'))).toBe(false);
+  });
+
+  it('groups API key management APIs under common basic features in dev API document', () => {
+    expect(openAPIDocument.paths['/support/openapi/create']?.post).toBeDefined();
+    expect(openAPIDocument.paths['/support/openapi/list']?.get).toBeDefined();
+
+    const tagGroups = openAPIDocument['x-tagGroups'] ?? [];
+    const commonBasicGroup = tagGroups.find((group) => group.name === '通用-基础功能');
+
+    expect(commonBasicGroup?.tags).toContain('API Key 管理');
+  });
+
+  it('includes chat quote APIs in System OpenAPI document', () => {
+    expect(apiDocOpenAPIDocument.paths['/core/chat/record/getQuote']?.post).toBeDefined();
+    expect(apiDocOpenAPIDocument.paths['/core/chat/record/getCollectionQuote']?.post).toBeDefined();
+    expect(apiDocOpenAPIDocument.paths['/core/chat/record/getQuote']?.post?.tags).toEqual([
+      '对话管理'
+    ]);
+  });
+});

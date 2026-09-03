@@ -17,7 +17,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'next-i18next';
 import { AppContext } from '../context';
 import { useContextSelector } from 'use-context-selector';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getAppChartData, getAppTotalData } from '@/web/core/app/api/log';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import {
@@ -36,6 +36,7 @@ import BarChartComponent from '@fastgpt/web/components/common/charts/BarChartCom
 import { theme } from '@fastgpt/web/styles/theme';
 import MySelect from '@fastgpt/web/components/common/MySelect';
 import {
+  AppLogTimespanMap,
   AppLogTimespanEnum,
   fakeChartData,
   offsetOptions
@@ -152,7 +153,7 @@ const LogChart = ({
 
   const [offset, setOffset] = useState<string>(offsetOptions[0].value);
 
-  const { data: chartData, loading } = useRequest2(
+  const { data: chartData, loading } = useRequest(
     async () => {
       return getAppChartData({
         appId,
@@ -166,7 +167,7 @@ const LogChart = ({
       });
     },
     {
-      manual: false,
+      manual: !feConfigs?.isPlus,
       refreshDeps: [
         appId,
         dateRange.from,
@@ -181,7 +182,8 @@ const LogChart = ({
   );
 
   const formatChartData = useMemo(() => {
-    // 鲁港通 - 直接使用真实数据
+    if (!feConfigs?.isPlus) return fakeChartData;
+
     const formatTimestamp = (timestamp: number, timespan: AppLogTimespanEnum) => {
       return timespan === AppLogTimespanEnum.week
         ? formatWeekDate(new Date(timestamp))
@@ -322,6 +324,7 @@ const LogChart = ({
 
     return { user, chat, app, cumulative };
   }, [
+    feConfigs?.isPlus,
     chartData?.userData,
     chartData?.chatData,
     chartData?.appData,
@@ -362,7 +365,7 @@ const LogChart = ({
               <Flex flex={1} />
               <MySelect
                 list={Object.values(AppLogTimespanEnum).map((option) => ({
-                  label: t(`app:logs_timespan_${option}`),
+                  label: t(AppLogTimespanMap[option].label),
                   value: option
                 }))}
                 value={userTimespan}
@@ -403,7 +406,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.userCount}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -448,7 +451,7 @@ const LogChart = ({
                         }}
                       />
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -477,7 +480,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.points.toFixed(2)}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -496,7 +499,7 @@ const LogChart = ({
                       color: value.color,
                       customValue: (data) => data.sourceCountMap[key as ChatSourceEnum]
                     }))}
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
               </Grid>
@@ -517,7 +520,7 @@ const LogChart = ({
               <Flex flex={1} />
               <MySelect
                 list={Object.values(AppLogTimespanEnum).map((option) => ({
-                  label: t(`app:logs_timespan_${option}`),
+                  label: t(AppLogTimespanMap[option].label),
                   value: option
                 }))}
                 value={chatTimespan}
@@ -557,7 +560,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.chatItemCount}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -586,7 +589,7 @@ const LogChart = ({
                         {t('app:logs_total')}: {formatChartData.cumulative.chatCount}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -617,7 +620,7 @@ const LogChart = ({
                         })}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -644,7 +647,7 @@ const LogChart = ({
                         {`${t('app:logs_total_avg_points')}: ${formatChartData.cumulative.pointsPerChat.toFixed(2)}`}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
               </Grid>
@@ -665,7 +668,7 @@ const LogChart = ({
               <Flex flex={1} />
               <MySelect
                 list={Object.values(AppLogTimespanEnum).map((option) => ({
-                  label: t(`app:logs_timespan_${option}`),
+                  label: t(AppLogTimespanMap[option].label),
                   value: option
                 }))}
                 value={appTimespan}
@@ -718,7 +721,7 @@ const LogChart = ({
                         })}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
                 <Box {...chartBoxStyles}>
@@ -745,7 +748,7 @@ const LogChart = ({
                         {`${t('app:logs_total_avg_duration')}: ${formatChartData.cumulative.avgDuration.toFixed(2)}s`}
                       </Flex>
                     }
-                    blur={false}
+                    blur={!feConfigs?.isPlus}
                   />
                 </Box>
               </Grid>
@@ -830,6 +833,7 @@ const HeaderControl = ({
 
 const TotalData = ({ appId }: { appId: string }) => {
   const { t } = useTranslation();
+  const { feConfigs } = useSystemStore();
 
   const {
     data: totalData = {
@@ -837,14 +841,20 @@ const TotalData = ({ appId }: { appId: string }) => {
       totalChats: 0,
       totalPoints: 0
     }
-  } = useRequest2(
+  } = useRequest(
     async () => {
-      // 鲁港通 - 直接获取真实数据
-      return await getAppTotalData({ appId });
+      if (feConfigs?.isPlus) {
+        return await getAppTotalData({ appId });
+      }
+      return {
+        totalUsers: 455,
+        totalChats: 22112,
+        totalPoints: 112233
+      };
     },
     {
       manual: false,
-      refreshDeps: [appId]
+      refreshDeps: [appId, feConfigs?.isPlus]
     }
   );
 
@@ -906,7 +916,7 @@ const TotalData = ({ appId }: { appId: string }) => {
                 fontSize={'28px'}
                 fontWeight={'medium'}
                 color={'myGray.900'}
-                filter={'none'}
+                filter={feConfigs?.isPlus ? 'none' : 'blur(7.5px)'}
               >
                 {item.value.toLocaleString()}
               </Box>

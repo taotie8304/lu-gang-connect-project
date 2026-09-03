@@ -12,13 +12,13 @@ import {
   Tr,
   useDisclosure
 } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import MyMenu, { type MenuItemType } from '@fastgpt/web/components/common/MyMenu';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { deleteGroup, getGroupList } from '@/web/support/user/team/group/api';
 import { DefaultGroupName } from '@fastgpt/global/support/user/team/group/constant';
 import MemberTag from '../../../../components/support/user/team/Info/MemberTag';
@@ -31,16 +31,15 @@ import { type MemberGroupListItemType } from '@fastgpt/global/support/permission
 const ChangeOwnerModal = dynamic(() => import('./GroupTransferOwnerModal'));
 const GroupInfoModal = dynamic(() => import('./GroupInfoModal'));
 const GroupManageMember = dynamic(() => import('./GroupManageMember'));
-
 function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['account_team', 'user']);
   const { userInfo } = useUserStore();
 
   const {
     data: groups = [],
     loading: isLoadingGroups,
     refresh: refetchGroups
-  } = useRequest2(() => getGroupList<true>({ withMembers: true }), {
+  } = useRequest(() => getGroupList<true>({ withMembers: true }), {
     manual: false,
     refreshDeps: [userInfo?.team?.teamId]
   });
@@ -61,7 +60,7 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
     type: 'delete',
     content: t('account_team:confirm_delete_group')
   });
-  const { runAsync: delDeleteGroup } = useRequest2(deleteGroup, {
+  const { runAsync: delDeleteGroup } = useRequest(deleteGroup, {
     onSuccess: () => {
       refetchGroups();
     }
@@ -89,23 +88,39 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
 
   return (
     <>
-      <Flex justify={'space-between'} align={'center'} pb={'1rem'}>
-        {Tabs}
-        {userInfo?.team.permission.hasManagePer && (
-          <Button
-            variant={'primary'}
-            size="md"
-            borderRadius={'md'}
-            ml={3}
-            leftIcon={<MyIcon name="support/permission/collaborator" w={'14px'} />}
-            onClick={onOpenGroupInfo}
-          >
-            {t('user:team.group.create')}
-          </Button>
-        )}
+      <Flex
+        px={6}
+        justify={'space-between'}
+        align={['stretch', 'center']}
+        flexDirection={['column', 'row']}
+        pb={'1rem'}
+      >
+        <Box w={['100%', 'auto']}>{Tabs}</Box>
+        <Flex mt={[3, 0]} w={['100%', 'auto']} justifyContent={'flex-end'}>
+          {userInfo?.team.permission.hasManagePer && (
+            <Button
+              w={['100%', 'auto']}
+              variant={'primary'}
+              size="md"
+              borderRadius={'md'}
+              ml={[0, 3]}
+              leftIcon={<MyIcon name="support/permission/collaborator" w={'14px'} />}
+              onClick={onOpenGroupInfo}
+            >
+              {t('user:team.group.create')}
+            </Button>
+          )}
+        </Flex>
       </Flex>
 
-      <MyBox flex={'1 0 0'} overflow={'auto'} isLoading={isLoadingGroups}>
+      <MyBox
+        px={6}
+        flex={['0 0 auto', '1 0 0']}
+        h={['auto', 0]}
+        minH={0}
+        overflowY={['visible', 'auto']}
+        isLoading={isLoadingGroups}
+      >
         <TableContainer overflow={'unset'} fontSize={'sm'}>
           <Table overflow={'unset'}>
             <Thead>
@@ -121,12 +136,14 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
               </Tr>
             </Thead>
             <Tbody>
-              {groups?.map((group) => (
+              {groups.map((group) => (
                 <Tr key={group._id} overflow={'unset'}>
                   <Td>
                     <MemberTag
                       name={
-                        group.name === DefaultGroupName ? userInfo?.team.teamName ?? '' : group.name
+                        group.name === DefaultGroupName
+                          ? (userInfo?.team.teamName ?? '')
+                          : group.name
                       }
                       avatar={group.avatar}
                     />

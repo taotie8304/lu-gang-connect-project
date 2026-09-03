@@ -1,4 +1,4 @@
-import { getMongoModel, Schema } from '../../common/mongo';
+import { defineIndex, getMongoModel, Schema } from '../../common/mongo';
 import {
   ChunkSettingModeEnum,
   ChunkTriggerConfigTypeEnum,
@@ -12,7 +12,8 @@ import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
-import type { DatasetSchemaType } from '@fastgpt/global/core/dataset/type.d';
+import { userCollectionName } from '../../support/user/schema';
+import type { DatasetSchemaType } from '@fastgpt/global/core/dataset/type';
 
 export const DatasetCollectionName = 'datasets';
 
@@ -64,7 +65,7 @@ const DatasetSchema = new Schema({
   userId: {
     //abandon
     type: Schema.Types.ObjectId,
-    ref: 'user'
+    ref: userCollectionName
   },
   teamId: {
     type: Schema.Types.ObjectId,
@@ -84,7 +85,7 @@ const DatasetSchema = new Schema({
   },
   avatar: {
     type: String,
-    default: '/icon/logo.png'
+    default: '/icon/logo.svg'
   },
   name: {
     type: String,
@@ -137,21 +138,22 @@ const DatasetSchema = new Schema({
     default: null // null表示未删除，有值表示删除时间
   },
 
-  // abandoned
   autoSync: Boolean,
+  /** @deprecated */
   externalReadUrl: String,
+  /** @deprecated */
   defaultPermission: Number,
+  /** @deprecated */
   apiServer: Object,
+  /** @deprecated */
   feishuServer: Object,
+  /** @deprecated */
   yuqueServer: Object
 });
 
-try {
-  DatasetSchema.index({ teamId: 1 });
-  DatasetSchema.index({ type: 1 }); // Admin count
-  DatasetSchema.index({ deleteTime: 1 }); // 添加软删除字段索引
-} catch (error) {
-  console.log(error);
-}
+defineIndex(DatasetSchema, { key: { teamId: 1 } });
+defineIndex(DatasetSchema, { key: { teamId: 1, parentId: 1 } });
+defineIndex(DatasetSchema, { key: { type: 1 } }); // Admin count
+defineIndex(DatasetSchema, { key: { deleteTime: 1 } }); // 添加软删除字段索引
 
 export const MongoDataset = getMongoModel<DatasetSchemaType>(DatasetCollectionName, DatasetSchema);

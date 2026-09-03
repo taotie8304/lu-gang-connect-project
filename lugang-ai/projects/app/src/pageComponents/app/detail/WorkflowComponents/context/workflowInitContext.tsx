@@ -1,9 +1,5 @@
 import { createContext } from 'use-context-selector';
-import type {
-  FlowNodeTemplateType,
-  FlowNodeItemType,
-  StoreNodeItemType
-} from '@fastgpt/global/core/workflow/type/node';
+import type { FlowNodeTemplateType, FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 
 import { useDeepCompareEffect, useMemoizedFn } from 'ahooks';
 import React, {
@@ -56,9 +52,9 @@ export const WorkflowNodeDataContext = createContext<WorkflowNodeDataType>({
 export type WorkflowDataContextType = {
   basicNodeTemplates: FlowNodeTemplateType[];
   workflowStartNode: FlowNodeItemType | undefined;
-  systemConfigNode: StoreNodeItemType | undefined;
   allNodeFolded: boolean;
   hasToolNode: boolean;
+  hasLoopRunNode: boolean;
   toolNodesMap: Record<string, boolean>;
   nodeIds: string[];
   nodeAmount: number;
@@ -76,13 +72,14 @@ export type WorkflowDataContextType = {
   onEdgesChange: OnChange<EdgeChange>;
   forbiddenSaveSnapshot: React.MutableRefObject<boolean>;
   llmMaxQuoteContext: number;
+  childrenNodeIdListMap: Record<string, string[]>;
 };
 export const WorkflowBufferDataContext = createContext<WorkflowDataContextType>({
   basicNodeTemplates: [],
   workflowStartNode: undefined,
-  systemConfigNode: undefined,
   allNodeFolded: false,
   hasToolNode: false,
+  hasLoopRunNode: false,
   toolNodesMap: {},
   nodeIds: [],
   nodeAmount: 0,
@@ -112,7 +109,8 @@ export const WorkflowBufferDataContext = createContext<WorkflowDataContextType>(
     throw new Error('Function not implemented.');
   },
   forbiddenSaveSnapshot: { current: false },
-  llmMaxQuoteContext: 0
+  llmMaxQuoteContext: 0,
+  childrenNodeIdListMap: {}
 });
 
 const WorkflowInitContextProvider = ({
@@ -130,13 +128,14 @@ const WorkflowInitContextProvider = ({
     const nodeIds: string[] = [];
     const nodeList: FlowNodeItemType[] = [];
     const nodesMap: Record<string, FlowNodeItemType> = {};
+    const childrenNodeIdListMap: Record<string, string[]> = {};
     const selectedNodesMap: Record<string, boolean> = {};
     const foldedNodesMap: Record<string, boolean> = {};
     const compareNodeList: any[] = [];
     let workflowStartNode: FlowNodeItemType | undefined = undefined;
-    let systemConfigNode: StoreNodeItemType | undefined = undefined;
     let allNodeFolded = true;
     let hasToolNode = false;
+    let hasLoopRunNode = false;
     let llmMaxQuoteContext = 0;
 
     nodes.forEach((node) => {
@@ -164,11 +163,22 @@ const WorkflowInitContextProvider = ({
         outputs: node.data.outputs.map((output) => {
           return {
             key: output.key,
+            id: output.id,
             label: output.label,
-            valueType: output.valueType
+            type: output.type,
+            valueType: output.valueType,
+            invalid: output.invalid
           };
-        })
+        }),
+        catchError: node.data.catchError
       });
+
+      if (node.data.parentNodeId) {
+        childrenNodeIdListMap[node.data.parentNodeId] = [
+          ...(childrenNodeIdListMap[node.data.parentNodeId] || []),
+          node.data.nodeId
+        ];
+      }
 
       if (node.selected) {
         selectedNodesMap[node.data.nodeId] = true;
@@ -179,9 +189,6 @@ const WorkflowInitContextProvider = ({
 
       if (flowNodeType === FlowNodeTypeEnum.workflowStart) {
         workflowStartNode = node.data;
-      }
-      if (flowNodeType === FlowNodeTypeEnum.systemConfig) {
-        systemConfigNode = node.data;
       }
       // Max context computed
       const map: Record<string, boolean> = {
@@ -195,12 +202,15 @@ const WorkflowInitContextProvider = ({
         llmMaxQuoteContext = Math.max(llmMaxQuoteContext, quoteMaxToken);
       }
 
-      if (!node.data.isFolded) {
+      if (!node.data.isFolded && flowNodeType !== FlowNodeTypeEnum.comment) {
         allNodeFolded = false;
       }
 
-      if (flowNodeType === FlowNodeTypeEnum.agent) {
+      if (flowNodeType === FlowNodeTypeEnum.toolCall) {
         hasToolNode = true;
+      }
+      if (flowNodeType === FlowNodeTypeEnum.loopRun) {
+        hasLoopRunNode = true;
       }
     });
 
@@ -208,11 +218,12 @@ const WorkflowInitContextProvider = ({
       nodeIds,
       nodeList,
       nodesMap,
+      childrenNodeIdListMap,
       selectedNodesMap,
       workflowStartNode,
-      systemConfigNode,
       allNodeFolded,
       hasToolNode,
+      hasLoopRunNode,
       llmMaxQuoteContext,
       foldedNodesMap,
       compareNodeList
@@ -231,13 +242,13 @@ const WorkflowInitContextProvider = ({
     () => nodeFormat.selectedNodesMap,
     [nodeFormat.selectedNodesMap]
   );
+  const childrenNodeIdListMap = useMemoEnhance(
+    () => nodeFormat.childrenNodeIdListMap,
+    [nodeFormat.childrenNodeIdListMap]
+  );
   const workflowStartNode = useMemoEnhance(
     () => nodeFormat.workflowStartNode,
     [nodeFormat.workflowStartNode]
-  );
-  const systemConfigNode = useMemoEnhance(
-    () => nodeFormat.systemConfigNode,
-    [nodeFormat.systemConfigNode]
   );
   const foldedNodesMap = useMemoEnhance(
     () => nodeFormat.foldedNodesMap,
@@ -245,6 +256,7 @@ const WorkflowInitContextProvider = ({
   );
   const allNodeFolded = nodeFormat.allNodeFolded;
   const hasToolNode = nodeFormat.hasToolNode;
+  const hasLoopRunNode = nodeFormat.hasLoopRunNode;
   const llmMaxQuoteContext = nodeFormat.llmMaxQuoteContext;
 
   const getNodeList = useMemoizedFn(() => nodeList);
@@ -346,9 +358,9 @@ const WorkflowInitContextProvider = ({
       nodeIds,
       basicNodeTemplates,
       workflowStartNode,
-      systemConfigNode,
       allNodeFolded,
       hasToolNode,
+      hasLoopRunNode,
       toolNodesMap,
       foldedNodesMap,
       getNodeById,
@@ -361,15 +373,16 @@ const WorkflowInitContextProvider = ({
       onEdgesChange,
       forbiddenSaveSnapshot,
       llmMaxQuoteContext,
-      nodeAmount: nodeList.length
+      nodeAmount: nodeList.length,
+      childrenNodeIdListMap
     };
   }, [
     nodeIds,
     basicNodeTemplates,
     workflowStartNode,
-    systemConfigNode,
     allNodeFolded,
     hasToolNode,
+    hasLoopRunNode,
     toolNodesMap,
     foldedNodesMap,
     getNodeById,
@@ -381,7 +394,8 @@ const WorkflowInitContextProvider = ({
     setEdges,
     onEdgesChange,
     llmMaxQuoteContext,
-    nodeList.length
+    nodeList.length,
+    childrenNodeIdListMap
   ]);
 
   return (

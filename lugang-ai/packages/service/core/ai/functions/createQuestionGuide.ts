@@ -1,25 +1,31 @@
-import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/type.d';
+import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
 import {
   QuestionGuidePrompt,
   QuestionGuideFooterPrompt
 } from '@fastgpt/global/core/ai/prompt/agent';
-import { addLog } from '../../../common/system/log';
 import json5 from 'json5';
 import { createLLMResponse } from '../llm/request';
+import { getLogger, LogCategories } from '../../../common/logger';
+import { getLLMModel } from '../model';
+
+const logger = getLogger(LogCategories.MODULE.AI.FUNCTIONS);
 
 export async function createQuestionGuide({
   messages,
   model,
-  customPrompt
+  customPrompt,
+  teamId
 }: {
   messages: ChatCompletionMessageParam[];
   model: string;
   customPrompt?: string;
+  teamId: string;
 }): Promise<{
   result: string[];
   inputTokens: number;
   outputTokens: number;
 }> {
+  const questionGuideModel = getLLMModel(model);
   const concatMessages: ChatCompletionMessageParam[] = [
     ...messages,
     {
@@ -32,12 +38,13 @@ export async function createQuestionGuide({
     answerText: answer,
     usage: { inputTokens, outputTokens }
   } = await createLLMResponse({
+    teamId,
+    saveLLMResponseRecord: false,
     body: {
       model,
-      temperature: 0.1,
-      max_tokens: 200,
       messages: concatMessages,
-      stream: true
+      stream: true,
+      ...(questionGuideModel?.reasoning ? { reasoning_effort: 'none' as const } : {})
     }
   });
 
@@ -45,7 +52,7 @@ export async function createQuestionGuide({
   const end = answer.lastIndexOf(']');
 
   if (start === -1 || end === -1) {
-    addLog.warn('Create question guide error', { answer });
+    logger.warn('Question guide response missing JSON array', { answer });
     return {
       result: [],
       inputTokens,
@@ -65,7 +72,7 @@ export async function createQuestionGuide({
       outputTokens
     };
   } catch (error) {
-    console.log(error);
+    logger.warn('Failed to parse question guide JSON', { error, raw: jsonStr });
 
     return {
       result: [],

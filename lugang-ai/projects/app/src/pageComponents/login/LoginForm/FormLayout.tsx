@@ -1,13 +1,12 @@
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { AbsoluteCenter, Box, Flex, Grid, IconButton, GridItem, Button } from '@chakra-ui/react';
+import { Box, Flex, IconButton, Button } from '@chakra-ui/react';
 import { LOGO_ICON } from '@fastgpt/global/common/system/constants';
 import { OAuthEnum } from '@fastgpt/global/support/user/constant';
+import { createAuthorizationUrl } from '@fastgpt/global/support/user/account/verification/authorization';
 import { useRouter } from 'next/router';
-import { type Dispatch, useCallback, useEffect, useMemo, useRef } from 'react';
+import { type Dispatch, useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'next-i18next';
-import I18nLngSelector from '@/components/Select/I18nLngSelector';
-import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import { checkIsWecomTerminal } from '@fastgpt/global/support/user/login/constants';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
@@ -15,6 +14,10 @@ import Avatar from '@fastgpt/web/components/common/Avatar';
 import dynamic from 'next/dynamic';
 import { POST } from '@/web/common/api/request';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import type {
+  WecomGetRedirectURLBodyType,
+  WecomGetRedirectURLResponseType
+} from '@fastgpt/global/openapi/support/user/account/login/api';
 
 type Props = {
   children: React.ReactNode;
@@ -36,17 +39,21 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
   const rootLogin = router.query.rootLogin === '1';
 
   const { setLoginStore, feConfigs } = useSystemStore();
-  const { isPc } = useSystem();
 
-  const { lastRoute = '/dashboard/agent' } = router.query as { lastRoute: string };
+  const { lastRoute = '/dashboard/agent', lastTmbId = '' } = router.query as {
+    lastRoute: string;
+    lastTmbId?: string;
+  };
   const computedLastRoute = useMemo(() => {
     return router.pathname === '/chat' ? router.asPath : lastRoute;
   }, [lastRoute, router.pathname, router.asPath]);
 
-  const state = useRef(getNanoid(8));
+  const [oauthState] = useState(() => getNanoid(8));
   const redirectUri = `${location.origin}/login/provider`;
 
   const isWecomWorkTerminal = checkIsWecomTerminal();
+  const canWecomTerminalAutoRedirect =
+    !isWecomWorkTerminal || feConfigs?.wecomLoginAutoRedirect === true;
 
   const oAuthList: OAuthItem[] = useMemo(
     () => [
@@ -85,7 +92,13 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
               label: t('common:support.user.login.Google'),
               provider: OAuthEnum.google,
               icon: 'common/googleFill',
-              redirectUrl: `https://accounts.google.com/o/oauth2/v2/auth?client_id=${feConfigs?.oauth?.google}&redirect_uri=${redirectUri}&state=${state.current}&response_type=code&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile%20https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email%20openid&include_granted_scopes=true`
+              redirectUrl: createAuthorizationUrl({
+                provider: OAuthEnum.google,
+                redirectUri,
+                state: oauthState,
+                interaction: 'login',
+                config: feConfigs.oauth
+              })
             }
           ]
         : []),
@@ -95,7 +108,13 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
               label: t('common:support.user.login.Github'),
               provider: OAuthEnum.github,
               icon: 'common/gitFill',
-              redirectUrl: `https://github.com/login/oauth/authorize?client_id=${feConfigs?.oauth?.github}&redirect_uri=${redirectUri}&state=${state.current}&scope=user:email%20read:user`
+              redirectUrl: createAuthorizationUrl({
+                provider: OAuthEnum.github,
+                redirectUri,
+                state: oauthState,
+                interaction: 'login',
+                config: feConfigs.oauth
+              })
             }
           ]
         : []),
@@ -107,21 +126,29 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
                 t('common:support.user.login.Microsoft'),
               provider: OAuthEnum.microsoft,
               icon: 'common/microsoft',
-              redirectUrl: `https://login.microsoftonline.com/${feConfigs?.oauth?.microsoft?.tenantId || 'common'}/oauth2/v2.0/authorize?client_id=${feConfigs?.oauth?.microsoft?.clientId}&response_type=code&redirect_uri=${redirectUri}&response_mode=query&scope=https%3A%2F%2Fgraph.microsoft.com%2Fuser.read&state=${state.current}`
+              redirectUrl: createAuthorizationUrl({
+                provider: OAuthEnum.microsoft,
+                redirectUri,
+                state: oauthState,
+                interaction: 'login',
+                config: feConfigs.oauth
+              })
             }
           ]
         : [])
     ],
-    [feConfigs, pageType, redirectUri, t]
+    [feConfigs, oauthState, pageType, redirectUri, t]
   );
 
-  const show_oauth = useMemo(
-    () => !!(feConfigs?.sso?.url || oAuthList.length > 0),
-    [feConfigs?.sso?.url, oAuthList.length]
-  );
+  const show_oauth = !!(feConfigs?.sso?.url || oAuthList.length > 0);
 
   const onClickOauth = useCallback(
     async (item: OAuthItem) => {
+      if (item.pageType) {
+        setPageType(item.pageType);
+        return;
+      }
+
       if (item.provider === OAuthEnum.sso) {
         const redirectUrl = await POST<string>('/proApi/support/user/account/login/getAuthURL', {
           redirectUri,
@@ -130,7 +157,27 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
         setLoginStore({
           provider: item.provider as OAuthEnum,
           lastRoute: computedLastRoute,
-          state: state.current
+          lastTmbId,
+          state: oauthState
+        });
+        router.replace(redirectUrl, '_self');
+        return;
+      }
+
+      if (item.provider === OAuthEnum.wecom) {
+        const redirectUrl = await POST<WecomGetRedirectURLResponseType>(
+          '/proApi/support/user/account/login/wecom/getRedirectUrl',
+          {
+            redirectUri,
+            isWecomWorkTerminal,
+            state: oauthState
+          } satisfies WecomGetRedirectURLBodyType
+        );
+        setLoginStore({
+          provider: item.provider as OAuthEnum,
+          lastRoute: computedLastRoute,
+          lastTmbId,
+          state: oauthState
         });
         router.replace(redirectUrl, '_self');
         return;
@@ -140,13 +187,22 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
         setLoginStore({
           provider: item.provider as OAuthEnum,
           lastRoute: computedLastRoute,
-          state: state.current
+          lastTmbId,
+          state: oauthState
         });
         router.replace(item.redirectUrl, '_self');
       }
-      item.pageType && setPageType(item.pageType);
     },
-    [computedLastRoute, isWecomWorkTerminal, redirectUri, router, setLoginStore, setPageType]
+    [
+      computedLastRoute,
+      isWecomWorkTerminal,
+      lastTmbId,
+      oauthState,
+      redirectUri,
+      router,
+      setLoginStore,
+      setPageType
+    ]
   );
 
   // Auto login
@@ -154,17 +210,42 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
     if (rootLogin) return;
     const sso = oAuthList.find((item) => item.provider === OAuthEnum.sso);
     // sso auto login
-    if (sso && (feConfigs?.sso?.autoLogin || isWecomWorkTerminal)) onClickOauth(sso);
-  }, [rootLogin, feConfigs?.sso?.autoLogin, isWecomWorkTerminal, onClickOauth, oAuthList]);
+    if (sso && canWecomTerminalAutoRedirect && (feConfigs?.sso?.autoLogin || isWecomWorkTerminal)) {
+      onClickOauth(sso);
+    }
+    if (feConfigs.oauth?.wecom && isWecomWorkTerminal && canWecomTerminalAutoRedirect) {
+      onClickOauth({
+        provider: OAuthEnum.wecom
+      } as any);
+    }
+  }, [
+    rootLogin,
+    canWecomTerminalAutoRedirect,
+    feConfigs?.sso?.autoLogin,
+    isWecomWorkTerminal,
+    onClickOauth,
+    oAuthList,
+    feConfigs.oauth?.wecom
+  ]);
 
   return (
-    <Flex flexDirection={'column'} h={'100%'}>
-      <Flex alignItems={'center'} justifyContent={['space-between', 'center']}>
-        <Flex alignItems={'center'} pr="4">
+    <Flex
+      flexDirection={'column'}
+      h={'100%'}
+      alignItems={['center', 'stretch']}
+      justifyContent={['center', 'flex-start']}
+    >
+      <Flex
+        alignItems={'center'}
+        justifyContent={['flex-start', 'center']}
+        w={['fit-content', '100%']}
+        alignSelf={['flex-start', 'auto']}
+      >
+        <Flex alignItems={'center'} pr={['0', '4']} w={'fit-content'} justifyContent={'flex-start'}>
           <Flex
             w={['42px', '56px']}
             h={['42px', '56px']}
-            bg={'myGray.25'}
+            bg={'white'}
             borderRadius={['semilg', 'lg']}
             borderWidth={['1px', '1.5px']}
             borderColor={'myGray.200'}
@@ -177,14 +258,15 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
             {feConfigs?.systemTitle}
           </Box>
         </Flex>
-        {!isPc && <I18nLngSelector />}
       </Flex>
-      {children}
+      <Box w={'100%'} mt={[8, 0]}>
+        {children}
+      </Box>
       {show_oauth && (
-        <Box mt={['80px', 9]}>
+        <Box mt={8} w={'100%'}>
           <Box flex={1} />
 
-          <Flex position={'relative'} mb={5} alignItems={'center'}>
+          <Flex position={'relative'} mb={4} alignItems={'center'}>
             <Box h={'1px'} flex={'1'} bg={'myGray.250'} />
             <Box px={3} color={'myGray.500'} fontSize={'mini'}>
               or

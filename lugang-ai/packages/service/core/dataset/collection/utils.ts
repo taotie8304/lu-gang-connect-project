@@ -3,7 +3,6 @@ import type { ClientSession } from '../../../common/mongo';
 import { MongoDatasetCollectionTags } from '../tag/schema';
 import { readFromSecondary } from '../../../common/mongo/utils';
 import type { CollectionWithDatasetType } from '@fastgpt/global/core/dataset/type';
-import { DatasetCollectionSchemaType } from '@fastgpt/global/core/dataset/type';
 import {
   DatasetCollectionDataProcessModeEnum,
   DatasetCollectionSyncResultEnum,
@@ -202,7 +201,7 @@ export const syncCollection = async (collection: CollectionWithDatasetType) => {
     });
 
     return DatasetCollectionSyncResultEnum.success;
-  } else if (collection.name !== title) {
+  } else if (title && collection.name !== title) {
     await MongoDatasetCollection.updateOne({ _id: collection._id }, { $set: { name: title } });
     return DatasetCollectionSyncResultEnum.success;
   }
@@ -213,30 +212,40 @@ export const syncCollection = async (collection: CollectionWithDatasetType) => {
   QA: 独立进程
   Chunk: Image Index -> Auto index -> chunk index
 */
-// 鲁港通 - 启用图片解析/图片索引/自动索引功能
 export const getTrainingModeByCollection = ({
   trainingType,
   autoIndexes,
-  imageIndex
+  imageIndex,
+  supportImageIndex = false
 }: {
-  trainingType: DatasetCollectionDataProcessModeEnum;
+  trainingType?: DatasetCollectionDataProcessModeEnum;
   autoIndexes?: boolean;
   imageIndex?: boolean;
+  supportImageIndex?: boolean;
 }) => {
-  // 鲁港通 - 启用图片解析模式
-  if (trainingType === DatasetCollectionDataProcessModeEnum.imageParse) {
+  if (
+    trainingType === DatasetCollectionDataProcessModeEnum.imageParse &&
+    global.feConfigs?.isPlus
+  ) {
     return TrainingModeEnum.imageParse;
   }
 
   if (trainingType === DatasetCollectionDataProcessModeEnum.qa) {
     return TrainingModeEnum.qa;
   }
-  // 鲁港通 - 启用图片索引模式
-  if (trainingType === DatasetCollectionDataProcessModeEnum.chunk && imageIndex) {
+  if (
+    trainingType === DatasetCollectionDataProcessModeEnum.chunk &&
+    imageIndex &&
+    supportImageIndex &&
+    global.feConfigs?.isPlus
+  ) {
     return TrainingModeEnum.image;
   }
-  // 鲁港通 - 启用自动索引模式
-  if (trainingType === DatasetCollectionDataProcessModeEnum.chunk && autoIndexes) {
+  if (
+    trainingType === DatasetCollectionDataProcessModeEnum.chunk &&
+    autoIndexes &&
+    global.feConfigs?.isPlus
+  ) {
     return TrainingModeEnum.auto;
   }
   return TrainingModeEnum.chunk;

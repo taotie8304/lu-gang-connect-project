@@ -1,6 +1,6 @@
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 const { Schema } = connectionMongo;
-import { type TeamMemberSchema as TeamMemberType } from '@fastgpt/global/support/user/team/type.d';
+import { type TeamMemberSchema as TeamMemberType } from '@fastgpt/global/support/user/team/type';
 import { userCollectionName } from '../../user/schema';
 import {
   TeamMemberStatusMap,
@@ -26,6 +26,8 @@ const TeamMemberSchema = new Schema({
   },
   name: {
     type: String,
+    required: true,
+    trim: true,
     default: 'Member'
   },
   status: {
@@ -40,11 +42,14 @@ const TeamMemberSchema = new Schema({
     type: Date
   },
 
-  // Abandoned
+  /** @deprecated
+   * But some code still use this to judge whether the member is a owner.
+   * TODO: Remove this field and replace it with a more appropriate way to determine ownership.
+   */
   role: {
     type: String
   },
-  // Abandoned
+  /** @deprecated */
   defaultTeam: {
     type: Boolean
   }
@@ -63,12 +68,18 @@ TeamMemberSchema.virtual('user', {
   justOne: true
 });
 
-try {
-  TeamMemberSchema.index({ teamId: 1 }, { background: true });
-  TeamMemberSchema.index({ userId: 1 }, { background: true });
-} catch (error) {
-  console.log(error);
-}
+defineIndex(TeamMemberSchema, {
+  key: { teamId: 1 },
+  options: { background: true }
+});
+defineIndex(TeamMemberSchema, {
+  key: { userId: 1 },
+  options: { background: true }
+});
+defineIndex(TeamMemberSchema, {
+  key: { userId: 1, teamId: 1 },
+  options: { unique: true, background: true }
+});
 
 export const MongoTeamMember = getMongoModel<TeamMemberType>(
   TeamMemberCollectionName,

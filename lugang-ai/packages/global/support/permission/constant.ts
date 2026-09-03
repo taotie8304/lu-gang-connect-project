@@ -1,13 +1,12 @@
 import type { PermissionListType, PermissionValueType, RolePerMapType } from './type';
 import { type RoleListType } from './type';
-import { i18nT } from '../../../web/i18n/utils';
+import { i18nT } from '../../common/i18n/utils';
 import { sumPer } from './utils';
 export enum AuthUserTypeEnum {
   token = 'token',
   root = 'root',
   apikey = 'apikey',
-  outLink = 'outLink',
-  teamDomain = 'teamDomain'
+  outLink = 'outLink'
 }
 
 export enum PermissionTypeEnum {
@@ -26,11 +25,11 @@ export const OwnerPermissionVal = ~0 >>> 0;
 export const PermissionTypeMap = {
   [PermissionTypeEnum.private]: {
     iconLight: 'support/permission/privateLight',
-    label: 'permission.Private'
+    label: 'common:permission.Private'
   },
   [PermissionTypeEnum.public]: {
     iconLight: 'support/permission/publicLight',
-    label: 'permission.Public'
+    label: 'common:permission.Public'
   },
   [PermissionTypeEnum.publicRead]: {
     iconLight: 'support/permission/publicLight',
@@ -50,7 +49,8 @@ export enum PerResourceTypeEnum {
   team = 'team',
   app = 'app',
   dataset = 'dataset',
-  model = 'model'
+  model = 'model',
+  agentSkill = 'agentSkill'
 }
 
 /* new permission */

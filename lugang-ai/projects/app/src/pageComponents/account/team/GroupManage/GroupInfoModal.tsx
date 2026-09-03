@@ -1,10 +1,10 @@
-import { Input, HStack, ModalBody, Button, ModalFooter } from '@chakra-ui/react';
-import MyModal from '@fastgpt/web/components/common/MyModal';
+import { Input, HStack, Button } from '@chakra-ui/react';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import React from 'react';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useForm } from 'react-hook-form';
 import { postCreateGroup, putUpdateGroup } from '@/web/support/user/team/group/api';
 import { DEFAULT_TEAM_AVATAR } from '@fastgpt/global/common/system/constants';
@@ -26,7 +26,7 @@ function GroupInfoModal({
   editGroup?: MemberGroupListItemType<true>;
   onSuccess: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('user');
 
   const {
     Component: AvatarUploader,
@@ -45,7 +45,7 @@ function GroupInfoModal({
     }
   });
 
-  const { runAsync: onCreate, loading: isLoadingCreate } = useRequest2(
+  const { runAsync: onCreate, loading: isLoadingCreate } = useRequest(
     (data: GroupFormType) => {
       return postCreateGroup({
         name: data.name,
@@ -57,7 +57,7 @@ function GroupInfoModal({
     }
   );
 
-  const { runAsync: onUpdate, loading: isLoadingUpdate } = useRequest2(
+  const { runAsync: onUpdate, loading: isLoadingUpdate } = useRequest(
     async (data: GroupFormType) => {
       if (!editGroup) return;
       return putUpdateGroup({
@@ -77,25 +77,8 @@ function GroupInfoModal({
     <MyModal
       onClose={onClose}
       title={editGroup ? t('user:team.group.edit') : t('user:team.group.create')}
-      iconSrc={editGroup?.avatar ?? DEFAULT_TEAM_AVATAR}
-    >
-      <ModalBody flex={1} overflow={'auto'} display={'flex'} flexDirection={'column'} gap={4}>
-        <FormLabel w="80px">{t('user:team.avatar_and_name')}</FormLabel>
-        <HStack>
-          <Avatar
-            src={getValues('avatar')}
-            onClick={handleAvatarSelectorOpen}
-            cursor={'pointer'}
-            borderRadius={'md'}
-          />
-          <Input
-            bgColor="myGray.50"
-            {...register('name', { required: true })}
-            placeholder={t('user:team.group.name')}
-          />
-        </HStack>
-      </ModalBody>
-      <ModalFooter alignItems="flex-end">
+      bodyStyles={{ gap: 4 }}
+      footer={
         <Button
           isLoading={isLoading}
           onClick={handleSubmit((data) => {
@@ -108,8 +91,22 @@ function GroupInfoModal({
         >
           {editGroup ? t('common:Save') : t('common:new_create')}
         </Button>
-      </ModalFooter>
-      {/* <AvatarSelect onSelect={onSelectAvatar} /> */}
+      }
+    >
+      <FormLabel w="80px">{t('user:team.avatar_and_name')}</FormLabel>
+      <HStack>
+        <Avatar
+          src={getValues('avatar')}
+          onClick={handleAvatarSelectorOpen}
+          cursor={'pointer'}
+          borderRadius={'md'}
+        />
+        <Input
+          bgColor="myGray.50"
+          {...register('name', { required: true })}
+          placeholder={t('user:team.group.name')}
+        />
+      </HStack>
       <AvatarUploader />
     </MyModal>
   );

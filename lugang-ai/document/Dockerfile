@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24.16.0-alpine AS base
 
 FROM base AS builder
 RUN apk add --no-cache \
@@ -20,12 +20,18 @@ RUN apk add --no-cache \
 WORKDIR /app
 
 ARG FASTGPT_HOME_DOMAIN
+ARG DOC_TRACK_SRC
+ARG DOC_TRACK_SITE_ID
 
 ENV FASTGPT_HOME_DOMAIN=$FASTGPT_HOME_DOMAIN
+ENV NEXT_PUBLIC_FASTGPT_HOME_DOMAIN=$FASTGPT_HOME_DOMAIN
+ENV NEXT_PUBLIC_DOC_TRACK_SRC=$DOC_TRACK_SRC
+ENV NEXT_PUBLIC_DOC_TRACK_SITE_ID=$DOC_TRACK_SITE_ID
 
 COPY . .
-RUN npm install 
-RUN npm run build
+RUN corepack enable
+RUN pnpm install
+RUN pnpm build
 
 
 FROM base AS runner

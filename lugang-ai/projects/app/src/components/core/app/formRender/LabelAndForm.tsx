@@ -32,19 +32,23 @@ const getFlattenedErrorKeys = (errors: any, prefix = ''): string[] => {
 const LabelAndFormRender = ({
   label,
   required,
+  description,
   placeholder,
   inputType,
   showValueType,
+  isUnChange,
   ...props
 }: {
   label: string | React.ReactNode;
   required?: boolean;
+  description?: string;
   placeholder?: string;
   showValueType?: boolean;
   form: UseFormReturn<any>;
   fieldName: string;
 
   isDisabled?: boolean;
+  isUnChange?: boolean;
   minLength?: number;
 } & SpecificProps &
   BoxProps) => {
@@ -55,7 +59,7 @@ const LabelAndFormRender = ({
     <Box _notLast={{ mb: 4 }}>
       <Flex alignItems={'center'} mb={1}>
         {typeof label === 'string' ? <FormLabel required={required}>{t(label)}</FormLabel> : label}
-        {placeholder && <QuestionTip ml={1} label={placeholder} />}
+        {description && <QuestionTip ml={1} label={description} />}
       </Flex>
 
       <Controller
@@ -64,14 +68,17 @@ const LabelAndFormRender = ({
         rules={{
           validate: (value) => {
             if (typeof value === 'number' || typeof value === 'boolean') return true;
-            if (inputType === InputTypeEnum.password && props.minLength) {
-              if (!value || typeof value !== 'object' || !value.value) return false;
-              if (value.value.length < props.minLength) {
-                return t(`common:min_length`, { minLenth: props.minLength });
+            if (!required) return true;
+            // 密码类型特殊处理：已加密的密码格式为 { value: '', secret: 'xxx' }
+            if (inputType === InputTypeEnum.password) {
+              const hasValue = value && typeof value === 'object' && (value.value || value.secret);
+              if (!hasValue) return false;
+              // 有 minLength 要求且正在输入新值时，检查长度
+              if (props.minLength && value.value && value.value.length < props.minLength) {
+                return t('common:min_length', { minLenth: props.minLength });
               }
               return true;
             }
-            if (!required) return true;
 
             if (inputType === InputTypeEnum.fileSelect) {
               if (!value || !Array.isArray(value) || value.length === 0) {
@@ -86,7 +93,7 @@ const LabelAndFormRender = ({
             ? {
                 minLength: {
                   value: props.minLength,
-                  message: t(`common:min_length`, { minLenth: props.minLength })
+                  message: t('common:min_length', { minLenth: props.minLength })
                 }
               }
             : {})
@@ -98,7 +105,7 @@ const LabelAndFormRender = ({
                 inputType={inputType}
                 isRichText={false}
                 value={value}
-                onChange={onChange}
+                onChange={isUnChange ? undefined : onChange}
                 placeholder={placeholder}
                 isInvalid={!!error}
                 {...props}

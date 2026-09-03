@@ -1,6 +1,7 @@
-import type { NextApiResponse } from 'next';
+import type { NodeHttpResponse } from '../../../types/http';
 import { getAIApi } from '../config';
 import { getTTSModel } from '../model';
+import { Readable } from 'stream';
 
 export async function text2Speech({
   res,
@@ -11,7 +12,7 @@ export async function text2Speech({
   voice,
   speed = 1
 }: {
-  res: NextApiResponse;
+  res: NodeHttpResponse;
   onSuccess: (e: { model: string; buffer: Buffer }) => void;
   onError: (e: any) => void;
   input: string;
@@ -20,7 +21,7 @@ export async function text2Speech({
   speed?: number;
 }) {
   const modelData = getTTSModel(model)!;
-  const ai = getAIApi();
+  const { ai } = getAIApi();
   const response = await ai.audio.speech.create(
     {
       model,
@@ -40,7 +41,11 @@ export async function text2Speech({
       : {}
   );
 
-  const readableStream = response.body as unknown as NodeJS.ReadableStream;
+  if (!response.body) {
+    throw new Error('Response body is empty');
+  }
+
+  const readableStream = Readable.fromWeb(response.body as Parameters<typeof Readable.fromWeb>[0]);
   readableStream.pipe(res);
 
   const chunks: Uint8Array[] = [];

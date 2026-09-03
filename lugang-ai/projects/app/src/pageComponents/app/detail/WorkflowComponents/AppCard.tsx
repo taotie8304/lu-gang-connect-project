@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo } from 'react';
-import { Box, Flex, HStack, useDisclosure } from '@chakra-ui/react';
+import { Box, Flex, HStack, IconButton, useDisclosure } from '@chakra-ui/react';
 import { useContextSelector } from 'use-context-selector';
 import { AppContext } from '../context';
 import { useTranslation } from 'next-i18next';
@@ -10,8 +10,8 @@ import MyTag from '@fastgpt/web/components/common/Tag/index';
 import { publishStatusStyle } from '../constants';
 import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { WorkflowUtilsContext } from './context/workflowUtilsContext';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 
 const ImportSettings = dynamic(() => import('./Flow/ImportSettings'));
 const ExportConfigPopover = dynamic(
@@ -20,18 +20,16 @@ const ExportConfigPopover = dynamic(
 
 const AppCard = ({ showSaveStatus, isSaved }: { showSaveStatus: boolean; isSaved: boolean }) => {
   const { t } = useTranslation();
-  const { feConfigs } = useSystemStore();
 
   const appDetail = useContextSelector(AppContext, (v) => v.appDetail);
   const onOpenInfoEdit = useContextSelector(AppContext, (v) => v.onOpenInfoEdit);
-  const onOpenTeamTagModal = useContextSelector(AppContext, (v) => v.onOpenTeamTagModal);
   const onDelApp = useContextSelector(AppContext, (v) => v.onDelApp);
   const flowData2StoreData = useContextSelector(WorkflowUtilsContext, (v) => v.flowData2StoreData);
 
   const { isOpen: isOpenImport, onOpen: onOpenImport, onClose: onCloseImport } = useDisclosure();
 
-  const InfoMenu = useCallback(
-    ({ children }: { children: React.ReactNode }) => {
+  const renderInfoMenu = useCallback(
+    (children: React.ReactNode) => {
       return (
         <MyPopover
           placement={'bottom-end'}
@@ -41,7 +39,7 @@ const AppCard = ({ showSaveStatus, isSaved }: { showSaveStatus: boolean; isSaved
           trigger={'hover'}
           Trigger={children}
         >
-          {({ onClose }) => (
+          {() => (
             <Box p={1.5}>
               <MyBox
                 display={'flex'}
@@ -93,31 +91,13 @@ const AppCard = ({ showSaveStatus, isSaved }: { showSaveStatus: boolean; isSaved
                 cursor={'pointer'}
               >
                 <ExportConfigPopover
+                  appType={appDetail.type}
                   chatConfig={appDetail.chatConfig}
                   appName={appDetail.name}
+                  appIntro={appDetail.intro}
                   getWorkflowData={flowData2StoreData}
                 />
               </MyBox>
-              {appDetail.permission.hasWritePer && feConfigs?.show_team_chat && (
-                <>
-                  <Box w={'full'} h={'1px'} bg={'myGray.200'} my={1} />
-
-                  <MyBox
-                    display={'flex'}
-                    size={'md'}
-                    px={1}
-                    py={1.5}
-                    rounded={'4px'}
-                    _hover={{ color: 'primary.600', bg: 'rgba(17, 24, 36, 0.05)' }}
-                    cursor={'pointer'}
-                    onClick={onOpenTeamTagModal}
-                  >
-                    <MyIcon name={'core/dataset/tag'} w={'16px'} mr={2} />
-                    <Box fontSize={'sm'}>{t('app:Team_Tags')}</Box>
-                  </MyBox>
-                </>
-              )}
-
               {appDetail.permission.isOwner && (
                 <>
                   <Box w={'full'} h={'1px'} bg={'myGray.200'} my={1} />
@@ -145,66 +125,83 @@ const AppCard = ({ showSaveStatus, isSaved }: { showSaveStatus: boolean; isSaved
     },
     [
       appDetail.chatConfig,
+      appDetail.intro,
       appDetail.name,
-      appDetail.permission.hasWritePer,
       appDetail.permission.isOwner,
-      feConfigs?.show_team_chat,
+      appDetail.type,
       flowData2StoreData,
       onDelApp,
       onOpenImport,
       onOpenInfoEdit,
-      onOpenTeamTagModal,
       t
     ]
   );
 
   const Render = useMemo(() => {
     return (
-      <HStack>
-        <Avatar src={appDetail.avatar} w={'1.75rem'} borderRadius={'md'} />
-        <Box>
-          <InfoMenu>
-            <HStack
-              spacing={1}
-              cursor={'pointer'}
-              pl={1}
-              ml={-1}
-              borderRadius={'xs'}
-              _hover={{ bg: 'myGray.150' }}
-            >
-              <Box color={'myGray.900'}>{appDetail.name}</Box>
-              <MyIcon name={'common/select'} w={'1rem'} color={'myGray.500'} />
+      <HStack flex={1} justifyContent={'space-between'}>
+        <HStack minW={0}>
+          <Avatar src={appDetail.avatar} w={'1.75rem'} borderRadius={'md'} flexShrink={0} />
+          <Box minW={0}>
+            <HStack spacing={1} minW={0}>
+              <MyTooltip label={appDetail.name} showOnlyWhenOverflow>
+                <Box color={'myGray.900'} maxW={['45vw', '280px']} className="textEllipsis">
+                  {appDetail.name}
+                </Box>
+              </MyTooltip>
             </HStack>
-          </InfoMenu>
-          {showSaveStatus && (
-            <Flex alignItems={'center'} fontSize={'mini'} lineHeight={1}>
-              <MyTag
-                py={0}
-                px={1}
-                showDot
-                bg={'transparent'}
-                colorSchema={
-                  isSaved
-                    ? publishStatusStyle.published.colorSchema
-                    : publishStatusStyle.unPublish.colorSchema
-                }
-              >
-                {t(isSaved ? publishStatusStyle.published.text : publishStatusStyle.unPublish.text)}
-              </MyTag>
-            </Flex>
-          )}
-        </Box>
+            {showSaveStatus && (
+              <Flex alignItems={'center'} fontSize={'mini'} lineHeight={1}>
+                <MyTag
+                  py={0}
+                  px={1}
+                  showDot
+                  bg={'transparent'}
+                  colorSchema={
+                    isSaved
+                      ? publishStatusStyle.published.colorSchema
+                      : publishStatusStyle.unPublish.colorSchema
+                  }
+                >
+                  {t(
+                    isSaved ? publishStatusStyle.published.text : publishStatusStyle.unPublish.text
+                  )}
+                </MyTag>
+              </Flex>
+            )}
+          </Box>
+        </HStack>
+
+        {renderInfoMenu(
+          <IconButton
+            aria-label="Expand"
+            icon={<MyIcon name={'common/select'} w={'18px'} color={'myGray.500'} />}
+            w={'32px'}
+            h={'32px'}
+            minW={'32px'}
+            minH={'32px'}
+            flexShrink={0}
+            bg={'white'}
+            border={'1px solid'}
+            borderColor={'myGray.250'}
+            borderRadius={'sm'}
+            boxShadow={'0 1px 2px 0 rgba(19, 51, 107, 0.05), 0 0 1px 0 rgba(19, 51, 107, 0.08)'}
+            _hover={{
+              bg: 'myGray.50'
+            }}
+          />
+        )}
 
         {isOpenImport && <ImportSettings onClose={onCloseImport} />}
       </HStack>
     );
   }, [
-    InfoMenu,
     appDetail.avatar,
     appDetail.name,
     isOpenImport,
     isSaved,
     onCloseImport,
+    renderInfoMenu,
     showSaveStatus,
     t
   ]);

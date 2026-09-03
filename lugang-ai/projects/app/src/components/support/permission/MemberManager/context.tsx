@@ -15,10 +15,10 @@ import { createContext } from 'use-context-selector';
 import dynamic from 'next/dynamic';
 
 import MemberListCard, { type MemberListCardProps } from './MemberListCard';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import type { RequireOnlyOne } from '@fastgpt/global/common/type/utils';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { CommonRoleList, NullRoleVal } from '@fastgpt/global/support/permission/constant';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import LightTip from '@fastgpt/web/components/common/LightTip';
@@ -98,7 +98,7 @@ const CollaboratorContextProvider = ({
   addPermissionOnly?: boolean;
   selectedHint?: string;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['user']);
   const onUpdateCollaboratorsThen = async (props: UpdateClbPermissionProps) => {
     await onUpdateCollaborators(props);
     refetchCollaboratorList();
@@ -121,19 +121,24 @@ const CollaboratorContextProvider = ({
     },
     runAsync: refetchCollaboratorList,
     loading: isFetchingCollaborator
-  } = useRequest2(
+  } = useRequest(
     async () => {
-      // 鲁港通：移除 isPlus 限制，允许所有用户使用协作者功能
-      const { clbs = [], parentClbs = [] } = (await onGetCollaboratorList()) ?? {};
+      if (feConfigs.isPlus) {
+        const { clbs, parentClbs = [] } = await onGetCollaboratorList();
+        return {
+          clbs: clbs.map((clb) => ({
+            ...clb,
+            permission: new Permission({ role: clb.permission.role })
+          })),
+          parentClbs: parentClbs.map((clb) => ({
+            ...clb,
+            permission: new Permission({ role: clb.permission.role })
+          }))
+        };
+      }
       return {
-        clbs: (clbs ?? []).map((clb) => ({
-          ...clb,
-          permission: new Permission({ role: clb.permission.role })
-        })),
-        parentClbs: (parentClbs ?? []).map((clb) => ({
-          ...clb,
-          permission: new Permission({ role: clb.permission.role })
-        }))
+        clbs: [],
+        parentClbs: []
       };
     },
     {

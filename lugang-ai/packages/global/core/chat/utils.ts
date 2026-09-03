@@ -1,20 +1,23 @@
 import { type DispatchNodeResponseType } from '../workflow/runtime/type';
 import { FlowNodeTypeEnum } from '../workflow/node/constant';
-import { ChatItemValueTypeEnum, ChatRoleEnum, ChatSourceEnum } from './constants';
+import { ChatRoleEnum, ChatSourceEnum } from './constants';
 import {
   type AIChatItemValueItemType,
   type ChatHistoryItemResType,
-  type ChatItemType,
+  type ChatItemMiniType,
   type UserChatItemValueItemType
-} from './type.d';
+} from './type';
 import { sliceStrStartEnd } from '../../common/string/tools';
 import { PublishChannelEnum } from '../../support/outLink/constant';
 import { removeDatasetCiteText } from '../ai/llm/utils';
+import type { WorkflowInteractiveResponseType } from '../workflow/template/system/interactive/type';
+import { extractDeepestInteractive } from '../workflow/runtime/utils';
+import { childrenResponseFields, getChildrenResponses } from './utils/mergeNode';
 
 // Concat 2 -> 1, and sort by role
-export const concatHistories = (histories1: ChatItemType[], histories2: ChatItemType[]) => {
+export const concatHistories = (histories1: ChatItemMiniType[], histories2: ChatItemMiniType[]) => {
   const newHistories = [...histories1, ...histories2];
-  return newHistories.sort((a, b) => {
+  return newHistories.sort((a) => {
     if (a.obj === ChatRoleEnum.System) {
       return -1;
     }
@@ -22,24 +25,17 @@ export const concatHistories = (histories1: ChatItemType[], histories2: ChatItem
   });
 };
 
-export const getChatTitleFromChatMessage = (message?: ChatItemType, defaultValue = '新对话') => {
-  // @ts-ignore
-  const textMsg = message?.value.find((item) => item.type === ChatItemValueTypeEnum.text);
-
-  if (textMsg?.text?.content) {
-    return textMsg.text.content.slice(0, 20);
-  }
-
-  return defaultValue;
-};
+export const hasContextCheckpoint = (history: ChatItemMiniType) =>
+  history.obj === ChatRoleEnum.AI &&
+  history.value.some((value) => Boolean(value.contextCheckpoint));
 
 // Keep the first n and last n characters
 export const getHistoryPreview = (
-  completeMessages: ChatItemType[],
+  completeMessages: ChatItemMiniType[],
   size = 100,
   useVision = false
 ): {
-  obj: `${ChatRoleEnum}`;
+  obj: ChatRoleEnum;
   value: string;
 }[] => {
   return completeMessages.map((item, i) => {
@@ -66,7 +62,10 @@ export const getHistoryPreview = (
           item.value
             ?.map((item) => {
               return (
-                item.text?.content || item?.tools?.map((item) => item.toolName).join(',') || ''
+                item.text?.content ||
+                item.tool?.toolName ||
+                item?.tools?.map((item) => item.toolName).join(',') ||
+                ''
               );
             })
             .join('')
@@ -83,58 +82,132 @@ export const getHistoryPreview = (
   });
 };
 
-// Filter workflow public response
+const publicNodeMap: Record<string, boolean> = {
+  [FlowNodeTypeEnum.appModule]: true,
+  [FlowNodeTypeEnum.pluginModule]: true,
+  [FlowNodeTypeEnum.datasetSearchNode]: true,
+  [FlowNodeTypeEnum.agent]: true,
+  [FlowNodeTypeEnum.pluginOutput]: true,
+  [FlowNodeTypeEnum.runApp]: true,
+  [FlowNodeTypeEnum.toolCall]: true,
+  [FlowNodeTypeEnum.tool]: true
+};
+
+const publicNodeResponseFields: Record<string, boolean> = {
+  pluginOutput: true,
+  runningTime: true,
+  toolId: true
+};
+
+const treeNodeResponseFields: Record<string, boolean> = {
+  ...publicNodeResponseFields,
+  parentId: true,
+  moduleNameArgs: true,
+  totalPoints: true,
+  childResponseCount: true,
+  errorText: true
+};
+
+const getNodeResponseFieldMap = ({
+  responseDetail,
+  keepTreeFields
+}: {
+  responseDetail: boolean;
+  keepTreeFields: boolean;
+}) => {
+  const fields = keepTreeFields ? treeNodeResponseFields : publicNodeResponseFields;
+
+  return responseDetail
+    ? {
+        quoteList: true,
+        ...fields
+      }
+    : fields;
+};
+
+const filterNodeResponseData = ({
+  nodeResponses = [],
+  responseDetail = false,
+  keepTreeFields = false
+}: {
+  nodeResponses?: ChatHistoryItemResType[];
+  responseDetail?: boolean;
+  keepTreeFields?: boolean;
+}) => {
+  const fieldMap = getNodeResponseFieldMap({ responseDetail, keepTreeFields });
+
+  return nodeResponses
+    .filter((item) => publicNodeMap[item.moduleType])
+    .map((item) => {
+      const obj: DispatchNodeResponseType = {};
+      for (const key in item) {
+        const childField = key as (typeof childrenResponseFields)[number];
+        if (childrenResponseFields.includes(childField)) {
+          const childResponses = item[childField] as ChatHistoryItemResType[] | undefined;
+          obj[childField] = filterNodeResponseData({
+            nodeResponses: childResponses,
+            responseDetail,
+            keepTreeFields
+          });
+        } else if (fieldMap[key]) {
+          // @ts-expect-error Dynamic public field copy is constrained by fieldMap.
+          obj[key] = item[key];
+        }
+      }
+
+      if (keepTreeFields) {
+        return {
+          id: item.id,
+          nodeId: item.nodeId,
+          moduleName: item.moduleName,
+          moduleType: item.moduleType,
+          ...obj
+        } as ChatHistoryItemResType;
+      }
+
+      return {
+        moduleType: item.moduleType,
+        ...obj
+      } as ChatHistoryItemResType;
+    });
+};
+
+/**
+ * 过滤工作流节点对外可见的响应字段。
+ *
+ * 公共 API 和分享场景不应直接暴露完整 nodeResponse，只保留旧契约中的展示字段。
+ * childrenResponses 与历史 detail 字段会递归过滤，保证新旧数据结构返回口径一致。
+ */
 export const filterPublicNodeResponseData = ({
   nodeRespones = [],
   responseDetail = false
 }: {
   nodeRespones?: ChatHistoryItemResType[];
   responseDetail?: boolean;
-}) => {
-  const publicNodeMap: Record<string, any> = {
-    [FlowNodeTypeEnum.appModule]: true,
-    [FlowNodeTypeEnum.pluginModule]: true,
-    [FlowNodeTypeEnum.datasetSearchNode]: true,
-    [FlowNodeTypeEnum.chatNode]: true,
-    [FlowNodeTypeEnum.agent]: true,
-    [FlowNodeTypeEnum.pluginOutput]: true,
+}) =>
+  filterNodeResponseData({
+    nodeResponses: nodeRespones,
+    responseDetail
+  });
 
-    [FlowNodeTypeEnum.runApp]: true
-  };
-
-  const filedMap: Record<string, boolean> = responseDetail
-    ? {
-        quoteList: true,
-        moduleType: true,
-        pluginOutput: true,
-        runningTime: true,
-        // 鲁港通 - 联网搜索引用需要透传到前端
-        webSearchCitations: true
-      }
-    : {
-        moduleType: true,
-        pluginOutput: true,
-        runningTime: true,
-        // 鲁港通 - 联网搜索引用需要透传到前端
-        webSearchCitations: true
-      };
-
-  return nodeRespones
-    .filter((item) => publicNodeMap[item.moduleType])
-    .map((item) => {
-      const obj: DispatchNodeResponseType = {};
-      for (let key in item) {
-        if (key === 'toolDetail' || key === 'pluginDetail') {
-          // @ts-ignore
-          obj[key] = filterPublicNodeResponseData({ nodeRespones: item[key], responseDetail });
-        } else if (filedMap[key]) {
-          // @ts-ignore
-          obj[key] = item[key];
-        }
-      }
-      return obj as ChatHistoryItemResType;
-    });
-};
+/**
+ * 过滤前端树形详情需要的 nodeResponse 字段。
+ *
+ * 与 public/share 过滤不同，SSE 和 completion response 需要保留 `id/parentId` 等树形归属
+ * 字段，否则乱序 child 无法在前端挂回 parent；但仍过滤 toolInput/toolRes 等大字段或敏感字段。
+ */
+export const filterNodeResponseTreeData = ({
+  nodeResponses = [],
+  responseDetail = false
+}: {
+  nodeResponses?: ChatHistoryItemResType[];
+  responseDetail?: boolean;
+}) =>
+  filterNodeResponseData({
+    nodeResponses,
+    responseDetail,
+    keepTreeFields: true
+  });
 
 // Remove dataset cite in ai response
 export const removeAIResponseCite = <T extends AIChatItemValueItemType[] | string>(
@@ -147,40 +220,40 @@ export const removeAIResponseCite = <T extends AIChatItemValueItemType[] | strin
     return removeDatasetCiteText(value, false) as T;
   }
 
-  return value.map<AIChatItemValueItemType>((item) => {
-    if (item.text?.content) {
-      return {
-        ...item,
-        text: {
-          ...item.text,
-          content: removeDatasetCiteText(item.text.content, false)
+  return value.map<AIChatItemValueItemType>((item) => ({
+    ...item,
+    ...(item.text?.content
+      ? {
+          text: {
+            ...item.text,
+            content: removeDatasetCiteText(item.text.content, false)
+          }
         }
-      };
-    }
-    if (item.reasoning?.content) {
-      return {
-        ...item,
-        reasoning: {
-          ...item.reasoning,
-          content: removeDatasetCiteText(item.reasoning.content, false)
+      : {}),
+    ...(item.reasoning?.content
+      ? {
+          reasoning: {
+            ...item.reasoning,
+            content: removeDatasetCiteText(item.reasoning.content, false)
+          }
         }
-      };
-    }
-    return item;
-  }) as T;
+      : {})
+  })) as T;
 };
 
 export const removeEmptyUserInput = (input?: UserChatItemValueItemType[]) => {
   return (
     input?.filter((item) => {
-      if (item.type === ChatItemValueTypeEnum.text && !item.text?.content?.trim()) {
-        return false;
+      // 有文本内容，保留
+      if (item.text?.content?.trim()) {
+        return true;
       }
-      // type 为 'file' 时 key 和 url 不能同时为空
-      if (item.type === ChatItemValueTypeEnum.file && !item.file?.key && !item.file?.url) {
-        return false;
+      // 有文件且文件有 key 或 url，保留
+      if (item.file && (item.file.key || item.file.url)) {
+        return true;
       }
-      return true;
+      // 其他情况过滤掉
+      return false;
     }) || []
   );
 };
@@ -203,6 +276,8 @@ export const getChatSourceByPublishChannel = (publishChannel: PublishChannelEnum
       return ChatSourceEnum.feishu;
     case PublishChannelEnum.wecom:
       return ChatSourceEnum.wecom;
+    case PublishChannelEnum.wechat:
+      return ChatSourceEnum.wechat;
     case PublishChannelEnum.officialAccount:
       return ChatSourceEnum.official_account;
     default:
@@ -210,49 +285,37 @@ export const getChatSourceByPublishChannel = (publishChannel: PublishChannelEnum
   }
 };
 
-/*
-  Merge chat responseData
-  1. Same tool mergeSignId (Interactive tool node)
-  2. Recursively merge plugin details with same mergeSignId
+/**
+ * 扁平化节点响应树。
+ *
+ * 新数据使用 childrenResponses，历史数据可能仍在 pluginDetail/toolDetail 等字段中；
+ * 统一通过 getChildrenResponses 递归展开，供统计、标签计算和详情搜索复用。
+ */
+export const getFlatAppResponses = (res: ChatHistoryItemResType[]): ChatHistoryItemResType[] => {
+  return res
+    .map((item) => {
+      return [item, ...getFlatAppResponses(getChildrenResponses(item))];
+    })
+    .flat();
+};
+
+/* 
+  对于交互模式下，有两种响应：
+  1. 提交交互结果，此时不会新增一条 user 消息
+  2. 发送 user 消息，此时对话会新增一条 user 消息
 */
-export const mergeChatResponseData = (
-  responseDataList: ChatHistoryItemResType[]
-): ChatHistoryItemResType[] => {
-  const result: ChatHistoryItemResType[] = [];
-  const mergeMap = new Map<string, number>(); // mergeSignId -> result index
-
-  for (const item of responseDataList) {
-    if (item.mergeSignId && mergeMap.has(item.mergeSignId)) {
-      // Merge with existing item
-      const existingIndex = mergeMap.get(item.mergeSignId)!;
-      const existing = result[existingIndex];
-
-      result[existingIndex] = {
-        ...item,
-        runningTime: +((existing.runningTime || 0) + (item.runningTime || 0)).toFixed(2),
-        totalPoints: (existing.totalPoints || 0) + (item.totalPoints || 0),
-        childTotalPoints: (existing.childTotalPoints || 0) + (item.childTotalPoints || 0),
-        toolDetail: mergeChatResponseData([
-          ...(existing.toolDetail || []),
-          ...(item.toolDetail || [])
-        ]),
-        loopDetail: mergeChatResponseData([
-          ...(existing.loopDetail || []),
-          ...(item.loopDetail || [])
-        ]),
-        pluginDetail: mergeChatResponseData([
-          ...(existing.pluginDetail || []),
-          ...(item.pluginDetail || [])
-        ])
-      };
-    } else {
-      // Add new item
-      result.push(item);
-      if (item.mergeSignId) {
-        mergeMap.set(item.mergeSignId, result.length - 1);
-      }
-    }
+export const checkInteractiveResponseStatus = ({
+  interactive
+}: {
+  interactive: WorkflowInteractiveResponseType;
+  input: string;
+}): 'submit' | 'query' => {
+  const finalInteractive = extractDeepestInteractive(interactive);
+  if (
+    finalInteractive.type === 'agentPlanAskQuery' ||
+    (finalInteractive.type === 'agentAsk' && finalInteractive.responseMode !== 'submit')
+  ) {
+    return 'query';
   }
-
-  return result;
+  return 'submit';
 };

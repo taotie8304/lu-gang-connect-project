@@ -1,27 +1,11 @@
-import { POST } from '@fastgpt/service/common/api/plusRequest';
-import type {
-  AuthOutLinkChatProps,
-  AuthOutLinkLimitProps,
-  AuthOutLinkInitProps,
-  AuthOutLinkResponse
-} from '@fastgpt/global/support/outLink/api.d';
+import type { AuthOutLinkChatProps } from '@fastgpt/global/support/outLink/api';
 import { type ShareChatAuthProps } from '@fastgpt/global/support/permission/chat';
 import { authOutLinkValid } from '@fastgpt/service/support/permission/publish/authLink';
 import { AuthUserTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { OutLinkErrEnum } from '@fastgpt/global/common/error/code/outLink';
-import { type OutLinkSchema } from '@fastgpt/global/support/outLink/type';
-
-// 鲁港通 - 启用外链认证功能
-export function authOutLinkInit(data: AuthOutLinkInitProps): Promise<AuthOutLinkResponse> {
-  return POST<AuthOutLinkResponse>('/support/outLink/authInit', data).catch(() =>
-    Promise.resolve({ uid: data.outLinkUid })
-  );
-}
-export function authOutLinkChatLimit(data: AuthOutLinkLimitProps): Promise<AuthOutLinkResponse> {
-  return POST<AuthOutLinkResponse>('/support/outLink/authChatStart', data).catch(() =>
-    Promise.resolve({ uid: data.outLinkUid })
-  );
-}
+import { type OutLinkSchemaType } from '@fastgpt/global/support/outLink/type';
+import { authOutLinkInit, authOutLinkLimit } from '@fastgpt/service/support/outLink/runtime/auth';
+import { isProVersion } from '@fastgpt/service/common/system/constants';
 
 export const authOutLink = async ({
   shareId,
@@ -29,7 +13,7 @@ export const authOutLink = async ({
 }: ShareChatAuthProps): Promise<{
   uid: string;
   appId: string;
-  outLinkConfig: OutLinkSchema;
+  outLinkConfig: OutLinkSchemaType;
 }> => {
   if (!outLinkUid) {
     return Promise.reject(OutLinkErrEnum.linkUnInvalid);
@@ -47,9 +31,9 @@ export const authOutLink = async ({
   };
 };
 
+/** 校验外链聊天请求并返回后续聊天鉴权所需的发布配置。 */
 export async function authOutLinkChatStart({
   shareId,
-  ip,
   outLinkUid,
   question
 }: AuthOutLinkChatProps & {
@@ -58,16 +42,21 @@ export async function authOutLinkChatStart({
   // get outLink and app
   const { outLinkConfig, appId } = await authOutLinkValid({ shareId });
 
-  // check ai points and chat limit
-  const { uid } = await authOutLinkChatLimit({ outLink: outLinkConfig, ip, outLinkUid, question });
+  // 社区版保持历史行为；商业版校验改为本地执行，不再依赖 Pro HTTP 接口。
+  const { uid } = isProVersion()
+    ? await authOutLinkLimit({ outLink: outLinkConfig, outLinkUid, question })
+    : { uid: outLinkUid };
 
   return {
     sourceName: outLinkConfig.name,
     teamId: outLinkConfig.teamId,
     tmbId: outLinkConfig.tmbId,
     authType: AuthUserTypeEnum.token,
-    responseDetail: outLinkConfig.responseDetail,
-    showNodeStatus: outLinkConfig.showNodeStatus,
+    showCite: outLinkConfig.showCite,
+    showRunningStatus: outLinkConfig.showRunningStatus,
+    showSkillReferences: outLinkConfig.showSkillReferences,
+    showFullText: outLinkConfig.showFullText,
+    canDownloadSource: outLinkConfig.canDownloadSource,
     appId,
     uid
   };

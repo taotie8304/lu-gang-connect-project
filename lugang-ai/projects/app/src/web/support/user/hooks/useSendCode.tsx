@@ -1,9 +1,8 @@
 import { useState, useMemo } from 'react';
 import { sendAuthCode } from '@/web/support/user/api';
-import type { UserAuthTypeEnum } from '@fastgpt/global/support/user/auth/constants';
+import type { SendAuthCodeBodyType } from '@fastgpt/global/openapi/support/user/inform/api';
 import { useTranslation } from 'next-i18next';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { Box, type BoxProps, useDisclosure } from '@chakra-ui/react';
 import SendCodeAuthModal from '@/components/support/user/safe/SendCodeAuthModal';
 import { useMemoizedFn } from 'ahooks';
@@ -11,17 +10,29 @@ import { useToast } from '@fastgpt/web/hooks/useToast';
 import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 let timer: NodeJS.Timeout;
 
-export const useSendCode = ({ type }: { type: `${UserAuthTypeEnum}` }) => {
+type UseSendCodeParams = SendAuthCodeBodyType extends infer Body
+  ? Body extends { type: unknown; purpose: unknown }
+    ? Pick<Body, 'type' | 'purpose'> & {
+        validateBeforeSend?: (username: string) => true | string;
+      }
+    : never
+  : never;
+
+export const useSendCode = (params: UseSendCodeParams) => {
   const { t, i18n } = useTranslation();
-  const { feConfigs } = useSystemStore();
   const { toast } = useToast();
   const [codeCountDown, setCodeCountDown] = useState(0);
+  const { validateBeforeSend, ...verificationParams } = params;
 
-  const { runAsync: sendCode, loading: codeSending } = useRequest2(
+  const { runAsync: sendCode, loading: codeSending } = useRequest(
     async ({ username, captcha }: { username: string; captcha: string }) => {
       if (codeCountDown > 0) return;
-      const googleToken = await getClientToken(feConfigs.googleClientVerKey);
-      await sendAuthCode({ username, type, googleToken, captcha, lang: i18n.language as LangEnum });
+      await sendAuthCode({
+        username,
+        ...verificationParams,
+        captcha,
+        lang: i18n.language as LangEnum
+      });
 
       setCodeCountDown(60);
 
@@ -37,7 +48,7 @@ export const useSendCode = ({ type }: { type: `${UserAuthTypeEnum}` }) => {
     {
       successToast: t('user:password.code_sended'),
       errorToast: t('user:password.code_send_error'),
-      refreshDeps: [codeCountDown, type, feConfigs?.googleClientVerKey]
+      refreshDeps: [codeCountDown, verificationParams.type, verificationParams.purpose]
     }
   );
 
@@ -82,6 +93,14 @@ export const useSendCode = ({ type }: { type: `${UserAuthTypeEnum}` }) => {
                       title: t('common:error.username_empty')
                     });
                   } else {
+                    const validationResult = validateBeforeSend?.(username);
+                    if (typeof validationResult === 'string') {
+                      toast({
+                        status: 'warning',
+                        title: validationResult
+                      });
+                      return;
+                    }
                     onOpenCodeAuthModal();
                   }
                 }
@@ -93,6 +112,7 @@ export const useSendCode = ({ type }: { type: `${UserAuthTypeEnum}` }) => {
           <SendCodeAuthModal
             onClose={onCloseCodeAuthModal}
             username={username}
+            purpose={verificationParams.purpose}
             onSending={codeSending}
             onSendCode={sendCode}
           />
@@ -110,20 +130,3 @@ export const useSendCode = ({ type }: { type: `${UserAuthTypeEnum}` }) => {
     openCodeAuthModal
   };
 };
-
-export function getClientToken(googleClientVerKey?: string) {
-  if (!googleClientVerKey || typeof window.grecaptcha === 'undefined' || !window.grecaptcha?.ready)
-    return '';
-  return new Promise<string>((resolve, reject) => {
-    window.grecaptcha.ready(async () => {
-      try {
-        const token = await window.grecaptcha.execute(googleClientVerKey, {
-          action: 'submit'
-        });
-        resolve(token);
-      } catch (error) {
-        reject(error);
-      }
-    });
-  });
-}

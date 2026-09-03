@@ -1,71 +1,117 @@
-import ChatHeader from '@/pageComponents/chat/ChatHeader';
 import ChatBox from '@/components/core/chat/ChatContainer/ChatBox';
-import { Flex, Box } from '@chakra-ui/react';
+import { Flex, Box, IconButton } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import SideBar from '@/components/SideBar';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
 import { useContextSelector } from 'use-context-selector';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
-import { type AppListItemType } from '@fastgpt/global/core/app/type';
 import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
 import { useCallback } from 'react';
 import type { StartChatFnProps } from '@/components/core/chat/ChatContainer/type';
 import { streamFetch } from '@/web/common/api/fetch';
-import { getChatTitleFromChatMessage } from '@fastgpt/global/core/chat/utils';
-import { GPTMessages2Chats } from '@fastgpt/global/core/chat/adapt';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { ChatRecordContext } from '@/web/core/chat/context/chatRecordContext';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getInitChatInfo } from '@/web/core/chat/api';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import NextHead from '@/components/common/NextHead';
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import { ChatSidebarPaneEnum } from '../constants';
-import ChatHistorySidebar from '@/pageComponents/chat/slider/ChatSliderSidebar';
+import ChatHistorySidebar, {
+  CHAT_HISTORY_SLIDER_PC_WIDTH
+} from '@/pageComponents/chat/slider/ChatSliderSidebar';
 import ChatSliderMobileDrawer from '@/pageComponents/chat/slider/ChatSliderMobileDrawer';
 import dynamic from 'next/dynamic';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { ChatErrEnum } from '@fastgpt/global/common/error/code/chat';
+import { AppErrEnum } from '@fastgpt/global/common/error/code/app';
+import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+import ChatWindowHeader from './ChatWindowHeader';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+import ToolMenu from '@/pageComponents/chat/ToolMenu';
+import { mobileChatHeaderIconButtonStyle } from './headerIconButtonStyle';
+import { useSandboxEditor, useSandboxStatus } from '@/pageComponents/chat/SandboxEditor/hook';
+import Avatar from '@fastgpt/web/components/common/Avatar';
+import { getDisplayHistoryTitle } from '@/web/core/chat/context/historyTitleUtils';
+import { getAppChatSourceKey } from '@/web/core/chat/utils';
+import { useAppChatGenerateStatusSync } from './useAppChatGenerateStatusSync';
+import { postMarkChatRead } from '@/web/core/chat/history/api';
+import { UserError } from '@fastgpt/global/common/error/utils';
 
 const CustomPluginRunBox = dynamic(() => import('@/pageComponents/chat/CustomPluginRunBox'));
 
-type Props = {
-  myApps: AppListItemType[];
-};
-
-const AppChatWindow = ({ myApps }: Props) => {
+const AppChatWindow = () => {
   const { userInfo } = useUserStore();
   const { chatId, appId, outLinkAuthData } = useChatStore();
 
   const { t } = useTranslation();
   const { isPc } = useSystem();
 
-  const forbidLoadChat = useContextSelector(ChatContext, (v) => v.forbidLoadChat);
-  const onUpdateHistoryTitle = useContextSelector(ChatContext, (v) => v.onUpdateHistoryTitle);
+  const forbidLoadChatRef = useContextSelector(ChatContext, (v) => v.forbidLoadChat);
+  const onOpenSlider = useContextSelector(ChatContext, (v) => v.onOpenSlider);
+  const currentHistory = useContextSelector(ChatContext, (v) =>
+    v.histories.find((item) => item.chatId === chatId && item.appId === appId)
+  );
 
   const isPlugin = useContextSelector(ChatItemContext, (v) => v.isPlugin);
+  const isShowCite = useContextSelector(ChatItemContext, (v) => v.isShowCite);
+  const showSkillReferences = useContextSelector(ChatItemContext, (v) => v.showSkillReferences);
   const onChangeChatId = useContextSelector(ChatContext, (v) => v.onChangeChatId);
   const chatBoxData = useContextSelector(ChatItemContext, (v) => v.chatBoxData);
+  const isCurrentChatReady = chatBoxData.appId === appId && chatBoxData.chatId === chatId;
+  const chatWindowTitle = getDisplayHistoryTitle({
+    customTitle: currentHistory?.customTitle,
+    title: isCurrentChatReady ? chatBoxData.title : undefined,
+    fallbackTitle: t('common:core.chat.New Chat')
+  });
+  const mobileHeaderTitle = isCurrentChatReady
+    ? chatBoxData.app.name
+    : t('common:core.chat.New Chat');
   const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
   const setChatBoxData = useContextSelector(ChatItemContext, (v) => v.setChatBoxData);
   const resetVariables = useContextSelector(ChatItemContext, (v) => v.resetVariables);
+  const clearChatRecords = useContextSelector(ChatItemContext, (v) => v.clearChatRecords);
 
   const chatRecords = useContextSelector(ChatRecordContext, (v) => v.chatRecords);
-  const totalRecordsCount = useContextSelector(ChatRecordContext, (v) => v.totalRecordsCount);
 
-  const pane = useContextSelector(ChatSettingContext, (v) => v.pane);
-  const chatSettings = useContextSelector(ChatSettingContext, (v) => v.chatSettings);
-  const handlePaneChange = useContextSelector(ChatSettingContext, (v) => v.handlePaneChange);
+  const { SandboxEntryIcon } = useSandboxStatus({ appId, chatId, outLinkAuthData });
+  const { SandboxEditorModal, onOpenSandboxModal } = useSandboxEditor({
+    appId,
+    chatId,
+    outLinkAuthData
+  });
 
-  const { loading } = useRequest2(
+  const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
+  const pane = useContextSelector(ChatPageContext, (v) => v.pane);
+  const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
+  const refreshRecentlyUsed = useContextSelector(ChatPageContext, (v) => v.refreshRecentlyUsed);
+  const upsertRecentlyUsedAppPlaceholder = useContextSelector(
+    ChatPageContext,
+    (v) => v.upsertRecentlyUsedAppPlaceholder
+  );
+  const onChatGenerateStatusChange = useAppChatGenerateStatusSync();
+
+  const { loading } = useRequest(
     async () => {
-      if (!appId || forbidLoadChat.current) return;
+      if (!appId || forbidLoadChatRef.current) return;
 
       const res = await getInitChatInfo({ appId, chatId });
-      res.userAvatar = userInfo?.avatar;
+      res.userAvatar = userInfo?.avatar ?? undefined;
 
-      setChatBoxData(res);
+      setChatBoxData({
+        ...res,
+        appId,
+        sourceKey: getAppChatSourceKey(appId)
+      });
+      const isHomeApp = pane === ChatSidebarPaneEnum.HOME || appId === chatSettings?.appId;
+      if (!isHomeApp) {
+        upsertRecentlyUsedAppPlaceholder({
+          appId,
+          name: res.app.name,
+          avatar: res.app.avatar
+        });
+      }
 
       resetVariables({
         variables: res.variables,
@@ -75,18 +121,20 @@ const AppChatWindow = ({ myApps }: Props) => {
     {
       manual: false,
       refreshDeps: [appId, chatId],
-      errorToast: '',
       onError(e: any) {
         if (e?.code && e.code >= 502000) {
           if (e?.statusText === ChatErrEnum.unAuthChat) {
             onChangeChatId();
             return;
           }
-          handlePaneChange(ChatSidebarPaneEnum.TEAM_APPS);
+          if (e?.statusText === AppErrEnum.unAuthApp) {
+            refreshRecentlyUsed();
+          }
+          handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
         }
       },
       onFinally() {
-        forbidLoadChat.current = false;
+        forbidLoadChatRef.current = false;
       }
     }
   );
@@ -99,6 +147,10 @@ const AppChatWindow = ({ myApps }: Props) => {
       responseChatItemId,
       generatingMessage
     }: StartChatFnProps) => {
+      if (!appId) {
+        return Promise.reject(new UserError('appId is empty'));
+      }
+
       const histories = messages.slice(-1);
       const { responseText } = await streamFetch({
         data: {
@@ -106,33 +158,35 @@ const AppChatWindow = ({ myApps }: Props) => {
           variables,
           responseChatItemId,
           appId,
-          chatId
+          chatId,
+          retainDatasetCite: isShowCite,
+          showSkillReferences
         },
         abortCtrl: controller,
         onMessage: generatingMessage
       });
 
-      const newTitle = getChatTitleFromChatMessage(GPTMessages2Chats({ messages: histories })[0]);
+      refreshRecentlyUsed();
 
-      onUpdateHistoryTitle({ chatId, newTitle });
-      setChatBoxData((state) => ({
-        ...state,
-        title: newTitle
-      }));
-
-      return { responseText, isNewChat: forbidLoadChat.current };
+      return { responseText, isNewChat: forbidLoadChatRef.current };
     },
-    [appId, chatId, onUpdateHistoryTitle, setChatBoxData, forbidLoadChat]
+    [appId, chatId, forbidLoadChatRef, isShowCite, showSkillReferences, refreshRecentlyUsed]
   );
 
   return (
-    <Flex h={'100%'} flexDirection={['column', 'row']}>
+    <Flex h={'100%'} minH={0} minW={0} flexDirection={['column', 'row']}>
       {/* set window title and icon */}
-      <NextHead title={chatBoxData.app.name} icon={chatBoxData.app.avatar} />
+      <NextHead
+        title={isCurrentChatReady ? chatBoxData.app.name : undefined}
+        icon={isCurrentChatReady ? chatBoxData.app.avatar : undefined}
+      />
 
       {/* show history slider */}
       {isPc ? (
-        <SideBar externalTrigger={Boolean(datasetCiteData)}>
+        <SideBar
+          w={`0 0 ${CHAT_HISTORY_SLIDER_PC_WIDTH}`}
+          externalTrigger={Boolean(datasetCiteData)}
+        >
           <ChatHistorySidebar
             menuConfirmButtonText={t('common:core.chat.Confirm to clear history')}
           />
@@ -148,40 +202,103 @@ const AppChatWindow = ({ myApps }: Props) => {
       <Flex
         position={'relative'}
         h={[0, '100%']}
+        minH={0}
+        minW={0}
         w={['100%', 0]}
         flex={'1 0 0'}
         flexDirection={'column'}
       >
-        <ChatHeader
-          pane={pane}
-          chatSettings={chatSettings}
-          showHistory
-          apps={myApps}
-          history={chatRecords}
-          totalRecordsCount={totalRecordsCount}
-        />
+        {!isPlugin &&
+          (isPc ? (
+            <ChatWindowHeader
+              title={chatWindowTitle}
+              history={chatRecords}
+              chatType={ChatTypeEnum.chat}
+              rightActions={<SandboxEntryIcon onOpen={onOpenSandboxModal} />}
+            />
+          ) : (
+            <Flex
+              h="48px"
+              px={4}
+              bg="white"
+              alignItems="center"
+              justifyContent="space-between"
+              color="myGray.600"
+            >
+              <IconButton
+                aria-label="Open history"
+                icon={
+                  <MyIcon name="core/chat/sidebar/menu" w="20px" h="20px" color="currentColor" />
+                }
+                variant="unstyled"
+                {...mobileChatHeaderIconButtonStyle}
+                onClick={onOpenSlider}
+              />
 
-        <Box flex={'1 0 0'} bg={'white'}>
+              <Flex alignItems="center" minW={0} flex="1" justifyContent="center" px={3} gap={2}>
+                {isCurrentChatReady && (
+                  <Avatar
+                    src={chatBoxData.app.avatar}
+                    w="24px"
+                    h="24px"
+                    borderRadius="6px"
+                    flexShrink={0}
+                  />
+                )}
+                <Box
+                  minW={0}
+                  fontSize="16px"
+                  fontWeight={500}
+                  color="myGray.900"
+                  overflow="hidden"
+                  whiteSpace="nowrap"
+                  textOverflow="clip"
+                >
+                  {mobileHeaderTitle}
+                </Box>
+              </Flex>
+
+              <Box minW="36px">
+                <ToolMenu history={chatRecords} chatType={ChatTypeEnum.chat} />
+              </Box>
+            </Flex>
+          ))}
+
+        <Box flex={'1 0 0'} minH={0} minW={0} overflow={'hidden'} bg={'white'}>
           {isPlugin ? (
             <CustomPluginRunBox
               appId={appId}
               chatId={chatId}
               outLinkAuthData={outLinkAuthData}
-              onNewChat={() => onChangeChatId(getNanoid())}
+              onNewChat={() => {
+                clearChatRecords();
+                onChangeChatId(getNanoid());
+              }}
               onStartChat={onStartChat}
             />
           ) : (
             <ChatBox
-              appId={appId}
+              sourceTarget={{ sourceType: ChatSourceTypeEnum.app, sourceId: appId }}
               chatId={chatId}
-              isReady={!loading}
-              feedbackType={'user'}
+              isReady={!loading && !!appId && isCurrentChatReady}
+              features={{
+                autoResume: true,
+                feedbackType: 'user',
+                quickReplies: true,
+                inputGuide: true,
+                voice: true,
+                tts: true,
+                sandbox: true
+              }}
               chatType={ChatTypeEnum.chat}
               outLinkAuthData={outLinkAuthData}
               onStartChat={onStartChat}
+              onMarkChatRead={postMarkChatRead}
+              onChatGenerateStatusChange={onChatGenerateStatusChange}
             />
           )}
         </Box>
+        <SandboxEditorModal />
       </Flex>
     </Flex>
   );

@@ -6,6 +6,7 @@ import {
   type FileExtensionKeyType
 } from '@fastgpt/global/core/app/constants';
 import MyIcon from '../../../common/Icon';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 type FileTypeSelectorValue = {
   canSelectFile?: boolean;
@@ -15,6 +16,17 @@ type FileTypeSelectorValue = {
   canSelectCustomFileExtension?: boolean;
   customFileExtensionList?: string[];
 };
+
+const fileExtensionTypeTranslationMap = new Map<FileExtensionKeyType, string>([
+  ['canSelectFile', i18nT('app:upload_file_extension_type_canSelectFile')],
+  ['canSelectImg', i18nT('app:upload_file_extension_type_canSelectImg')],
+  ['canSelectVideo', i18nT('app:upload_file_extension_type_canSelectVideo')],
+  ['canSelectAudio', i18nT('app:upload_file_extension_type_canSelectAudio')],
+  [
+    'canSelectCustomFileExtension',
+    i18nT('app:upload_file_extension_type_canSelectCustomFileExtension')
+  ]
+]);
 
 export const FileTypeSelectorPanel = ({
   value,
@@ -190,7 +202,7 @@ export const FileTypeSelectorPanel = ({
               onChange={(e) => handleTypeChange(type as FileExtensionKeyType, e.target.checked)}
             >
               <Box color={'myGray.900'} lineHeight={1}>
-                {t(`app:upload_file_extension_type_${type}`)}
+                {t(fileExtensionTypeTranslationMap.get(type as FileExtensionKeyType) || type)}
               </Box>
               <Box mt={1} fontSize={'xs'} color={'myGray.500'} wordBreak={'break-word'} w="full">
                 {exts.map((ext) => ext.slice(1)).join('/')}

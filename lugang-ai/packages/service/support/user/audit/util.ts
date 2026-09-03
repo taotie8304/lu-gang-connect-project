@@ -1,7 +1,9 @@
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
-import { i18nT } from '../../../../web/i18n/utils';
-import { MongoOperationLog } from './schema';
+import { AgentSkillTypeEnum } from '@fastgpt/global/core/ai/skill/constants';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
+import { MongoTeamAudit } from './schema';
+import { getLogger, LogCategories } from '../../../common/logger';
 import type {
   AdminAuditEventEnum,
   AuditEventEnum,
@@ -10,9 +12,19 @@ import type {
 } from '@fastgpt/global/support/user/audit/constants';
 import { retryFn } from '@fastgpt/global/common/system/utils';
 
+const logger = getLogger(LogCategories.INFRA.MONGO);
+
+export type AuditLogInput = {
+  tmbId: string;
+  teamId: string;
+  event: AuditEventEnum | AdminAuditEventEnum;
+  params?: Record<string, unknown>;
+};
+
 export function getI18nAppType(type: AppTypeEnum): string {
   if (type === AppTypeEnum.folder) return i18nT('account_team:type.Folder');
   if (type === AppTypeEnum.simple) return i18nT('app:type.Chat_Agent');
+  if (type === AppTypeEnum.chatAgent) return 'Agent';
   if (type === AppTypeEnum.workflow) return i18nT('account_team:type.Workflow bot');
   if (type === AppTypeEnum.workflowTool) return i18nT('app:toolType_workflow');
   if (type === AppTypeEnum.httpPlugin) return i18nT('account_team:type.Http plugin');
@@ -41,6 +53,13 @@ export function getI18nDatasetType(type: DatasetTypeEnum | string): string {
   if (type === DatasetTypeEnum.apiDataset) return i18nT('account_team:dataset.api_file');
   if (type === DatasetTypeEnum.feishu) return i18nT('account_team:dataset.feishu_dataset');
   if (type === DatasetTypeEnum.yuque) return i18nT('account_team:dataset.yuque_dataset');
+  if (type === DatasetTypeEnum.dingtalk) return i18nT('account_team:dataset.dingtalk_dataset');
+  return i18nT('common:UnKnow');
+}
+
+export function getI18nSkillType(type: AgentSkillTypeEnum | string): string {
+  if (type === AgentSkillTypeEnum.folder) return i18nT('account_team:skill.folder');
+  if (type === AgentSkillTypeEnum.skill) return i18nT('account_team:skill.skill');
   return i18nT('common:UnKnow');
 }
 
@@ -61,7 +80,7 @@ export function addAuditLog<T extends AuditEventEnum>({
   teamId: string;
   event: T;
   params?: AuditEventParamsType[T];
-}): void;
+}): Promise<void>;
 
 export function addAuditLog<T extends AdminAuditEventEnum>({
   teamId,
@@ -73,7 +92,7 @@ export function addAuditLog<T extends AdminAuditEventEnum>({
   teamId: string;
   event: T;
   params?: AdminAuditEventParamsType[T];
-}): void;
+}): Promise<void>;
 export function addAuditLog<T extends AuditEventEnum | AdminAuditEventEnum>({
   teamId,
   tmbId,
@@ -84,13 +103,34 @@ export function addAuditLog<T extends AuditEventEnum | AdminAuditEventEnum>({
   teamId: string;
   event: T;
   params?: any;
-}) {
-  retryFn(() =>
-    MongoOperationLog.create({
+}): Promise<void> {
+  return retryFn(async () => {
+    await MongoTeamAudit.create({
       tmbId: tmbId,
       teamId: teamId,
       event,
       metadata: params
-    })
-  );
+    });
+  });
 }
+
+/** 批量写入审计日志，保留每个变更对象一条日志的展示粒度。 */
+export const addAuditLogs = async (logs: AuditLogInput[]): Promise<void> => {
+  if (logs.length === 0) return;
+
+  try {
+    await retryFn(async () => {
+      await MongoTeamAudit.insertMany(
+        logs.map(({ tmbId, teamId, event, params }) => ({
+          tmbId,
+          teamId,
+          event,
+          metadata: params
+        })),
+        { ordered: true }
+      );
+    });
+  } catch (error) {
+    logger.error('Batch audit log write failed', { error, count: logs.length });
+  }
+};

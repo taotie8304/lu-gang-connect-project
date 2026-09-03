@@ -1,0 +1,39 @@
+name: 'Sandbox-Test'
+on:
+  pull_request:
+    paths:
+      - 'projects/code-sandbox/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'pnpm'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      - name: Install Python Dependencies
+        run: pip install -r projects/code-sandbox/requirements.txt
+
+      - name: Run Unit Tests
+        run: pnpm --filter=code-sandbox test

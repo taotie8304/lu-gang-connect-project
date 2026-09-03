@@ -1,9 +1,9 @@
 import React from 'react';
 import { ModalBody, Box, Flex, Input, ModalFooter, Button } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useForm } from 'react-hook-form';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import type { OpenaiAccountType } from '@fastgpt/global/support/user/team/type';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { putUpdateTeam } from '@/web/support/user/team/api';
@@ -15,13 +15,13 @@ const OpenAIAccountModal = ({
   defaultData?: OpenaiAccountType;
   onClose: () => void;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_thirdParty');
   const { userInfo, initUserInfo } = useUserStore();
   const { register, handleSubmit } = useForm({
     defaultValues: defaultData
   });
 
-  const { runAsync: onSubmit, loading } = useRequest2(
+  const { runAsync: onSubmit, loading } = useRequest(
     async (data: OpenaiAccountType) => {
       if (!userInfo?.team.teamId) return;
       return putUpdateTeam({

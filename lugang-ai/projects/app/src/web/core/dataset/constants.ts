@@ -1,15 +1,14 @@
-import { defaultQAModels, defaultVectorModels } from '@fastgpt/global/core/ai/model';
+import { defaultQAModels, defaultVectorModels } from '@fastgpt/global/core/ai/constants';
 import {
+  CollectionTrainingStatusEnum,
   DatasetCollectionDataProcessModeEnum,
   DatasetCollectionTypeEnum,
-  DatasetTypeEnum
+  DatasetTypeEnum,
+  DatasetStatusEnum
 } from '@fastgpt/global/core/dataset/constants';
-import type {
-  DatasetCollectionItemType,
-  DatasetItemType
-} from '@fastgpt/global/core/dataset/type.d';
+import type { DatasetCollectionItemType, DatasetItemType } from '@fastgpt/global/core/dataset/type';
 import { DatasetPermission } from '@fastgpt/global/support/permission/dataset/controller';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 export const defaultDatasetDetail: DatasetItemType = {
   _id: '',
@@ -19,14 +18,13 @@ export const defaultDatasetDetail: DatasetItemType = {
   tmbId: '',
   updateTime: new Date(),
   type: DatasetTypeEnum.dataset,
-  avatar: '/icon/logo.png',
+  avatar: '/icon/logo.svg',
   name: '',
   intro: '',
-  status: 'active',
+  status: DatasetStatusEnum.active,
   permission: new DatasetPermission(),
   vectorModel: defaultVectorModels[0],
   agentModel: defaultQAModels[0],
-  vlmModel: defaultQAModels[0],
   inheritPermission: true
 };
 
@@ -43,7 +41,7 @@ export const defaultCollectionDetail: DatasetCollectionItemType = {
     tmbId: '',
     updateTime: new Date(),
     type: DatasetTypeEnum.dataset,
-    avatar: '/icon/logo.png',
+    avatar: '/icon/logo.svg',
     name: '',
     intro: '',
     vectorModel: defaultVectorModels[0].model,
@@ -62,7 +60,12 @@ export const defaultCollectionDetail: DatasetCollectionItemType = {
   chunkSize: 0,
   indexSize: 512,
   permission: new DatasetPermission(),
-  indexAmount: 0
+  indexAmount: 0,
+  trainingAmount: 0,
+  activeTrainingAmount: 0,
+  finalErrorAmount: 0,
+  hasError: false,
+  slowestTrainingStatus: CollectionTrainingStatusEnum.ready
 };
 
 export const TrainingProcess = {

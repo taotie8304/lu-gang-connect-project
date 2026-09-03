@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import NextHead from '@/components/common/NextHead';
 import { Box, Flex } from '@chakra-ui/react';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
@@ -6,40 +6,54 @@ import PageContainer from '@/components/PageContainer';
 import ChatSlider from '@/pageComponents/chat/slider';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { ChatSidebarPaneEnum } from '@/pageComponents/chat/constants';
-import { GetChatTypeEnum } from '@/global/core/chat/constants';
 import ChatContextProvider from '@/web/core/chat/context/chatContext';
-import { type AppListItemType } from '@fastgpt/global/core/app/type';
 import { useContextSelector } from 'use-context-selector';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
+import { GetChatTypeEnum, ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
 import ChatItemContextProvider, { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
 import ChatRecordContextProvider from '@/web/core/chat/context/chatRecordContext';
 import ChatQuoteList from '@/pageComponents/chat/ChatQuoteList';
 import LoginModal from '@/pageComponents/login/LoginModal';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import ChatSetting from '@/pageComponents/chat/ChatSetting';
-import { useChat } from '@/pageComponents/chat/useChat';
 import AppChatWindow from '@/pageComponents/chat/ChatWindow/AppChatWindow';
 import HomeChatWindow from '@/pageComponents/chat/ChatWindow/HomeChatWindow';
-import {
-  ChatSettingContext,
-  ChatSettingContextProvider
-} from '@/web/core/chat/context/chatSettingContext';
-import ChatTeamApp from '@/pageComponents/chat/ChatTeamApp';
-import ChatFavouriteApp from '@/pageComponents/chat/ChatFavouriteApp';
+import { ChatPageContext, ChatPageContextProvider } from '@/web/core/chat/context/chatPageContext';
+import ChatAllApp from '@/pageComponents/chat/ChatAllApp';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes';
+import { MongoOutLink } from '@fastgpt/service/support/outLink/schema';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+import { PublishChannelEnum } from '@fastgpt/global/support/outLink/constant';
+import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
+import type { GetPaginationRecordsBodyType } from '@fastgpt/global/openapi/core/chat/record/api';
+import { AUTH_ERROR_EVENT_NAME } from '@/web/common/api/request';
+import { clearToken } from '@/web/support/user/auth';
 
-const Chat = ({ myApps }: { myApps: AppListItemType[] }) => {
+const logger = getLogger(LogCategories.MODULE.CHAT.ITEM);
+
+const Chat = () => {
   const { isPc } = useSystem();
 
-  const { appId } = useChatStore();
+  const { appId, chatId } = useChatStore();
 
   const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
   const setCiteModalData = useContextSelector(ChatItemContext, (v) => v.setCiteModalData);
+  const resetChatItemUIState = useContextSelector(ChatItemContext, (v) => v.resetUIState);
 
-  const collapse = useContextSelector(ChatSettingContext, (v) => v.collapse);
-  const pane = useContextSelector(ChatSettingContext, (v) => v.pane);
+  const collapse = useContextSelector(ChatPageContext, (v) => v.collapse);
+  const pane = useContextSelector(ChatPageContext, (v) => v.pane);
+  const rightWindowStyle = useMemo(
+    () => ({
+      borderWidth: 0,
+      boxShadow: 'none',
+      bg: 'white'
+    }),
+    []
+  );
+
+  useEffect(() => {
+    resetChatItemUIState();
+  }, [appId, chatId, resetChatItemUIState]);
 
   return (
     <Flex h={'100%'}>
@@ -52,23 +66,33 @@ const Chat = ({ myApps }: { myApps: AppListItemType[] }) => {
           overflow={'hidden'}
           transition={'width 0.1s ease-in-out'}
         >
-          <ChatSlider apps={myApps} activeAppId={appId} />
+          <ChatSlider activeAppId={appId} />
         </Box>
       )}
 
       {(!datasetCiteData || isPc) && (
-        <PageContainer flex="1 0 0" w={0} position="relative">
+        <PageContainer
+          flex="1 0 0"
+          w={0}
+          position="relative"
+          pr={datasetCiteData ? 0 : [0, '16px']}
+          insertProps={{
+            ...rightWindowStyle,
+            ...(datasetCiteData
+              ? {
+                  borderRadius: [0, '16px 0 0 16px']
+                }
+              : {})
+          }}
+        >
           {/* home chat window */}
-          {pane === ChatSidebarPaneEnum.HOME && <HomeChatWindow myApps={myApps} />}
+          {pane === ChatSidebarPaneEnum.HOME && <HomeChatWindow />}
 
-          {/* favourite apps */}
-          {pane === ChatSidebarPaneEnum.FAVORITE_APPS && <ChatFavouriteApp />}
-
-          {/* team apps */}
-          {pane === ChatSidebarPaneEnum.TEAM_APPS && <ChatTeamApp />}
+          {/* all apps */}
+          {pane === ChatSidebarPaneEnum.ALL_APPS && <ChatAllApp />}
 
           {/* recently used apps chat window */}
-          {pane === ChatSidebarPaneEnum.RECENTLY_USED_APPS && <AppChatWindow myApps={myApps} />}
+          {pane === ChatSidebarPaneEnum.RECENTLY_USED_APPS && <AppChatWindow />}
 
           {/* setting */}
           {pane === ChatSidebarPaneEnum.SETTING && <ChatSetting />}
@@ -76,10 +100,22 @@ const Chat = ({ myApps }: { myApps: AppListItemType[] }) => {
       )}
 
       {datasetCiteData && (
-        <PageContainer flex="1 0 0" w={0} maxW="560px">
+        <PageContainer
+          flex={['1 0 0', '0 0 400px']}
+          w={['0', '400px']}
+          maxW={['100%', '400px']}
+          pr={0}
+          insertProps={{
+            ...rightWindowStyle,
+            borderLeft: '1px solid',
+            borderLeftColor: 'myGray.200',
+            borderRadius: [0, '0 16px 16px 0']
+          }}
+        >
           <ChatQuoteList
             metadata={datasetCiteData.metadata}
             rawSearch={datasetCiteData.rawSearch}
+            singleQuote={datasetCiteData.singleQuote}
             onClose={() => setCiteModalData(undefined)}
           />
         </PageContainer>
@@ -88,31 +124,155 @@ const Chat = ({ myApps }: { myApps: AppListItemType[] }) => {
   );
 };
 
-const Render = (props: { appId: string; isStandalone?: string }) => {
-  const { appId, isStandalone } = props;
-  const { chatId } = useChatStore();
-  const { setUserInfo } = useUserStore();
+type ChatPageProps = {
+  appId: string;
+  shouldInitUserInfo: boolean;
+  isStandalone?: string;
+  showRunningStatus: boolean;
+  showSkillReferences: boolean;
+  showCite: boolean;
+  showFullText: boolean;
+  canDownloadSource: boolean;
+  showWholeResponse: boolean;
+};
+
+const ChatLogin = ({ onSuccess }: { onSuccess: (res: LoginSuccessResponseType) => void }) => {
   const { feConfigs } = useSystemStore();
-  const { isInitedUser, userInfo, myApps } = useChat(appId);
+
+  return (
+    <>
+      <NextHead title={feConfigs?.systemTitle}></NextHead>
+
+      <LoginModal onSuccess={onSuccess} />
+    </>
+  );
+};
+
+const ChatContent = (props: ChatPageProps) => {
+  const { appId: pageAppId, isStandalone } = props;
+  const { appId: storeAppId, chatId, source } = useChatStore();
+  const { setUserInfo } = useUserStore();
+
+  const isInitedUser = useContextSelector(ChatPageContext, (v) => v.isInitedUser);
+  const userInfo = useContextSelector(ChatPageContext, (v) => v.userInfo);
+
+  // 首次入口若还停在 detail/share 等其它 source，以页面入口 appId 为准等待 store 归位；站内切换时 store 会先更新，用 store 保持无感切换。
+  const entryAppId = pageAppId;
+  const currentAppId =
+    source === ChatSourceEnum.online ? storeAppId || entryAppId : entryAppId || storeAppId;
+  const currentChatId =
+    source === ChatSourceEnum.online && storeAppId === currentAppId ? chatId : '';
+  const isChatStoreReady =
+    source === ChatSourceEnum.online && (!currentAppId || storeAppId === currentAppId);
 
   const chatHistoryProviderParams = useMemo(
-    () => ({ appId, source: ChatSourceEnum.online }),
-    [appId]
+    () => ({ appId: currentAppId, source: ChatSourceEnum.online }),
+    [currentAppId]
   );
 
-  const chatRecordProviderParams = useMemo(() => {
+  const chatRecordProviderParams = useMemo<GetPaginationRecordsBodyType>(() => {
     return {
-      appId,
+      appId: currentAppId,
       type: GetChatTypeEnum.normal,
-      chatId
+      chatId: currentChatId
     };
-  }, [appId, chatId]);
-
-  const loginSuccess = useCallback(async (res: LoginSuccessResponse) => {
-    setUserInfo(res.user);
-  }, []);
+  }, [currentAppId, currentChatId]);
+  const loginSuccess = useCallback(
+    async (res: LoginSuccessResponseType) => {
+      setUserInfo(res.user);
+    },
+    [setUserInfo]
+  );
 
   // Waiting for user info to be initialized
+  if (!isInitedUser) {
+    return (
+      <PageContainer isLoading flex={'1'} p={4}>
+        <NextHead />
+      </PageContainer>
+    );
+  }
+
+  // Not login
+  if (!userInfo) {
+    return <ChatLogin onSuccess={loginSuccess} />;
+  }
+
+  if (!isChatStoreReady) {
+    return (
+      <PageContainer isLoading flex={'1'} p={4}>
+        <NextHead />
+      </PageContainer>
+    );
+  }
+
+  // show main chat interface
+  return (
+    <ChatContextProvider params={chatHistoryProviderParams}>
+      <ChatItemContextProvider
+        showRouteToDatasetDetail={isStandalone !== '1'}
+        showRunningStatus={props.showRunningStatus}
+        showSkillReferences={props.showSkillReferences}
+        canDownloadSource={props.canDownloadSource}
+        isShowCite={props.showCite}
+        isShowFullText={props.showFullText}
+        showWholeResponse={props.showWholeResponse}
+      >
+        <ChatRecordContextProvider params={chatRecordProviderParams}>
+          <Chat />
+        </ChatRecordContextProvider>
+      </ChatItemContextProvider>
+    </ChatContextProvider>
+  );
+};
+
+const Render = (props: ChatPageProps) => {
+  const { feConfigs } = useSystemStore();
+  const { userInfo, setUserInfo, initUserInfo } = useUserStore();
+  const [isInitedUser, setIsInitedUser] = useState(!props.shouldInitUserInfo);
+
+  const loginSuccess = useCallback(
+    async (res: LoginSuccessResponseType) => {
+      setUserInfo(res.user);
+    },
+    [setUserInfo]
+  );
+
+  useEffect(() => {
+    const handleAuthError = () => {
+      // 全局拦截器已豁免 /chat 跳转；这里同步页面态，触发本页 LoginModal。
+      setUserInfo(null);
+      void clearToken();
+    };
+
+    window.addEventListener(AUTH_ERROR_EVENT_NAME, handleAuthError);
+    return () => {
+      window.removeEventListener(AUTH_ERROR_EVENT_NAME, handleAuthError);
+    };
+  }, [setUserInfo]);
+
+  useEffect(() => {
+    if (!props.shouldInitUserInfo) return;
+
+    let isUnmounted = false;
+
+    const init = async () => {
+      try {
+        await initUserInfo();
+      } finally {
+        if (!isUnmounted) {
+          setIsInitedUser(true);
+        }
+      }
+    };
+
+    init();
+
+    return () => {
+      isUnmounted = true;
+    };
+  }, [initUserInfo, props.shouldInitUserInfo]);
+
   if (!isInitedUser) {
     return (
       <PageContainer isLoading flex={'1'} p={4}>
@@ -121,44 +281,53 @@ const Render = (props: { appId: string; isStandalone?: string }) => {
     );
   }
 
-  // Not login
   if (!userInfo) {
-    return (
-      <>
-        <NextHead title={feConfigs?.systemTitle}></NextHead>
-
-        <LoginModal onSuccess={loginSuccess} />
-      </>
-    );
+    return <ChatLogin onSuccess={loginSuccess} />;
   }
 
-  // show main chat interface
   return (
-    <ChatSettingContextProvider>
-      <ChatContextProvider params={chatHistoryProviderParams}>
-        <ChatItemContextProvider
-          showRouteToDatasetDetail={isStandalone !== '1'}
-          isShowReadRawSource={true}
-          isResponseDetail={true}
-          showNodeStatus
-        >
-          <ChatRecordContextProvider params={chatRecordProviderParams}>
-            <Chat myApps={myApps} />
-          </ChatRecordContextProvider>
-        </ChatItemContextProvider>
-      </ChatContextProvider>
-    </ChatSettingContextProvider>
+    <ChatPageContextProvider appId={props.appId}>
+      <ChatContent {...props} />
+    </ChatPageContextProvider>
   );
 };
 
+export default Render;
+
 export async function getServerSideProps(context: any) {
+  const appId = context?.query?.appId || '';
+  const shouldInitUserInfo = !!context.req?.cookies?.fastgpt_token;
+
+  const chatQuoteReaderConfig = await (async () => {
+    try {
+      if (!appId) return null;
+
+      const config = await MongoOutLink.findOne(
+        {
+          appId,
+          type: PublishChannelEnum.playground
+        },
+        'showRunningStatus showSkillReferences showCite showFullText canDownloadSource showWholeResponse'
+      ).lean();
+
+      return config;
+    } catch (error) {
+      logger.error('getServerSideProps failed', { error, appId });
+      return null;
+    }
+  })();
+
   return {
     props: {
-      appId: context?.query?.appId || '',
-      isStandalone: context?.query?.isStandalone || '',
-      ...(await serviceSideProps(context, ['file', 'app', 'chat', 'workflow', 'user', 'login']))
+      appId,
+      shouldInitUserInfo,
+      showRunningStatus: chatQuoteReaderConfig?.showRunningStatus ?? true,
+      showSkillReferences: chatQuoteReaderConfig?.showSkillReferences ?? false,
+      showCite: chatQuoteReaderConfig?.showCite ?? true,
+      showFullText: chatQuoteReaderConfig?.showFullText ?? true,
+      canDownloadSource: chatQuoteReaderConfig?.canDownloadSource ?? true,
+      showWholeResponse: chatQuoteReaderConfig?.showWholeResponse ?? true,
+      ...(await serviceSideProps(context, ['file', 'app', 'chat', 'workflow', 'login', 'user']))
     }
   };
 }
-
-export default Render;

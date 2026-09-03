@@ -1,37 +1,40 @@
 import { UsageItemTypeEnum, UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
 import { MongoUsage } from './schema';
 import { type ClientSession } from '../../../common/mongo';
-import { addLog } from '../../../common/system/log';
 import { type ChatNodeUsageType } from '@fastgpt/global/support/wallet/bill/type';
 import type {
   PushUsageItemsProps,
   ConcatUsageProps,
   CreateUsageProps
 } from '@fastgpt/global/support/wallet/usage/api';
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { formatModelChars2Points } from './utils';
 import { mongoSessionRun } from '../../../common/mongo/sessionRun';
 import { MongoUsageItem } from './usageItemSchema';
+import { getLogger, LogCategories } from '../../../common/logger';
+import { getDefaultSTTModel } from '../../../core/ai/model';
+
+const logger = getLogger(LogCategories.MODULE.WALLET.USAGE);
 
 export async function createUsage(data: CreateUsageProps) {
   try {
     return await global.createUsageHandler(data);
   } catch (error) {
-    addLog.error('createUsage error', error);
+    logger.error('Failed to create usage', { error });
   }
 }
 export async function concatUsage(data: ConcatUsageProps) {
   try {
     await global.concatUsageHandler(data);
   } catch (error) {
-    addLog.error('concatUsage error', error);
+    logger.error('Failed to concat usage', { error });
   }
 }
 export async function pushUsageItems(data: PushUsageItemsProps) {
   try {
     await global.pushUsageItemsHandler(data);
   } catch (error) {
-    addLog.error('pushUsageItems error', error);
+    logger.error('Failed to push usage items', { error });
   }
 }
 
@@ -111,6 +114,7 @@ export const pushLLMTrainingUsage = async ({
 export const createChatUsageRecord = async ({
   appName,
   appId,
+  skillId,
   pluginId,
   teamId,
   tmbId,
@@ -118,6 +122,7 @@ export const createChatUsageRecord = async ({
 }: {
   appName: string;
   appId?: string;
+  skillId?: string;
   pluginId?: string;
   teamId: string;
   tmbId: string;
@@ -129,6 +134,7 @@ export const createChatUsageRecord = async ({
         teamId,
         tmbId,
         appId,
+        skillId,
         pluginId,
         appName,
         source,
@@ -156,8 +162,50 @@ export const pushChatItemUsage = ({
       amount: item.totalPoints,
       model: item.model,
       inputTokens: item.inputTokens,
-      outputTokens: item.outputTokens
+      outputTokens: item.outputTokens,
+      pages: item.pages
     }))
+  });
+};
+
+/** 记录 STT 音频用量；source 由调用方显式指定，区分 API 与各 outLink 渠道。 */
+export const pushWhisperUsage = ({
+  teamId,
+  tmbId,
+  duration,
+  source
+}: {
+  teamId: string;
+  tmbId: string;
+  duration: number;
+  source: UsageSourceEnum;
+}) => {
+  const whisperModel = getDefaultSTTModel();
+
+  if (!whisperModel) return;
+
+  const { totalPoints, modelName } = formatModelChars2Points({
+    model: whisperModel.model,
+    inputTokens: duration,
+    multiple: 60
+  });
+
+  const name = i18nT('common:support.wallet.usage.Whisper');
+
+  createUsage({
+    teamId,
+    tmbId,
+    appName: name,
+    totalPoints,
+    source,
+    list: [
+      {
+        moduleName: name,
+        amount: totalPoints,
+        model: modelName,
+        duration
+      }
+    ]
   });
 };
 

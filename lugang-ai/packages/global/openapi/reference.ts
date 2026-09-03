@@ -1,0 +1,143 @@
+const scalarApiReferenceCss = `
+.light-mode {
+  --fastgpt-api-sidebar-title-color: #111824;
+  --fastgpt-api-sidebar-active-color: #383F50;
+  --fastgpt-api-sidebar-item-color: #667085;
+}
+
+.dark-mode {
+  --fastgpt-api-sidebar-title-color: #FEFEFE;
+  --fastgpt-api-sidebar-active-color: #C3C5C6;
+  --fastgpt-api-sidebar-item-color: #929495;
+}
+
+.scalar-app
+  [data-sidebar-id*='/tag-group/']:not([data-sidebar-id*='/tag/'])
+  > [aria-selected] {
+  color: var(--fastgpt-api-sidebar-title-color);
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.scalar-app
+  [data-sidebar-id]
+  > button:not([aria-selected='true']):not(.text-sidebar-c-active) {
+  color: var(--fastgpt-api-sidebar-item-color);
+}
+
+.scalar-app
+  [data-sidebar-id]
+  > button:is([aria-selected='true'], .text-sidebar-c-active) {
+  color: var(--fastgpt-api-sidebar-active-color);
+  font-weight: 400;
+}
+
+.scalar-app .sidebar-heading-type {
+  min-width: 42px;
+  height: 20px;
+  justify-content: center;
+  padding-inline: 8px;
+  border: 0;
+  border-radius: 999px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.sidebar-heading-type--get {
+  color: #1D6FE8;
+  background-color: #E8F1FF;
+}
+
+.sidebar-heading-type--post {
+  color: #0F8B57;
+  background-color: #E6F7EE;
+}
+
+.sidebar-heading-type--put,
+.sidebar-heading-type--patch {
+  color: #B86B00;
+  background-color: #FFF1D8;
+}
+
+.sidebar-heading-type--delete {
+  color: #C93D3D;
+  background-color: #FDEAEA;
+}
+
+.sidebar-heading-type--options {
+  color: #7A55D9;
+  background-color: #F1ECFF;
+}
+
+.sidebar-heading-type--head,
+.sidebar-heading-type--trace {
+  color: #5B6678;
+  background-color: #EEF1F5;
+}
+
+.dark-mode .sidebar-heading-type--get {
+  color: #8BBEFF;
+  background-color: rgba(58, 122, 210, 0.2);
+}
+
+.dark-mode .sidebar-heading-type--post {
+  color: #72DBA2;
+  background-color: rgba(28, 142, 86, 0.22);
+}
+
+.dark-mode .sidebar-heading-type--put,
+.dark-mode .sidebar-heading-type--patch {
+  color: #F0B96A;
+  background-color: rgba(190, 115, 16, 0.22);
+}
+
+.dark-mode .sidebar-heading-type--delete {
+  color: #F48A8A;
+  background-color: rgba(190, 62, 62, 0.22);
+}
+
+.dark-mode .sidebar-heading-type--options {
+  color: #B7A3FF;
+  background-color: rgba(116, 86, 214, 0.24);
+}
+
+.dark-mode .sidebar-heading-type--head,
+.dark-mode .sidebar-heading-type--trace {
+  color: #B5BFCE;
+  background-color: rgba(98, 111, 130, 0.24);
+}
+
+/*
+ * Scalar does not create section-container for operations directly under a tag group.
+ * Keep those sections aligned with the regular tag sections on desktop.
+ */
+@media (min-width: 1024px) {
+  .scalar-app
+    .narrow-references-container
+    section.section:not(.section-container section) {
+    margin-inline: 60px;
+  }
+}
+
+`;
+
+export const getScalarOpenApiReferenceConfig = (
+  url: string,
+  options?: {
+    defaultOpenAllTags?: boolean;
+    onLoaded?: (slug: string) => void | Promise<void>;
+  }
+) =>
+  ({
+    customCss: scalarApiReferenceCss,
+    defaultOpenAllTags: options?.defaultOpenAllTags,
+    hideDarkModeToggle: false,
+    hideClientButton: true,
+    localization: {
+      locale: 'zh-CN'
+    },
+    onLoaded: options?.onLoaded,
+    showToolbar: 'never',
+    theme: 'default',
+    url
+  }) as const;

@@ -9,6 +9,7 @@ import {
   Input,
   ModalBody,
   ModalFooter,
+  Switch,
   Table,
   TableContainer,
   Tbody,
@@ -21,14 +22,14 @@ import {
 import MyModal from '@fastgpt/web/components/common/MyModal';
 import { type McpAppType } from '@fastgpt/global/support/mcp/type';
 import { useTranslation } from 'next-i18next';
-import { useFieldArray, useForm } from 'react-hook-form';
+import { Controller, useFieldArray, useForm } from 'react-hook-form';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import MyIconButton from '@fastgpt/web/components/common/Icon/button';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import Path from '@/components/common/folder/Path';
 import Avatar from '@fastgpt/web/components/common/Avatar';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getAppBasicInfoByIds, getMyApps } from '@/web/core/app/api';
 import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
 import { getAppFolderPath } from '@/web/core/app/api/app';
@@ -36,15 +37,18 @@ import { AppFolderTypeList } from '@fastgpt/global/core/app/constants';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { postCreateMcpServer, putUpdateMcpServer } from '../../../web/support/mcp/api';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 export type EditMcForm = {
   id?: string;
   name: string;
+  authProxy: boolean;
   apps: McpAppType[];
 };
 
 export const defaultForm: EditMcForm = {
   name: '',
+  authProxy: false,
   apps: []
 };
 
@@ -70,7 +74,7 @@ const SelectAppModal = ({
   >([]);
 
   // Load selected app
-  useRequest2(() => getAppBasicInfoByIds(selectedApps.map((item) => item.appId)), {
+  useRequest(() => getAppBasicInfoByIds(selectedApps.map((item) => item.appId)), {
     manual: false,
     onSuccess: (data) => {
       setSelectedList(
@@ -89,7 +93,7 @@ const SelectAppModal = ({
   const [searchKey, setSearchKey] = useState('');
   const [parentId, setParentId] = useState<ParentIdType>('');
 
-  const { data: apps = [], loading: loadingApps } = useRequest2(
+  const { data: apps = [], loading: loadingApps } = useRequest(
     () =>
       getMyApps({
         searchKey,
@@ -101,7 +105,7 @@ const SelectAppModal = ({
       throttleWait: 200
     }
   );
-  const { data: paths = [] } = useRequest2(
+  const { data: paths = [] } = useRequest(
     () => getAppFolderPath({ sourceId: parentId, type: 'current' }),
     {
       manual: false,
@@ -257,6 +261,7 @@ const EditMcpModal = ({
   onSuccess: () => void;
 }) => {
   const { t } = useTranslation();
+  const { userInfo } = useUserStore();
   const isEdit = !!editMcp.id;
   const {
     isOpen: isOpenSelectApp,
@@ -277,10 +282,11 @@ const EditMcpModal = ({
     name: 'apps'
   });
 
-  const { runAsync: createMcp, loading: loadingCreate } = useRequest2(
+  const { runAsync: createMcp, loading: loadingCreate } = useRequest(
     (data: EditMcForm) =>
       postCreateMcpServer({
         name: data.name,
+        authProxy: data.authProxy,
         apps: data.apps.map((item) => ({
           appId: item.appId,
           toolName: item.toolName,
@@ -294,11 +300,12 @@ const EditMcpModal = ({
       onSuccess
     }
   );
-  const { runAsync: updateMcp, loading: loadingUpdate } = useRequest2(
+  const { runAsync: updateMcp, loading: loadingUpdate } = useRequest(
     (data: EditMcForm) =>
       putUpdateMcpServer({
         id: data.id!,
         name: data.name,
+        authProxy: data.authProxy,
         apps: data.apps.map((item) => ({
           appId: item.appId,
           toolName: item.toolName,
@@ -329,8 +336,25 @@ const EditMcpModal = ({
             <FormLabel required mb={0.5}>
               {t('common:input_name')}
             </FormLabel>
-            <Input {...register('name', { required: true })} bg={'myGray.50'} />
+            <Input {...register('name', { required: true })} maxLength={100} bg={'myGray.50'} />
           </Box>
+          <Flex mt={4} alignItems={'center'} gap={3}>
+            <FormLabel display={'flex'} mb={0} alignItems={'center'}>
+              {t('dashboard_mcp:auth_proxy')}
+              <QuestionTip ml={1} label={t('dashboard_mcp:auth_proxy_tip')} />
+            </FormLabel>
+            <Controller
+              control={control}
+              name="authProxy"
+              render={({ field }) => (
+                <Switch
+                  isChecked={field.value}
+                  isDisabled={!userInfo?.permission.isOwner && !field.value}
+                  onChange={(event) => field.onChange(event.target.checked)}
+                />
+              )}
+            />
+          </Flex>
           <Box mt={6}>
             <Flex justifyContent={'space-between'} alignItems={'center'}>
               <FormLabel>{t('dashboard_mcp:apps')}</FormLabel>
@@ -358,6 +382,7 @@ const EditMcpModal = ({
                         <Td>
                           <Input
                             {...register(`apps.${index}.toolName`, { required: true })}
+                            maxLength={100}
                             placeholder={t('dashboard_mcp:tool_name_placeholder')}
                             bg={'myGray.50'}
                             w={'100%'}
@@ -367,6 +392,7 @@ const EditMcpModal = ({
                         <Td>
                           <Input
                             {...register(`apps.${index}.description`, { required: true })}
+                            maxLength={2000}
                             bg={'myGray.50'}
                             w={'100%'}
                           />

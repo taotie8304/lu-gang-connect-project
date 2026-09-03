@@ -1,11 +1,30 @@
-.waitingAnimation > :last-child::after {
-  display: inline-block;
-  content: '';
-  width: 3px;
-  height: 14px;
-  transform: translate(4px, 2px) scaleY(1.3);
-  background-color: var(--chakra-colors-primary-700);
-  animation: blink 0.6s infinite;
+.waitingAnimation {
+  :global(.stream-tail) {
+    display: inline;
+    opacity: 0;
+    animation-name: streamCharFadeIn;
+    animation-duration: 500ms;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+}
+
+@keyframes streamCharFadeIn {
+  0% {
+    opacity: 0;
+  }
+
+  35% {
+    opacity: 0.15;
+  }
+
+  70% {
+    opacity: 0.65;
+  }
+
+  100% {
+    opacity: 1;
+  }
 }
 
 .animation {
@@ -21,11 +40,13 @@
     animation: blink 0.6s infinite;
   }
 }
+
 @keyframes blink {
   from,
   to {
     opacity: 0;
   }
+
   50% {
     opacity: 1;
   }
@@ -34,22 +55,26 @@
 .markdown > *:first-child {
   margin-top: 0 !important;
 }
+
 .markdown > *:last-child {
   margin-bottom: 0 !important;
 }
+
 .markdown a.absent {
   color: #cc0000;
 }
+
 .markdown a.anchor {
   bottom: 0;
   cursor: pointer;
   display: block;
   left: 0;
-  margin-left: -30px;
-  padding-left: 30px;
+  margin-left: 0;
+  padding-left: 0;
   position: absolute;
   top: 0;
 }
+
 .markdown h1,
 .markdown h2,
 .markdown h3,
@@ -61,7 +86,11 @@
   margin: 10px 0;
   padding: 0;
   position: relative;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+
 .markdown h1 .mini-icon-link,
 .markdown h2 .mini-icon-link,
 .markdown h3 .mini-icon-link,
@@ -70,6 +99,7 @@
 .markdown h6 .mini-icon-link {
   display: none;
 }
+
 .markdown h1:hover a.anchor,
 .markdown h2:hover a.anchor,
 .markdown h3:hover a.anchor,
@@ -77,11 +107,12 @@
 .markdown h5:hover a.anchor,
 .markdown h6:hover a.anchor {
   line-height: 1;
-  margin-left: -22px;
+  margin-left: 0;
   padding-left: 0;
   text-decoration: none;
   top: 15%;
 }
+
 .markdown h1:hover a.anchor .mini-icon-link,
 .markdown h2:hover a.anchor .mini-icon-link,
 .markdown h3:hover a.anchor .mini-icon-link,
@@ -90,6 +121,7 @@
 .markdown h6:hover a.anchor .mini-icon-link {
   display: inline-block;
 }
+
 .markdown h1 tt,
 .markdown h1 code,
 .markdown h2 tt,
@@ -104,24 +136,31 @@
 .markdown h6 code {
   font-size: inherit;
 }
+
 .markdown h1 {
   font-size: var(--chakra-fontSizes-2xl);
 }
+
 .markdown h2 {
   font-size: var(--chakra-fontSizes-xl);
 }
+
 .markdown h3 {
   font-size: var(--chakra-fontSizes-lg);
 }
+
 .markdown h4 {
   font-size: var(--chakra-fontSizes-md);
 }
+
 .markdown h5 {
   font-size: 14px;
 }
+
 .markdown h6 {
   font-size: 12px;
 }
+
 .markdown p,
 .markdown blockquote,
 .markdown ul,
@@ -131,6 +170,7 @@
 .markdown pre {
   margin: 14px 0;
 }
+
 .markdown > h2:first-child,
 .markdown > h1:first-child,
 .markdown > h1:first-child + h2,
@@ -141,6 +181,7 @@
   margin-top: 0;
   padding-top: 0;
 }
+
 .markdown a:first-child h1,
 .markdown a:first-child h2,
 .markdown a:first-child h3,
@@ -150,6 +191,7 @@
   margin-top: 0;
   padding-top: 0;
 }
+
 .markdown h1 + p,
 .markdown h2 + p,
 .markdown h3 + p,
@@ -158,29 +200,36 @@
 .markdown h6 + p {
   margin-top: 0;
 }
+
 .markdown li p.first {
   display: inline-block;
 }
+
 .markdown ul,
 .markdown ol {
   padding-left: 2em;
+  list-style-position: outside;
 }
+
 .markdown ul.no-list,
 .markdown ol.no-list {
   list-style-type: none;
   padding: 0;
 }
+
+.markdown li {
+  padding-left: 0.25em;
+}
+
 .markdown ul li > *:first-child,
 .markdown ol li > *:first-child {
   margin-top: 0;
 }
-.markdown ul,
-.markdown ol {
-  padding-left: 14px;
-}
+
 .markdown dl {
   padding: 0;
 }
+
 .markdown dl dt {
   font-size: 14px;
   font-style: italic;
@@ -188,59 +237,77 @@
   margin: 15px 0 5px;
   padding: 0;
 }
+
 .markdown dl dt:first-child {
   padding: 0;
 }
+
 .markdown dl dt > *:first-child {
   margin-top: 0;
 }
+
 .markdown dl dt > *:last-child {
   margin-bottom: 0;
 }
+
 .markdown dl dd {
   margin: 0 0 15px;
   padding: 0 15px;
 }
+
 .markdown dl dd > *:first-child {
   margin-top: 0;
 }
+
 .markdown dl dd > *:last-child {
   margin-bottom: 0;
 }
+
 .markdown blockquote {
   border-left: 4px solid #dddddd;
   color: #777777;
   padding: 0 15px;
 }
+
 .markdown blockquote > *:first-child {
   margin-top: 0;
 }
+
 .markdown blockquote > *:last-child {
   margin-bottom: 0;
 }
+
 .markdown table {
+  position: relative;
   width: 100%;
 }
+
 .markdown table th {
   font-weight: bold;
 }
+
 .markdown table th,
 .markdown table td {
   padding: 6px 13px;
 }
+
 .markdown table tr {
   background-color: #ffffff;
 }
+
 .markdown table tr:nth-child(2n) {
   background-color: #f0f0f0;
 }
+
 .markdown img {
   max-width: 100%;
 }
+
 .markdown span.frame {
   display: block;
   overflow: hidden;
 }
+
 .markdown span.frame > span {
   border: 1px solid #dddddd;
   display: block;
@@ -250,67 +317,80 @@
   padding: 7px;
   width: auto;
 }
+
 .markdown span.frame span img {
   display: block;
   float: left;
 }
+
 .markdown span.frame span span {
   clear: both;
   color: #333333;
   display: block;
   padding: 5px 0 0;
 }
+
 .markdown span.align-center {
   clear: both;
   display: block;
   overflow: hidden;
 }
+
 .markdown span.align-center > span {
   display: block;
   margin: 13px auto 0;
   overflow: hidden;
   text-align: center;
 }
+
 .markdown span.align-center span img {
   margin: 0 auto;
   text-align: center;
 }
+
 .markdown span.align-right {
   clear: both;
   display: block;
   overflow: hidden;
 }
+
 .markdown span.align-right > span {
   display: block;
   margin: 13px 0 0;
   overflow: hidden;
   text-align: right;
 }
+
 .markdown span.align-right span img {
   margin: 0;
   text-align: right;
 }
+
 .markdown span.float-left {
   display: block;
   float: left;
   margin-right: 13px;
   overflow: hidden;
 }
+
 .markdown span.float-left span {
   margin: 13px 0 0;
 }
+
 .markdown span.float-right {
   display: block;
   float: right;
   margin-left: 13px;
   overflow: hidden;
 }
+
 .markdown span.float-right > span {
   display: block;
   margin: 13px auto 0;
   overflow: hidden;
   text-align: right;
 }
+
 .markdown code,
 .markdown tt {
   border: 1px solid #dee0e2;
@@ -319,12 +399,14 @@
   margin: 0 2px;
   padding: 0 5px;
 }
+
 .markdown pre > code {
   background: none repeat scroll 0 0 transparent;
   border: medium none;
   margin: 0;
   padding: 0;
 }
+
 .markdown .highlight pre,
 .markdown pre {
   border: 1px solid #cccccc;
@@ -334,15 +416,18 @@
   overflow: auto;
   padding: 6px 10px;
 }
+
 .markdown pre code,
 .markdown pre tt {
   background-color: transparent !important;
   border: medium none;
 }
+
 .markdown hr {
   margin: 10px 0;
-  border-color: var(--chakra-colors-gray-300);
+  border-color: var(--chakra-colors-myGray-200);
 }
+
 .markdown {
   tab-size: 4;
   word-spacing: normal;
@@ -351,6 +436,16 @@
 
   * {
     word-break: break-word;
+  }
+
+  pre:has([data-quick-replies]),
+  code:has([data-quick-replies]) {
+    background: transparent !important;
+    border: none;
+    padding: 0;
+    margin: 0;
+    color: inherit;
+    overflow: visible;
   }
 
   pre {
@@ -378,10 +473,6 @@
     border-collapse: separate;
     border-spacing: 0px;
     color: var(--chakra-colors-gray-700);
-    // 鲁港通 - 表格优化样式 (Requirements 4.4, 4.5, 4.6)
-    overflow-x: auto; // 宽表格提供横向滚动
-    display: block; // 使 overflow-x 生效
-    width: 100%;
 
     thead tr:first-child th {
       border-bottom-width: 1px;
@@ -394,24 +485,17 @@
       &:first-child {
         border-top-left-radius: 0.375rem;
       }
+
       &:last-child {
         border-right-width: 1px;
         border-top-right-radius: 0.375rem;
       }
     }
 
-    th,
     td {
       border-bottom-width: 1px;
       border-left-width: 1px;
       border-color: #ccc;
-      // 鲁港通 - 表格单元格文本自动换行 (Requirements 4.5)
-      word-wrap: break-word;
-      word-break: break-word;
-      white-space: normal;
-      // 鲁港通 - 确保表格单元格内容正确对齐 (Requirements 4.4)
-      vertical-align: top;
-      text-align: left;
 
       &:last-of-type {
         border-right-width: 1px;
@@ -420,10 +504,12 @@
 
     tbody tr:last-child {
       overflow: hidden;
+
       td {
         &:first-child {
           border-bottom-left-radius: 0.375rem;
         }
+
         &:last-child {
           border-bottom-right-radius: 0.375rem;
         }
@@ -436,27 +522,56 @@
   overflow-x: auto;
 }
 
-// 鲁港通 - 移动端响应式优化 (Requirements 6.1)
-@media (max-width: 768px) {
-  .markdown {
-    table {
-      // 移动端表格最大宽度为屏幕宽度
-      max-width: 100%;
-      // 确保表格可以横向滚动
-      display: block;
-      overflow-x: auto;
-      // 添加滚动提示
-      -webkit-overflow-scrolling: touch;
+// 聊天 HTML 代码块：内容区随高度伸缩，上限 60vh，超出后滚动。
+.htmlCodeBlock {
+  width: 100%;
 
-      th,
-      td {
-        // 移动端单元格最小宽度，防止内容过度压缩
-        min-width: 100px;
-        // 移动端字体稍小但保持可读性
-        font-size: 14px;
-        // 减少内边距以节省空间
-        padding: 8px 10px;
-      }
+  :global(.code-block-body) {
+    width: 100%;
+    max-height: 60vh;
+    overflow: auto;
+
+    iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: none;
     }
+  }
+
+  :global(pre) {
+    width: 100%;
+    height: auto !important;
+    max-height: 60vh !important;
+    margin: 0 !important;
+    overflow: auto !important;
+  }
+}
+
+// 完整响应弹窗代码块：短内容随高度收缩，超出弹窗内容区 80% 后内部滚动。
+.codeJsonConstrained {
+  :global(.markdown) :global(.code-block-wrapper),
+  :global(.markdown) :global(.htmlCodeBlock) {
+    width: 100%;
+    overflow: hidden;
+    border-radius: var(--chakra-radii-md);
+  }
+
+  :global(.markdown) :global(.code-block-wrapper) pre,
+  :global(.markdown) :global(.htmlCodeBlock) pre,
+  :global(.markdown) :global(.code-block-body) {
+    height: auto !important;
+    max-height: calc(var(--response-code-block-height) - 40px) !important;
+    overflow: auto !important;
+    margin: 0 !important;
+    border-bottom-left-radius: var(--chakra-radii-md);
+    border-bottom-right-radius: var(--chakra-radii-md);
+  }
+
+  // HTML 预览区在完整响应弹窗内跟随外层限高，覆盖聊天的 60vh 上限。
+  :global(.markdown) :global(.htmlCodeBlock) :global(.code-block-body) {
+    height: auto !important;
+    max-height: calc(var(--response-code-block-height) - 40px) !important;
+    overflow: auto !important;
   }
 }

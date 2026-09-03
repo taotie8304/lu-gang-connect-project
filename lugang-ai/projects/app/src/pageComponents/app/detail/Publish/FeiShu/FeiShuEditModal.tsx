@@ -6,7 +6,7 @@ import type { FeishuAppType, OutLinkEditType } from '@fastgpt/global/support/out
 import { useTranslation } from 'next-i18next';
 import { useForm } from 'react-hook-form';
 import { createShareChat, updateShareChat } from '@/web/support/outLink/api';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import BasicInfo from '../components/BasicInfo';
 import { getDocPath } from '@/web/common/system/doc';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -37,15 +37,15 @@ const FeiShuEditModal = ({
     defaultValues: defaultData
   });
 
-  const { runAsync: onclickCreate, loading: creating } = useRequest2(
+  const { runAsync: onclickCreate, loading: creating } = useRequest(
     (e: Omit<OutLinkEditType<FeishuAppType>, 'appId' | 'type'>) =>
       createShareChat({
         ...e,
         appId,
         type: PublishChannelEnum.feishu,
         app: {
-          appId: e?.app?.appId?.trim(),
-          appSecret: e.app?.appSecret?.trim(),
+          appId: e?.app?.appId?.trim() ?? '',
+          appSecret: e.app?.appSecret?.trim() ?? '',
           encryptKey: e.app?.encryptKey?.trim()
         }
       }),
@@ -56,13 +56,13 @@ const FeiShuEditModal = ({
     }
   );
 
-  const { runAsync: onclickUpdate, loading: updating } = useRequest2(
+  const { runAsync: onclickUpdate, loading: updating } = useRequest(
     (e) =>
       updateShareChat({
         ...e,
         app: {
-          appId: e?.app?.appId?.trim(),
-          appSecret: e.app?.appSecret?.trim(),
+          appId: e?.app?.appId?.trim() ?? '',
+          appSecret: e.app?.appSecret?.trim() ?? '',
           encryptKey: e.app?.encryptKey?.trim()
         }
       }),
@@ -90,7 +90,7 @@ const FeiShuEditModal = ({
             <Box color="myGray.600">{t('publish:feishu_api')}</Box>
             {feConfigs?.docUrl && (
               <Link
-                href={getDocPath('/docs/use-cases/external-integration/feishu/')}
+                href={getDocPath('/guide/build/publish/feishu')}
                 target={'_blank'}
                 ml={2}
                 color={'primary.500'}

@@ -10,10 +10,12 @@ import { i18n } from '@/lib/i18n';
 
 export const revalidate = false;
 
+const includeMdxFiles = remarkInclude as unknown as typeof remarkMdx;
+
 const processor = remark()
   .use(remarkMdx)
   // https://fumadocs.vercel.app/docs/mdx/include
-  .use(remarkInclude)
+  .use(includeMdxFiles)
   // gfm styles
   .use(remarkGfm)
   // .use(your remark plugins)
@@ -27,10 +29,10 @@ export async function GET() {
 
   if (defaultLanguage === 'zh-CN') {
     // For Chinese, select *.mdx files
-    globPattern = ['./content/docs/**/*.mdx'];
+    globPattern = ['./content/**/*.mdx'];
   } else {
     // For other languages (default English), select *.en.mdx files that don't have .mdx. in their path
-    globPattern = ['./content/docs/**/*.en.mdx'];
+    globPattern = ['./content/**/*.en.mdx'];
   }
 
   const files = await fg(globPattern);

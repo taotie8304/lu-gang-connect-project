@@ -5,97 +5,77 @@ import { useTranslation } from 'next-i18next';
 import { getCollectionSourceAndOpen } from '@/web/core/dataset/hooks/readCollectionSource';
 import { getCollectionIcon } from '@fastgpt/global/core/dataset/utils';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import type { readCollectionSourceBody } from '@/pages/api/core/dataset/collection/read';
+import type { ReadCollectionSourceBodyType } from '@fastgpt/global/openapi/core/dataset/collection/api';
 import type { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
-import { useUserStore } from '@/web/support/user/useUserStore';
-import { canUserViewCitationSource, isCitationUrl } from '@fastgpt/global/support/permission/citation';
 
 type Props = BoxProps &
-  readCollectionSourceBody & {
+  ReadCollectionSourceBodyType & {
     collectionType?: DatasetCollectionTypeEnum;
-    sourceName?: string;
-    sourceId?: string;
+    rawSourceName?: string;
+    rawSourceId?: string;
     canView?: boolean;
   };
 
 const RawSourceBox = ({
-  sourceId,
+  rawSourceId,
   collectionType,
-  sourceName = '',
+  rawSourceName = '',
   canView = true,
 
   collectionId,
   appId,
+  skillId,
   chatId,
   chatItemDataId,
-  shareId,
-  outLinkUid,
-  teamId,
-  teamToken,
+  outLinkAuthData,
 
   ...props
 }: Props) => {
   const { t } = useTranslation();
-  // 鲁港通：获取当前用户信息
-  const { userInfo } = useUserStore();
 
-  // 鲁港通：检查用户是否有权限查看引用来源
-  const hasPermission = useMemo(() => {
-    return canUserViewCitationSource(userInfo?.username, collectionType, sourceId);
-  }, [userInfo?.username, collectionType, sourceId]);
-
-  // 鲁港通：只有有权限的用户才能预览（点击访问/下载）
-  const canPreview = !!sourceId && canView && hasPermission;
-
-  // 鲁港通：普通用户不显示文件类型引用，只显示 URL 类型
-  if (!hasPermission && !isCitationUrl(collectionType, sourceId)) {
-    return null;
-  }
+  const canPreview = !!rawSourceId && canView;
 
   const icon = useMemo(
-    () => getCollectionIcon({ type: collectionType, sourceId, name: sourceName }),
-    [collectionType, sourceId, sourceName]
+    () => getCollectionIcon({ type: collectionType, sourceId: rawSourceId, name: rawSourceName }),
+    [collectionType, rawSourceId, rawSourceName]
   );
   const read = getCollectionSourceAndOpen({
     collectionId,
     appId,
+    skillId,
     chatId,
     chatItemDataId,
-    shareId,
-    outLinkUid,
-    teamId,
-    teamToken
+    outLinkAuthData
   });
+  const displaySourceName = rawSourceName || t('common:unknow_source');
 
   return (
-    <MyTooltip
-      label={canPreview ? t('file:click_to_view_raw_source') : ''}
-      shouldWrapChildren={false}
+    <Box
+      color={'myGray.900'}
+      fontWeight={'medium'}
+      display={'inline-flex'}
+      whiteSpace={'nowrap'}
+      {...(canPreview
+        ? {
+            cursor: 'pointer',
+            textDecoration: 'underline',
+            onClick: read
+          }
+        : {})}
+      {...props}
     >
-      <Box
-        color={'myGray.900'}
-        fontWeight={'medium'}
-        display={'inline-flex'}
-        whiteSpace={'nowrap'}
-        {...(canPreview
-          ? {
-              cursor: 'pointer',
-              textDecoration: 'underline',
-              onClick: read
-            }
-          : {})}
-        {...props}
-      >
-        <MyIcon name={icon as any} w={['1rem', '1.25rem']} mr={2} />
+      <MyIcon name={icon as any} w={['1rem', '1.25rem']} mr={2} flexShrink={0} />
+      <MyTooltip label={displaySourceName} showOnlyWhenOverflow>
         <Box
           maxW={['200px', '300px']}
           className={props.className ?? 'textEllipsis'}
           wordBreak={'break-all'}
+          minW={0}
         >
-          {sourceName || t('common:unknow_source')}
+          {displaySourceName}
         </Box>
-      </Box>
-    </MyTooltip>
+      </MyTooltip>
+    </Box>
   );
 };
 

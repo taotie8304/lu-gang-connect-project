@@ -1,17 +1,19 @@
 import { initSystemConfig } from '.';
 import { createDatasetTrainingMongoWatch } from '@/service/core/dataset/training/utils';
 import { MongoSystemConfigs } from '@fastgpt/service/common/system/config/schema';
-import { debounce } from 'lodash';
+import { debounce } from 'lodash-es';
 import { MongoAppTemplate } from '@fastgpt/service/core/app/templates/templateSchema';
 import { getAppTemplatesAndLoadThem } from '@fastgpt/service/core/app/templates/register';
 import { watchSystemModelUpdate } from '@fastgpt/service/core/ai/config/utils';
 import { SystemConfigsTypeEnum } from '@fastgpt/global/common/system/config/constants';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 
 let changeStreams: any[] = [];
+const logger = getLogger(LogCategories.INFRA.MONGO);
 
 export const startMongoWatch = async () => {
   cleanupMongoWatch();
-  console.log('Watch mongo db start');
+  logger.info('Mongo change stream watch started');
   changeStreams.push(reloadConfigWatch());
   changeStreams.push(createDatasetTrainingMongoWatch());
   changeStreams.push(refetchAppTemplates());
@@ -31,7 +33,7 @@ const reloadConfigWatch = () => {
           ))
       ) {
         await initSystemConfig();
-        console.log('refresh system config');
+        logger.info('System config refreshed via Mongo change stream');
       }
     } catch (error) {}
   });
@@ -53,6 +55,7 @@ const refetchAppTemplates = () => {
 };
 
 const cleanupMongoWatch = () => {
+  logger.debug('Mongo change stream watch cleanup');
   changeStreams.forEach((changeStream) => {
     changeStream?.close();
   });

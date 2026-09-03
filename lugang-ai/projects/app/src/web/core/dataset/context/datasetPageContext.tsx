@@ -2,21 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import { type Dispatch, type ReactNode, type SetStateAction, useState } from 'react';
 import { useTranslation } from 'next-i18next';
 import { createContext } from 'use-context-selector';
+import { getDatasetById, getDatasetPaths, putDatasetById } from '../api';
 import {
   getAllTags,
-  getDatasetById,
   getDatasetCollectionTags,
-  getDatasetPaths,
-  getDatasetTrainingQueue,
-  postCreateDatasetCollectionTag,
-  putDatasetById
-} from '../api';
+  postCreateDatasetCollectionTag
+} from '../api/collection';
+import { getDatasetTrainingQueue } from '../api/training';
 import { defaultDatasetDetail } from '../constants';
-import { type DatasetUpdateBody } from '@fastgpt/global/core/dataset/api';
+import { type UpdateDatasetBody } from '@fastgpt/global/openapi/core/dataset/api';
 import { type DatasetItemType, type DatasetTagType } from '@fastgpt/global/core/dataset/type';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { type ParentTreePathItemType } from '@fastgpt/global/common/parentFolder/type';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getWebLLMModel } from '@/web/common/system/utils';
 import { filterApiDatasetServerPublicData } from '@fastgpt/global/core/dataset/apiDataset/utils';
 
@@ -24,7 +22,7 @@ type DatasetPageContextType = {
   datasetId: string;
   datasetDetail: DatasetItemType;
   loadDatasetDetail: (id: string) => Promise<DatasetItemType>;
-  updateDataset: (data: DatasetUpdateBody) => Promise<void>;
+  updateDataset: (data: UpdateDatasetBody) => Promise<void>;
 
   searchDatasetTagsResult: DatasetTagType[];
   allDatasetTags: DatasetTagType[];
@@ -54,7 +52,7 @@ export const DatasetPageContext = createContext<DatasetPageContextType>({
   loadDatasetDetail: function (id: string): Promise<DatasetItemType> {
     throw new Error('Function not implemented.');
   },
-  updateDataset: function (data: DatasetUpdateBody): Promise<void> {
+  updateDataset: function (data: UpdateDatasetBody): Promise<void> {
     throw new Error('Function not implemented.');
   },
   searchDatasetTagsResult: [],
@@ -95,7 +93,7 @@ export const DatasetPageContextProvider = ({
     setDatasetDetail(data);
     return data;
   };
-  const updateDataset = async (data: DatasetUpdateBody) => {
+  const updateDataset = async (data: UpdateDatasetBody) => {
     await putDatasetById(data);
 
     if (datasetId === data.id) {
@@ -113,10 +111,9 @@ export const DatasetPageContextProvider = ({
   const [checkedDatasetTag, setCheckedDatasetTag] = useState<DatasetTagType[]>([]);
   const [searchTagKey, setSearchTagKey] = useState('');
 
-  const { runAsync: loadAllDatasetTags, data: allDatasetTags = [] } = useRequest2(
+  const { runAsync: loadAllDatasetTags, data: allDatasetTags = [] } = useRequest(
     async () => {
-      // 鲁港通 - 启用标签加载功能
-      if (!datasetDetail._id) return [];
+      if (!feConfigs?.isPlus || !datasetDetail._id) return [];
 
       const { list } = await getAllTags(datasetDetail._id);
       return list;
@@ -126,10 +123,9 @@ export const DatasetPageContextProvider = ({
       refreshDeps: [datasetDetail._id]
     }
   );
-  const { data: searchDatasetTagsResult = [] } = useRequest2(
+  const { data: searchDatasetTagsResult = [] } = useRequest(
     async () => {
-      // 鲁港通 - 防御性检查，确保始终返回数组
-      if (!searchTagKey) return allDatasetTags ?? [];
+      if (!searchTagKey) return allDatasetTags;
       const { list } = await getDatasetCollectionTags({
         datasetId: datasetDetail._id,
         searchText: searchTagKey,
@@ -144,7 +140,7 @@ export const DatasetPageContextProvider = ({
       refreshDeps: [datasetDetail._id, searchTagKey, allDatasetTags]
     }
   );
-  const { runAsync: onCreateCollectionTag, loading: isCreateCollectionTagLoading } = useRequest2(
+  const { runAsync: onCreateCollectionTag, loading: isCreateCollectionTagLoading } = useRequest(
     (tag: string) =>
       postCreateDatasetCollectionTag({
         datasetId: datasetDetail._id,
@@ -166,7 +162,7 @@ export const DatasetPageContextProvider = ({
       refetchInterval: 10000
     });
 
-  const { data: paths = [], runAsync: refetchPaths } = useRequest2(
+  const { data: paths = [], runAsync: refetchPaths } = useRequest(
     () =>
       getDatasetPaths({
         sourceId: datasetDetail?._id,

@@ -1,4 +1,4 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
 import { findModelFromAlldata } from '@fastgpt/service/core/ai/model';
@@ -8,27 +8,25 @@ import {
   type RerankModelItemType,
   type STTModelType,
   type TTSModelType
-} from '@fastgpt/global/core/ai/model.d';
+} from '@fastgpt/global/core/ai/model.schema';
 import { getAIApi } from '@fastgpt/service/core/ai/config';
-import { addLog } from '@fastgpt/service/common/system/log';
-import { getVectorsByText } from '@fastgpt/service/core/ai/embedding';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+import { getVectors } from '@fastgpt/service/core/ai/embedding';
 import { reRankRecall } from '@fastgpt/service/core/ai/rerank';
 import { aiTranscriptions } from '@fastgpt/service/core/ai/audio/transcriptions';
 import { isProduction } from '@fastgpt/global/common/system/constants';
 import * as fs from 'fs';
 import { createLLMResponse } from '@fastgpt/service/core/ai/llm/request';
+const logger = getLogger(LogCategories.MODULE.AI.MODEL);
 
 export type testQuery = { model: string; channelId?: number };
 
-export type testBody = {};
+export type testBody = Record<string, never>;
 
 export type testResponse = any;
 
-async function handler(
-  req: ApiRequestProps<testBody, testQuery>,
-  res: ApiResponseType<any>
-): Promise<testResponse> {
-  await authSystemAdmin({ req });
+async function handler(req: ApiRequestProps<testBody, testQuery>): Promise<testResponse> {
+  const { teamId } = await authSystemAdmin({ req });
 
   const { model, channelId } = req.query;
   const modelData = findModelFromAlldata(model);
@@ -45,10 +43,10 @@ async function handler(
         'Aiproxy-Channel': String(channelId)
       }
     : {};
-  addLog.debug(`Test model`, modelData);
+  logger.debug(`Test model`, modelData);
 
   if (modelData.type === 'llm') {
-    return testLLMModel(modelData, headers);
+    return testLLMModel(modelData, headers, teamId);
   }
   if (modelData.type === 'embedding') {
     return testEmbeddingModel(modelData, headers);
@@ -68,8 +66,14 @@ async function handler(
 
 export default NextAPI(handler);
 
-const testLLMModel = async (model: LLMModelItemType, headers: Record<string, string>) => {
+const testLLMModel = async (
+  model: LLMModelItemType,
+  headers: Record<string, string>,
+  teamId: string
+) => {
   const { answerText } = await createLLMResponse({
+    teamId,
+    saveLLMResponseRecord: false,
     body: {
       model, // 传递实体 model 进去，保障底层不会去拿内存里的实体。
       messages: [{ role: 'user', content: 'hi' }],
@@ -89,15 +93,20 @@ const testEmbeddingModel = async (
   model: EmbeddingModelItemType,
   headers: Record<string, string>
 ) => {
-  return getVectorsByText({
-    input: 'Hi',
+  return getVectors({
     model,
+    inputs: [
+      {
+        type: 'text',
+        input: 'Hi'
+      }
+    ],
     headers
   });
 };
 
 const testTTSModel = async (model: TTSModelType, headers: Record<string, string>) => {
-  const ai = getAIApi({
+  const { ai } = getAIApi({
     timeout: 10000
   });
   await ai.audio.speech.create(
@@ -125,9 +134,10 @@ const testSTTModel = async (model: STTModelType, headers: Record<string, string>
   const { text } = await aiTranscriptions({
     model,
     fileStream: fs.createReadStream(path),
+    filename: 'test.mp3',
     headers
   });
-  addLog.info(`STT result: ${text}`);
+  logger.info(`STT result: ${text}`);
 };
 
 const testReRankModel = async (model: RerankModelItemType, headers: Record<string, string>) => {

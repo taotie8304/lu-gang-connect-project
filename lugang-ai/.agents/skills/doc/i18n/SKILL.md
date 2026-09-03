@@ -1,0 +1,137 @@
+---
+name: doc-i18n
+description: 将 FastGPT 文档从中文翻译为面向北美用户的英文。当用户提到翻译文档、i18n、国际化、translate docs、新增/修改了中文文档需要同步英文版时，使用此 skill。也适用于用户要求检查文档翻译缺失、批量翻译、或对比中英文文档差异的场景。
+---
+
+## 概述
+
+FastGPT 文档采用双文件 i18n 方案，中文为源语言，英文为目标语言。你的任务是将中文文档翻译为自然流畅的北美英文，而非逐字直译。
+
+开始翻译前，必须完整阅读并遵守以下共享规则：
+
+- [FastGPT 产品翻译规范](../../system/i18n-translate/references/translation-guidelines.md)
+- [FastGPT 专有名词库](../../system/i18n-translate/references/fastgpt-glossary.json)
+
+共享词库是产品术语的唯一事实来源，优先级高于现有英文文档、同类产品用词和通用技术习惯。不要在本 Skill 中维护第二套产品词表。
+
+## 文件结构
+
+文档位于 `document/content/` 目录下，可能分布在 `docs/`、`self-host/` 等子目录：
+
+- 内容文件：`{name}.mdx`（中文） → `{name}.en.mdx`（英文）
+- 导航文件：`meta.json`（中文） → `meta.en.json`（英文）
+
+## 工作流程
+
+### 1. 确定翻译范围
+
+两种方式确定需要翻译的文件：
+
+**自动检测**（用户未指定具体文件时）：
+- 运行 `git diff --name-only` 和 `git diff --cached --name-only` 检测 `document/` 下变更的中文文件
+- 筛选出 `.mdx`（排除 `.en.mdx`）和 `meta.json`（排除 `meta.en.json`）
+- 检查对应的英文文件是否存在或是否需要更新
+
+**手动指定**：用户直接给出文件路径或目录。
+
+无论使用哪种方式，只要翻译范围包含 `.mdx` 内容文件，都必须把同目录的 `meta.json` / `meta.en.json` 纳入检查范围，避免新增英文内容后导航缺失。
+
+### 2. 翻译内容文件（.mdx → .en.mdx）
+
+对每个中文 `.mdx` 文件，生成或更新对应的 `.en.mdx` 文件。
+
+翻译前先按最长中文词组匹配共享词库。例如，`知识库引用` 必须整体匹配为 `Dataset citation(s)`，不能拆成 `知识库` 和 `引用` 分别处理。根据文档语法调整大小写和单复数，但不得改用词库列出的禁用译法。
+
+**保持不变的部分**：
+- MDX import 语句（如 `import { Alert } from '@/components/docs/Alert'`）
+- 图片路径（如 `![](/imgs/intro/image1.png)`）
+- 链接 URL（保持原始 URL 不变）
+- HTML/JSX 组件结构和属性（如 `<Alert icon="🤖" context="success">`）
+- 表格的 markdown 结构
+- 代码块内容（除非是中文注释）
+- emoji 符号
+
+**需要翻译的部分**：
+- frontmatter 的 `title` 和 `description`
+- 所有正文文本内容
+- 组件内的文本内容（如 Alert 内的文字）
+- 表格中的文字内容
+- 代码块中的中文注释
+
+### 3. 同步导航文件（meta.json → meta.en.json）
+
+对每个中文 `meta.json`，生成或更新对应的 `meta.en.json`。翻译 `.mdx` 文件时，也要同步检查其同目录导航文件：
+
+- 如果同目录存在 `meta.json`，检查本次翻译的中文文件 basename（如 `41503.mdx` → `41503`）是否在 `pages` 数组中。
+- 如果中文文件是新增页面且 `meta.json` 未引用，应按目录内现有排序和上下文更新 `meta.json`；无法可靠判断位置时，先询问用户，不要只创建 `.en.mdx` 后忽略导航。
+- `meta.en.json` 的 `pages` 必须与 `meta.json` 保持一致，只翻译 `title`、`description` 和分隔符字符串，不要翻译或删除页面文件名引用。
+- 如果 `meta.en.json` 缺失，必须创建；如果已存在但 `pages` 落后于 `meta.json`，必须同步。
+- 如果用户只指定了 `meta.json`，仍按导航文件翻译规则更新 `meta.en.json`，并检查 `pages` 中引用的中文 `.mdx` 是否有对应 `.en.mdx`。
+- 修改导航 JSON 时优先使用结构化 JSON 方式或严格保持原文件格式，避免手改导致尾逗号、缩进漂移或 `pages` 顺序错误。
+
+**需要翻译的字段**：`title`、`description`、分隔符字符串（如 `"---入门---"` → `"---Getting Started---"`）
+
+**保持不变的字段**：`pages` 数组中的文件名引用、`icon`、`root`、`order`
+
+### 4. 翻译完成后
+
+- 对照中文源文和共享词库复核所有产品术语；发现禁用译法时必须修正
+- 搜索英文文件中的残留汉字，并逐项确认是品牌名、代码示例还是漏译
+- 对词库中的语境词进行人工复核，例如 `训练` 应按功能使用 `Indexing`、`Processing` 或 `Reindex`
+- 如果遇到词库未收录且会影响产品概念一致性的术语，先向用户报告并确认推荐译法，不要自行固化新术语
+- 列出所有已翻译的文件
+- 列出所有已更新或确认无需更新的 `meta.json` / `meta.en.json`
+- 如果发现中文文件有对应英文文件缺失的情况，提醒用户
+- 如果发现中文 `.mdx` 未被同目录 `meta.json` 引用，且本次未能安全更新导航，明确提醒用户
+
+## 翻译原则
+
+这些原则的核心目标是让北美开发者读起来感觉像是原生英文文档，而不是翻译过来的。
+
+### 语言风格
+
+- 面向北美开发者，使用自然的美式英语技术写作风格
+- 不要逐字翻译，要传达原文的意思和意图
+- 技术文档倾向简洁直接，避免冗余修饰
+- 中文文档常用的排比、铺陈手法，翻译时应精简为英文读者习惯的表达
+
+**示例**：
+```
+中文：可轻松导入各式各样的文档及数据，能自动对其开展知识结构化处理工作。
+  ✗：You can easily import various documents and data, which will be automatically processed for knowledge structuring.
+  ✓：Import documents and data with automatic knowledge structuring.
+```
+
+### 中国特有平台和服务的本地化
+
+直接使用国际版名称，不保留中文原名：
+
+| 中文 | 英文 |
+|------|------|
+| 飞书 | Lark |
+| 企业微信 | WeCom |
+| 钉钉 | DingTalk |
+| 公众号 | WeChat Official Account |
+| 文心一言 | ERNIE Bot |
+| 中国大陆版 | China Mainland |
+| 国际版 | International |
+
+### 技术术语
+
+FastGPT 产品概念必须使用共享专有名词库，不得因为现有文档或竞品采用其他叫法而替换。例如：
+
+- `知识库` → `Dataset`，不是 `Knowledge Base`
+- `数据集` → `Collection`，不是 `Dataset`
+- `节点`、`模块` → `Node`，不是 `Module`
+- `调试` → `Debug`；`试运行` → `Test Run`
+- `引用` → `Citation`；`知识库引用` → `Dataset citation(s)`
+- `问题优化` → `Query rewriting`
+- `索引模型` → `Embedding model`
+
+词库未覆盖的纯技术概念使用业界通用术语，例如 `LLM`、`Vector Store`、`Low-code`。如需参考 n8n 或 Dify，只能比较底层产品含义；FastGPT 共享词库始终优先。
+
+### 语气
+
+- 保持专业但友好的语气，和原文档的风格一致
+- 不要过度正式，也不要过于随意
+- 面向开发者和技术用户，假设读者有基本的技术背景

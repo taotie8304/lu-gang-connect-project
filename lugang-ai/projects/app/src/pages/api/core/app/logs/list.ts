@@ -1,6 +1,4 @@
-import type { NextApiResponse } from 'next';
 import { MongoChat } from '@fastgpt/service/core/chat/chatSchema';
-import type { PipelineStage } from '@fastgpt/service/common/mongo';
 import { Types } from '@fastgpt/service/common/mongo';
 import { authApp } from '@fastgpt/service/support/permission/app/auth';
 import {
@@ -15,7 +13,7 @@ import { replaceRegChars } from '@fastgpt/global/common/string/tools';
 import { getLocationFromIp } from '@fastgpt/service/common/geo';
 import { AppReadChatLogPerVal } from '@fastgpt/global/support/permission/app/constant';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { getLocale } from '@fastgpt/service/common/middle/i18n';
 import { AppVersionCollectionName } from '@fastgpt/service/core/app/version/schema';
 import {
@@ -23,13 +21,29 @@ import {
   GetAppChatLogsResponseSchema,
   type getAppChatLogsResponseType
 } from '@fastgpt/global/openapi/core/app/log/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
 
-async function handler(
-  req: ApiRequestProps,
-  _res: NextApiResponse
-): Promise<getAppChatLogsResponseType> {
-  const { appId, dateStart, dateEnd, sources, tmbIds, chatSearch, feedbackType, unreadOnly } =
-    GetAppChatLogsBodySchema.parse(req.body);
+const appChatSourceMatch = {
+  $or: [{ sourceType: ChatSourceTypeEnum.app }, { sourceType: { $exists: false } }]
+};
+
+async function handler(req: ApiRequestProps): Promise<getAppChatLogsResponseType> {
+  const {
+    appId,
+    dateStart,
+    dateEnd,
+    sources,
+    tmbIds,
+    outLinkUids,
+    chatSearch,
+    feedbackType,
+    unreadOnly,
+    errorFilter
+  } = parseApiInput({
+    req,
+    bodySchema: GetAppChatLogsBodySchema
+  }).body;
 
   const { pageSize = 20, offset } = parsePaginationRequest(req);
 
@@ -38,18 +52,17 @@ async function handler(
   }
 
   // 凭证校验
-  const { teamId } = await authApp({
+  await authApp({
     req,
     authToken: true,
+    authApiKey: true,
     appId,
     per: AppReadChatLogPerVal
   });
 
   const where = {
-    teamId: new Types.ObjectId(teamId),
     appId: new Types.ObjectId(appId),
-    source: sources ? { $in: sources } : { $exists: true },
-    tmbId: tmbIds ? { $in: tmbIds.map((item) => new Types.ObjectId(item)) } : { $exists: true },
+    $and: [appChatSourceMatch],
     // Feedback type filtering (BEFORE pagination for performance)
     ...(feedbackType === 'has_feedback' &&
       !unreadOnly && {
@@ -75,6 +88,24 @@ async function handler(
       unreadOnly && {
         hasUnreadBadFeedback: true
       }),
+    ...(errorFilter === 'has_error' && {
+      errorCount: { $gt: 0 }
+    }),
+    ...(sources && { source: { $in: sources } }),
+    // User filter: tmbIds(排除外链用户) 或 outLinkUids
+    ...((tmbIds?.length || outLinkUids?.length) && {
+      $or: [
+        ...(tmbIds?.length
+          ? [
+              {
+                tmbId: { $in: tmbIds.map((id) => new Types.ObjectId(id)) },
+                outLinkUid: { $in: [null, ''] }
+              }
+            ]
+          : []),
+        ...(outLinkUids?.length ? [{ outLinkUid: { $in: outLinkUids } }] : [])
+      ]
+    }),
     updateTime: {
       $gte: new Date(dateStart),
       $lte: new Date(dateEnd)
@@ -108,7 +139,16 @@ async function handler(
               {
                 $match: {
                   $expr: {
-                    $and: [{ $eq: ['$appId', '$$appId'] }, { $eq: ['$chatId', '$$chatId'] }]
+                    $and: [
+                      { $eq: ['$appId', '$$appId'] },
+                      { $eq: ['$chatId', '$$chatId'] },
+                      {
+                        $or: [
+                          { $eq: ['$sourceType', ChatSourceTypeEnum.app] },
+                          { $eq: [{ $type: '$sourceType' }, 'missing'] }
+                        ]
+                      }
+                    ]
                   }
                 }
               },
@@ -142,31 +182,7 @@ async function handler(
                     }
                   },
                   customFeedback: {
-                    $sum: {
-                      $cond: [{ $gt: [{ $size: { $ifNull: ['$customFeedbacks', []] } }, 0] }, 1, 0]
-                    }
-                  },
-                  errorCountFromChatItem: {
-                    $sum: {
-                      $cond: [
-                        {
-                          $gt: [
-                            {
-                              $size: {
-                                $filter: {
-                                  input: { $ifNull: ['$responseData', []] },
-                                  as: 'item',
-                                  cond: { $ne: [{ $ifNull: ['$$item.errorText', null] }, null] }
-                                }
-                              }
-                            },
-                            0
-                          ]
-                        },
-                        1,
-                        0
-                      ]
-                    }
+                    $sum: { $size: { $ifNull: ['$customFeedbacks', []] } }
                   },
                   totalPointsFromChatItem: {
                     $sum: {
@@ -192,19 +208,22 @@ async function handler(
               {
                 $match: {
                   $expr: {
-                    $and: [{ $eq: ['$appId', '$$appId'] }, { $eq: ['$chatId', '$$chatId'] }]
+                    $and: [
+                      { $eq: ['$appId', '$$appId'] },
+                      { $eq: ['$chatId', '$$chatId'] },
+                      {
+                        $or: [
+                          { $eq: ['$sourceType', ChatSourceTypeEnum.app] },
+                          { $eq: [{ $type: '$sourceType' }, 'missing'] }
+                        ]
+                      }
+                    ]
                   }
                 }
               },
               {
                 $group: {
                   _id: null,
-                  // errorCount from chatItemResponse data
-                  errorCountFromResponse: {
-                    $sum: {
-                      $cond: [{ $ne: [{ $ifNull: ['$data.errorText', null] }, null] }, 1, 0]
-                    }
-                  },
                   // totalPoints from chatItemResponse data
                   totalPointsFromResponse: {
                     $sum: { $ifNull: ['$data.totalPoints', 0] }
@@ -215,20 +234,12 @@ async function handler(
             as: 'chatItemResponsesData'
           }
         },
-        // Match app versions
+        // Match app versions (use simple lookup for better performance with index)
         {
           $lookup: {
             from: AppVersionCollectionName,
             localField: 'appVersionId',
             foreignField: '_id',
-            pipeline: [
-              {
-                $project: {
-                  versionName: 1,
-                  _id: 0 // 排除 _id 字段，只返回 versionName
-                }
-              }
-            ],
             as: 'versionData'
           }
         },
@@ -260,17 +271,7 @@ async function handler(
                 0
               ]
             },
-            errorCount: {
-              $add: [
-                { $ifNull: [{ $arrayElemAt: ['$chatItemsData.errorCountFromChatItem', 0] }, 0] }, // 适配旧版，响应字段存在 chat_items 里
-                {
-                  $ifNull: [
-                    { $arrayElemAt: ['$chatItemResponsesData.errorCountFromResponse', 0] },
-                    0
-                  ]
-                }
-              ]
-            },
+            errorCount: { $ifNull: ['$errorCount', 0] },
             totalPoints: {
               $add: [
                 { $ifNull: [{ $arrayElemAt: ['$chatItemsData.totalPointsFromChatItem', 0] }, 0] },
@@ -330,17 +331,15 @@ async function handler(
 
     return {
       ...item,
+      originIp: ip,
       region: region || ip
     };
   });
 
   // 获取有 tmbId 的人员
-  const listWithSourceMember = await addSourceMember({
-    list: listWithRegion
-  });
+  const listWithSourceMember = await addSourceMember({ list: listWithRegion });
   // 获取没有 tmbId 的人员
   const listWithoutTmbId = listWithRegion.filter((item) => !item.tmbId);
-
   return GetAppChatLogsResponseSchema.parse({
     list: listWithSourceMember.concat(listWithoutTmbId),
     total

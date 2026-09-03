@@ -1,7 +1,9 @@
 import type { CollaboratorIdType, CollaboratorItemType } from './collaborator';
-import { ManageRoleVal, OwnerRoleVal } from './constant';
 import type { RoleValueType } from './type';
 import { type PermissionValueType } from './type';
+
+const OwnerRoleVal = ~0 >>> 0;
+const ManageRoleVal = 0b001;
 /**
  * Sum the permission value.
  * If no permission value is provided, return undefined to fallback to default value.
@@ -121,9 +123,9 @@ export const getChangedCollaborators = ({
     }
   }
 
+  const newClbsMap = new Map(newRealClbs.map((clb) => [getCollaboratorId(clb), clb]));
   for (const oldClb of oldRealClbs) {
-    const newClb = newRealClbs.find((clb) => getCollaboratorId(clb) === getCollaboratorId(oldClb));
-    if (!newClb) {
+    if (!newClbsMap.has(getCollaboratorId(oldClb))) {
       changedClbs.push({
         ...oldClb,
         changedRole: oldClb.permission,
@@ -179,4 +181,28 @@ export const mergeCollaboratorList = <T extends CollaboratorItemType>({
   }
 
   return Array.from(idToClb.values());
+};
+
+/**
+ * 判断资源在当前协作者集合下是否仍为私有。
+ * 继承权限的资源需要先合并父级与自身协作者，避免同一个协作者在父子记录中被重复计数。
+ */
+export const isPrivateResourceByCollaborators = <T extends CollaboratorItemType>({
+  resourceClbs,
+  parentClbs,
+  inheritPermission
+}: {
+  resourceClbs: T[];
+  parentClbs?: T[];
+  inheritPermission?: boolean;
+}) => {
+  const realClbs =
+    inheritPermission && parentClbs
+      ? mergeCollaboratorList({
+          parentClbs,
+          childClbs: resourceClbs
+        })
+      : resourceClbs;
+
+  return realClbs.length <= 1;
 };

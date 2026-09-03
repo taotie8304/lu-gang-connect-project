@@ -2,18 +2,15 @@ import React, { type ReactNode, useCallback, useState } from 'react';
 import { createContext } from 'use-context-selector';
 import type { EditTeamFormDataType } from './EditInfoModal';
 import dynamic from 'next/dynamic';
-import {
-  getTeamList,
-  getTeamMemberCount,
-  getTeamMembers,
-  putSwitchTeam
-} from '@/web/support/user/team/api';
+import { getTeamList, getTeamMemberCount, putSwitchTeam } from '@/web/support/user/team/api';
 import { TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 import { useUserStore } from '@/web/support/user/useUserStore';
-import type { TeamTmbItemType, TeamMemberItemType } from '@fastgpt/global/support/user/team/type';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { useTranslation } from 'next-i18next';
+import type { TeamTmbItemType } from '@fastgpt/global/support/user/team/type';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useRouter } from 'next/router';
+import { useChatStore } from '@/web/core/chat/context/useChatStore';
+import { accountCancellationActiveStatuses } from '@fastgpt/global/support/user/account/cancellation/constants';
 
 const EditInfoModal = dynamic(() => import('./EditInfoModal'));
 
@@ -47,35 +44,46 @@ export const TeamContext = createContext<TeamModalContextType>({
 });
 
 export const TeamModalContextProvider = ({ children }: { children: ReactNode }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation();
   const router = useRouter();
 
   const [editTeamData, setEditTeamData] = useState<EditTeamFormDataType>();
   const { userInfo, initUserInfo } = useUserStore();
+  const { resetChatCache } = useChatStore();
 
   const {
     data: myTeams = [],
     loading: isLoadingTeams,
     refresh: refetchTeams
-  } = useRequest2(() => getTeamList(TeamMemberStatusEnum.active), {
+  } = useRequest(() => getTeamList(TeamMemberStatusEnum.active), {
     manual: false,
     refreshDeps: [userInfo?._id]
   });
 
-  const { data: teamMemberCountData, refresh: refetchTeamSize } = useRequest2(getTeamMemberCount, {
+  const { data: teamMemberCountData, refresh: refetchTeamSize } = useRequest(getTeamMemberCount, {
     manual: false,
     refreshDeps: [userInfo?.team?.teamId]
   });
 
-  const { runAsync: onSwitchTeam, loading: isSwitchingTeam } = useRequest2(
+  const { runAsync: onSwitchTeam, loading: isSwitchingTeam } = useRequest(
     async (teamId: string) => {
+      const targetTeam = myTeams.find((team) => team.teamId === teamId);
       await putSwitchTeam(teamId);
-      return initUserInfo();
+      resetChatCache();
+      const isAccountCancellationPending = accountCancellationActiveStatuses.includes(
+        targetTeam?.accountCancellation
+          ?.status as (typeof accountCancellationActiveStatuses)[number]
+      );
+      if (isAccountCancellationPending) {
+        await router.replace('/account/cancel');
+      } else if (router.pathname === '/account/cancel') {
+        await router.replace('/account/info');
+      } else {
+        await router.reload();
+      }
+      return isAccountCancellationPending;
     },
     {
-      onSuccess: () => {
-        router.reload();
-      },
       errorToast: t('common:user.team.Switch Team Failed')
     }
   );

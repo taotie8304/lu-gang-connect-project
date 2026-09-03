@@ -1,8 +1,9 @@
 import { TeamMemberCollectionName } from '@fastgpt/global/support/user/team/constant';
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 import { MemberGroupCollectionName } from './memberGroupSchema';
 import { type GroupMemberSchemaType } from '@fastgpt/global/support/permission/memberGroup/type';
 import { GroupMemberRole } from '@fastgpt/global/support/permission/memberGroup/constant';
+import { getLogger, LogCategories } from '../../../common/logger';
 const { Schema } = connectionMongo;
 
 export const GroupMemberCollectionName = 'team_group_members';
@@ -33,17 +34,19 @@ GroupMemberSchema.virtual('group', {
   justOne: true
 });
 
-try {
-  GroupMemberSchema.index({
-    groupId: 1
-  });
+const logger = getLogger(LogCategories.INFRA.MONGO);
 
-  GroupMemberSchema.index({
+defineIndex(GroupMemberSchema, {
+  key: {
+    groupId: 1
+  }
+});
+
+defineIndex(GroupMemberSchema, {
+  key: {
     tmbId: 1
-  });
-} catch (error) {
-  console.log(error);
-}
+  }
+});
 
 export const MongoGroupMemberModel = getMongoModel<GroupMemberSchemaType>(
   GroupMemberCollectionName,

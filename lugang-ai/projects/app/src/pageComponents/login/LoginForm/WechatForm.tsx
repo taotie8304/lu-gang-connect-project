@@ -1,7 +1,6 @@
 import React, { type Dispatch } from 'react';
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes';
-import { Box, Center, Flex, Link } from '@chakra-ui/react';
+import { Box, Center } from '@chakra-ui/react';
 import { useQuery } from '@tanstack/react-query';
 import { getWXLoginQR, getWXLoginResult } from '@/web/support/user/api';
 import { getErrText } from '@fastgpt/global/common/error/utils';
@@ -14,52 +13,61 @@ import {
   getBdVId,
   getFastGPTSem,
   getMsclkid,
-  getSourceDomain,
-  removeFastGPTSem,
-  getInviterId
+  onFastGPTLoginSuccess
 } from '@/web/support/marketing/utils';
-import { getDocPath } from '@/web/common/system/doc';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import PolicyTip from './PolicyTip';
+import type {
+  LoginSuccessResponseType,
+  WxLoginResultResponseType
+} from '@fastgpt/global/openapi/support/user/account/login/api';
+import type { LangEnum } from '@fastgpt/global/common/i18n/type';
+
+type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<void>;
 
 interface Props {
-  loginSuccess: (e: LoginSuccessResponse) => void;
+  loginSuccess: LoginSuccessHandler;
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
 }
 
 const WechatForm = ({ setPageType, loginSuccess }: Props) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { toast } = useToast();
-  const { feConfigs } = useSystemStore();
 
-  const { data: wechatInfo } = useQuery(['getWXLoginQR'], getWXLoginQR, {
-    onError(err) {
-      toast({
-        status: 'warning',
-        title: getErrText(err, t('common:get_QR_failed'))
-      });
+  const { data: wechatInfo, refetch: refetchWechatInfo } = useQuery(
+    ['getWXLoginQR'],
+    getWXLoginQR,
+    {
+      onError(err) {
+        toast({
+          status: 'warning',
+          title: getErrText(err, t('common:get_QR_failed'))
+        });
+      }
     }
-  });
+  );
 
   useQuery(
-    ['getWXLoginResult', wechatInfo?.code],
+    ['getWXLoginResult', wechatInfo?.code, i18n.language],
     () =>
       getWXLoginResult({
-        inviterId: getInviterId(),
         code: wechatInfo?.code || '',
         bd_vid: getBdVId(),
         msclkid: getMsclkid(),
         fastgpt_sem: getFastGPTSem(),
-        sourceDomain: getSourceDomain()
+        language: i18n.language as LangEnum
       }),
     {
       refetchInterval: 3 * 1000,
       enabled: !!wechatInfo?.code,
-      onSuccess(data: LoginSuccessResponse | undefined) {
-        if (data) {
-          removeFastGPTSem();
-          loginSuccess(data);
+      async onSuccess(data: WxLoginResultResponseType | undefined) {
+        if (!data) return;
+
+        if ('expired' in data) {
+          await refetchWechatInfo();
+          return;
         }
+
+        await onFastGPTLoginSuccess(loginSuccess, data);
       }
     }
   );
@@ -89,7 +97,7 @@ const WechatForm = ({ setPageType, loginSuccess }: Props) => {
             </Center>
           )}
         </Box>
-        <PolicyTip isCenter />
+        <PolicyTip />
       </Box>
     </FormLayout>
   );

@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { useTranslation } from 'next-i18next';
-import { Box, Flex, IconButton, useTheme, Progress } from '@chakra-ui/react';
+import { Box, Flex, IconButton, useTheme } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useRouter } from 'next/router';
 import { useContextSelector } from 'use-context-selector';
@@ -8,11 +8,11 @@ import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContex
 import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import FolderPath from '@/components/common/folder/Path';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 
 export enum TabEnum {
   dataCard = 'dataCard',
   collectionCard = 'collectionCard',
-  autoUpdate = 'autoUpdate',
   test = 'test',
   info = 'info',
   import = 'import'
@@ -24,10 +24,7 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
   const router = useRouter();
   const query = router.query;
   const { isPc } = useSystem();
-  const { datasetDetail, rebuildingCount, paths } = useContextSelector(
-    DatasetPageContext,
-    (v) => v
-  );
+  const { datasetDetail, paths } = useContextSelector(DatasetPageContext, (v) => v);
 
   const tabList = [
     {
@@ -60,15 +57,11 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
           pt={3}
           px={4}
           justify={'space-between'}
-          borderBottom={
-            currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate
-              ? 'none'
-              : theme.borders.base
-          }
+          borderBottom={currentTab === TabEnum.dataCard ? 'none' : theme.borders.base}
           borderColor={'myGray.200'}
           position={'relative'}
         >
-          {(currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate) ? (
+          {currentTab === TabEnum.dataCard ? (
             <>
               <Flex
                 alignItems={'center'}
@@ -97,9 +90,17 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
                   aria-label={''}
                   _hover={'none'}
                 />
-                <Box fontWeight={500} color={'myGray.600'} fontSize={'sm'}>
-                  {datasetDetail.name}
-                </Box>
+                <MyTooltip label={datasetDetail.name} showOnlyWhenOverflow>
+                  <Box
+                    fontWeight={500}
+                    color={'myGray.600'}
+                    fontSize={'sm'}
+                    maxW={['45vw', '280px']}
+                    className="textEllipsis"
+                  >
+                    {t('common:back')}
+                  </Box>
+                </MyTooltip>
               </Flex>
             </>
           ) : (
@@ -117,11 +118,7 @@ const NavBar = ({ currentTab }: { currentTab: TabEnum }) => {
             <LightRowTabs<TabEnum>
               px={4}
               py={1}
-              visibility={
-                currentTab === TabEnum.dataCard || currentTab === TabEnum.autoUpdate
-                  ? 'hidden'
-                  : 'visible'
-              }
+              visibility={currentTab === TabEnum.dataCard ? 'hidden' : 'visible'}
               flex={1}
               mx={'auto'}
               w={'100%'}

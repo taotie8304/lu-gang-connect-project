@@ -1,5 +1,5 @@
 import { getEmbeddingModel } from '../../../../service/core/ai/model';
-import { type EmbeddingModelItemType, type LLMModelItemType } from '../../../core/ai/model.d';
+import { type EmbeddingModelItemType, type LLMModelItemType } from '../../ai/model.schema';
 import {
   ChunkSettingModeEnum,
   DataChunkSplitModeEnum,
@@ -7,9 +7,10 @@ import {
   ParagraphChunkAIModeEnum
 } from '../constants';
 import type { ChunkSettingsType } from '../type';
-import { cloneDeep } from 'lodash';
+import { cloneDeep } from 'lodash-es';
 
 export const minChunkSize = 64; // min index and chunk size
+export const maxPreviewChunkCount = 50_000;
 
 // Chunk size
 export const chunkAutoChunkSize = 1000;
@@ -113,7 +114,7 @@ export const computedCollectionChunkSettings = <T extends ChunkSettingsType>({
 }: {
   llmModel?: LLMModelItemType;
   vectorModel?: EmbeddingModelItemType;
-} & T) => {
+} & T): T => {
   const {
     trainingType = DatasetCollectionDataProcessModeEnum.chunk,
     chunkSettingMode = ChunkSettingModeEnum.auto,
@@ -123,7 +124,7 @@ export const computedCollectionChunkSettings = <T extends ChunkSettingsType>({
     indexSize,
     autoIndexes
   } = data;
-  const cloneChunkSettings = cloneDeep(data);
+  const cloneChunkSettings = cloneDeep(data) as T;
 
   if (trainingType !== DatasetCollectionDataProcessModeEnum.qa) {
     delete cloneChunkSettings.qaPrompt;

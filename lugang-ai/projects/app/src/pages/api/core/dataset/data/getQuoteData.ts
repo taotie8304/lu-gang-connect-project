@@ -1,89 +1,67 @@
 import { NextAPI } from '@/service/middleware/entry';
-import { type DatasetCollectionSchemaType } from '@fastgpt/global/core/dataset/type';
-import { authChatCrud, authCollectionInChat } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud, authCollectionInChat } from '@/service/support/permission/auth/chat';
 import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { authDatasetData } from '@fastgpt/service/support/permission/dataset/auth';
-import { type OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection/schema';
 import { ChatErrEnum } from '@fastgpt/global/common/error/code/chat';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { formatDatasetDataValue } from '@fastgpt/service/core/dataset/data/controller';
+import { UserError } from '@fastgpt/global/common/error/utils';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  GetQuoteDataBodySchema,
+  GetQuoteDataResponseSchema,
+  type GetQuoteDataResponse
+} from '@fastgpt/global/openapi/core/dataset/data/api';
 
-export type GetQuoteDataResponse = {
-  collection: DatasetCollectionSchemaType;
-  q: string;
-  a?: string;
-};
-
-export type GetQuoteDataProps =
-  | {
-      id: string;
-    }
-  | ({
-      id: string;
-      appId: string;
-      chatId: string;
-      chatItemDataId: string;
-    } & OutLinkChatAuthProps);
-
-async function handler(req: ApiRequestProps<GetQuoteDataProps>): Promise<GetQuoteDataResponse> {
-  const { id: dataId } = req.body;
+async function handler(req: ApiRequestProps): Promise<GetQuoteDataResponse> {
+  const body = parseApiInput({ req, bodySchema: GetQuoteDataBodySchema }).body;
+  const { id: dataId } = body;
 
   // Auth
   const { collection, q, a } = await (async () => {
-    if ('chatId' in req.body) {
-      const { appId, chatId, shareId, outLinkUid, teamId, teamToken, chatItemDataId } = req.body;
-      await authChatCrud({
+    if (body.chatId && body.sourceType && body.chatItemDataId) {
+      const { sourceType, sourceId, chatId, outLinkAuthData } = body;
+      const authRes = await authChatTargetCrud({
         req,
         authToken: true,
-        appId,
+        sourceType,
+        sourceId,
         chatId,
-        shareId,
-        outLinkUid,
-        teamId,
-        teamToken
+        outLinkAuthData
       });
+      const resolvedSourceId = authRes.sourceId;
 
       const datasetData = await MongoDatasetData.findById(dataId).lean();
       if (!datasetData) {
-        return Promise.reject(i18nT('common:data_not_found'));
+        return Promise.reject(new UserError(i18nT('common:data_not_found')));
       }
 
-      const [collection, { responseDetail }] = await Promise.all([
+      const [collection] = await Promise.all([
         MongoDatasetCollection.findById(datasetData.collectionId).lean(),
-        authChatCrud({
-          req,
-          authToken: true,
-          appId,
-          chatId,
-          shareId,
-          outLinkUid,
-          teamId,
-          teamToken
-        }),
         authCollectionInChat({
-          appId,
+          sourceType,
+          sourceId: resolvedSourceId,
           chatId,
-          chatItemDataId,
           collectionIds: [datasetData.collectionId]
         })
       ]);
       if (!collection) {
-        return Promise.reject('Can not find the collection');
+        return Promise.reject(new UserError('Can not find the collection'));
       }
-      if (!responseDetail) {
-        return Promise.reject(ChatErrEnum.unAuthChat);
+      if (!authRes.showCite) {
+        return Promise.reject(new UserError(ChatErrEnum.unAuthChat));
       }
 
       return {
         collection,
-        ...formatDatasetDataValue({
+        ...(await formatDatasetDataValue({
           q: datasetData.q,
           a: datasetData.a,
           imageId: datasetData.imageId
-        })
+        }))
       };
     } else {
       const { datasetData, collection } = await authDatasetData({
@@ -95,20 +73,20 @@ async function handler(req: ApiRequestProps<GetQuoteDataProps>): Promise<GetQuot
       });
       return {
         collection,
-        ...formatDatasetDataValue({
+        ...(await formatDatasetDataValue({
           q: datasetData.q,
           a: datasetData.a,
           imageId: datasetData.imageId
-        })
+        }))
       };
     }
   })();
 
-  return {
+  return GetQuoteDataResponseSchema.parse({
     collection,
     q,
     a
-  };
+  });
 }
 
 export default NextAPI(handler);

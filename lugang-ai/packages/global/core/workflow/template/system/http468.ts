@@ -3,7 +3,7 @@ import {
   FlowNodeOutputTypeEnum,
   FlowNodeTypeEnum
 } from '../../node/constant';
-import { type FlowNodeTemplateType } from '../../type/node.d';
+import { type FlowNodeTemplateType } from '../../type/node';
 import {
   WorkflowIOValueTypeEnum,
   NodeInputKeyEnum,
@@ -13,7 +13,7 @@ import {
 } from '../../constants';
 import { Input_Template_DynamicInput } from '../input';
 import { Output_Template_AddOutput } from '../output';
-import { i18nT } from '../../../../../web/i18n/utils';
+import { i18nT } from '../../../../common/i18n/utils';
 
 export const HttpNode468: FlowNodeTemplateType = {
   id: FlowNodeTypeEnum.httpRequest468,
@@ -22,12 +22,15 @@ export const HttpNode468: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/httpRequest',
+  avatarLinear: 'core/workflow/template/httpRequestLinear',
+  colorSchema: 'indigo',
   name: i18nT('workflow:http_request'),
   intro: i18nT('workflow:intro_http_request'),
   showStatus: true,
   isTool: true,
+  hasToolInput: true,
   catchError: false,
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/http/',
+  courseUrl: '/guide/build/workflow/nodes/http',
   inputs: [
     {
       ...Input_Template_DynamicInput,
@@ -37,7 +40,7 @@ export const HttpNode468: FlowNodeTemplateType = {
         showDescription: false,
         showDefaultValue: true
       },
-      deprecated: false
+      deprecated: true
     },
     {
       key: NodeInputKeyEnum.httpMethod,
@@ -64,7 +67,7 @@ export const HttpNode468: FlowNodeTemplateType = {
       label: '',
       description: i18nT('common:core.module.input.description.Http Request Url'),
       placeholder: 'https://api.ai.com/getInventory',
-      required: false
+      required: true
     },
     {
       key: NodeInputKeyEnum.headerSecret,
@@ -133,6 +136,15 @@ export const HttpNode468: FlowNodeTemplateType = {
       description: i18nT('workflow:http_raw_response_description'),
       valueType: WorkflowIOValueTypeEnum.any,
       type: FlowNodeOutputTypeEnum.static
+    },
+
+    {
+      id: NodeOutputKeyEnum.httpRawError,
+      key: NodeOutputKeyEnum.httpRawError,
+      label: i18nT('workflow:http_full_error'),
+      description: i18nT('workflow:http_full_error_description'),
+      valueType: WorkflowIOValueTypeEnum.object,
+      type: FlowNodeOutputTypeEnum.error
     },
     {
       id: NodeOutputKeyEnum.error,

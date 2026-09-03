@@ -1,9 +1,6 @@
-import type { StoreNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
-import React, { useMemo } from 'react';
-import { SmallCloseIcon } from '@chakra-ui/icons';
-import { Box, Flex, IconButton } from '@chakra-ui/react';
-import MyIcon from '@fastgpt/web/components/common/Icon';
-import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import type { StoreNodeItemType } from '@fastgpt/global/core/workflow/type/node';
+import React, { useCallback, useMemo } from 'react';
+import { Box, CloseButton, Flex } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { type StoreEdgeItemType } from '@fastgpt/global/core/workflow/type/edge';
 
@@ -13,17 +10,17 @@ import { useChatTest } from '../../useChatTest';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
 import { PluginRunBoxTabEnum } from '@/components/core/chat/ChatContainer/PluginRunBox/constants';
-import CloseIcon from '@fastgpt/web/components/common/Icon/close';
 import ChatItemContextProvider, { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
 import ChatRecordContextProvider, {
   ChatRecordContext
 } from '@/web/core/chat/context/chatRecordContext';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
-import MyBox from '@fastgpt/web/components/common/MyBox';
 import ChatQuoteList from '@/pageComponents/chat/ChatQuoteList';
-import VariablePopover from '@/components/core/chat/ChatContainer/components/VariablePopover';
 import { useCopyData } from '@fastgpt/web/hooks/useCopyData';
-import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
+import { useSandboxEditor, useSandboxStatus } from '@/pageComponents/chat/SandboxEditor/hook';
+import { getAppChatConfig } from '@fastgpt/global/core/workflow/utils';
+import RunPreviewHeader from './RunPreviewHeader';
+import AppDetailPanelModal from '../../components/AppDetailPanelModal';
 
 type Props = {
   isOpen: boolean;
@@ -39,129 +36,98 @@ const ChatTest = ({ isOpen, nodes = [], edges = [], onClose, chatId }: Props) =>
   const isPlugin = appDetail.type === AppTypeEnum.workflowTool;
   const { copyData } = useCopyData();
 
+  const chatConfigForDebug = useMemo(
+    () =>
+      getAppChatConfig({
+        chatConfig: appDetail.chatConfig,
+        isPublicFetch: true
+      }),
+    [appDetail.chatConfig]
+  );
+
   const { restartChat, ChatContainer } = useChatTest({
     nodes,
     edges,
-    chatConfig: appDetail.chatConfig,
-    isReady: isOpen
+    chatConfig: chatConfigForDebug,
+    isReady: isOpen,
+    boxBodyProps: { maxW: '100%' }
   });
   const pluginRunTab = useContextSelector(ChatItemContext, (v) => v.pluginRunTab);
   const setPluginRunTab = useContextSelector(ChatItemContext, (v) => v.setPluginRunTab);
   const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
   const setCiteModalData = useContextSelector(ChatItemContext, (v) => v.setCiteModalData);
 
-  const isVariableVisible = useContextSelector(ChatItemContext, (v) => v.isVariableVisible);
+  const handleClose = useCallback(() => {
+    setCiteModalData(undefined);
+    onClose();
+  }, [onClose, setCiteModalData]);
+
   const chatRecords = useContextSelector(ChatRecordContext, (v) => v.chatRecords);
+
+  // Sandbox: Status Hook 负责网络同步，UI Hook 负责弹窗渲染
+  const { SandboxEntryIcon } = useSandboxStatus({
+    appId: appDetail._id,
+    chatId
+  });
+  const { SandboxEditorModal, onOpenSandboxModal } = useSandboxEditor({
+    appId: appDetail._id,
+    chatId
+  });
 
   return (
     <Flex h={'full'}>
-      <Box
-        zIndex={300}
-        display={isOpen ? 'block' : 'none'}
-        position={'fixed'}
-        top={0}
-        left={0}
-        bottom={0}
-        right={0}
-        onClick={() => {
-          setCiteModalData(undefined);
-          onClose();
-        }}
-      />
-      <MyBox
-        zIndex={300}
-        display={'flex'}
-        flexDirection={'column'}
-        position={'absolute'}
-        top={5}
-        right={0}
-        h={isOpen ? '95%' : '0'}
-        w={isOpen ? (datasetCiteData ? ['100%', '960px'] : ['100%', '460px']) : '0'}
-        bg={'white'}
-        boxShadow={'3px 0 20px rgba(0,0,0,0.2)'}
-        borderRadius={'md'}
-        overflow={'hidden'}
-        transition={'.2s ease'}
-      >
-        {isPlugin ? (
-          <Flex
-            alignItems={'flex-start'}
-            justifyContent={'space-between'}
-            px={3}
-            pt={3}
-            bg={'myGray.25'}
-            borderBottom={'base'}
-          >
-            <LightRowTabs<PluginRunBoxTabEnum>
-              list={[
-                { label: t('common:Input'), value: PluginRunBoxTabEnum.input },
-                ...(chatRecords.length > 0
-                  ? [
-                      { label: t('common:Output'), value: PluginRunBoxTabEnum.output },
-                      { label: t('common:all_result'), value: PluginRunBoxTabEnum.detail }
-                    ]
-                  : [])
-              ]}
-              value={pluginRunTab}
-              onChange={setPluginRunTab}
-              inlineStyles={{ px: 0.5, pb: 2 }}
-              gap={5}
-              py={0}
-              fontSize={'sm'}
-            />
-
-            <CloseIcon mt={1} onClick={onClose} />
-          </Flex>
-        ) : (
-          <Flex
-            py={2.5}
-            px={5}
-            whiteSpace={'nowrap'}
-            bg={'myGray.25'}
-            borderBottom={'1px solid #F4F4F7'}
-          >
-            <Flex fontSize={'16px'} fontWeight={'bold'} alignItems={'center'} mr={3}>
-              <MyIcon name={'common/paused'} w={'14px'} mr={2.5} />
-              <MyTooltip label={chatId ? t('common:chat_chatId', { chatId }) : ''}>
-                <Box
-                  cursor={'pointer'}
-                  onClick={() => {
-                    copyData(chatId);
-                  }}
-                >
-                  {t('common:core.chat.Run test')}
-                </Box>
-              </MyTooltip>
+      <AppDetailPanelModal
+        isOpen={isOpen}
+        onClose={handleClose}
+        width={datasetCiteData ? ['100%', '960px'] : ['100%', '460px']}
+        height={'100vh'}
+        header={
+          isPlugin ? (
+            <Flex w={'100%'} alignItems={'center'} justifyContent={'space-between'}>
+              <LightRowTabs<PluginRunBoxTabEnum>
+                list={[
+                  { label: t('common:Input'), value: PluginRunBoxTabEnum.input },
+                  ...(chatRecords.length > 0
+                    ? [
+                        { label: t('common:Output'), value: PluginRunBoxTabEnum.output },
+                        { label: t('common:all_result'), value: PluginRunBoxTabEnum.detail }
+                      ]
+                    : [])
+                ]}
+                value={pluginRunTab}
+                onChange={setPluginRunTab}
+                inlineStyles={{ px: 0.5, pb: 2 }}
+                gap={5}
+                py={0}
+                fontSize={'sm'}
+              />
+              <CloseButton flexShrink={0} size={'sm'} onClick={handleClose} />
             </Flex>
-            {!isVariableVisible && <VariablePopover chatType={ChatTypeEnum.test} />}
-            <Box flex={1} />
-            <MyTooltip label={t('common:core.chat.Restart')}>
-              <IconButton
-                className="chat"
-                size={'smSquare'}
-                icon={<MyIcon name={'common/clearLight'} w={'14px'} />}
-                variant={'whiteDanger'}
-                borderRadius={'md'}
-                aria-label={'delete'}
-                onClick={restartChat}
-              />
-            </MyTooltip>
-            <MyTooltip label={t('common:Close')}>
-              <IconButton
-                ml={4}
-                icon={<SmallCloseIcon fontSize={'22px'} />}
-                variant={'grayBase'}
-                size={'smSquare'}
-                aria-label={''}
-                onClick={onClose}
-                bg={'none'}
-              />
-            </MyTooltip>
-          </Flex>
-        )}
-
-        <Flex flex={'1 0 0'} alignItems={'end'} h={'100%'}>
-          <Box flex={'1 0 0'} h={'100%'} overflow={'auto'}>
+          ) : (
+            <RunPreviewHeader
+              title={t('common:core.chat.Run test')}
+              chatId={chatId}
+              chatIdLabel={chatId ? t('common:chat_chatId', { chatId }) : ''}
+              restartLabel={t('common:core.chat.Restart')}
+              closeLabel={t('common:Close')}
+              SandboxEntryIcon={SandboxEntryIcon}
+              onCopyChatId={() => copyData(chatId)}
+              onOpenSandboxModal={onOpenSandboxModal}
+              onRestart={restartChat}
+              onClose={handleClose}
+            />
+          )
+        }
+      >
+        <Flex flex={'1 0 0'} minH={0} h={0} alignItems={'stretch'}>
+          <Box
+            flex={'1 0 0'}
+            h={'100%'}
+            minH={0}
+            minW={0}
+            overflowY={isPlugin ? 'hidden' : 'auto'}
+            overflowX={'hidden'}
+          >
             <ChatContainer />
           </Box>
 
@@ -181,12 +147,15 @@ const ChatTest = ({ isOpen, nodes = [], edges = [], onClose, chatId }: Props) =>
               <ChatQuoteList
                 rawSearch={datasetCiteData.rawSearch}
                 metadata={datasetCiteData.metadata}
+                singleQuote={datasetCiteData.singleQuote}
                 onClose={() => setCiteModalData(undefined)}
               />
             </Box>
           )}
         </Flex>
-      </MyBox>
+      </AppDetailPanelModal>
+
+      <SandboxEditorModal />
     </Flex>
   );
 };
@@ -206,10 +175,12 @@ const Render = (Props: Props) => {
   return (
     <ChatItemContextProvider
       showRouteToDatasetDetail={true}
-      isShowReadRawSource={true}
-      isResponseDetail={true}
-      // isShowFullText={true}
-      showNodeStatus
+      canDownloadSource={true}
+      isShowCite={true}
+      isShowFullText={true}
+      showRunningStatus={true}
+      showSkillReferences={true}
+      showWholeResponse={true}
     >
       <ChatRecordContextProvider params={chatRecordProviderParams}>
         <ChatTest {...Props} chatId={chatId} />

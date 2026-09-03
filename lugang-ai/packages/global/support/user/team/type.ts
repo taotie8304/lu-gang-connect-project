@@ -1,0 +1,125 @@
+import type { TeamMetaType, UserModelSchema } from '../type';
+import { ObjectIdSchema } from '../../../common/type/mongo';
+import { TeamMemberRoleEnum, TeamMemberStatusEnum } from './constant';
+import type { GroupMemberRole } from '../../permission/memberGroup/constant';
+import { TeamPermission } from '../../permission/user/controller';
+import { z } from 'zod';
+import { TeamAccountCancellationStatusSchema } from '../account/cancellation/type';
+
+export const OpenaiAccountSchema = z.object({
+  key: z.string(),
+  baseUrl: z.string()
+});
+export type OpenaiAccountType = z.infer<typeof OpenaiAccountSchema>;
+
+export const ThidPartyAccountSchema = z.object({
+  openaiAccount: OpenaiAccountSchema.optional(),
+  externalWorkflowVariables: z.record(z.string(), z.string()).optional()
+});
+export type ThirdPartyAccountType = z.infer<typeof ThidPartyAccountSchema>;
+
+export type TeamSchema = {
+  _id: string;
+  name: string;
+  ownerId: string;
+  avatar: string;
+  createTime: Date;
+  balance: number;
+  limit: {
+    lastExportDatasetTime: Date;
+    lastWebsiteSyncTime: Date;
+  };
+  notificationAccount?: string;
+  meta?: TeamMetaType;
+  deleteTime?: Date;
+} & ThirdPartyAccountType;
+
+export type TeamMemberSchema = {
+  _id: string;
+  teamId: string;
+  userId: string;
+  createTime: Date;
+  updateTime?: Date;
+  name: string;
+  role: TeamMemberRoleEnum;
+  status: TeamMemberStatusEnum;
+  avatar: string;
+};
+
+export type TeamMemberWithTeamAndUserSchema = TeamMemberSchema & {
+  team: TeamSchema;
+  user: UserModelSchema;
+};
+
+export const TeamTmbItemSchema = ThidPartyAccountSchema.extend({
+  userId: ObjectIdSchema,
+  teamId: ObjectIdSchema,
+  teamAvatar: z.string().nullish(),
+  teamName: z.string(),
+  memberName: z.string(),
+  avatar: z.string().nullish(),
+  balance: z.number().optional(),
+  tmbId: ObjectIdSchema,
+  role: z.enum(TeamMemberRoleEnum).nullish(),
+  status: z.enum(TeamMemberStatusEnum),
+  notificationAccount: z.string().nullish(),
+  permission: z.instanceof(TeamPermission),
+  isWecomTeam: z.boolean().optional(),
+  accountCancellation: z
+    .object({
+      status: TeamAccountCancellationStatusSchema,
+      scheduledCancelAt: z.union([z.date(), z.iso.datetime({ offset: true })]).optional()
+    })
+    .optional()
+});
+export type TeamTmbItemType = z.infer<typeof TeamTmbItemSchema>;
+
+export type TeamMemberItemType<
+  Options extends {
+    withPermission?: boolean;
+    withOrgs?: boolean;
+    withGroupRole?: boolean;
+  } = { withPermission: true; withOrgs: true; withGroupRole: false }
+> = {
+  userId: string;
+  tmbId: string;
+  teamId: string;
+  memberName: string;
+  avatar: string;
+  role: `${TeamMemberRoleEnum}`;
+  status: `${TeamMemberStatusEnum}`;
+  contact?: string | null;
+  createTime: Date;
+  updateTime?: Date;
+} & (Options extends { withPermission: true }
+  ? {
+      permission: TeamPermission;
+    }
+  : unknown) &
+  (Options extends { withOrgs: true }
+    ? {
+        orgs?: string[]; // full path name, pattern: /teamName/orgname1/orgname2
+      }
+    : unknown) &
+  (Options extends { withGroupRole: true }
+    ? {
+        groupRole?: `${GroupMemberRole}`;
+      }
+    : unknown);
+
+export type TeamInvoiceHeaderType = {
+  teamName: string;
+  unifiedCreditCode: string;
+  companyAddress?: string;
+  companyPhone?: string;
+  bankName?: string;
+  bankAccount?: string;
+  needSpecialInvoice: boolean;
+  contactPhone: string;
+  emailAddress: string;
+};
+
+export type TeamInvoiceHeaderInfoSchemaType = TeamInvoiceHeaderType & {
+  _id: string;
+  teamId: string;
+};

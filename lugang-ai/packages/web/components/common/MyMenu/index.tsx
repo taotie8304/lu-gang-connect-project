@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Menu,
   MenuList,
@@ -7,6 +7,7 @@ import {
   useOutsideClick,
   MenuButton,
   type MenuItemProps,
+  type MenuListProps,
   type PlacementWithLogical,
   type AvatarProps,
   type BoxProps,
@@ -16,6 +17,7 @@ import MyDivider from '../MyDivider';
 import type { IconNameType } from '../Icon/type';
 import { useSystem } from '../../../hooks/useSystem';
 import Avatar from '../Avatar';
+import MyTooltip from '../MyTooltip';
 
 export type MenuItemType = 'primary' | 'danger' | 'gray' | 'grayBg';
 export type MenuSizeType = 'sm' | 'md' | 'xs' | 'mini';
@@ -29,13 +31,19 @@ export type MenuItemData = {
     label: string | React.ReactNode;
     description?: string;
     onClick?: () => any;
+    closeOnClick?: boolean;
     menuItemStyles?: MenuItemProps;
+    iconStyles?: AvatarProps;
+    disabled?: boolean;
+    disabledTip?: string;
   }>;
 };
 export type Props = {
   width?: number | string;
   offset?: [number, number];
   Button: React.ReactNode;
+  buttonBoxProps?: BoxProps;
+  menuListProps?: MenuListProps;
   trigger?: 'hover' | 'click';
   size?: MenuSizeType;
 
@@ -195,6 +203,8 @@ const MyMenu = ({
   size = 'sm',
   offset,
   Button,
+  buttonBoxProps,
+  menuListProps,
   menuList,
   placement = 'bottom-start'
 }: Props) => {
@@ -205,9 +215,16 @@ const MyMenu = ({
 
   const formatTrigger = !isPc ? 'click' : trigger;
 
+  const isIgnoreOutsideClickTarget = (event: Event) => {
+    return event.composedPath().some((target) => {
+      return target instanceof HTMLElement && target.dataset.myMenuIgnoreOutsideClick !== undefined;
+    });
+  };
+
   useOutsideClick({
     ref: ref,
-    handler: () => {
+    handler: (event) => {
+      if (isIgnoreOutsideClickTarget(event)) return;
       setIsOpen(false);
     }
   });
@@ -241,7 +258,7 @@ const MyMenu = ({
           if (formatTrigger === 'hover') {
             closeTimer.current = setTimeout(() => {
               setIsOpen(false);
-            }, 100);
+            }, 250);
           }
         }}
       >
@@ -269,6 +286,7 @@ const MyMenu = ({
             w="fit-content"
             h="fit-content"
             borderRadius="sm"
+            {...buttonBoxProps}
           >
             {Button}
           </Box>
@@ -280,65 +298,85 @@ const MyMenu = ({
           p={'6px'}
           border={'1px solid #fff'}
           boxShadow={'3'}
+          {...menuListProps}
         >
           {menuList.map((item, i) => {
             return (
               <Box key={i}>
                 {item.label && <Box fontSize={'sm'}>{item.label}</Box>}
                 {i !== 0 && <MyDivider h={'1.5px'} {...sizeMapStyle[size].dividerStyle} />}
-                {item.children.map((child, index) => (
-                  <MenuItem
-                    key={index}
-                    borderRadius={'sm'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (child.onClick) {
-                        setIsOpen(false);
-                        child.onClick();
-                      }
-                    }}
-                    alignItems={'center'}
-                    fontSize={'sm'}
-                    color={child.isActive ? 'primary.700' : 'myGray.600'}
-                    whiteSpace={'pre-wrap'}
-                    {...typeMapStyle[child.type || 'primary'].styles}
-                    {...sizeMapStyle[size].menuItemStyle}
-                    {...child.menuItemStyles}
-                  >
-                    {!!child.icon && (
-                      <Avatar
-                        src={child.icon as any}
-                        mr={2}
-                        {...sizeMapStyle[size].iconStyle}
-                        color={
-                          child.isActive
-                            ? 'inherit'
-                            : typeMapStyle[child.type || 'primary'].iconColor
+                {item.children.map((child, index) => {
+                  const menuItem = (
+                    <MenuItem
+                      key={index}
+                      w={'100%'}
+                      borderRadius={'sm'}
+                      isDisabled={child.disabled}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (child.disabled) {
+                          return;
                         }
-                        sx={{
-                          '[role="menuitem"]:hover &': {
-                            color: 'inherit'
+                        if (child.onClick) {
+                          if (child.closeOnClick !== false) {
+                            setIsOpen(false);
                           }
-                        }}
-                      />
-                    )}
-                    <Box w={'100%'}>
-                      <Box
-                        w={'100%'}
-                        color={child.description ? 'myGray.900' : 'inherit'}
-                        pr={child.icon ? 4 : 0}
-                        {...sizeMapStyle[size].labelStyle}
-                      >
-                        {child.label}
-                      </Box>
-                      {child.description && (
-                        <Box color={'myGray.500'} fontSize={'mini'} w={'100%'}>
-                          {child.description}
-                        </Box>
+                          child.onClick();
+                        }
+                      }}
+                      alignItems={'center'}
+                      fontSize={'sm'}
+                      color={child.isActive ? 'primary.700' : 'myGray.600'}
+                      whiteSpace={'pre-wrap'}
+                      {...typeMapStyle[child.type || 'primary'].styles}
+                      {...sizeMapStyle[size].menuItemStyle}
+                      {...child.menuItemStyles}
+                    >
+                      {!!child.icon && (
+                        <Avatar
+                          src={child.icon as any}
+                          mr={2}
+                          {...sizeMapStyle[size].iconStyle}
+                          {...child.iconStyles}
+                          color={
+                            child.isActive
+                              ? 'inherit'
+                              : typeMapStyle[child.type || 'primary'].iconColor
+                          }
+                          sx={{
+                            '[role="menuitem"]:hover &': {
+                              color: 'inherit'
+                            }
+                          }}
+                        />
                       )}
-                    </Box>
-                  </MenuItem>
-                ))}
+                      <Box w={'100%'}>
+                        <Box
+                          w={'100%'}
+                          color={child.description ? 'myGray.900' : 'inherit'}
+                          pr={child.icon ? 4 : 0}
+                          {...sizeMapStyle[size].labelStyle}
+                        >
+                          {child.label}
+                        </Box>
+                        {child.description && !child.disabled && (
+                          <Box color={'myGray.500'} fontSize={'mini'} w={'100%'}>
+                            {child.description}
+                          </Box>
+                        )}
+                      </Box>
+                    </MenuItem>
+                  );
+
+                  if (child.disabled && child.disabledTip) {
+                    return (
+                      <MyTooltip shouldWrapChildren={false} key={index} label={child.disabledTip}>
+                        <Box>{menuItem}</Box>
+                      </MyTooltip>
+                    );
+                  }
+                  return menuItem;
+                })}
               </Box>
             );
           })}

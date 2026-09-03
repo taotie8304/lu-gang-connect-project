@@ -1,8 +1,7 @@
 'use client';
-import { Box, Card, Flex } from '@chakra-ui/react';
+import { Box, Flex } from '@chakra-ui/react';
 import React, { useCallback } from 'react';
-import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { type UserType } from '@fastgpt/global/support/user/type';
 import { useToast } from '@fastgpt/web/hooks/useToast';
@@ -11,15 +10,18 @@ import { type UserUpdateParams } from '@/types/user';
 import TimezoneSelect from '@fastgpt/web/components/common/MySelect/TimezoneSelect';
 import I18nLngSelector from '@/components/Select/I18nLngSelector';
 import AccountContainer from '@/pageComponents/account/AccountContainer';
-import { serviceSideProps } from '@/web/common/i18n/utils';
+import { accountPageRootStyles, accountTitleTextStyles } from '@/pageComponents/account/styles';
 
 const Individuation = () => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['account_setting', 'account']);
   const { userInfo, updateUserInfo } = useUserStore();
   const { toast } = useToast();
 
   const { reset } = useForm<UserUpdateParams>({
-    defaultValues: userInfo!
+    defaultValues: {
+      language: userInfo?.language,
+      timezone: userInfo?.timezone
+    }
   });
 
   const onclickSave = useCallback(
@@ -27,7 +29,10 @@ const Individuation = () => {
       await updateUserInfo({
         timezone: data.timezone
       });
-      reset(data);
+      reset({
+        language: data.language,
+        timezone: data.timezone
+      });
       toast({
         title: t('account_setting:update_data_success'),
         status: 'success'
@@ -38,41 +43,43 @@ const Individuation = () => {
 
   return (
     <AccountContainer>
-      <Box py={[3, '28px']} px={['5vw', '64px']}>
-        <Flex alignItems={'center'} fontSize={'lg'} h={'30px'}>
-          <MyIcon mr={2} name={'common/settingLight'} w={'20px'} />
-          {t('common:Setting')}
+      <Flex {...accountPageRootStyles} flexDirection={'column'}>
+        <Flex
+          display={['none', 'flex']}
+          h={'64px'}
+          flexShrink={0}
+          px={[4, 6]}
+          alignItems={'center'}
+          borderBottom={'1px solid'}
+          borderColor={'myGray.200'}
+        >
+          <Box as={'h1'} {...accountTitleTextStyles}>
+            {t('account:language')}
+          </Box>
         </Flex>
-
-        <Card mt={6} px={[3, 10]} py={[3, 7]} fontSize={'sm'}>
-          <Flex alignItems={'center'} w={['85%', '350px']}>
+        <Box p={[4, 6]} fontSize={'sm'} overflowY={['visible', 'auto']}>
+          <Flex alignItems={'center'} w={['100%', '350px']}>
             <Box flex={'0 0 80px'}>{t('account_setting:language')}:&nbsp;</Box>
             <Box flex={'1 0 0'}>
               <I18nLngSelector />
             </Box>
           </Flex>
-          <Flex mt={6} alignItems={'center'} w={['85%', '350px']}>
+          <Flex mt={6} alignItems={'center'} w={['100%', '350px']}>
             <Box flex={'0 0 80px'}>{t('account_setting:timezone')}:&nbsp;</Box>
-            <TimezoneSelect
-              value={userInfo?.timezone}
-              onChange={(e) => {
-                if (!userInfo) return;
-                onclickSave({ ...userInfo, timezone: e });
-              }}
-            />
+            <Box flex={'1 0 0'}>
+              <TimezoneSelect
+                value={userInfo?.timezone}
+                onChange={(e) => {
+                  if (!userInfo) return;
+                  onclickSave({ ...userInfo, timezone: e });
+                }}
+              />
+            </Box>
           </Flex>
-        </Card>
-      </Box>
+        </Box>
+      </Flex>
     </AccountContainer>
   );
 };
-
-export async function getServerSideProps(content: any) {
-  return {
-    props: {
-      ...(await serviceSideProps(content, ['account', 'account_setting']))
-    }
-  };
-}
 
 export default Individuation;

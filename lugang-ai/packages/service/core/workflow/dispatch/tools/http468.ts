@@ -8,32 +8,57 @@ import {
   WorkflowIOValueTypeEnum
 } from '@fastgpt/global/core/workflow/constants';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
-import axios from 'axios';
-import { valueTypeFormat } from '@fastgpt/global/core/workflow/runtime/utils';
-import { type DispatchNodeResultType } from '@fastgpt/global/core/workflow/runtime/type';
-import type {
-  ModuleDispatchProps,
-  RuntimeNodeItemType
-} from '@fastgpt/global/core/workflow/runtime/type';
+
+import type { RuntimeNodeItemType } from '@fastgpt/global/core/workflow/runtime/type';
+import type { DispatchNodeResultType, ModuleDispatchProps } from '../../types/runtime';
 import {
   formatVariableValByType,
   getReferenceVariableValue,
-  replaceEditorVariable
+  valueTypeFormat
 } from '@fastgpt/global/core/workflow/runtime/utils';
 import json5 from 'json5';
 import { JSONPath } from 'jsonpath-plus';
 import { getSecretValue } from '../../../../common/secret/utils';
 import type { StoreSecretValueType } from '@fastgpt/global/common/secret/type';
-import { addLog } from '../../../../common/system/log';
-import { SERVICE_LOCAL_HOST } from '../../../../common/system/tools';
-import { formatHttpError } from '../utils';
-import { isInternalAddress } from '../../../../common/system/utils';
+import { getLogger, LogCategories } from '../../../../common/logger';
+import { formatHttpError, getNodeErrResponse } from '../utils';
+import { isInternalAddress, PRIVATE_URL_TEXT } from '../../../../common/system/utils';
 import { serviceRequestMaxContentLength } from '../../../../common/system/constants';
-import {
-  simplifiedToTraditional,
-  containsChinese,
-  convertParamsS2T
-} from '../../../../common/string/cjkNormalizer';
+import { axios, type SafeAxiosRequestConfig } from '../../../../common/api/axios';
+import { replaceEditorVariable } from '../utils/replaceEditorVariable';
+import { checkStrOversize, logOversizeString } from '../../../../common/string/replaceVariable';
+import { getWorkflowAppId } from '../utils/source';
+
+const logger = getLogger(LogCategories.MODULE.WORKFLOW.TOOLS);
+
+/**
+ * 仅工作流 HTTP 节点允许按系统配置跳过 HTTPS 证书校验。
+ * 该配置不下沉到通用 axios,避免影响模型请求、HTTP 工具集等其它出站链路。
+ */
+export const getWorkflowHttpNodeHttpsAgentConfig = (
+  url: string
+): Pick<SafeAxiosRequestConfig, '__safeAxios'> => {
+  const ignoreHttpsCertificate =
+    global.systemEnv?.workflowHttpNode?.ignoreHttpsCertificate === true;
+
+  if (!ignoreHttpsCertificate) {
+    return {};
+  }
+
+  try {
+    if (new URL(url).protocol !== 'https:') {
+      return {};
+    }
+  } catch {
+    return {};
+  }
+
+  return {
+    __safeAxios: {
+      rejectUnauthorized: false
+    }
+  };
+};
 
 type PropsArrType = {
   key: string;
@@ -59,81 +84,97 @@ type HttpResponse = DispatchNodeResultType<
     [key: string]: any;
   },
   {
-    [NodeOutputKeyEnum.error]?: string;
+    [NodeOutputKeyEnum.errorText]: string; //未使用，仅作类型。
+    [NodeOutputKeyEnum.error]: string; // 适配字段
+    [NodeOutputKeyEnum.httpRawError]?: ReturnType<typeof formatHttpError>;
   }
 >;
 
 const UNDEFINED_SIGN = 'UNDEFINED_SIGN';
 
 export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<HttpResponse> => {
-  let {
-    runningAppInfo: { id: appId },
+  const {
+    runningAppInfo,
     chatId,
     responseChatItemId,
-    variables,
+    variableState,
     node,
-    runtimeNodes,
+    runtimeNodesMap,
     histories,
     params: {
-      system_httpMethod: httpMethod = 'POST',
       system_httpReqUrl: httpReqUrl,
       system_httpHeader: httpHeader = [],
       system_httpParams: httpParams = [],
       system_httpJsonBody: httpJsonBody = '',
       system_httpFormBody: httpFormBody = [],
-      system_httpContentType: httpContentType = ContentTypes.json,
-      system_httpTimeout: httpTimeout = 60,
-      system_header_secret: headerSecret,
-      [NodeInputKeyEnum.addInputParam]: dynamicInput,
       ...body
     }
   } = props;
+  const appId = getWorkflowAppId(runningAppInfo);
+  const httpMethod = props.params.system_httpMethod || 'POST';
+  const httpContentType = props.params.system_httpContentType || ContentTypes.json;
+  const httpTimeout = props.params.system_httpTimeout || 60;
+  const headerSecret = props.params.system_header_secret;
+  let requestUrl = httpReqUrl;
 
-  if (!httpReqUrl) {
+  if (!requestUrl) {
     return Promise.reject('Http url is empty');
   }
 
   const systemVariables = {
-    appId,
+    ...(appId ? { appId } : {}),
     chatId,
     responseChatItemId,
     histories: histories?.slice(-10) || []
   };
   const concatVariables = {
-    ...variables,
+    ...variableState.toRuntimeRecord(),
     ...body,
     ...systemVariables
   };
   const allVariables: Record<string, any> = {
-    [NodeInputKeyEnum.addInputParam]: concatVariables,
-    ...concatVariables
+    ...concatVariables,
+    [NodeInputKeyEnum.addInputParam]: concatVariables
   };
 
   // General data for variable substitution（Exclude: json body)
   const replaceStringVariables = (text: string) => {
     return replaceEditorVariable({
       text,
-      nodes: runtimeNodes,
+      nodesMap: runtimeNodesMap,
       variables: allVariables
     });
   };
 
-  httpReqUrl = replaceStringVariables(httpReqUrl);
+  const formatHttpProps = (items: PropsArrType[]) =>
+    items.reduce<PropsArrType[]>((acc, item) => {
+      const key = replaceStringVariables(item.key);
+      // only preserve valid key.
+      if (!key) return acc;
+
+      acc.push({
+        key,
+        type: item.type,
+        value: replaceStringVariables(item.value)
+      });
+      return acc;
+    }, []);
+
+  requestUrl = replaceStringVariables(requestUrl);
 
   const publicHeaders = await (async () => {
     try {
       const contentType = contentTypeMap[httpContentType];
-      if (contentType) {
-        httpHeader = [{ key: 'Content-Type', value: contentType, type: 'string' }, ...httpHeader];
-      }
+      const requestHeaders = contentType
+        ? [{ key: 'Content-Type', value: contentType, type: 'string' }, ...httpHeader]
+        : httpHeader;
 
-      return httpHeader.reduce((acc: Record<string, string>, item) => {
-        const key = replaceStringVariables(item.key);
-        const value = replaceStringVariables(item.value);
+      return formatHttpProps(requestHeaders).reduce((acc: Record<string, string>, item) => {
+        const { key, value } = item;
         acc[key] = valueTypeFormat(value, WorkflowIOValueTypeEnum.string);
         return acc;
       }, {});
-    } catch (error) {
+    } catch {
       return Promise.reject('Header 为非法 JSON 格式');
     }
   })();
@@ -141,9 +182,8 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
     storeSecret: headerSecret
   });
 
-  const params = httpParams.reduce((acc: Record<string, string>, item) => {
-    const key = replaceStringVariables(item.key);
-    const value = replaceStringVariables(item.value);
+  const params = formatHttpProps(httpParams).reduce((acc: Record<string, string>, item) => {
+    const { key, value } = item;
     acc[key] = valueTypeFormat(value, WorkflowIOValueTypeEnum.string);
     return acc;
   }, {});
@@ -153,67 +193,41 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
     try {
       if (httpContentType === ContentTypes.formData) {
         if (!Array.isArray(httpFormBody)) return {};
-        httpFormBody = httpFormBody.map((item) => ({
-          key: replaceStringVariables(item.key),
-          type: item.type,
-          value: replaceStringVariables(item.value)
-        }));
+        const formBody = formatHttpProps(httpFormBody);
         const formData = new FormData();
-        for (const { key, value } of httpFormBody) {
+        for (const { key, value } of formBody) {
           formData.append(key, value);
         }
         return formData;
       }
       if (httpContentType === ContentTypes.xWwwFormUrlencoded) {
         if (!Array.isArray(httpFormBody)) return {};
-        httpFormBody = httpFormBody.map((item) => ({
-          key: replaceStringVariables(item.key),
-          type: item.type,
-          value: replaceStringVariables(item.value)
-        }));
+        const formBody = formatHttpProps(httpFormBody);
         const urlSearchParams = new URLSearchParams();
-        for (const { key, value } of httpFormBody) {
+        for (const { key, value } of formBody) {
           urlSearchParams.append(key, value);
         }
         return urlSearchParams;
       }
       if (!httpJsonBody) return {};
       if (httpContentType === ContentTypes.json) {
-        httpJsonBody = replaceJsonBodyString(
+        const jsonBody = replaceJsonBodyString(
           { text: httpJsonBody },
-          { variables, allVariables, runtimeNodes }
+          {
+            allVariables,
+            runtimeNodesMap
+          }
         );
-        return json5.parse(httpJsonBody);
+        return json5.parse(jsonBody);
       }
 
       // Raw text, xml
-      httpJsonBody = replaceStringVariables(httpJsonBody);
-      return httpJsonBody.replaceAll(UNDEFINED_SIGN, 'null');
-    } catch (error) {
+      const rawBody = replaceStringVariables(httpJsonBody);
+      return rawBody.replaceAll(UNDEFINED_SIGN, 'null');
+    } catch {
       return Promise.reject(`Invalid JSON body: ${httpJsonBody}`);
     }
   })();
-
-  // 鲁港通 - 简繁转换：当工作流变量 __enableS2T__ 启用时，对请求参数执行简体→繁体转换
-  const enableS2T = variables?.__enableS2T__ === true || variables?.__enableS2T__ === 'true';
-
-  if (enableS2T) {
-    // 转换 URL 中的中文
-    if (containsChinese(httpReqUrl)) {
-      httpReqUrl = simplifiedToTraditional(httpReqUrl);
-    }
-    // 转换 query params 中的中文值
-    for (const key of Object.keys(params)) {
-      if (typeof params[key] === 'string' && containsChinese(params[key])) {
-        params[key] = simplifiedToTraditional(params[key]);
-      }
-    }
-    // 鲁港通 - 转换 requestBody 中的中文值（仅普通对象，排除 FormData/URLSearchParams）
-    // convertParamsS2T 返回包含所有 key 的新对象，用转换后的值覆盖原值
-    if (typeof requestBody === 'object' && requestBody !== null && !(requestBody instanceof FormData) && !(requestBody instanceof URLSearchParams)) {
-      Object.assign(requestBody, convertParamsS2T(requestBody));
-    }
-  }
 
   // Just show
   const formattedRequestBody: Record<string, any> = (() => {
@@ -235,7 +249,7 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
     const { formatResponse, rawResponse } = await (async () => {
       return fetchData({
         method: httpMethod,
-        url: httpReqUrl,
+        url: requestUrl,
         headers: { ...sensitiveHeaders, ...publicHeaders },
         body: requestBody,
         params,
@@ -249,6 +263,7 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
       .filter(
         (item) =>
           item.id !== NodeOutputKeyEnum.error &&
+          item.id !== NodeOutputKeyEnum.httpRawError &&
           item.id !== NodeOutputKeyEnum.httpRawResponse &&
           item.id !== NodeOutputKeyEnum.addOutputParam
       )
@@ -286,38 +301,31 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
         headers: Object.keys(publicHeaders).length > 0 ? publicHeaders : undefined,
         httpResult: rawResponse
       },
-      [DispatchNodeResponseKeyEnum.toolResponses]:
+      [DispatchNodeResponseKeyEnum.toolResponse]:
         Object.keys(results).length > 0 ? results : rawResponse
     };
   } catch (error) {
-    addLog.warn('Http request error', formatHttpError(error));
+    logger.warn('HTTP tool request failed', {
+      error,
+      httpReqUrl: requestUrl,
+      ignoreHttpsCertificate: global.systemEnv?.workflowHttpNode?.ignoreHttpsCertificate === true
+    });
 
-    // @adapt
-    if (node.catchError === undefined) {
-      return {
-        data: {
-          [NodeOutputKeyEnum.error]: getErrText(error)
-        },
-        [DispatchNodeResponseKeyEnum.nodeResponse]: {
-          params: Object.keys(params).length > 0 ? params : undefined,
-          body: Object.keys(formattedRequestBody).length > 0 ? formattedRequestBody : undefined,
-          headers: Object.keys(publicHeaders).length > 0 ? publicHeaders : undefined,
-          httpResult: { error: formatHttpError(error) }
-        }
-      };
-    }
-
-    return {
-      error: {
-        [NodeOutputKeyEnum.error]: getErrText(error)
+    const errText = getErrText(error);
+    const errObj = formatHttpError(error);
+    return getNodeErrResponse({
+      error: errText,
+      customErr: {
+        [NodeOutputKeyEnum.error]: errText,
+        [NodeOutputKeyEnum.httpRawError]: errObj
       },
-      [DispatchNodeResponseKeyEnum.nodeResponse]: {
+      responseData: {
         params: Object.keys(params).length > 0 ? params : undefined,
         body: Object.keys(formattedRequestBody).length > 0 ? formattedRequestBody : undefined,
         headers: Object.keys(publicHeaders).length > 0 ? publicHeaders : undefined,
-        httpResult: { error: formatHttpError(error) }
+        httpErrorResult: errObj
       }
-    };
+    });
   }
 };
 
@@ -328,32 +336,50 @@ export const dispatchHttp468Request = async (props: HttpRequestProps): Promise<H
 export const replaceJsonBodyString = (
   { text, depth = 0 }: { text: string; depth?: number },
   props: {
-    variables: Record<string, any>;
     allVariables: Record<string, any>;
-    runtimeNodes: RuntimeNodeItemType[];
+    runtimeNodesMap: Map<string, RuntimeNodeItemType>;
   }
 ) => {
-  const { variables, allVariables, runtimeNodes } = props;
+  const { allVariables, runtimeNodesMap } = props;
 
   const MAX_REPLACEMENT_DEPTH = 10;
-  const processedVariables = new Set<string>();
 
   // Prevent infinite recursion
   if (depth > MAX_REPLACEMENT_DEPTH) {
     return text;
   }
+  if (checkStrOversize(text)) {
+    logOversizeString({
+      source: 'replaceJsonBodyString',
+      reason: depth === 0 ? 'input' : 'recursive_input',
+      length: text.length
+    });
+    return text;
+  }
 
-  // Check if the variable is in quotes
-  const isVariableInQuotes = (text: string, variable: string) => {
-    const index = text.indexOf(variable);
-    if (index === -1) return false;
+  /**
+   * 为 replace callback 的递增 offset 做惰性引号状态扫描。
+   * 旧实现每个变量都 substring + match 重新计算一次，变量多且 body 大时会放大 CPU。
+   */
+  const createQuoteChecker = (source: string) => {
+    let cursor = 0;
+    let inQuotes = false;
+    let escaped = false;
 
-    // 计算变量前面的引号数量
-    const textBeforeVar = text.substring(0, index);
-    const matches = textBeforeVar.match(/"/g) || [];
-
-    // 如果引号数量为奇数，则变量在引号内
-    return matches.length % 2 === 1;
+    return (offset: number) => {
+      while (cursor < offset) {
+        const char = source[cursor];
+        if (escaped) {
+          escaped = false;
+        } else if (char === '\\') {
+          escaped = true;
+        } else if (char === '"') {
+          inQuotes = !inQuotes;
+        }
+        cursor++;
+      }
+      return inQuotes;
+    };
   };
 
   const valToStr = (val: any, isQuoted = false) => {
@@ -379,7 +405,7 @@ export const replaceJsonBodyString = (
       try {
         JSON.parse(val);
         return val;
-      } catch (error) {
+      } catch {
         const str = JSON.stringify(val);
         return str.startsWith('"') && str.endsWith('"') ? str.slice(1, -1) : str;
       }
@@ -401,104 +427,107 @@ export const replaceJsonBodyString = (
   };
 
   let result = text;
-  let hasReplacements = false;
+  let currentDepth = depth;
 
-  // 1. Replace {{$nodeId.id$}} variables
   const regex1 = /\{\{\$([^.]+)\.([^$]+)\$\}\}/g;
-  const matches1 = [...result.matchAll(regex1)];
-
-  // Build replacement map first to avoid modifying string during iteration
-  const replacements1: Array<{ pattern: string; replacement: string }> = [];
-
-  for (const match of matches1) {
-    const nodeId = match[1];
-    const id = match[2];
-    const fullMatch = match[0];
-    const variableKey = `${nodeId}.${id}`;
-
-    // Skip if already processed to avoid immediate circular reference
-    if (processedVariables.has(variableKey)) {
-      continue;
-    }
-
-    // 检查变量是否在引号内
-    const isInQuotes = isVariableInQuotes(result, fullMatch);
-
-    const variableVal = (() => {
-      if (nodeId === VARIABLE_NODE_ID) {
-        return variables[id];
-      }
-      // Find upstream node input/output
-      const node = runtimeNodes.find((node) => node.nodeId === nodeId);
-      if (!node) return;
-
-      const output = node.outputs.find((output) => output.id === id);
-      if (output) return formatVariableValByType(output.value, output.valueType);
-
-      const input = node.inputs.find((input) => input.key === id);
-      if (input)
-        return getReferenceVariableValue({ value: input.value, nodes: runtimeNodes, variables });
-    })();
-
-    const formatVal = valToStr(variableVal, isInQuotes);
-    // Check for direct circular reference
-    if (hasCircularReference(String(variableVal), variableKey)) {
-      continue;
-    }
-
-    const escapedPattern = `\\{\\{\\$(${nodeId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})\\$\\}\\}`;
-
-    replacements1.push({
-      pattern: escapedPattern,
-      replacement: formatVal
-    });
-
-    processedVariables.add(variableKey);
-    hasReplacements = true;
-  }
-  replacements1.forEach(({ pattern, replacement }) => {
-    result = result.replace(new RegExp(pattern, 'g'), replacement);
-  });
-
-  // 2. Replace {{key}} variables
   const regex2 = /{{([^}]+)}}/g;
-  const matches2 = result.match(regex2) || [];
-  const uniqueKeys2 = [...new Set(matches2.map((match) => match.slice(2, -2)))];
-  // Build replacement map for simple variables
-  const replacements2: Array<{ pattern: string; replacement: string }> = [];
-  for (const key of uniqueKeys2) {
-    if (processedVariables.has(key)) {
-      continue;
-    }
 
-    const fullMatch = `{{${key}}}`;
-    const variableVal = allVariables[key];
+  while (currentDepth <= MAX_REPLACEMENT_DEPTH && result.includes('{{')) {
+    let hasReplacements = false;
 
-    // Check for direct circular reference
-    if (hasCircularReference(variableVal, key)) {
-      continue;
-    }
+    // 1. Replace {{$nodeId.id$}} variables
+    const nodeReplacementCache = new Map<string, string | undefined>();
+    const isNodeVariableInQuotes = createQuoteChecker(result);
 
-    // 检查变量是否在引号内
-    const isInQuotes = isVariableInQuotes(result, fullMatch);
-    const formatVal = valToStr(variableVal, isInQuotes);
-    const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    result = result.replace(
+      regex1,
+      (fullMatch: string, nodeId: string, id: string, offset: number) => {
+        const variableKey = `${nodeId}.${id}`;
 
-    replacements2.push({
-      pattern: `{{(${escapedKey})}}`,
-      replacement: formatVal
+        if (nodeReplacementCache.has(variableKey)) {
+          const cachedReplacement = nodeReplacementCache.get(variableKey);
+          return cachedReplacement === undefined ? fullMatch : cachedReplacement;
+        }
+
+        // 检查变量是否在引号内
+        const isInQuotes = isNodeVariableInQuotes(offset);
+
+        const variableVal = (() => {
+          if (nodeId === VARIABLE_NODE_ID) {
+            return allVariables[id];
+          }
+          // Find upstream node input/output
+          const node = runtimeNodesMap.get(nodeId);
+          if (!node) return;
+
+          const output = node.outputs.find((output) => output.id === id);
+          if (output) return formatVariableValByType(output.value, output.valueType);
+
+          const input = node.inputs.find((input) => input.key === id);
+          if (input) {
+            return getReferenceVariableValue({
+              value: input.value,
+              nodesMap: runtimeNodesMap,
+              variables: allVariables
+            });
+          }
+        })();
+
+        // Check for direct circular reference
+        if (hasCircularReference(String(variableVal), variableKey)) {
+          nodeReplacementCache.set(variableKey, undefined);
+          return fullMatch;
+        }
+
+        const formatVal = valToStr(variableVal, isInQuotes);
+        nodeReplacementCache.set(variableKey, formatVal);
+        if (formatVal !== fullMatch) {
+          hasReplacements = true;
+        }
+        return formatVal;
+      }
+    );
+
+    // 2. Replace {{key}} variables
+    const variableReplacementCache = new Map<string, string | undefined>();
+    const isVariableInQuotes = createQuoteChecker(result);
+
+    result = result.replace(regex2, (fullMatch: string, key: string, offset: number) => {
+      if (variableReplacementCache.has(key)) {
+        const cachedReplacement = variableReplacementCache.get(key);
+        return cachedReplacement === undefined ? fullMatch : cachedReplacement;
+      }
+
+      const variableVal = allVariables[key];
+
+      // Check for direct circular reference
+      if (hasCircularReference(variableVal, key)) {
+        variableReplacementCache.set(key, undefined);
+        return fullMatch;
+      }
+
+      // 检查变量是否在引号内
+      const isInQuotes = isVariableInQuotes(offset);
+      const formatVal = valToStr(variableVal, isInQuotes);
+
+      variableReplacementCache.set(key, formatVal);
+      if (formatVal !== fullMatch) {
+        hasReplacements = true;
+      }
+      return formatVal;
     });
 
-    processedVariables.add(key);
-    hasReplacements = true;
-  }
-  replacements2.forEach(({ pattern, replacement }) => {
-    result = result.replace(new RegExp(pattern, 'g'), replacement);
-  });
+    if (checkStrOversize(result)) {
+      logOversizeString({
+        source: 'replaceJsonBodyString',
+        reason: 'replacement_result',
+        length: result.length
+      });
+      return result;
+    }
 
-  // If we made replacements and there might be nested variables, recursively process
-  if (hasReplacements && /\{\{[^}]*\}\}/.test(result)) {
-    result = replaceJsonBodyString({ text: result, depth: depth + 1 }, props);
+    if (!hasReplacements) break;
+    currentDepth++;
   }
 
   return result.replace(/(".*?")\s*:\s*undefined\b/g, '$1:null');
@@ -519,21 +548,22 @@ async function fetchData({
   params: Record<string, any>;
   timeout: number;
 }) {
-  if (isInternalAddress(url)) {
-    return Promise.reject('Url is invalid');
+  if (await isInternalAddress(url)) {
+    return Promise.reject(PRIVATE_URL_TEXT);
   }
 
+  // 都认为是用户的请求，强制 SSRF 检查
   const { data: response } = await axios({
     method,
     maxContentLength: serviceRequestMaxContentLength,
-    baseURL: `http://${SERVICE_LOCAL_HOST}`,
     url,
     headers: {
       ...headers
     },
     timeout: timeout * 1000,
     params: params,
-    data: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined
+    data: ['POST', 'PUT', 'PATCH'].includes(method) ? body : undefined,
+    ...getWorkflowHttpNodeHttpsAgentConfig(url)
   });
 
   return {

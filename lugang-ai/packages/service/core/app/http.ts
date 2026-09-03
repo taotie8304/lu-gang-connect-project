@@ -1,24 +1,30 @@
 import { type StoreSecretValueType } from '@fastgpt/global/common/secret/type';
 import { getSecretValue } from '../../common/secret/utils';
-import axios from 'axios';
+import { axios } from '../../common/api/axios';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import type { RequireOnlyOne } from '@fastgpt/global/common/type/utils';
-import type { HttpToolConfigType } from '@fastgpt/global/core/app/type';
+import type { HttpToolConfigType } from '@fastgpt/global/core/app/tool/httpTool/type';
 import { contentTypeMap, ContentTypes } from '@fastgpt/global/core/workflow/constants';
-import { replaceEditorVariable } from '@fastgpt/global/core/workflow/runtime/utils';
-import { convertParamsS2T } from '../../common/string/cjkNormalizer';
+import { isInternalAddress, PRIVATE_URL_TEXT } from '../../common/system/utils';
+import type { AppSchemaType } from '@fastgpt/global/core/app/type';
+import { AppToolSourceEnum } from '@fastgpt/global/core/app/tool/constants';
+import { replaceEditorVariable } from '../workflow/dispatch/utils/replaceEditorVariable';
+import FormData from 'form-data';
+import { getLogger, LogCategories } from '../../common/logger';
+import { decodeHttpToolSetNodesFromStorage } from './jsonSchemaStorage';
+
+const logger = getLogger(LogCategories.MODULE.APP.HTTP_TOOLS);
 
 export type RunHTTPToolParams = {
   baseUrl: string;
   toolPath: string;
   method: string;
   params: Record<string, any>;
-  headerSecret?: StoreSecretValueType;
+  headerSecret?: StoreSecretValueType | null;
   customHeaders?: Record<string, string>;
   staticParams?: HttpToolConfigType['staticParams'];
   staticHeaders?: HttpToolConfigType['staticHeaders'];
   staticBody?: HttpToolConfigType['staticBody'];
-  enableS2T?: boolean; // 鲁港通 - 是否启用简繁转换
 };
 
 export type RunHTTPToolResult = RequireOnlyOne<{
@@ -33,18 +39,12 @@ const buildHttpRequest = ({
   customHeaders,
   staticParams,
   staticHeaders,
-  staticBody,
-  enableS2T
+  staticBody
 }: Omit<RunHTTPToolParams, 'baseUrl' | 'toolPath'>) => {
-  // 鲁港通 - 简繁转换：当 enableS2T 启用时，对 params 执行简体→繁体转换
-  if (enableS2T) {
-    params = convertParamsS2T(params);
-  }
-
   const replaceVariables = (text: string) => {
     return replaceEditorVariable({
       text,
-      nodes: [],
+      nodesMap: new Map(),
       variables: params
     });
   };
@@ -63,7 +63,7 @@ const buildHttpRequest = ({
     }
 
     if (staticBody.type === ContentTypes.formData) {
-      const formData = new (require('form-data'))();
+      const formData = new FormData();
       staticBody.formData?.forEach(({ key, value }) => {
         const replacedKey = replaceVariables(key);
         const replacedValue = replaceVariables(value);
@@ -141,10 +141,26 @@ export const runHTTPTool = async ({
   customHeaders,
   staticParams,
   staticHeaders,
-  staticBody,
-  enableS2T
+  staticBody
 }: RunHTTPToolParams): Promise<RunHTTPToolResult> => {
   try {
+    // Construct full base URL
+    const fullBaseUrl = !baseUrl
+      ? ''
+      : baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
+        ? baseUrl
+        : `https://${baseUrl}`;
+
+    // SSRF Protection: Validate URL before making request
+    // When baseUrl is empty, toolPath must be a complete URL
+    const fullUrl = fullBaseUrl
+      ? new URL(toolPath, fullBaseUrl).toString()
+      : new URL(toolPath).toString();
+
+    if (await isInternalAddress(fullUrl)) {
+      return { errorMsg: PRIVATE_URL_TEXT };
+    }
+
     const { headers, body, queryParams } = buildHttpRequest({
       method,
       params,
@@ -152,28 +168,33 @@ export const runHTTPTool = async ({
       customHeaders,
       staticParams,
       staticHeaders,
-      staticBody,
-      enableS2T
+      staticBody
     });
 
     const { data } = await axios({
       method: method.toUpperCase(),
-      baseURL:
-        baseUrl.startsWith('http://') || baseUrl.startsWith('https://')
-          ? baseUrl
-          : `https://${baseUrl}`,
+      baseURL: fullBaseUrl,
       url: toolPath,
       headers,
       data: body,
       params: queryParams,
-      timeout: 300000,
-      httpsAgent: new (require('https').Agent)({
-        rejectUnauthorized: false
-      })
+      timeout: 300000
     });
 
     return { data };
-  } catch (error: any) {
+  } catch (error) {
+    logger.warn('HTTP tool request failed', { error });
     return { errorMsg: getErrText(error) };
   }
+};
+
+export const getHTTPToolList = async (app: AppSchemaType) => {
+  const modules = decodeHttpToolSetNodesFromStorage(app.modules);
+  return (
+    modules[0].toolConfig?.httpToolSet?.toolList.map((item) => ({
+      ...item,
+      id: `${AppToolSourceEnum.http}-${String(app._id)}/${item.name}`,
+      avatar: app.avatar
+    })) ?? []
+  );
 };

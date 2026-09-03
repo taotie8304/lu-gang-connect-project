@@ -1,0 +1,159 @@
+import { Box, Flex, IconButton } from '@chakra-ui/react';
+import { useTranslation } from 'next-i18next';
+import React, { useEffect, useMemo } from 'react';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+
+import { useSafeState } from 'ahooks';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
+import { useContextSelector } from 'use-context-selector';
+import { AppContext } from '../../context';
+import { useChatTest } from '../../useChatTest';
+import ChatItemContextProvider, { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
+import ChatRecordContextProvider from '@/web/core/chat/context/chatRecordContext';
+import { useChatStore } from '@/web/core/chat/context/useChatStore';
+import MyBox from '@fastgpt/web/components/common/MyBox';
+import { cardStyles } from '../../constants';
+import ChatQuoteList from '@/pageComponents/chat/ChatQuoteList';
+import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
+import type { Form2WorkflowFnType } from '../FormComponent/type';
+import { useSandboxEditor, useSandboxStatus } from '@/pageComponents/chat/SandboxEditor/hook';
+import ChatVariableButton from '@/pageComponents/chat/ChatWindow/ChatVariableButton';
+
+type Props = {
+  appForm: AppFormEditFormType;
+  setRenderEdit: React.Dispatch<React.SetStateAction<boolean>>;
+  form2WorkflowFn: Form2WorkflowFnType;
+};
+const ChatTest = ({ appForm, setRenderEdit, form2WorkflowFn }: Props) => {
+  const { t } = useTranslation();
+  const { chatId } = useChatStore();
+
+  const { appDetail } = useContextSelector(AppContext, (v) => v);
+  const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
+  const setCiteModalData = useContextSelector(ChatItemContext, (v) => v.setCiteModalData);
+
+  const [workflowData, setWorkflowData] = useSafeState({
+    nodes: appDetail.modules || [],
+    edges: appDetail.edges || []
+  });
+
+  // Sandbox: Status Hook 负责网络同步，UI Hook 负责弹窗渲染
+  const { SandboxEntryIcon, setSandboxExists } = useSandboxStatus({
+    appId: appDetail._id,
+    chatId
+  });
+  const { SandboxEditorModal, onOpenSandboxModal } = useSandboxEditor({
+    appId: appDetail._id,
+    chatId
+  });
+
+  useEffect(() => {
+    const { nodes, edges } = form2WorkflowFn(appForm, t);
+    setWorkflowData({ nodes, edges });
+  }, [appForm, setWorkflowData, t]);
+
+  useEffect(() => {
+    setRenderEdit(!datasetCiteData);
+  }, [datasetCiteData, setRenderEdit]);
+
+  const { ChatContainer, restartChat } = useChatTest({
+    ...workflowData,
+    chatConfig: appForm.chatConfig,
+    isReady: true
+  });
+
+  return (
+    <Flex h={'full'} gap={2}>
+      <MyBox
+        flex={'1 0 0'}
+        w={0}
+        display={'flex'}
+        position={'relative'}
+        flexDirection={'column'}
+        h={'full'}
+        pt={4}
+        pb={0}
+        {...cardStyles}
+        boxShadow={'3'}
+      >
+        <Flex px={[2, 5]} pb={2} alignItems={'center'}>
+          <Box fontSize={['md', 'lg']} fontWeight={'bold'} color={'myGray.900'} mr={3}>
+            {t('app:chat_debug')}
+          </Box>
+          <Box flex={1} />
+
+          <Flex alignItems={'center'} gap={2}>
+            <SandboxEntryIcon size={'smSquare'} onOpen={onOpenSandboxModal} />
+            <ChatVariableButton chatType={ChatTypeEnum.test} />
+            <MyTooltip label={t('common:core.chat.Restart')}>
+              <IconButton
+                className="chat"
+                size={'smSquare'}
+                icon={<MyIcon name={'common/clearLight'} w={'14px'} />}
+                variant={'whiteDanger'}
+                borderRadius={'md'}
+                aria-label={'delete'}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  restartChat();
+                  setSandboxExists(false);
+                }}
+              />
+            </MyTooltip>
+          </Flex>
+        </Flex>
+        <Box flex={1}>
+          <ChatContainer />
+        </Box>
+      </MyBox>
+      {datasetCiteData && (
+        <Box flex={'1 0 0'} w={0} maxW={'560px'} {...cardStyles} boxShadow={'3'}>
+          <ChatQuoteList
+            rawSearch={datasetCiteData.rawSearch}
+            metadata={datasetCiteData.metadata}
+            singleQuote={datasetCiteData.singleQuote}
+            onClose={() => setCiteModalData(undefined)}
+          />
+        </Box>
+      )}
+
+      <SandboxEditorModal />
+    </Flex>
+  );
+};
+
+const Render = ({ appForm, setRenderEdit, form2WorkflowFn }: Props) => {
+  const { chatId } = useChatStore();
+  const { appDetail } = useContextSelector(AppContext, (v) => v);
+
+  const chatRecordProviderParams = useMemo(
+    () => ({
+      chatId: chatId,
+      appId: appDetail._id
+    }),
+    [appDetail._id, chatId]
+  );
+
+  return (
+    <ChatItemContextProvider
+      showRouteToDatasetDetail={true}
+      canDownloadSource={true}
+      isShowCite={true}
+      isShowFullText={true}
+      showRunningStatus={true}
+      showSkillReferences={true}
+      showWholeResponse={true}
+    >
+      <ChatRecordContextProvider params={chatRecordProviderParams}>
+        <ChatTest
+          appForm={appForm}
+          setRenderEdit={setRenderEdit}
+          form2WorkflowFn={form2WorkflowFn}
+        />
+      </ChatRecordContextProvider>
+    </ChatItemContextProvider>
+  );
+};
+
+export default React.memo(Render);

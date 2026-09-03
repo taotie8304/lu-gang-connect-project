@@ -1,24 +1,16 @@
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import {
   Button,
-  ButtonGroup,
   Flex,
   HStack,
   IconButton,
   Input,
   InputGroup,
   InputLeftElement,
-  Table,
-  TableContainer,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
   useDisclosure
 } from '@chakra-ui/react';
 import MySelect from '@fastgpt/web/components/common/MySelect';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -68,7 +60,7 @@ const FavouriteAppSetting = ({ Header }: Props) => {
 
   const searchAppTagValue = watchSearchValue('tag');
   // apps' tags options
-  const tagOptions = useContextSelector(ChatSettingContext, (v) => {
+  const tagOptions = useContextSelector(ChatPageContext, (v) => {
     const tags = v.chatSettings?.favouriteTags || [];
     return [
       { label: t('chat:setting.favourite.category_all'), value: '' },
@@ -76,7 +68,7 @@ const FavouriteAppSetting = ({ Header }: Props) => {
     ];
   });
   // app's tags cache map
-  const tagMap = useContextSelector(ChatSettingContext, (v) =>
+  const tagMap = useContextSelector(ChatPageContext, (v) =>
     (v.chatSettings?.favouriteTags || []).reduce<Record<string, ChatFavouriteTagType>>(
       (acc, tag) => {
         acc[tag.id] = { ...tag };
@@ -89,7 +81,7 @@ const FavouriteAppSetting = ({ Header }: Props) => {
   const [localFavourites, setLocalFavourites] = useState<ChatFavouriteAppType[]>([]);
 
   // search favourite apps by apps' name and tag
-  const { loading: isSearching, runAsync: getApps } = useRequest2(
+  const { loading: isSearching, runAsync: getApps } = useRequest(
     async () => {
       const apps = await getFavouriteApps({
         name: searchAppNameValue,
@@ -106,7 +98,7 @@ const FavouriteAppSetting = ({ Header }: Props) => {
   );
 
   // update app order
-  const { runAsync: orderApp } = useRequest2(
+  const { runAsync: orderApp } = useRequest(
     async (list: ChatFavouriteAppType[]) => {
       await updateFavouriteAppOrder(list.map((item, idx) => ({ id: item._id, order: idx })));
       getApps();
@@ -115,7 +107,7 @@ const FavouriteAppSetting = ({ Header }: Props) => {
   );
 
   // delete app
-  const { runAsync: deleteApp } = useRequest2(
+  const { runAsync: deleteApp } = useRequest(
     async (id: string) => {
       await deleteFavouriteApp({ id });
       getApps();
@@ -304,8 +296,14 @@ const FavouriteAppSetting = ({ Header }: Props) => {
                           </Box>
 
                           {/* 名称列 */}
-                          <Box w={[3 / 10, 2.5 / 10]} display="flex" alignItems="center" pr={4}>
-                            <Avatar src={row.avatar} borderRadius={'xs'} w={'20px'} mr={2} />
+                          <Box
+                            w={[3 / 10, 2.5 / 10]}
+                            display="flex"
+                            alignItems="center"
+                            gap={2}
+                            pr={4}
+                          >
+                            <Avatar src={row.avatar} borderRadius={'xs'} w={'20px'} />
                             <Box
                               fontWeight={'medium'}
                               whiteSpace={'nowrap'}

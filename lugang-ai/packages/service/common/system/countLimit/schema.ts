@@ -1,9 +1,11 @@
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 import type { CountLimitType } from './type';
+import { getLogger, LogCategories } from '../../logger';
 
 const { Schema } = connectionMongo;
 
 const collectionName = 'system_count_limits';
+const logger = getLogger(LogCategories.INFRA.MONGO);
 const CountLimitSchema = new Schema({
   key: {
     type: String,
@@ -24,11 +26,13 @@ const CountLimitSchema = new Schema({
   }
 });
 
-try {
-  CountLimitSchema.index({ type: 1, key: 1 }, { unique: true });
-  CountLimitSchema.index({ createTime: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 }); // ttl 30天
-} catch (error) {
-  console.log(error);
-}
+defineIndex(CountLimitSchema, {
+  key: { type: 1, key: 1 },
+  options: { unique: true }
+});
+defineIndex(CountLimitSchema, {
+  key: { createTime: 1 },
+  options: { expireAfterSeconds: 60 * 60 * 24 * 30 }
+}); // ttl 30天
 
 export const MongoCountLimit = getMongoModel<CountLimitType>(collectionName, CountLimitSchema);

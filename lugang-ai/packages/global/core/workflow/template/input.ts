@@ -3,7 +3,7 @@ import { FlowNodeInputTypeEnum } from '../node/constant';
 import { WorkflowIOValueTypeEnum } from '../constants';
 import { chatNodeSystemPromptTip, systemPromptTip } from './tip';
 import { type FlowNodeInputItemType } from '../type/io';
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../../common/i18n/utils';
 
 export const Input_Template_History: FlowNodeInputItemType = {
   key: NodeInputKeyEnum.history,
@@ -23,8 +23,9 @@ export const Input_Template_UserChatInput: FlowNodeInputItemType = {
   renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.textarea],
   valueType: WorkflowIOValueTypeEnum.string,
   label: i18nT('workflow:user_question'),
-  toolDescription: i18nT('workflow:user_question_tool_desc'),
-  required: true
+  toolDescription: 'user question',
+  required: true,
+  defaultToAgentGenerated: true
 };
 
 export const Input_Template_DynamicInput: FlowNodeInputItemType = {
@@ -79,11 +80,12 @@ export const Input_Template_Text_Quote: FlowNodeInputItemType = {
 
 export const Input_Template_File_Link: FlowNodeInputItemType = {
   key: NodeInputKeyEnum.fileUrlList,
-  renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.input],
+  renderTypeList: [FlowNodeInputTypeEnum.reference, FlowNodeInputTypeEnum.JSONEditor],
   label: i18nT('app:workflow.user_file_input'),
   debugLabel: i18nT('app:workflow.user_file_input'),
   description: i18nT('app:workflow.user_file_input_desc'),
-  valueType: WorkflowIOValueTypeEnum.arrayString
+  valueType: WorkflowIOValueTypeEnum.arrayString,
+  defaultToAgentGenerated: true
 };
 
 export const Input_Template_Children_Node_List: FlowNodeInputItemType = {
@@ -105,10 +107,10 @@ export const Input_Template_Node_Height: FlowNodeInputItemType = {
   renderTypeList: [FlowNodeInputTypeEnum.hidden],
   valueType: WorkflowIOValueTypeEnum.number,
   label: '',
-  value: 600
+  value: 500
 };
-export const Input_Template_LOOP_NODE_OFFSET: FlowNodeInputItemType = {
-  key: NodeInputKeyEnum.loopNodeInputHeight,
+export const Input_Template_NESTED_NODE_OFFSET: FlowNodeInputItemType = {
+  key: NodeInputKeyEnum.nestedNodeInputHeight,
   renderTypeList: [FlowNodeInputTypeEnum.hidden],
   valueType: WorkflowIOValueTypeEnum.number,
   label: '',
@@ -119,6 +121,7 @@ export const Input_Template_Stream_MODE: FlowNodeInputItemType = {
   key: NodeInputKeyEnum.forbidStream,
   renderTypeList: [FlowNodeInputTypeEnum.switch],
   valueType: WorkflowIOValueTypeEnum.boolean,
+  canAgentGenerated: false,
   label: i18nT('workflow:template.forbid_stream'),
   description: i18nT('workflow:template.forbid_stream_desc'),
   value: false

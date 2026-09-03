@@ -1,6 +1,6 @@
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { NextAPI } from '@/service/middleware/entry';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { replaceRegChars } from '@fastgpt/global/common/string/tools';
 import { isValidObjectId } from 'mongoose';
@@ -9,6 +9,8 @@ import type {
   GetAllSystemAppsBodyType,
   GetAllSystemAppTypeToolsResponse
 } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import { GetAllSystemAppsBodySchema } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
 export type ListAppBody = GetAllSystemAppsBodyType;
 
@@ -18,7 +20,7 @@ export type ListAppBody = GetAllSystemAppsBodyType;
 async function handler(
   req: ApiRequestProps<ListAppBody>
 ): Promise<GetAllSystemAppTypeToolsResponse> {
-  const { searchKey } = req.body;
+  const { searchKey } = parseApiInput({ req, bodySchema: GetAllSystemAppsBodySchema }).body;
   await authSystemAdmin({ req });
 
   const findAppsQuery = (() => {
@@ -47,7 +49,7 @@ async function handler(
 
   return plugins.map((plugin) => ({
     _id: plugin._id,
-    avatar: plugin.avatar,
+    avatar: plugin.avatar ?? '',
     name: plugin.name
   }));
 }

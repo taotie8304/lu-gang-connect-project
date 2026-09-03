@@ -1,30 +1,20 @@
 import { NextAPI } from '@/service/middleware/entry';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
-import { type StoreSecretValueType } from '@fastgpt/global/common/secret/type';
-import type { RunHTTPToolResult } from '@fastgpt/service/core/app/http';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { runHTTPTool } from '@fastgpt/service/core/app/http';
-import type { HttpToolConfigType } from '@fastgpt/global/core/app/type';
-
-export type RunHTTPToolQuery = {};
-
-export type RunHTTPToolBody = {
-  params: Record<string, any>;
-  baseUrl: string;
-  toolPath: string;
-  method: string;
-  customHeaders?: Record<string, string>;
-  headerSecret?: StoreSecretValueType;
-  staticParams?: HttpToolConfigType['staticParams'];
-  staticHeaders?: HttpToolConfigType['staticHeaders'];
-  staticBody?: HttpToolConfigType['staticBody'];
-};
-
-export type RunHTTPToolResponse = RunHTTPToolResult;
+import { authCert } from '@fastgpt/service/support/permission/auth/common';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  RunHttpToolBodySchema,
+  RunHttpToolResponseSchema,
+  type RunHttpToolBodyType,
+  type RunHttpToolResponseType
+} from '@fastgpt/global/openapi/core/app/httpTools/api';
 
 async function handler(
-  req: ApiRequestProps<RunHTTPToolBody, RunHTTPToolQuery>,
-  res: ApiResponseType<RunHTTPToolResponse>
-): Promise<RunHTTPToolResponse> {
+  req: ApiRequestProps<RunHttpToolBodyType>
+): Promise<RunHttpToolResponseType> {
+  await authCert({ req, authToken: true });
+
   const {
     params,
     baseUrl,
@@ -35,19 +25,28 @@ async function handler(
     staticParams,
     staticHeaders,
     staticBody
-  } = req.body;
+  } = parseApiInput({
+    req,
+    bodySchema: RunHttpToolBodySchema
+  }).body;
 
-  return runHTTPTool({
-    baseUrl,
-    toolPath,
-    method,
-    params,
-    headerSecret,
-    customHeaders,
-    staticParams,
-    staticHeaders,
-    staticBody
-  });
+  return RunHttpToolResponseSchema.parse(
+    await runHTTPTool({
+      baseUrl,
+      toolPath,
+      method,
+      params,
+      headerSecret,
+      customHeaders: customHeaders
+        ? Object.fromEntries(
+            Object.entries(customHeaders).map(([key, value]) => [key, String(value)])
+          )
+        : undefined,
+      staticParams,
+      staticHeaders,
+      staticBody
+    })
+  );
 }
 
 export default NextAPI(handler);

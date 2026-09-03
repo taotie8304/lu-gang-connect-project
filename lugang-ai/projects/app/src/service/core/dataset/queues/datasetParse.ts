@@ -11,18 +11,19 @@ import type {
   DatasetCollectionSchemaType,
   DatasetSchemaType
 } from '@fastgpt/global/core/dataset/type';
-import { addLog } from '@fastgpt/service/common/system/log';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
 import { addMinutes } from 'date-fns';
 import { checkTeamAiPointsAndLock } from './utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import { delay } from '@fastgpt/service/common/bullmq';
+import { delay } from '@fastgpt/global/common/system/utils';
 import { rawText2Chunks, readDatasetSourceRawText } from '@fastgpt/service/core/dataset/read';
 import { getLLMModel } from '@fastgpt/service/core/ai/model';
 import { getLLMMaxChunkSize } from '@fastgpt/global/core/dataset/training/utils';
 import { checkDatasetIndexLimit } from '@fastgpt/service/support/permission/teamLimit';
 import { predictDataLimitLength } from '@fastgpt/global/core/dataset/utils';
 import { getTrainingModeByCollection } from '@fastgpt/service/core/dataset/collection/utils';
+import { getDatasetImageIndexCapability } from '@fastgpt/service/core/dataset/utils';
 import { pushDataListToTrainingQueue } from '@fastgpt/service/core/dataset/training/controller';
 import { DatasetDataIndexTypeEnum } from '@fastgpt/global/core/dataset/data/constants';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
@@ -30,23 +31,28 @@ import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection
 import { hashStr } from '@fastgpt/global/common/string/tools';
 import { POST } from '@fastgpt/service/common/api/plusRequest';
 import { pushLLMTrainingUsage } from '@fastgpt/service/support/wallet/usage/controller';
-import { MongoImage } from '@fastgpt/service/common/file/image/schema';
 import { UsageItemTypeEnum } from '@fastgpt/global/support/wallet/usage/constants';
-import { getS3DatasetSource } from '@fastgpt/service/common/s3/sources/dataset';
+import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
+import { createParseTaskLease, PARSE_QUEUE_LEASE_TIMEOUT_MINUTES } from './parseLease';
 
-// 鲁港通 - 启用LLM段落处理功能（注意：需要商业版API支持，无API时返回原文）
+const logger = getLogger(LogCategories.MODULE.DATASET.FILE_PARSE);
+
 const requestLLMPargraph = async ({
   rawText,
   model,
+  teamId,
   billId,
   paragraphChunkAIMode
 }: {
   rawText: string;
   model: string;
+  teamId: string;
   billId: string;
   paragraphChunkAIMode?: ParagraphChunkAIModeEnum;
 }) => {
   if (
+    !global.feConfigs?.isPlus ||
     !paragraphChunkAIMode ||
     paragraphChunkAIMode === ParagraphChunkAIModeEnum.forbid
   ) {
@@ -82,6 +88,7 @@ const requestLLMPargraph = async ({
     {
       rawText,
       model,
+      teamId,
       billId
     },
     { timeout: 600000 }
@@ -99,7 +106,7 @@ const reduceQueue = () => {
 
 export const datasetParseQueue = async (): Promise<any> => {
   const max = global.systemEnv?.datasetParseMaxProcess || 10;
-  addLog.debug(`[Parse Queue] Queue size: ${global.datasetParseQueueLen}`);
+  logger.debug('Parse queue size check', { queueSize: global.datasetParseQueueLen, max });
   if (global.datasetParseQueueLen >= max) return;
   global.datasetParseQueueLen++;
 
@@ -107,23 +114,27 @@ export const datasetParseQueue = async (): Promise<any> => {
     while (true) {
       const startTime = Date.now();
 
-      // 1. Get task and lock 20 minutes ago
+      // 1. Get task and lock 10 minutes ago
       const {
         data,
         done = false,
         error = false
       } = await (async () => {
         try {
+          const claimedLockTime = new Date();
           const data = await MongoDatasetTraining.findOneAndUpdate(
             {
               mode: TrainingModeEnum.parse,
               retryCount: { $gt: 0 },
-              lockTime: { $lte: addMinutes(new Date(), -10) }
+              lockTime: {
+                $lte: addMinutes(new Date(), -PARSE_QUEUE_LEASE_TIMEOUT_MINUTES)
+              }
             },
             {
-              lockTime: new Date(),
+              lockTime: claimedLockTime,
               $inc: { retryCount: -1 }
-            }
+            },
+            { new: true }
           )
             .populate<{
               dataset: DatasetSchemaType;
@@ -148,7 +159,7 @@ export const datasetParseQueue = async (): Promise<any> => {
           return {
             data
           };
-        } catch (error) {
+        } catch {
           return {
             error: true
           };
@@ -159,12 +170,12 @@ export const datasetParseQueue = async (): Promise<any> => {
         break;
       }
       if (error) {
-        addLog.error(`[Parse Queue] Error`, error);
+        logger.error('Parse queue fetch task failed', { error });
         await delay(500);
         continue;
       }
       // Check team points and lock(No mistakes will be thrown here)
-      if (!(await checkTeamAiPointsAndLock(data.teamId))) {
+      if (!(await checkTeamAiPointsAndLock(data.teamId, String(data._id)))) {
         continue;
       }
 
@@ -172,18 +183,67 @@ export const datasetParseQueue = async (): Promise<any> => {
       const collection = data.collection;
 
       if (!dataset || !collection) {
-        addLog.warn(`[Parse Queue] data not found`, data);
-        await MongoDatasetTraining.deleteOne({ _id: data._id });
+        logger.warn('Parse queue task skipped: dataset or collection missing', {
+          datasetId: data.datasetId,
+          collectionId: data.collectionId,
+          trainingId: data._id
+        });
+        const deleteResult = await MongoDatasetTraining.deleteOne({
+          _id: data._id,
+          lockTime: data.lockTime
+        });
+        if (deleteResult.deletedCount !== 1) {
+          logger.warn('Parse queue task lease lost before deleting incomplete task', {
+            trainingId: data._id
+          });
+        }
         continue;
       }
 
-      addLog.info(`[Parse Queue] Start`);
+      logger.info('Parse queue task started', {
+        trainingId: data._id,
+        datasetId: data.datasetId,
+        collectionId: data.collectionId,
+        teamId: data.teamId,
+        tmbId: data.tmbId,
+        collectionType: collection.type,
+        trainingType: collection.trainingType
+      });
+
+      const taskLease = createParseTaskLease({
+        taskId: data._id,
+        lockTime: data.lockTime,
+        updateLock: async (filter, nextLockTime) => {
+          const result = await MongoDatasetTraining.updateOne(filter, {
+            lockTime: nextLockTime
+          });
+          return result.matchedCount === 1;
+        },
+        onLost: () => {
+          logger.warn('Parse queue task lease lost', {
+            trainingId: data._id,
+            datasetId: data.datasetId,
+            collectionId: data.collectionId
+          });
+        },
+        onError: (error) => {
+          logger.warn('Parse queue task lease heartbeat failed', {
+            trainingId: data._id,
+            error
+          });
+        }
+      });
+      taskLease.start();
 
       try {
         const trainingMode = getTrainingModeByCollection({
-          trainingType: collection.trainingType,
+          trainingType: collection.trainingType ?? DatasetCollectionDataProcessModeEnum.chunk,
           autoIndexes: collection.autoIndexes,
-          imageIndex: collection.imageIndex
+          imageIndex: collection.imageIndex,
+          supportImageIndex: getDatasetImageIndexCapability({
+            vectorModel: dataset.vectorModel,
+            vlmModel: dataset.vlmModel
+          }).supportImageIndex
         });
 
         // 1. Parse rawtext
@@ -224,14 +284,23 @@ export const datasetParseQueue = async (): Promise<any> => {
         })();
 
         if (!sourceReadType) {
-          addLog.warn(`[Parse Queue] Source read type is null, delete task`);
-          await MongoDatasetTraining.deleteOne({
-            _id: data._id
+          logger.warn('Parse queue task skipped: source read type resolved to null', {
+            trainingId: data._id,
+            datasetId: data.datasetId,
+            collectionId: data.collectionId,
+            collectionType: collection.type
           });
+          await taskLease.stop();
+          const deleteResult = await MongoDatasetTraining.deleteOne(taskLease.getFilter());
+          if (deleteResult.deletedCount !== 1) {
+            logger.warn('Parse queue task lease lost before deleting invalid task', {
+              trainingId: data._id
+            });
+          }
           continue;
         }
 
-        let { title, rawText } = await readDatasetSourceRawText({
+        const { title, rawText } = await readDatasetSourceRawText({
           teamId: data.teamId,
           tmbId: data.tmbId,
           customPdfParse: collection.customPdfParse,
@@ -244,6 +313,7 @@ export const datasetParseQueue = async (): Promise<any> => {
         const { resultText, totalInputTokens, totalOutputTokens } = await requestLLMPargraph({
           rawText,
           model: dataset.agentModel,
+          teamId: String(data.teamId),
           billId: data.billId,
           paragraphChunkAIMode: collection.paragraphChunkAIMode
         });
@@ -273,24 +343,22 @@ export const datasetParseQueue = async (): Promise<any> => {
         });
 
         // Check dataset limit
-        try {
-          await checkDatasetIndexLimit({
-            teamId: data.teamId,
-            insertLen: predictDataLimitLength(trainingMode, chunks)
-          });
-        } catch (error) {
-          addLog.info(`[Parse Queue] Check dataset limit failed, lock the task`);
-          await MongoDatasetTraining.updateOne(
-            {
-              _id: data._id
-            },
-            {
-              errorMsg: getErrText(error, 'Over dataset limit'),
-              lockTime: new Date('2999/5/5')
-            }
-          );
-        }
+        await checkDatasetIndexLimit({
+          teamId: data.teamId,
+          insertLen: Math.round(predictDataLimitLength(trainingMode, chunks) * 0.7)
+        });
 
+        const trainingData = chunks.map((item, index) => ({
+          ...item,
+          indexes: item.indexes?.map((text) => ({
+            type: DatasetDataIndexTypeEnum.custom,
+            text
+          })),
+          chunkIndex: index
+        }));
+
+        // 成功写入前先停止续租，并等待正在进行的 heartbeat 完成，保证下面使用最新 lease。
+        await taskLease.stop();
         await mongoSessionRun(async (session) => {
           // 5. Update collection title(Link)
           await MongoDatasetCollection.updateOne(
@@ -304,15 +372,6 @@ export const datasetParseQueue = async (): Promise<any> => {
           );
 
           // 6. Push to chunk queue
-          const trainingData = chunks.map((item, index) => ({
-            ...item,
-            indexes: item.indexes?.map((text) => ({
-              type: DatasetDataIndexTypeEnum.custom,
-              text
-            })),
-            chunkIndex: index
-          }));
-
           await pushDataListToTrainingQueue({
             teamId: data.teamId,
             tmbId: data.tmbId,
@@ -329,42 +388,60 @@ export const datasetParseQueue = async (): Promise<any> => {
           });
 
           // 7. Delete task
-          await MongoDatasetTraining.deleteOne(
-            {
-              _id: data._id
-            },
-            {
-              session
-            }
-          );
+          const deleteResult = await MongoDatasetTraining.deleteOne(taskLease.getFilter(), {
+            session
+          });
+          if (deleteResult.deletedCount !== 1) {
+            throw new Error('Parse queue task lease lost before completion');
+          }
         });
 
-        addLog.debug(`[Parse Queue] Finish`, {
-          time: Date.now() - startTime
+        logger.debug('Parse queue task finished', {
+          durationMs: Date.now() - startTime,
+          trainingId: data._id,
+          datasetId: data.datasetId,
+          collectionId: data.collectionId
         });
       } catch (err) {
-        addLog.error(`[Parse Queue] Error`, err);
+        await taskLease.stop();
+        if (err === TeamErrEnum.datasetSizeNotEnough) {
+          logger.info('Parse queue dataset limit exceeded, locking task', {
+            trainingId: data._id,
+            datasetId: data.datasetId,
+            collectionId: data.collectionId
+          });
+          await MongoDatasetTraining.updateOne(taskLease.getFilter(), {
+            errorMsg: i18nT('common:code_error.team_error.dataset_size_not_enough'),
+            lockTime: new Date('2999/5/5')
+          });
 
-        await MongoDatasetTraining.updateOne(
-          {
-            _id: data._id
-          },
-          {
-            errorMsg: getErrText(err, 'unknown error'),
-            lockTime: addMinutes(new Date(), -10)
-          }
-        );
+          continue;
+        }
+
+        logger.error('Parse queue task failed', {
+          error: err,
+          trainingId: data._id,
+          datasetId: data.datasetId,
+          collectionId: data.collectionId
+        });
+
+        await MongoDatasetTraining.updateOne(taskLease.getFilter(), {
+          errorMsg: getErrText(err, 'unknown error'),
+          lockTime: addMinutes(new Date(), -PARSE_QUEUE_LEASE_TIMEOUT_MINUTES)
+        });
 
         await delay(100);
+      } finally {
+        await taskLease.stop();
       }
     }
   } catch (error) {
-    addLog.error(`[Parse Queue] Error`, error);
+    logger.error('Parse queue loop failed', { error });
   }
 
   if (reduceQueue()) {
-    addLog.info(`[Parse Queue] Done`);
+    logger.info('Parse queue drained', { queueSize: global.datasetParseQueueLen });
   }
 
-  addLog.debug(`[Parse Queue] break loop`);
+  logger.debug('Parse queue loop exit', { queueSize: global.datasetParseQueueLen });
 };

@@ -1,11 +1,89 @@
 import { build, BuildOptions, context } from 'esbuild';
 import fs from 'fs';
+import { createRequire } from 'module';
 import path from 'path';
 
 // 项目路径
 const ROOT_DIR = path.resolve(__dirname, '../../..');
 const WORKER_SOURCE_DIR = path.join(ROOT_DIR, 'packages/service/worker');
 const WORKER_OUTPUT_DIR = path.join(__dirname, '../worker');
+const WORKER_RUNTIME_NODE_MODULES_DIR = path.join(WORKER_OUTPUT_DIR, 'node_modules');
+const OTEL_SDK_DIR = path.join(ROOT_DIR, 'sdk/otel/src');
+const require = createRequire(import.meta.url);
+
+const workerRuntimePackages = [
+  '@llamaindex/liteparse-wasm',
+  '@fastgpt-sdk/anydoc',
+  // jschardet 3.1.1 含有依赖 sloppy mode 的未声明局部变量；bundle 进入严格模式后会在 worker 启动时报错。
+  'jschardet'
+];
+
+const resolvePackageDir = (packageName: string, resolvePaths: string[]) => {
+  try {
+    return path.dirname(require.resolve(`${packageName}/package.json`, { paths: resolvePaths }));
+  } catch {
+    return;
+  }
+};
+
+const copyPackage = (packageName: string, sourceDir: string) => {
+  const destination = path.join(WORKER_RUNTIME_NODE_MODULES_DIR, ...packageName.split('/'));
+
+  fs.rmSync(destination, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(destination), { recursive: true });
+  fs.cpSync(sourceDir, destination, {
+    recursive: true,
+    dereference: true
+  });
+
+  console.log(`📦 ${packageName} 运行时依赖已复制 → ${path.relative(process.cwd(), destination)}`);
+};
+
+/**
+ * 复制当前平台实际安装的 optionalDependencies。
+ *
+ * N-API 包通常把各平台原生二进制声明为 optional dependency，pnpm 只会链接当前
+ * 构建平台对应的包。只复制可解析到的依赖，避免把其他平台二进制带入运行镜像。
+ */
+const copyInstalledOptionalDependencies = (packageDir: string) => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(packageDir, 'package.json'), 'utf8')
+  ) as {
+    optionalDependencies?: Record<string, string>;
+  };
+
+  for (const packageName of Object.keys(packageJson.optionalDependencies ?? {})) {
+    const sourceDir = resolvePackageDir(packageName, [packageDir, __dirname, ROOT_DIR]);
+    if (!sourceDir) continue;
+
+    copyPackage(packageName, sourceDir);
+  }
+};
+
+/**
+ * 复制 worker external 依赖到 worker 目录下。
+ *
+ * LiteParse WASM 需要以真实文件形式保留 wasm 资源。Docker runner 已经复制整个 worker
+ * 目录，因此把 runtime node_modules 放在 worker 旁边即可让 Node worker 线程就近读取
+ * 并初始化独立 WASM 实例。
+ */
+const copyWorkerRuntimePackages = () => {
+  fs.rmSync(WORKER_RUNTIME_NODE_MODULES_DIR, { recursive: true, force: true });
+
+  for (const packageName of workerRuntimePackages) {
+    const sourceDir = resolvePackageDir(packageName, [
+      __dirname,
+      ROOT_DIR,
+      path.join(ROOT_DIR, 'packages/global')
+    ]);
+    if (!sourceDir) {
+      throw new Error(`Worker runtime dependency "${packageName}" is not installed.`);
+    }
+
+    copyPackage(packageName, sourceDir);
+    copyInstalledOptionalDependencies(sourceDir);
+  }
+};
 
 /**
  * Worker 预编译脚本
@@ -47,6 +125,13 @@ async function buildWorkers(watch: boolean = false) {
     minify: true,
     treeShaking: true,
     keepNames: false,
+    alias: {
+      '@fastgpt-sdk/otel': path.join(OTEL_SDK_DIR, 'index.ts'),
+      '@fastgpt-sdk/otel/logger': path.join(OTEL_SDK_DIR, 'logger-entry.ts'),
+      '@fastgpt-sdk/otel/metrics': path.join(OTEL_SDK_DIR, 'metrics-entry.ts'),
+      '@fastgpt-sdk/otel/tracing': path.join(OTEL_SDK_DIR, 'tracing-entry.ts')
+    },
+    external: workerRuntimePackages,
     // 移除调试代码
     drop: process.env.NODE_ENV === 'production' ? ['console', 'debugger'] : []
   };
@@ -79,6 +164,8 @@ async function buildWorkers(watch: boolean = false) {
 
     // 过滤掉失败的 context
     const validContexts = contexts.filter((ctx) => ctx !== null);
+
+    copyWorkerRuntimePackages();
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log(`✅ ${validContexts.length}/${workers.length} 个 Worker 正在监听中`);
@@ -130,6 +217,7 @@ async function buildWorkers(watch: boolean = false) {
       // 非监听模式下,如果有失败的编译,退出并返回错误码
       process.exit(1);
     }
+    copyWorkerRuntimePackages();
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 }
@@ -141,7 +229,7 @@ const watch = args.includes('--watch') || args.includes('-w');
 // 显示启动信息
 console.log('');
 console.log('╔═══════════════════════════════════════╗');
-console.log('║   FastGPT Worker 预编译工具 v1.0     ║');
+console.log('║   FastGPT Worker 预编译工具 v1.0      ║');
 console.log('╚═══════════════════════════════════════╝');
 console.log('');
 

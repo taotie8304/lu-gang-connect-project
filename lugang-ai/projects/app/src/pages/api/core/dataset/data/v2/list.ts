@@ -3,30 +3,31 @@ import { MongoDatasetData } from '@fastgpt/service/core/dataset/data/schema';
 import { replaceRegChars } from '@fastgpt/global/common/string/tools';
 import { NextAPI } from '@/service/middleware/entry';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
-import type { DatasetDataListItemType } from '@/global/core/dataset/type';
-import type { PaginationProps, PaginationResponse } from '@fastgpt/web/common/fetch/type';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { parsePaginationRequest } from '@fastgpt/service/common/api/pagination';
 import { MongoDatasetImageSchema } from '@fastgpt/service/core/dataset/image/schema';
 import { readFromSecondary } from '@fastgpt/service/common/mongo/utils';
 import { getS3DatasetSource } from '@fastgpt/service/common/s3/sources/dataset';
 import { addHours } from 'date-fns';
-import { jwtSignS3ObjectKey, isS3ObjectKey } from '@fastgpt/service/common/s3/utils';
+import { isS3ObjectKey } from '@fastgpt/service/common/s3/utils';
 import { replaceS3KeyToPreviewUrl } from '@fastgpt/service/core/dataset/utils';
+import {
+  GetDatasetDataListBodySchema,
+  GetDatasetDataListResponseSchema,
+  type GetDatasetDataListResponse
+} from '@fastgpt/global/openapi/core/dataset/data/api';
+import { S3Buckets } from '@fastgpt/service/common/s3/config/constants';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { createS3DownloadAccessUrl } from '@fastgpt/service/common/s3/accessLink';
 
-export type GetDatasetDataListProps = PaginationProps & {
-  searchText?: string;
-  collectionId: string;
-};
-export type GetDatasetDataListRes = PaginationResponse<DatasetDataListItemType>;
+async function handler(req: ApiRequestProps): Promise<GetDatasetDataListResponse> {
+  const { searchText = '', collectionId } = parseApiInput({
+    req,
+    bodySchema: GetDatasetDataListBodySchema
+  }).body;
+  const { offset, pageSize: rawPageSize } = parsePaginationRequest(req);
 
-async function handler(
-  req: ApiRequestProps<GetDatasetDataListProps>
-): Promise<GetDatasetDataListRes> {
-  let { searchText = '', collectionId } = req.body;
-  let { offset, pageSize } = parsePaginationRequest(req);
-
-  pageSize = Math.min(pageSize, 30);
+  const pageSize = Math.min(rawPageSize, 30);
 
   const { teamId, collection } = await authDatasetCollection({
     req,
@@ -49,20 +50,22 @@ async function handler(
   };
 
   const [list, total] = await Promise.all([
-    MongoDatasetData.find(match, '_id datasetId collectionId q a chunkIndex imageId teamId')
-      .sort({ chunkIndex: 1, _id: 1 })
+    MongoDatasetData.find(match, '_id datasetId collectionId q a chunkIndex imageId')
+      .sort({ chunkIndex: 1, _id: -1 })
       .skip(offset)
       .limit(pageSize)
       .lean(),
     MongoDatasetData.countDocuments(match)
   ]);
 
-  list.forEach((item) => {
-    item.q = replaceS3KeyToPreviewUrl(item.q, addHours(new Date(), 1));
-    if (item.a) {
-      item.a = replaceS3KeyToPreviewUrl(item.a, addHours(new Date(), 1));
-    }
-  });
+  await Promise.all(
+    list.map(async (item) => {
+      item.q = await replaceS3KeyToPreviewUrl(item.q, addHours(new Date(), 1));
+      if (item.a) {
+        item.a = await replaceS3KeyToPreviewUrl(item.a, addHours(new Date(), 1));
+      }
+    })
+  );
 
   const imageIds = list.map((item) => item.imageId!).filter(Boolean);
   const imageSizeMap = new Map<string, number>();
@@ -83,30 +86,36 @@ async function handler(
     const s3ImageIds = imageIds.filter((id) => isS3ObjectKey(id, 'dataset'));
     for (const id of s3ImageIds) {
       const metadata = await getS3DatasetSource().getFileMetadata(id);
-      if (metadata) {
+      if (metadata?.contentLength) {
         imageSizeMap.set(id, metadata.contentLength);
       }
     }
   }
 
-  return {
-    list: await Promise.all(
-      list.map(async (item) => {
-        const imageSize = item.imageId ? imageSizeMap.get(String(item.imageId)) : undefined;
-        const imagePreviewUrl =
-          item.imageId && isS3ObjectKey(item.imageId, 'dataset')
-            ? jwtSignS3ObjectKey(item.imageId, addHours(new Date(), 1))
-            : undefined;
+  const formatList = await Promise.all(
+    list.map(async (item) => {
+      const imageSize = item.imageId ? imageSizeMap.get(String(item.imageId)) : undefined;
+      const imagePreviewUrl =
+        item.imageId && isS3ObjectKey(item.imageId, 'dataset')
+          ? await createS3DownloadAccessUrl({
+              objectKey: item.imageId,
+              bucketName: S3Buckets.private,
+              expiredTime: addHours(new Date(), 1)
+            })
+          : undefined;
 
-        return {
-          ...item,
-          imageSize,
-          imagePreviewUrl
-        };
-      })
-    ),
-    total
-  };
+      return {
+        ...item,
+        imageSize,
+        imagePreviewUrl
+      };
+    })
+  );
+
+  return GetDatasetDataListResponseSchema.parse({
+    total,
+    list: formatList
+  });
 }
 
 export default NextAPI(handler);

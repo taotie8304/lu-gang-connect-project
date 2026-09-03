@@ -1,4 +1,3 @@
-import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
 import { NextAPI } from '@/service/middleware/entry';
@@ -7,26 +6,27 @@ import {
   PerResourceTypeEnum,
   ReadPermissionVal
 } from '@fastgpt/global/support/permission/constant';
-import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
-import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
 import { parseParentIdInMongo } from '@fastgpt/global/common/parentFolder/utils';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { replaceRegChars } from '@fastgpt/global/common/string/tools';
 import { getGroupsByTmbId } from '@fastgpt/service/support/permission/memberGroup/controllers';
 import { getOrgIdSetWithParentByTmbId } from '@fastgpt/service/support/permission/org/controllers';
 import { addSourceMember } from '@fastgpt/service/support/user/utils';
 import { getEmbeddingModel } from '@fastgpt/service/core/ai/model';
-import { sumPer } from '@fastgpt/global/support/permission/utils';
+import { isPrivateResourceByCollaborators, sumPer } from '@fastgpt/global/support/permission/utils';
+import { getResourcePermissionsByTeam } from '@fastgpt/service/support/permission/resourcePermissionService';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  GetDatasetListBodySchema,
+  type GetDatasetListResponse
+} from '@fastgpt/global/openapi/core/dataset/api';
 
-export type GetDatasetListBody = {
-  parentId: ParentIdType;
-  type?: DatasetTypeEnum;
-  searchKey?: string;
-};
-
-async function handler(req: ApiRequestProps<GetDatasetListBody>) {
-  const { parentId, type, searchKey } = req.body;
+async function handler(req: ApiRequestProps): Promise<GetDatasetListResponse> {
+  const { parentId, type, searchKey } = parseApiInput({
+    req,
+    bodySchema: GetDatasetListBodySchema
+  }).body;
 
   // Auth user permission
   const [{ tmbId, teamId, permission: teamPer }] = await Promise.all([
@@ -51,13 +51,10 @@ async function handler(req: ApiRequestProps<GetDatasetListBody>) {
 
   // Get team all app permissions
   const [roleList, myGroupMap, myOrgSet] = await Promise.all([
-    MongoResourcePermission.find({
+    getResourcePermissionsByTeam({
       resourceType: PerResourceTypeEnum.dataset,
-      teamId,
-      resourceId: {
-        $exists: true
-      }
-    }).lean(),
+      teamId
+    }),
     getGroupsByTmbId({
       tmbId,
       teamId
@@ -73,6 +70,13 @@ async function handler(req: ApiRequestProps<GetDatasetListBody>) {
       tmbId
     })
   ]);
+  const roleListMap = new Map<string, (typeof roleList)[number][]>();
+  roleList.forEach((item) => {
+    const resourceId = String(item.resourceId);
+    const list = roleListMap.get(resourceId) ?? [];
+    list.push(item);
+    roleListMap.set(resourceId, list);
+  });
   const myRoles = roleList.filter(
     (item) =>
       String(item.tmbId) === String(tmbId) ||
@@ -83,13 +87,7 @@ async function handler(req: ApiRequestProps<GetDatasetListBody>) {
   const findDatasetQuery = (() => {
     // Filter apps by permission, if not owner, only get apps that I have permission to access
     const idList = { _id: { $in: myRoles.map((item) => item.resourceId) } };
-    const datasetPerQuery = teamPer.isOwner
-      ? {}
-      : parentId
-        ? {
-            $or: [idList, parseParentIdInMongo(parentId)]
-          }
-        : { $or: [idList, { parentId: null }] };
+    const datasetPerQuery = teamPer.isOwner ? {} : idList;
 
     const searchMatch = searchKey
       ? {
@@ -146,24 +144,13 @@ async function handler(req: ApiRequestProps<GetDatasetListBody>) {
             isOwner: String(dataset.tmbId) === String(tmbId) || teamPer.isOwner
           });
         };
-        const getClbCount = (datasetId: string) => {
-          return roleList.filter((item) => String(item.resourceId) === String(datasetId)).length;
-        };
+        const resourceClbs = roleListMap.get(String(dataset._id)) ?? [];
 
-        // inherit
-        if (
-          dataset.inheritPermission &&
-          dataset.parentId &&
-          dataset.type !== DatasetTypeEnum.folder
-        ) {
-          return {
-            Per: getPer(String(dataset.parentId)).addRole(getPer(String(dataset._id)).role),
-            privateDataset: getClbCount(String(dataset.parentId)) <= 1
-          };
-        }
         return {
           Per: getPer(String(dataset._id)),
-          privateDataset: getClbCount(String(dataset._id)) <= 1
+          privateDataset: isPrivateResourceByCollaborators({
+            resourceClbs
+          })
         };
       })();
 

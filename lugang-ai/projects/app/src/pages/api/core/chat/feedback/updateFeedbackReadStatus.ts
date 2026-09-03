@@ -1,6 +1,6 @@
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
-import { authChatCrud } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud } from '@/service/support/permission/auth/chat';
 import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
 import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
 import {
@@ -10,24 +10,30 @@ import {
 } from '@fastgpt/global/openapi/core/chat/feedback/api';
 import { updateChatFeedbackCount } from '@fastgpt/service/core/chat/controller';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { buildChatSourceQuery } from '@fastgpt/service/core/chat/source';
 
-async function handler(
-  req: ApiRequestProps,
-  _res: ApiResponseType<any>
-): Promise<UpdateFeedbackReadStatusResponseType> {
-  const { appId, chatId, dataId, isRead } = UpdateFeedbackReadStatusBodySchema.parse(req.body);
+async function handler(req: ApiRequestProps): Promise<UpdateFeedbackReadStatusResponseType> {
+  const { sourceType, sourceId, chatId, dataId, isRead, outLinkAuthData } = parseApiInput({
+    req,
+    bodySchema: UpdateFeedbackReadStatusBodySchema
+  }).body;
 
-  await authChatCrud({
+  const authRes = await authChatTargetCrud({
     req,
     authToken: true,
-    appId,
-    chatId
+    sourceType,
+    sourceId,
+    chatId,
+    outLinkAuthData
   });
+  const resolvedSourceId = authRes.sourceId;
+  const chatSourceQuery = buildChatSourceQuery({ sourceType, sourceId: resolvedSourceId });
 
   await mongoSessionRun(async (session) => {
     await MongoChatItem.updateOne(
       {
-        appId,
+        ...chatSourceQuery,
         chatId,
         dataId,
         obj: ChatRoleEnum.AI
@@ -42,7 +48,8 @@ async function handler(
 
     // Update Chat table feedback statistics to refresh unread feedback flags
     await updateChatFeedbackCount({
-      appId,
+      sourceType,
+      sourceId: resolvedSourceId,
       chatId,
       session
     });

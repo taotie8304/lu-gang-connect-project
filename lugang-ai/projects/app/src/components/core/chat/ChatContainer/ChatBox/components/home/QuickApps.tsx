@@ -4,54 +4,53 @@ import { ChatBoxContext } from '../../Provider';
 import { Box, Flex } from '@chakra-ui/react';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 
-const QuickApps = () => {
+type QuickAppsProps = {
+  variant?: 'desktop' | 'mobile';
+};
+
+const QuickApps = ({ variant = 'desktop' }: QuickAppsProps) => {
   const quickAppList = useContextSelector(ChatBoxContext, (v) => v.quickAppList);
-  const currentQuickAppId = useContextSelector(ChatBoxContext, (v) => v.currentQuickAppId);
   const onSwitchQuickApp = useContextSelector(ChatBoxContext, (v) => v.onSwitchQuickApp);
+  const isMobile = variant === 'mobile';
 
   return quickAppList && quickAppList.length > 0 ? (
-    <Flex 
-      mb={[4, "2"]} 
-      alignItems="center" 
-      gap={2} 
-      flexWrap="wrap"
-      position={['fixed', 'relative']}
-      bottom={[10, 'auto']} // 为输入框留出空间
-      left={[0, 'auto']}
-      right={[0, 'auto']}
-      width={['100%', 'auto']}
-      bg={['white', 'transparent']}
-      px={[4, 0]}
-      zIndex={[9, 'auto']} // 略低于输入框的z-index
-      maxW={['100%', 'unset']}
-      justifyContent={['center', 'flex-start']}
+    <Flex
+      mx={isMobile ? 0 : 2}
+      alignItems={isMobile ? 'flex-start' : 'center'}
+      gap={isMobile ? '12px' : 2}
+      flexWrap={isMobile ? 'nowrap' : 'wrap'}
+      flexDir={isMobile ? 'column' : 'row'}
     >
       {quickAppList.map((q) => (
         <Flex
           key={q._id}
           alignItems="center"
-          gap={1}
+          gap="8px"
+          h="44px"
           border="sm"
           borderRadius="md"
-          px={2}
-          py={1}
+          px="16px"
+          py="8px"
+          maxW={isMobile ? '100%' : undefined}
           cursor="pointer"
-          _hover={{ bg: 'myGray.50' }}
-          {...(currentQuickAppId === q._id
-            ? {
-                bg: 'primary.50',
-                color: 'primary.600',
-                borderColor: 'primary.200'
-              }
-            : {
-                bg: 'white',
-                color: 'myGray.600',
-                borderColor: 'myGray.200'
-              })}
+          _hover={{ bg: '#F0F4FF', borderColor: '#C5D7FF', color: 'primary.600' }}
+          bg="white"
+          color="myGray.600"
+          borderColor="myGray.200"
           onClick={() => onSwitchQuickApp?.(q._id)}
         >
-          <Avatar src={q.avatar} w={4} borderRadius="xs" />
-          <Box fontSize="xs" fontWeight="500" userSelect="none">
+          <Avatar src={q.avatar} w="24px" borderRadius="xs" />
+          <Box
+            fontSize={isMobile ? '14px' : 'xs'}
+            fontWeight="500"
+            userSelect="none"
+            {...(isMobile
+              ? {
+                  className: 'textEllipsis',
+                  minW: 0
+                }
+              : {})}
+          >
             {q.name}
           </Box>
         </Flex>

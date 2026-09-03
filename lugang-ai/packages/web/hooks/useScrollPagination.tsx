@@ -1,186 +1,18 @@
-import React, { type ReactNode, type RefObject, useMemo, useRef, useState } from 'react';
+import React, { type ReactNode, type RefObject, useRef, useState } from 'react';
 import { Box, type BoxProps } from '@chakra-ui/react';
 import { useToast } from './useToast';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import { type PaginationProps, type PaginationResponse } from '../common/fetch/type';
-import {
-  useBoolean,
-  useLockFn,
-  useMemoizedFn,
-  useScroll,
-  useVirtualList,
-  useRequest,
-  useThrottleEffect
-} from 'ahooks';
+import { useBoolean, useLockFn, useMemoizedFn, useScroll, useThrottleEffect } from 'ahooks';
 import MyBox from '../components/common/MyBox';
 import { useTranslation } from 'next-i18next';
-import { useRequest2 } from './useRequest';
+import { useRequest } from './useRequest';
+import type { PaginationType, PaginationResponseType } from '@fastgpt/global/openapi/api';
 
-type ItemHeight<T> = (index: number, data: T) => number;
 const thresholdVal = 100;
 
-export type ScrollListType = ({
-  children,
-  EmptyChildren,
-  isLoading,
-  ...props
-}: {
-  children: React.ReactNode;
-  EmptyChildren?: React.ReactNode;
-  isLoading?: boolean;
-} & BoxProps) => React.JSX.Element;
-
-export function useVirtualScrollPagination<
-  TParams extends PaginationProps,
-  TData extends PaginationResponse
->(
-  api: (data: TParams) => Promise<TData>,
-  {
-    refreshDeps,
-    itemHeight = 50,
-    overscan = 10,
-
-    pageSize = 10,
-    defaultParams = {}
-  }: {
-    refreshDeps?: any[];
-
-    itemHeight: number | ItemHeight<TData['list'][0]>;
-    overscan?: number;
-
-    pageSize?: number;
-    defaultParams?: Record<string, any>;
-  }
-) {
-  const { t } = useTranslation();
-  const containerRef = useRef<HTMLDivElement>(null);
-  const wrapperRef = useRef(null);
-  const { toast } = useToast();
-
-  const [data, setData] = useState<TData['list']>([]);
-  const [total, setTotal] = useState(0);
-  const [isLoading, { setTrue, setFalse }] = useBoolean(false);
-
-  const noMore = data.length >= total;
-
-  const [list] = useVirtualList<TData['list'][0]>(data, {
-    containerTarget: containerRef,
-    wrapperTarget: wrapperRef,
-    itemHeight,
-    overscan
-  });
-
-  const loadData = useLockFn(async ({ init = false }: { init?: boolean } = {}) => {
-    if (noMore && !init) return;
-
-    const offset = init ? 0 : data.length;
-
-    setTrue();
-
-    try {
-      const res = await api({
-        offset,
-        pageSize,
-        ...defaultParams
-      } as TParams);
-
-      setTotal(res.total);
-
-      if (offset === 0) {
-        // init or reload
-        setData(res.list);
-      } else {
-        setData((prev) => [...prev, ...res.list]);
-      }
-    } catch (error: any) {
-      toast({
-        title: getErrText(error, t('common:core.chat.error.data_error')),
-        status: 'error'
-      });
-      console.log(error);
-    }
-
-    setFalse();
-  });
-
-  const scroll2Top = () => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = 0;
-    }
-  };
-
-  const ScrollList = useMemoizedFn(
-    ({
-      children,
-      EmptyChildren,
-      isLoading,
-      ...props
-    }: {
-      children: React.ReactNode;
-      EmptyChildren?: React.ReactNode;
-      isLoading?: boolean;
-    } & BoxProps) => {
-      return (
-        <MyBox isLoading={isLoading} ref={containerRef} overflow={'overlay'} {...props}>
-          <Box ref={wrapperRef}>
-            {children}
-            {noMore && list.length > 0 && (
-              <Box py={4} textAlign={'center'} color={'myGray.600'} fontSize={'xs'}>
-                {t('common:no_more_data')}
-              </Box>
-            )}
-          </Box>
-
-          {list.length === 0 && !isLoading && EmptyChildren && <>{EmptyChildren}</>}
-        </MyBox>
-      );
-    }
-  );
-
-  // Reload data
-  useRequest(
-    async () => {
-      loadData({ init: true });
-    },
-    {
-      manual: false,
-      refreshDeps
-    }
-  );
-
-  // Check if scroll to bottom
-  const scroll = useScroll(containerRef);
-  useThrottleEffect(
-    () => {
-      if (!containerRef.current || list.length === 0) return;
-      const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-
-      if (scrollTop + clientHeight >= scrollHeight - thresholdVal) {
-        loadData({ init: false });
-      }
-    },
-    [scroll],
-    {
-      wait: 50
-    }
-  );
-
-  return {
-    containerRef,
-    scrollDataList: list,
-    total,
-    totalData: data,
-    setData,
-    isLoading,
-    ScrollList,
-    fetchData: loadData,
-    scroll2Top
-  };
-}
-
 export function useScrollPagination<
-  TParams extends PaginationProps,
-  TData extends PaginationResponse
+  TParams extends PaginationType,
+  TData extends PaginationResponseType
 >(
   api: (data: TParams) => Promise<TData>,
   {
@@ -191,17 +23,19 @@ export function useScrollPagination<
     EmptyTip,
     showErrorToast = true,
     disabled = false,
+    showNoMoreTip = true,
 
     ...props
   }: {
     scrollLoadType?: 'top' | 'bottom';
 
     pageSize?: number;
-    params?: Omit<TParams, 'offset' | 'pageSize'>;
+    params?: Omit<TParams, 'pageNum' | 'offset' | 'pageSize'>;
     EmptyTip?: React.JSX.Element;
     showErrorToast?: boolean;
     disabled?: boolean;
-  } & Parameters<typeof useRequest2>[1]
+    showNoMoreTip?: boolean;
+  } & Parameters<typeof useRequest>[1]
 ) {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -209,6 +43,7 @@ export function useScrollPagination<
   const [data, setData] = useState<TData['list']>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, { setTrue, setFalse }] = useBoolean(false);
+  const requestedOffsetRef = useRef<number>();
   const isEmpty = total === 0 && !isLoading;
 
   const noMore = data.length >= total;
@@ -216,21 +51,31 @@ export function useScrollPagination<
   const loadData = useLockFn(
     async ({
       init = false,
-      ScrollContainerRef
+      ScrollContainerRef,
+      silent = false
     }: {
       init?: boolean;
       ScrollContainerRef?: RefObject<HTMLDivElement>;
+      silent?: boolean;
     } = {}) => {
       if (noMore && !init) return;
 
-      setTrue();
+      const offset = init ? 0 : data.length;
 
-      if (init) {
+      // 请求完成到 React 提交列表更新之间，滚动监听可能再次读到旧 data.length。
+      // 用同步游标拦截相同 offset，避免同一页在这个时间窗口被重复请求。
+      if (!init && requestedOffsetRef.current === offset) return;
+      requestedOffsetRef.current = offset;
+
+      // 静默刷新用于后台校准数据，保留旧列表并避免整块 loading 闪烁。
+      if (!silent) {
+        setTrue();
+      }
+
+      if (init && !silent) {
         setData([]);
         setTotal(0);
       }
-
-      const offset = init ? 0 : data.length;
 
       try {
         const res = await api({
@@ -267,20 +112,23 @@ export function useScrollPagination<
           setData(newData);
         }
       } catch (error: any) {
+        requestedOffsetRef.current = undefined;
         if (showErrorToast) {
           toast({
-            title: getErrText(error, t('common:core.chat.error.data_error')),
+            title: t(getErrText(error, t('common:core.chat.error.data_error'))),
             status: 'error'
           });
         }
         console.log(error);
       }
 
-      setFalse();
+      if (!silent) {
+        setFalse();
+      }
     }
   );
 
-  let ScrollRef = useRef<HTMLDivElement>(null);
+  const ScrollRef = useRef<HTMLDivElement>(null);
   const ScrollData = useMemoizedFn(
     ({
       children,
@@ -293,11 +141,11 @@ export function useScrollPagination<
       ScrollContainerRef?: RefObject<HTMLDivElement>;
     } & BoxProps) => {
       const ref = ScrollContainerRef || ScrollRef;
-      const loadText = useMemo(() => {
+      const loadText = (() => {
         if (isLoading || isLoadingProp) return t('common:is_requesting');
         if (noMore) return t('common:request_end');
         return t('common:request_more');
-      }, [isLoading, noMore]);
+      })();
 
       const scroll = useScroll(ref);
 
@@ -333,7 +181,7 @@ export function useScrollPagination<
             </Box>
           )}
           {children}
-          {scrollLoadType === 'bottom' && !isEmpty && (
+          {scrollLoadType === 'bottom' && !isEmpty && (showNoMoreTip || !noMore) && (
             <Box
               mt={2}
               fontSize={'xs'}
@@ -355,7 +203,7 @@ export function useScrollPagination<
   );
 
   // Reload data
-  useRequest2(
+  useRequest(
     async () => {
       if (disabled) return;
       loadData({ init: true });
@@ -376,6 +224,7 @@ export function useScrollPagination<
     total: Math.max(total, data.length),
     data,
     setData,
+    setTotal,
     fetchData: loadData,
     refreshList
   };

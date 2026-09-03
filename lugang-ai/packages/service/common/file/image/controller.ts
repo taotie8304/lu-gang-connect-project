@@ -1,66 +1,16 @@
-import { type preUploadImgProps } from '@fastgpt/global/common/file/api';
 import { imageBaseUrl } from '@fastgpt/global/common/file/image/constants';
 import { MongoImage } from './schema';
 import { type ClientSession, Types } from '../../../common/mongo';
-import { guessBase64ImageType } from '../utils';
+import { guessBase64ImageType } from './utils';
 import { readFromSecondary } from '../../mongo/utils';
-import { addHours } from 'date-fns';
-import { imageFileType } from '@fastgpt/global/common/file/constants';
-import { retryFn } from '@fastgpt/global/common/system/utils';
 import { UserError } from '@fastgpt/global/common/error/utils';
-import { S3Sources } from '../../s3/type';
 import { getS3AvatarSource } from '../../s3/sources/avatar';
 import { isS3ObjectKey } from '../../s3/utils';
 import path from 'path';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
+import { serviceEnv } from '../../../env';
 
-export const maxImgSize = 1024 * 1024 * 12;
-const base64MimeRegex = /data:image\/([^\)]+);base64/;
-
-export async function uploadMongoImg({
-  base64Img,
-  teamId,
-  metadata,
-  shareId,
-  forever = false
-}: preUploadImgProps & {
-  base64Img: string;
-  teamId: string;
-  forever?: Boolean;
-}) {
-  if (base64Img.length > maxImgSize) {
-    return Promise.reject(new UserError('Image too large'));
-  }
-
-  const [base64Mime, base64Data] = base64Img.split(',');
-  // Check if mime type is valid
-  if (!base64MimeRegex.test(base64Mime)) {
-    return Promise.reject(new UserError('Invalid image base64'));
-  }
-
-  const mime = `image/${base64Mime.match(base64MimeRegex)?.[1] ?? 'image/jpeg'}`;
-  const binary = Buffer.from(base64Data, 'base64');
-  let extension = mime.split('/')[1];
-  if (extension.startsWith('x-')) {
-    extension = extension.substring(2); // Remove 'x-' prefix
-  }
-
-  if (!extension || !imageFileType.includes(`.${extension}`)) {
-    return Promise.reject(new UserError(`Invalid image file type: ${mime}`));
-  }
-
-  const { _id } = await retryFn(() =>
-    MongoImage.create({
-      teamId,
-      binary,
-      metadata: Object.assign({ mime }, metadata),
-      shareId,
-      expiredTime: forever ? undefined : addHours(new Date(), 1)
-    })
-  );
-
-  return `${process.env.NEXT_PUBLIC_BASE_URL || ''}${imageBaseUrl}${String(_id)}.${extension}`;
-}
+const imageRouteBase = serviceEnv.NEXT_PUBLIC_BASE_URL;
 
 export const copyAvatarImage = async ({
   teamId,
@@ -78,10 +28,9 @@ export const copyAvatarImage = async ({
   const avatarSource = getS3AvatarSource();
   if (isS3ObjectKey(imageUrl?.slice(avatarSource.prefix.length), 'avatar')) {
     const filename = (() => {
-      const last = imageUrl.split('/').pop();
-      if (!last) return getNanoid(6).concat(path.extname(imageUrl));
-      const firstDashIndex = last.indexOf('-');
-      return `${getNanoid(6)}-${firstDashIndex === -1 ? last : last.slice(firstDashIndex + 1)}`;
+      const extname = path.extname(imageUrl);
+      if (!extname) return getNanoid(6);
+      return path.basename(imageUrl);
     })();
     const key = await getS3AvatarSource().copyAvatar({
       key: imageUrl,
@@ -122,7 +71,7 @@ export const copyAvatarImage = async ({
         ordered: true
       }
     );
-    return `${process.env.NEXT_PUBLIC_BASE_URL || ''}${imageBaseUrl}${String(newImage._id)}.${image.metadata?.mime?.split('/')[1]}`;
+    return `${imageRouteBase}${imageBaseUrl}${String(newImage._id)}.${image.metadata?.mime?.split('/')[1]}`;
   }
 
   return imageUrl;

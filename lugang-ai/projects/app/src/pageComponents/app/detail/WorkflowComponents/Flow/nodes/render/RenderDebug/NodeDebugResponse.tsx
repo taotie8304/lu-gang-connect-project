@@ -1,18 +1,21 @@
-import React, { useCallback, useMemo, useRef } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Box, Button, Card, Flex } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useContextSelector } from 'use-context-selector';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import { WholeResponseContent } from '@/components/core/chat/components/WholeResponseModal';
-import type { FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import type { FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import {
   FormInputComponent,
   SelectOptionsComponent
 } from '@/components/core/chat/components/Interactive/InteractiveComponents';
 import { type UserInputInteractive } from '@fastgpt/global/core/workflow/template/system/interactive/type';
-import { type ChatItemType, type UserChatItemValueItemType } from '@fastgpt/global/core/chat/type';
-import { ChatItemValueTypeEnum, ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
+import {
+  type ChatItemMiniType,
+  type UserChatItemValueItemType
+} from '@fastgpt/global/core/chat/type';
+import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import { WorkflowActionsContext } from '../../../../context/workflowActionsContext';
 import { WorkflowDebugContext } from '../../../../context/workflowDebugContext';
@@ -43,9 +46,11 @@ const RenderUserFormInteractive = function RenderFormInput({
       <FormInputComponent
         defaultValues={defaultValues}
         interactiveParams={interactive.params}
-        SubmitButton={({ onSubmit }) => (
+        SubmitButton={({ onSubmit, isFileUploading, hasFileError }) => (
           <Button
             leftIcon={<MyIcon name="core/workflow/debugNext" />}
+            isDisabled={isFileUploading || hasFileError}
+            isLoading={isFileUploading}
             onClick={() =>
               onSubmit((data) => {
                 onNext(JSON.stringify(data));
@@ -69,7 +74,7 @@ const NodeDebugResponse = ({ nodeId, debugResult }: NodeDebugResponseProps) => {
   );
   const { onChangeNode } = useContextSelector(WorkflowActionsContext, (v) => v);
 
-  const statusMap = useRef({
+  const statusData = {
     running: {
       bg: 'primary.50',
       text: t('common:core.workflow.Running'),
@@ -90,34 +95,31 @@ const NodeDebugResponse = ({ nodeId, debugResult }: NodeDebugResponseProps) => {
       text: t('common:core.workflow.Skipped'),
       icon: 'core/workflow/runSkip'
     }
-  });
-  const statusData = statusMap.current[debugResult?.status || 'running'];
+  }[debugResult?.status || 'running'];
 
   const response = debugResult?.response;
 
-  const interactive = debugResult?.workflowInteractiveResponse;
+  const interactive = debugResult?.interactiveResponse;
   const onNextInteractive = useCallback(
     (userContent: string) => {
       if (!workflowDebugData || !workflowDebugData || !interactive) return;
 
       const updatedQuery: UserChatItemValueItemType[] = [
         {
-          type: ChatItemValueTypeEnum.text,
           text: { content: userContent }
         }
       ];
 
-      const mockHistory: ChatItemType[] = [
+      const mockHistory: ChatItemMiniType[] = [
         {
           obj: ChatRoleEnum.AI,
           value: [
             {
-              type: ChatItemValueTypeEnum.interactive,
               interactive: {
                 ...interactive,
-                entryNodeIds: workflowDebugData.entryNodeIds || [],
-                memoryEdges: interactive.memoryEdges || [],
-                nodeOutputs: interactive.nodeOutputs || []
+                entryNodeIds: workflowDebugData.entryNodeIds,
+                memoryEdges: [],
+                nodeOutputs: []
               }
             }
           ]

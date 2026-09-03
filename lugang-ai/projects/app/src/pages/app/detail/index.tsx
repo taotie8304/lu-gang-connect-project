@@ -10,57 +10,63 @@ import AppContextProvider, { AppContext } from '@/pageComponents/app/detail/cont
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { TabEnum } from '@/pageComponents/app/detail/context';
+import { ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
+import { shouldRouteReadOnlyAppToLogs } from '@/pageComponents/app/detail/permissionRouting';
 
-const SimpleEdit = dynamic(() => import('@/pageComponents/app/detail/SimpleApp'), {
-  ssr: false,
-  loading: () => <Loading fixed={false} />
-});
-const Workflow = dynamic(() => import('@/pageComponents/app/detail/Workflow'), {
-  ssr: false,
-  loading: () => <Loading fixed={false} />
-});
-const Plugin = dynamic(() => import('@/pageComponents/app/detail/Plugin'), {
-  ssr: false,
-  loading: () => <Loading fixed={false} />
-});
-const MCPTools = dynamic(() => import('@/pageComponents/app/detail/MCPTools'), {
-  ssr: false,
-  loading: () => <Loading fixed={false} />
-});
-const HTTPTools = dynamic(() => import('@/pageComponents/app/detail/HTTPTools'), {
-  ssr: false,
-  loading: () => <Loading fixed={false} />
-});
+const SimpleEdit = dynamic(() => import('@/pageComponents/app/detail/Edit/SimpleApp'));
+const AgentEdit = dynamic(() => import('@/pageComponents/app/detail/Edit/ChatAgent'));
+const Workflow = dynamic(() => import('@/pageComponents/app/detail/Workflow'));
+const Plugin = dynamic(() => import('@/pageComponents/app/detail/Plugin'));
+const MCPTools = dynamic(() => import('@/pageComponents/app/detail/Edit/MCPTools'));
+const HTTPTools = dynamic(() => import('@/pageComponents/app/detail/Edit/HTTPTools'));
 
 const AppDetail = () => {
-  const { setAppId, setSource } = useChatStore();
+  const { appId: storeAppId, source, setAppId, setSource } = useChatStore();
+  const appId = useContextSelector(AppContext, (e) => e.appId);
   const appDetail = useContextSelector(AppContext, (e) => e.appDetail);
+  const currentTab = useContextSelector(AppContext, (e) => e.currentTab);
   const route2Tab = useContextSelector(AppContext, (e) => e.route2Tab);
+  const isCurrentAppLoaded = !!appDetail._id && appDetail._id === appId;
+  const isChatStoreReady = source === ChatSourceEnum.test && storeAppId === appDetail._id;
 
   useEffect(() => {
-    setSource('test');
-    if (appDetail._id) {
+    setSource(ChatSourceEnum.test);
+    if (isCurrentAppLoaded) {
       setAppId(appDetail._id);
 
-      if (!appDetail.permission.hasWritePer) {
+      if (
+        shouldRouteReadOnlyAppToLogs({
+          hasWritePermission: appDetail.permission.hasWritePer,
+          currentTab
+        })
+      ) {
         route2Tab(TabEnum.logs);
       }
     }
-  }, [appDetail._id]);
+  }, [
+    appDetail._id,
+    appDetail.permission.hasWritePer,
+    currentTab,
+    isCurrentAppLoaded,
+    route2Tab,
+    setAppId,
+    setSource
+  ]);
 
   return (
     <>
       <NextHead title={appDetail.name} icon={appDetail.avatar}></NextHead>
-      <Box h={'100%'} position={'relative'}>
-        {!appDetail._id ? (
+      <Box h={'100%'} position={'relative'} bg={'myGray.25'}>
+        {!isCurrentAppLoaded || !isChatStoreReady ? (
           <Loading fixed={false} />
         ) : (
           <>
-            {appDetail.type === AppTypeEnum.simple && <SimpleEdit />}
-            {appDetail.type === AppTypeEnum.workflow && <Workflow />}
-            {appDetail.type === AppTypeEnum.workflowTool && <Plugin />}
-            {appDetail.type === AppTypeEnum.mcpToolSet && <MCPTools />}
-            {appDetail.type === AppTypeEnum.httpToolSet && <HTTPTools />}
+            {appDetail.type === AppTypeEnum.simple && <SimpleEdit key={appDetail._id} />}
+            {appDetail.type === AppTypeEnum.chatAgent && <AgentEdit key={appDetail._id} />}
+            {appDetail.type === AppTypeEnum.workflow && <Workflow key={appDetail._id} />}
+            {appDetail.type === AppTypeEnum.workflowTool && <Plugin key={appDetail._id} />}
+            {appDetail.type === AppTypeEnum.mcpToolSet && <MCPTools key={appDetail._id} />}
+            {appDetail.type === AppTypeEnum.httpToolSet && <HTTPTools key={appDetail._id} />}
           </>
         )}
       </Box>
@@ -78,8 +84,18 @@ const Provider = () => {
 
 export async function getServerSideProps(context: any) {
   return {
+    // TODO: 精简 i18n，避免交叉使用。
     props: {
-      ...(await serviceSideProps(context, ['app', 'chat', 'user', 'file', 'publish', 'workflow']))
+      ...(await serviceSideProps(context, [
+        'app',
+        'chat',
+        'user',
+        'file',
+        'publish',
+        'apikey',
+        'workflow',
+        'skill'
+      ]))
     }
   };
 }

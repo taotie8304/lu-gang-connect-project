@@ -1,9 +1,10 @@
-import { type LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
-import type { CompletionFinishReason, CompletionUsage } from '@fastgpt/global/core/ai/type';
+import { type LLMModelItemType } from '@fastgpt/global/core/ai/model.schema';
+import type { CompletionFinishReason, CompletionUsage } from '@fastgpt/global/core/ai/llm/type';
 import { getLLMDefaultUsage } from '@fastgpt/global/core/ai/constants';
 import { removeDatasetCiteText } from '@fastgpt/global/core/ai/llm/utils';
 import json5 from 'json5';
 import { sliceJsonStr } from '@fastgpt/global/common/string/tools';
+import { jsonrepair } from 'jsonrepair';
 
 /* 
   Count response max token
@@ -39,7 +40,13 @@ export const computedTemperature = ({
 };
 
 // LLM utils
-// Parse <think></think> tags to think and answer - unstream response
+const normalizeFirstAnswerAfterReasoning = (answer: string) => answer.trimStart();
+
+/**
+ * 从非流式模型结果中拆分 <think></think> 思考内容和最终回答。
+ * </think> 后面的前导空白只用于分隔 reasoning 与 answer，不作为正文保留，
+ * 避免 reasoning-only 输出被解析成 answerText="\n"。
+ */
 export const parseReasoningContent = (text: string): [string, string] => {
   const regex = /<think>([\s\S]*?)<\/think>/;
   const match = text.match(regex);
@@ -51,7 +58,9 @@ export const parseReasoningContent = (text: string): [string, string] => {
   const thinkContent = match[1].trim();
 
   // Add answer (remaining text after think tag)
-  const answerContent = text.slice(match.index! + match[0].length);
+  const answerContent = normalizeFirstAnswerAfterReasoning(
+    text.slice(match.index! + match[0].length)
+  );
 
   return [thinkContent, answerContent];
 };
@@ -73,6 +82,30 @@ export const parseLLMStreamResponse = () => {
   let buffer_usage: CompletionUsage = getLLMDefaultUsage();
   let buffer_reasoningContent = '';
   let buffer_content = '';
+  let error: any = undefined;
+  let shouldNormalizeFirstAnswer = false;
+
+  const normalizeContentBoundary = ({
+    reasoningContent,
+    content
+  }: {
+    reasoningContent: string;
+    content: string;
+  }) => {
+    if (reasoningContent) {
+      shouldNormalizeFirstAnswer = true;
+    }
+
+    if (!content || !shouldNormalizeFirstAnswer) return content;
+
+    const normalizedContent = normalizeFirstAnswerAfterReasoning(content);
+
+    if (normalizedContent) {
+      shouldNormalizeFirstAnswer = false;
+    }
+
+    return normalizedContent;
+  };
 
   /* 
     parseThinkTag - 只控制是否主动解析 <think></think>，如果接口已经解析了，则不再解析。
@@ -84,6 +117,7 @@ export const parseLLMStreamResponse = () => {
     retainDatasetCite = true
   }: {
     part: {
+      error?: any;
       choices: {
         delta: {
           content?: string | null;
@@ -91,11 +125,12 @@ export const parseLLMStreamResponse = () => {
         };
         finish_reason?: CompletionFinishReason;
       }[];
-      usage?: CompletionUsage;
+      usage?: CompletionUsage | null;
     };
     parseThinkTag?: boolean;
     retainDatasetCite?: boolean;
   }): {
+    error?: any;
     reasoningContent: string;
     content: string; // 原始内容，不去掉 cite
     responseContent: string; // 响应的内容，会去掉 cite
@@ -113,7 +148,7 @@ export const parseLLMStreamResponse = () => {
       const isStreamEnd = !!buffer_finishReason;
 
       // Parse think
-      const { reasoningContent: parsedThinkReasoningContent, content: parsedThinkContent } =
+      const { reasoningContent: parsedThinkReasoningContent, content: rawParsedThinkContent } =
         (() => {
           if (reasoningContent || !parseThinkTag) {
             isInThinkTag = false;
@@ -230,6 +265,11 @@ export const parseLLMStreamResponse = () => {
           };
         })();
 
+      const parsedThinkContent = normalizeContentBoundary({
+        reasoningContent: parsedThinkReasoningContent,
+        content: rawParsedThinkContent
+      });
+
       // Parse datset cite
       if (retainDatasetCite) {
         return {
@@ -297,11 +337,14 @@ export const parseLLMStreamResponse = () => {
     buffer_reasoningContent += data.reasoningContent;
     buffer_content += data.content;
 
+    error = part.error || error;
+
     return data;
   };
 
   const getResponseData = () => {
     return {
+      error,
       finish_reason: buffer_finishReason,
       usage: buffer_usage,
       reasoningContent: buffer_reasoningContent,
@@ -312,17 +355,21 @@ export const parseLLMStreamResponse = () => {
   const updateFinishReason = (finishReason: CompletionFinishReason) => {
     buffer_finishReason = finishReason;
   };
+  const updateError = (err: any) => {
+    error = err;
+  };
 
   return {
     parsePart,
     getResponseData,
-    updateFinishReason
+    updateFinishReason,
+    updateError
   };
 };
 
-export const parseToolArgs = <T = Record<string, any>>(toolArgs: string) => {
+export const parseJsonArgs = <T = Record<string, any>>(str: string) => {
   try {
-    return json5.parse(sliceJsonStr(toolArgs)) as T;
+    return json5.parse(jsonrepair(sliceJsonStr(str))) as T;
   } catch {
     return;
   }

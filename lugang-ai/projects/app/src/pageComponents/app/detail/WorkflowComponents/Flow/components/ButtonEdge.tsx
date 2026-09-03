@@ -1,8 +1,13 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { BezierEdge, getBezierPath, EdgeLabelRenderer, type EdgeProps } from 'reactflow';
+import {
+  BaseEdge,
+  EdgeLabelRenderer,
+  type EdgeProps,
+  type ConnectionLineComponentProps
+} from 'reactflow';
 import { Box, Flex } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { NodeOutputKeyEnum, RuntimeEdgeStatusEnum } from '@fastgpt/global/core/workflow/constants';
+import { NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { useContextSelector } from 'use-context-selector';
 import { useThrottleEffect } from 'ahooks';
 import {
@@ -11,10 +16,36 @@ import {
 } from '../../context/workflowInitContext';
 import { WorkflowDebugContext } from '../../context/workflowDebugContext';
 import { WorkflowUIContext } from '../../context/workflowUIContext';
+import { getCustomStepPath } from '../utils/edge';
+
+export const CustomConnectionLine = ({
+  fromX,
+  fromY,
+  fromPosition,
+  toX,
+  toY,
+  toPosition
+}: ConnectionLineComponentProps) => {
+  const [path] = getCustomStepPath({
+    sourceX: fromX,
+    sourceY: fromY,
+    sourcePosition: fromPosition,
+    targetX: toX,
+    targetY: toY,
+    targetPosition: toPosition,
+    borderRadius: 60
+  });
+
+  return (
+    <g>
+      <path d={path} fill="none" stroke="#487FFF" strokeWidth={3} />
+    </g>
+  );
+};
 
 const ButtonEdge = (props: EdgeProps) => {
   const selectedNodesMap = useContextSelector(WorkflowNodeDataContext, (v) => v.selectedNodesMap);
-  const { onEdgesChange, getNodeById, foldedNodesMap } = useContextSelector(
+  const { onEdgesChange, getNodeById, foldedNodesMap, edges, getNodes } = useContextSelector(
     WorkflowBufferDataContext,
     (v) => v
   );
@@ -55,6 +86,33 @@ const ButtonEdge = (props: EdgeProps) => {
     return node ? 2002 : 0;
   }, [getNodeById, source]);
 
+  // Offset edges from same source horizontally to avoid visual overlap
+  const edgeStepOffset = useMemo(() => {
+    const sameSourceEdges = edges.filter((e) => e.source === source);
+    if (sameSourceEdges.length <= 1) return 0;
+
+    const nodesMap = new Map(getNodes().map((n) => [n.id, n]));
+
+    // Sort edges by target node Y position
+    const sortedEdges = [...sameSourceEdges].sort((a, b) => {
+      const nodeA = nodesMap.get(a.target);
+      const nodeB = nodesMap.get(b.target);
+      return (nodeA?.position?.y ?? 0) - (nodeB?.position?.y ?? 0);
+    });
+
+    const index = sortedEdges.findIndex((e) => e.id === id);
+    const total = sortedEdges.length;
+    const spacing = 20;
+    const midPoint = Math.ceil(total / 2);
+    const offset =
+      index < midPoint
+        ? (index - Math.floor(midPoint / 2)) * spacing
+        : (Math.floor((total - midPoint) / 2) - (index - midPoint)) * spacing;
+
+    const maxOffset = Math.abs(targetX - sourceX) * 0.25;
+    return Math.max(-maxOffset, Math.min(maxOffset, offset));
+  }, [edges, source, id, getNodes, sourceX, targetX]);
+
   const onDelConnect = useCallback(
     (id: string) => {
       onEdgesChange([
@@ -81,13 +139,14 @@ const ButtonEdge = (props: EdgeProps) => {
     }
   );
 
-  const [, labelX, labelY] = getBezierPath({
+  const [, labelX, labelY] = getCustomStepPath({
     sourceX,
     sourceY,
     sourcePosition,
     targetX,
     targetY,
-    targetPosition
+    targetPosition,
+    stepOffset: edgeStepOffset
   });
 
   const isToolEdge = sourceHandleId === NodeOutputKeyEnum.selectedTools;
@@ -96,7 +155,7 @@ const ButtonEdge = (props: EdgeProps) => {
   const { newTargetX, newTargetY } = useMemo(() => {
     if (targetPosition === 'left') {
       return {
-        newTargetX: targetX - 3,
+        newTargetX: targetX - 7,
         newTargetY: targetY
       };
     }
@@ -117,9 +176,9 @@ const ButtonEdge = (props: EdgeProps) => {
 
     // debug mode
     const colorMap = {
-      [RuntimeEdgeStatusEnum.active]: '#487FFF',
-      [RuntimeEdgeStatusEnum.waiting]: '#5E8FFF',
-      [RuntimeEdgeStatusEnum.skipped]: '#8A95A7'
+      active: '#487FFF',
+      waiting: '#5E8FFF',
+      skipped: '#8A95A7'
     };
     return colorMap[targetEdge.status];
   }, [highlightEdge, sourceHandleId, targetHandleId, workflowDebugData?.runtimeEdges]);
@@ -127,7 +186,7 @@ const ButtonEdge = (props: EdgeProps) => {
   const memoEdgeLabel = useMemo(() => {
     const arrowTransform = (() => {
       if (targetPosition === 'left') {
-        return `translate(-85%, -47%) translate(${newTargetX}px,${newTargetY}px) rotate(0deg)`;
+        return `translate(-89%, -49%) translate(${newTargetX}px,${newTargetY}px) rotate(0deg)`;
       }
       if (targetPosition === 'right') {
         return `translate(-10%, -50%) translate(${newTargetX}px,${newTargetY}px) rotate(-180deg)`;
@@ -167,8 +226,8 @@ const ButtonEdge = (props: EdgeProps) => {
               position={'absolute'}
               transform={arrowTransform}
               pointerEvents={'all'}
-              w={highlightEdge ? '14px' : '12px'}
-              h={highlightEdge ? '14px' : '12px'}
+              w={highlightEdge ? '18px' : '16px'}
+              h={highlightEdge ? '18px' : '16px'}
               zIndex={highlightEdge ? defaultZIndex + 1000 : defaultZIndex}
             >
               <MyIcon
@@ -220,11 +279,21 @@ const ButtonEdge = (props: EdgeProps) => {
       };
     })();
 
+    const [path] = getCustomStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX: newTargetX,
+      targetY: newTargetY,
+      targetPosition,
+      borderRadius: 60,
+      stepOffset: edgeStepOffset
+    });
+
     return (
-      <BezierEdge
-        {...props}
-        targetX={newTargetX}
-        targetY={newTargetY}
+      <BaseEdge
+        id={id}
+        path={path}
         style={{
           ...edgeStyle,
           stroke: edgeColor,
@@ -234,10 +303,15 @@ const ButtonEdge = (props: EdgeProps) => {
     );
   }, [
     workflowDebugData?.runtimeEdges,
-    props,
+    id,
+    sourceX,
+    sourceY,
+    sourcePosition,
     newTargetX,
     newTargetY,
+    targetPosition,
     edgeColor,
+    edgeStepOffset,
     source,
     target,
     style,

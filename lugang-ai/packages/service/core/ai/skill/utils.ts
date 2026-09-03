@@ -1,0 +1,259 @@
+/**
+ * Skill 纯工具统一出口。
+ *
+ * 这里只放无副作用的 SKILL.md 文本解析和模板拼装，不访问数据库、对象存储、sandbox 或 LLM。
+ */
+import { shellQuote } from '@fastgpt/global/common/string/utils';
+
+/* ==================== YAML Frontmatter 解析 (原 skillMarkdown.ts) ==================== */
+
+/**
+ * 解析 SKILL.md 的 YAML frontmatter，并返回 frontmatter 与正文内容。
+ *
+ * FastGPT 当前只依赖简单的 frontmatter 字段，因此这里使用轻量解析器处理常见
+ * key/value、数组和一层对象。复杂 YAML 语法如果解析失败，会通过 error 返回给调用方。
+ */
+export function parseSkillMarkdown(markdown: string): {
+  frontmatter: Record<string, any>;
+  content: string;
+  error?: string;
+} {
+  const frontmatterRegex = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n([\s\S]*))?$/;
+  const match = markdown.match(frontmatterRegex);
+
+  if (!match) {
+    return {
+      frontmatter: {},
+      content: markdown,
+      error: 'SKILL.md must contain YAML frontmatter (delimited by ---)'
+    };
+  }
+
+  const yamlContent = match[1];
+  const bodyContent = match[2] ?? '';
+
+  try {
+    const frontmatter = parseYamlFrontmatter(yamlContent);
+    return {
+      frontmatter,
+      content: bodyContent
+    };
+  } catch (error: any) {
+    return {
+      frontmatter: {},
+      content: markdown,
+      error: `Failed to parse frontmatter: ${error.message}`
+    };
+  }
+}
+
+/**
+ * 轻量 frontmatter YAML 解析器。
+ *
+ * 这里只覆盖 SKILL.md 元数据当前需要的简单结构：`key: value` 和一层对象字段。
+ * 所有标量值都按文本保留，不做 YAML 的数字、布尔值、null 或行内数组类型推断。
+ * 后续如果要支持完整 YAML，应该在这个文件里统一替换实现，避免解析规则分散在业务流程里。
+ */
+function parseYamlFrontmatter(yaml: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  const lines = yaml.split('\n');
+
+  const stack: { indent: number; obj: Record<string, any> }[] = [];
+  let currentObj = result;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const matchIndent = line.match(/^(\s*)/);
+    const indent = matchIndent ? matchIndent[1].length : 0;
+
+    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
+      stack.pop();
+    }
+
+    currentObj = stack.length > 0 ? stack[stack.length - 1].obj : result;
+
+    if (trimmed.endsWith(':')) {
+      const key = trimmed.slice(0, -1).trim();
+      const newObj: Record<string, any> = {};
+      currentObj[key] = newObj;
+      stack.push({ indent, obj: newObj });
+      currentObj = newObj;
+      continue;
+    }
+
+    const colonIndex = line.indexOf(':');
+    if (colonIndex === -1) continue;
+
+    const key = line.slice(0, colonIndex).trim();
+    const value = line.slice(colonIndex + 1).trim();
+
+    currentObj[key] = value;
+  }
+
+  return result;
+}
+
+/* ==================== SKILL.md 模版生成 (原 skillMdTemplate.ts) ==================== */
+
+export type BuildSkillMdParams = {
+  name: string;
+  description: string;
+};
+
+/**
+ * 生成一个最小可用的 SKILL.md。
+ *
+ * 该模板只包含 frontmatter，不生成正文说明。它只作为通用文本工具保留；
+ * 新建 Skill 的初始版本不再调用它生成默认技能文件。
+ */
+export function buildSkillMd(params: BuildSkillMdParams): string {
+  return generateFrontmatter(params.name, params.description);
+}
+
+/**
+ * 生成 SKILL.md 所需的 YAML frontmatter。
+ *
+ * 当前只写入 name 和 description，保持创建阶段的默认包尽量轻量。
+ */
+function generateFrontmatter(name: string, description: string): string {
+  const escapedName = escapeYaml(name);
+  const escapedDescription = escapeYaml(description);
+
+  return `---\nname: ${escapedName}\ndescription: ${escapedDescription}\n---`;
+}
+
+/**
+ * 将字符串转成适合写入简单 YAML 标量的形式。
+ */
+function escapeYaml(value: string): string {
+  if (value === '') {
+    return '""';
+  }
+
+  const needsQuoting =
+    /[:#{}\[\],&*?|<>!=~`@]/.test(value) ||
+    /^[-?]/.test(value) ||
+    value.includes('\n') ||
+    value.includes('"') ||
+    /^true$|^false$|^null$|^~$/i.test(value);
+
+  if (!needsQuoting) {
+    return value;
+  }
+
+  if (value.includes('\n')) {
+    const lines = value.split('\n');
+    return '|\n' + lines.map((line) => '  ' + line).join('\n');
+  }
+
+  const escaped = value.replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
+export function extractSkillNameFromSkillMd(content: string): string {
+  try {
+    const { frontmatter } = parseSkillMarkdown(content);
+    if (frontmatter.name) {
+      return getSafeSkillDirectoryName(String(frontmatter.name)).toLowerCase();
+    }
+  } catch {}
+
+  const headerMatch = content.match(/^#\s+(.+)$/m);
+  return headerMatch ? getSafeSkillDirectoryName(headerMatch[1]).toLowerCase() : 'unnamed-skill';
+}
+
+/* ==================== 命名清洗辅助 ==================== */
+
+export const MAX_SKILL_DIRECTORY_NAME_LENGTH = 50;
+
+/**
+ * 安全地将用户命名的 Skill Name 转换为适合容器目录存储的合法目录名。
+ */
+export const getSafeSkillDirectoryName = (skillName: string): string => {
+  const normalized = skillName
+    .trim()
+    // 1. 将空格和空白字符替换为中划线
+    .replace(/\s+/g, '-')
+    // 2. 只保留中文、英文、数字、中划线和下划线，其它所有非法/危险字符都替换为中划线
+    .replace(/[^\w\u4e00-\u9fa5-]/g, '-')
+    // 3. 将连续的多个中划线或下划线合并为单个
+    .replace(/-+/g, '-')
+    .replace(/_+/g, '_')
+    // 4. 去除首尾的多余中划线/下划线
+    .replace(/^[-_]|[-_]$/g, '')
+    // 5. 限制长度在合理范围
+    .slice(0, MAX_SKILL_DIRECTORY_NAME_LENGTH)
+    .trim();
+
+  // 6. 排除特殊目录名或为空、纯中/下划线的情况，使用安全回退值
+  return normalized && normalized !== '.' && normalized !== '..' && !/^[-_]+$/.test(normalized)
+    ? normalized
+    : 'skill';
+};
+
+export type GitignoreParsedResult = {
+  customExcludes: string[];
+  pruneClause: string;
+};
+
+/**
+ * 解析多个 .gitignore 文件的内容，生成用于 JSZip/其它排除的 excludes 列表，
+ * 以及专为 Linux find 命令优化的 -prune 子句（防 Shell 注入）。
+ */
+export function parseGitignoreRules(gitignoreContents: string[]): GitignoreParsedResult {
+  const customExcludes: string[] = [];
+  const pruneDirs: string[] = [];
+
+  for (const content of gitignoreContents) {
+    const lines = content.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      const pattern = trimmed.endsWith('/') ? trimmed.slice(0, -1) : trimmed;
+      if (!pattern) continue;
+
+      if (trimmed.endsWith('/') || !pattern.includes('.')) {
+        customExcludes.push(`${pattern}/*`);
+        customExcludes.push(`*/${pattern}/*`);
+        customExcludes.push(pattern);
+        customExcludes.push(`*/${pattern}`);
+        pruneDirs.push(pattern);
+      } else {
+        customExcludes.push(pattern);
+        customExcludes.push(`*/${pattern}`);
+      }
+    }
+  }
+
+  // 加上排重和过滤
+  const uniqPruneDirs = Array.from(
+    new Set(
+      pruneDirs
+        .map((p) => p.replace(/\/\*$/, '').replace(/^\*\//, ''))
+        .filter((p) => p && !p.includes('*'))
+    )
+  );
+
+  const pruneClauses: string[] = [];
+  for (const dirPattern of uniqPruneDirs) {
+    const cleanPattern = dirPattern.replace(/^\/+|\/+$/g, '');
+    if (!cleanPattern) continue;
+
+    if (dirPattern.includes('/')) {
+      const pathPattern = cleanPattern.startsWith('./') ? cleanPattern : `./${cleanPattern}`;
+      pruneClauses.push(`-path ${shellQuote(pathPattern)}`);
+    } else {
+      pruneClauses.push(`-name ${shellQuote(cleanPattern)}`);
+    }
+  }
+
+  const pruneClause = pruneClauses.length > 0 ? pruneClauses.join(' -o ') : '';
+
+  return {
+    customExcludes,
+    pruneClause
+  };
+}

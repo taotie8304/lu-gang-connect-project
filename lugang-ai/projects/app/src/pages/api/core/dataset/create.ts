@@ -1,9 +1,12 @@
-import type { CreateDatasetParams } from '@/global/core/dataset/api.d';
 import { NextAPI } from '@/service/middleware/entry';
 import { parseParentIdInMongo } from '@fastgpt/global/common/parentFolder/utils';
 import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import {
-  OwnerRoleVal,
+  CreateDatasetBodySchema,
+  CreateDatasetResponseSchema,
+  type CreateDatasetResponse
+} from '@fastgpt/global/openapi/core/dataset/api';
+import {
   PerResourceTypeEnum,
   WritePermissionVal
 } from '@fastgpt/global/support/permission/constant';
@@ -13,6 +16,7 @@ import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import {
   getDatasetModel,
   getDefaultEmbeddingModel,
+  getDefaultVLMModel,
   getEmbeddingModel,
   getLLMModel
 } from '@fastgpt/service/core/ai/model';
@@ -20,20 +24,15 @@ import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { checkTeamDatasetLimit } from '@fastgpt/service/support/permission/teamLimit';
 import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { getI18nDatasetType } from '@fastgpt/service/support/user/audit/util';
-import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
+import { createResourceDefaultCollaborators } from '@fastgpt/service/support/permission/controller';
 import { getS3AvatarSource } from '@fastgpt/service/common/s3/sources/avatar';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-export type DatasetCreateQuery = {};
-export type DatasetCreateBody = CreateDatasetParams;
-export type DatasetCreateResponse = string;
-
-async function handler(
-  req: ApiRequestProps<DatasetCreateBody, DatasetCreateQuery>
-): Promise<DatasetCreateResponse> {
+async function handler(req: ApiRequestProps): Promise<CreateDatasetResponse> {
   const {
     parentId,
     name,
@@ -42,9 +41,9 @@ async function handler(
     avatar,
     vectorModel = getDefaultEmbeddingModel()?.model,
     agentModel = getDatasetModel()?.model,
-    vlmModel,
+    vlmModel = getDefaultVLMModel()?.model,
     apiDatasetServer
-  } = req.body;
+  } = parseApiInput({ req, bodySchema: CreateDatasetBodySchema }).body;
 
   // auth
   const { teamId, tmbId, userId } = parentId
@@ -95,12 +94,11 @@ async function handler(
       { session, ordered: true }
     );
 
-    await MongoResourcePermission.insertOne({
-      teamId,
+    await createResourceDefaultCollaborators({
+      resource: dataset,
+      resourceType: PerResourceTypeEnum.dataset,
       tmbId,
-      resourceId: dataset._id,
-      permission: OwnerRoleVal,
-      resourceType: PerResourceTypeEnum.dataset
+      session
     });
 
     await getS3AvatarSource().refreshAvatar(avatar, undefined, session);
@@ -127,6 +125,6 @@ async function handler(
     });
   })();
 
-  return datasetId;
+  return CreateDatasetResponseSchema.parse(datasetId);
 }
 export default NextAPI(handler);

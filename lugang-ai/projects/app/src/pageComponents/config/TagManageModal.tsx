@@ -1,12 +1,12 @@
 import { Box, Button, Flex, Input, ModalBody, ModalFooter } from '@chakra-ui/react';
 import type { SystemPluginToolTagType } from '@fastgpt/global/core/plugin/type';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useEffect, useRef, useState } from 'react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import DndDrag, { Draggable } from '@fastgpt/web/components/common/DndDrag/index';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { parseI18nString } from '@fastgpt/global/common/i18n/utils';
 import { nanoid } from 'nanoid';
 import {
@@ -19,7 +19,7 @@ import { getPluginToolTags } from '@/web/core/plugin/toolTag/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 
 const TagManageModal = ({ onClose }: { onClose: () => void }) => {
-  const { t, i18n } = useTranslation();
+  const { t, i18n } = useClientTranslation('app');
   const { toast } = useToast();
   const newTagInputRef = useRef<HTMLInputElement>(null);
 
@@ -37,16 +37,10 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
     });
   };
 
-  const {
-    data: tags = [],
-    run: loadTags,
-    loading
-  } = useRequest2(getPluginToolTags, {
-    manual: false
+  const { run: loadTags, loading } = useRequest(getPluginToolTags, {
+    manual: false,
+    onSuccess: setLocalTags
   });
-  useEffect(() => {
-    setLocalTags(tags);
-  }, [tags]);
 
   useEffect(() => {
     if (editingTagId && newTagInputRef.current) {
@@ -54,7 +48,7 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
     }
   }, [editingTagId]);
 
-  const { runAsync: handleAddTag } = useRequest2(
+  const { runAsync: handleAddTag } = useRequest(
     async (tagName: string) => {
       await createPluginToolTag({ tagName });
     },
@@ -67,7 +61,7 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
     }
   );
 
-  const { runAsync: handleUpdateTag } = useRequest2(
+  const { runAsync: handleUpdateTag } = useRequest(
     async (tagId: string, tagName: string) => {
       await updatePluginToolTag({ tagId, tagName });
     },
@@ -80,7 +74,7 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
     }
   );
 
-  const { runAsync: handleDeleteTag } = useRequest2(
+  const { runAsync: handleDeleteTag } = useRequest(
     async (tag: SystemPluginToolTagType) => {
       await deletePluginToolTag({ tagId: tag.tagId });
     },
@@ -91,7 +85,7 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
     }
   );
 
-  const { runAsync: handleUpdateOrder } = useRequest2(
+  const { runAsync: handleUpdateOrder } = useRequest(
     async (newList: SystemPluginToolTagType[]) => {
       await updatePluginToolTagOrder({ tags: newList });
     },
@@ -257,7 +251,7 @@ const TagManageModal = ({ onClose }: { onClose: () => void }) => {
                                 fontSize={'sm'}
                                 fontWeight={'medium'}
                               >
-                                {t(displayName)}
+                                {displayName}
                               </Box>
                               <Flex flex={1} />
 

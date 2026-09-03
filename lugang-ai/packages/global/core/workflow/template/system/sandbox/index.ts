@@ -13,7 +13,7 @@ import { type FlowNodeTemplateType } from '../../../type/node';
 import { Input_Template_DynamicInput } from '../../input';
 import { Output_Template_AddOutput } from '../../output';
 import { JS_TEMPLATE } from './constants';
-import { i18nT } from '../../../../../../web/i18n/utils';
+import { i18nT } from '../../../../../common/i18n/utils';
 
 export const CodeNode: FlowNodeTemplateType = {
   id: FlowNodeTypeEnum.code,
@@ -22,15 +22,20 @@ export const CodeNode: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/codeRun',
+  avatarLinear: 'core/workflow/template/codeRunLinear',
+  colorSchema: 'lime',
   name: i18nT('workflow:code_execution'),
-  intro: i18nT('workflow:execute_a_simple_script_code_usually_for_complex_data_processing'),
+  intro: i18nT('workflow:code_sandbox_intro'),
   showStatus: true,
+  isTool: true,
+  hasToolInput: true,
   catchError: false,
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/sandbox/',
+  courseUrl: '/guide/build/workflow/nodes/sandbox-v2',
   inputs: [
     {
       ...Input_Template_DynamicInput,
       description: i18nT('workflow:these_variables_will_be_input_parameters_for_code_execution'),
+      canAgentGenerated: false,
       customInputConfig: {
         selectValueTypeList: Object.values(WorkflowIOValueTypeEnum),
         showDescription: false,
@@ -41,6 +46,7 @@ export const CodeNode: FlowNodeTemplateType = {
       renderTypeList: [FlowNodeInputTypeEnum.reference],
       valueType: WorkflowIOValueTypeEnum.string,
       canEdit: true,
+      canAgentGenerated: false,
       key: 'data1',
       label: 'data1',
       customInputConfig: {
@@ -54,6 +60,7 @@ export const CodeNode: FlowNodeTemplateType = {
       renderTypeList: [FlowNodeInputTypeEnum.reference],
       valueType: WorkflowIOValueTypeEnum.string,
       canEdit: true,
+      canAgentGenerated: false,
       key: 'data2',
       label: 'data2',
       customInputConfig: {

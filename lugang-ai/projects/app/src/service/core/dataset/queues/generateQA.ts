@@ -1,25 +1,27 @@
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
 import { pushLLMTrainingUsage } from '@fastgpt/service/support/wallet/usage/controller';
 import { TrainingModeEnum } from '@fastgpt/global/core/dataset/constants';
-import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/type.d';
-import { addLog } from '@fastgpt/service/common/system/log';
-import { replaceVariable } from '@fastgpt/global/common/string/tools';
+import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+import { replaceVariable } from '@fastgpt/service/common/string/replaceVariable';
 import { Prompt_AgentQA } from '@fastgpt/global/core/ai/prompt/agent';
-import type { PushDatasetDataChunkProps } from '@fastgpt/global/core/dataset/api.d';
+import type { PushDataChunkType } from '@fastgpt/global/openapi/core/dataset/data/api';
 import { getLLMModel } from '@fastgpt/service/core/ai/model';
 import { checkTeamAiPointsAndLock } from './utils';
 import { addMinutes } from 'date-fns';
-import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.d';
+import type { LLMModelItemType } from '@fastgpt/global/core/ai/model.schema';
 import {
   chunkAutoChunkSize,
   getLLMMaxChunkSize
 } from '@fastgpt/global/core/dataset/training/utils';
 import { getErrText } from '@fastgpt/global/common/error/utils';
+import { delay } from '@fastgpt/global/common/system/utils';
 import { text2Chunks } from '@fastgpt/service/worker/function';
 import { pushDataListToTrainingQueue } from '@fastgpt/service/core/dataset/training/controller';
-import { delay } from '@fastgpt/service/common/bullmq';
 import { createLLMResponse } from '@fastgpt/service/core/ai/llm/request';
 import { UsageItemTypeEnum } from '@fastgpt/global/support/wallet/usage/constants';
+
+const logger = getLogger(LogCategories.MODULE.DATASET.QA);
 
 const reduceQueue = () => {
   global.qaQueueLen = global.qaQueueLen > 0 ? global.qaQueueLen - 1 : 0;
@@ -34,7 +36,7 @@ type PopulateType = {
 
 export async function generateQA(): Promise<any> {
   const max = global.systemEnv?.qaMaxProcess || 10;
-  addLog.debug(`[QA Queue] Queue size: ${global.qaQueueLen}`);
+  logger.debug('QA queue size check', { queueSize: global.qaQueueLen, max });
 
   if (global.qaQueueLen >= max) return;
   global.qaQueueLen++;
@@ -83,7 +85,7 @@ export async function generateQA(): Promise<any> {
             data,
             text: data.q
           };
-        } catch (error) {
+        } catch {
           return {
             error: true
           };
@@ -94,23 +96,33 @@ export async function generateQA(): Promise<any> {
         break;
       }
       if (error) {
-        addLog.error(`[QA Queue] Error`, error);
+        logger.error('QA queue fetch task failed', { error });
         await delay(500);
         continue;
       }
 
       if (!data.dataset || !data.collection) {
-        addLog.info(`[QA Queue] Dataset or collection not found`, data);
+        logger.info('QA queue task skipped: dataset or collection missing', {
+          datasetId: data.datasetId,
+          collectionId: data.collectionId,
+          trainingId: data._id
+        });
         // Delete data
         await MongoDatasetTraining.deleteOne({ _id: data._id });
         continue;
       }
       // auth balance
-      if (!(await checkTeamAiPointsAndLock(data.teamId))) {
+      if (!(await checkTeamAiPointsAndLock(data.teamId, String(data._id)))) {
         continue;
       }
 
-      addLog.info(`[QA Queue] Start`);
+      logger.info('QA queue task started', {
+        trainingId: data._id,
+        datasetId: data.datasetId,
+        collectionId: data.collectionId,
+        teamId: data.teamId,
+        tmbId: data.tmbId
+      });
 
       try {
         const modelData = getLLMModel(data.dataset.agentModel);
@@ -129,9 +141,10 @@ export async function generateQA(): Promise<any> {
           answerText: answer,
           usage: { inputTokens, outputTokens }
         } = await createLLMResponse({
+          teamId: data.teamId,
+          saveLLMResponseRecord: false,
           body: {
             model: modelData.model,
-            temperature: 0.3,
             messages,
             stream: true
           }
@@ -169,13 +182,21 @@ export async function generateQA(): Promise<any> {
           type: UsageItemTypeEnum.training_qa
         });
 
-        addLog.info(`[QA Queue] Finish`, {
-          time: Date.now() - startTime,
-          splitLength: qaArr.length,
-          usage: { inputTokens, outputTokens }
+        logger.info('QA queue task finished', {
+          durationMs: Date.now() - startTime,
+          qaCount: qaArr.length,
+          usage: { inputTokens, outputTokens },
+          trainingId: data._id,
+          datasetId: data.datasetId,
+          collectionId: data.collectionId
         });
       } catch (err: any) {
-        addLog.error(`[QA Queue] Error`, err);
+        logger.error('QA queue task failed', {
+          error: err,
+          trainingId: data._id,
+          datasetId: data.datasetId,
+          collectionId: data.collectionId
+        });
         await MongoDatasetTraining.updateOne(
           {
             _id: data._id
@@ -189,13 +210,13 @@ export async function generateQA(): Promise<any> {
       }
     }
   } catch (error) {
-    addLog.error(`[QA Queue] Error`, error);
+    logger.error('QA queue loop failed', { error });
   }
 
   if (reduceQueue()) {
-    addLog.info(`[QA Queue] Done`);
+    logger.info('QA queue drained', { queueSize: global.qaQueueLen });
   }
-  addLog.debug(`[QA Queue] break loop, current queue size: ${global.qaQueueLen}`);
+  logger.debug('QA queue loop exit', { queueSize: global.qaQueueLen });
 }
 
 // Format qa answer
@@ -212,7 +233,7 @@ async function formatSplitText({
   const regex = /Q\d+:(\s*)(.*)(\s*)A\d+:(\s*)([\s\S]*?)(?=Q\d|$)/g; // 匹配Q和A的正则表达式
   const matches = answer.matchAll(regex); // 获取所有匹配到的结果
 
-  const result: PushDatasetDataChunkProps[] = []; // 存储最终的结果
+  const result: PushDataChunkType[] = []; // 存储最终的结果
   for (const match of matches) {
     const q = match[2] || '';
     const a = match[5] || '';

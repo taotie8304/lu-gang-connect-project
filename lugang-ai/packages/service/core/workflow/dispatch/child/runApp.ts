@@ -1,38 +1,39 @@
-import type { ChatItemType } from '@fastgpt/global/core/chat/type.d';
-import type { ModuleDispatchProps } from '@fastgpt/global/core/workflow/runtime/type';
+import type { ChatItemMiniType } from '@fastgpt/global/core/chat/type';
+
 import { runWorkflow } from '../index';
-import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
-import { SseResponseEventEnum } from '@fastgpt/global/core/workflow/runtime/constants';
+import { ChatRoleEnum, ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+import { workflowSseEvent } from '@fastgpt/global/core/workflow/runtime/sse';
 import {
   getWorkflowEntryNodeIds,
   storeEdges2RuntimeEdges,
   rewriteNodeOutputByHistories,
-  storeNodes2RuntimeNodes,
-  textAdaptGptResponse
+  storeNodes2RuntimeNodes
 } from '@fastgpt/global/core/workflow/runtime/utils';
 import type { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
-import { filterSystemVariables, getNodeErrResponse, getHistories } from '../utils';
+import { getNodeErrResponse, getHistories } from '../utils';
+import { getWorkflowFileVariableInputs, WorkflowVariableState } from '../utils/variables';
 import { chatValue2RuntimePrompt, runtimePrompt2ChatsValue } from '@fastgpt/global/core/chat/adapt';
-import { type DispatchNodeResultType } from '@fastgpt/global/core/workflow/runtime/type';
+import type { DispatchNodeResultType, ModuleDispatchProps } from '../../types/runtime';
 import { authAppByTmbId } from '../../../../support/permission/app/auth';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { getAppVersionById } from '../../../app/version/controller';
-import { parseUrlToFileType } from '@fastgpt/global/common/file/tools';
+import { parseUrlToFileType, runWithDerivedWorkflowFileContext } from '../../utils/context';
 import { getUserChatInfo } from '../../../../support/user/team/utils';
 import { getRunningUserInfoByTmbId } from '../../../../support/user/team/utils';
+import { getRuntimeNodeResponseSummary } from '../utils';
 
 type Props = ModuleDispatchProps<{
   [NodeInputKeyEnum.userChatInput]: string;
-  [NodeInputKeyEnum.history]?: ChatItemType[] | number;
+  [NodeInputKeyEnum.history]?: ChatItemMiniType[] | number;
   [NodeInputKeyEnum.fileUrlList]?: string[];
   [NodeInputKeyEnum.forbidStream]?: boolean;
   [NodeInputKeyEnum.fileUrlList]?: string[];
 }>;
 type Response = DispatchNodeResultType<{
   [NodeOutputKeyEnum.answerText]: string;
-  [NodeOutputKeyEnum.history]: ChatItemType[];
+  [NodeOutputKeyEnum.history]: ChatItemMiniType[];
 }>;
 
 export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
@@ -44,7 +45,7 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
     node: { pluginId: appId, version },
     workflowStreamResponse,
     params,
-    variables
+    variableState
   } = props;
 
   const {
@@ -58,7 +59,9 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
 
   const userInputFiles = (() => {
     if (fileUrlList) {
-      return fileUrlList.map((url) => parseUrlToFileType(url)).filter(Boolean);
+      return fileUrlList
+        .map((url) => parseUrlToFileType(url))
+        .filter((file): file is NonNullable<typeof file> => Boolean(file));
     }
     // Adapt version 4.8.13 upgrade
     return files;
@@ -87,26 +90,10 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
     const childStreamResponse = system_forbid_stream ? false : props.stream;
     // Auto line
     if (childStreamResponse) {
-      workflowStreamResponse?.({
-        event: SseResponseEventEnum.answer,
-        data: textAdaptGptResponse({
-          text: '\n'
-        })
-      });
+      workflowStreamResponse?.(workflowSseEvent.answerDelta('\n'));
     }
 
     const chatHistories = getHistories(history, histories);
-
-    // Rewrite children app variables
-    const systemVariables = filterSystemVariables(variables);
-    const { externalProvider } = await getUserChatInfo(appData.tmbId);
-    const childrenRunVariables = {
-      ...systemVariables,
-      ...childrenAppVariables,
-      histories: chatHistories,
-      appId: String(appData._id),
-      ...(externalProvider ? externalProvider.externalWorkflowVariables : {})
-    };
 
     const childrenInteractive =
       lastInteractive?.type === 'childrenInteractive'
@@ -125,44 +112,84 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
       ? query
       : runtimePrompt2ChatsValue({ files: userInputFiles, text: userChatInput });
 
+    // Rewrite children app variables
+    const { externalProvider } = await getUserChatInfo(appData.tmbId);
+    const childRunningAppInfo = {
+      sourceType: ChatSourceTypeEnum.app,
+      sourceId: String(appData._id),
+      teamId: appData.teamId,
+      tmbId: appData.tmbId,
+      name: appData.name,
+      isChildApp: true
+    };
+    let filteredChildHistories = chatHistories;
+    let filteredChildQuery = theQuery;
+
     const {
-      flowResponses,
       flowUsages,
       assistantResponses,
       runTimes,
       workflowInteractiveResponse,
-      system_memories
-    } = await runWorkflow({
-      ...props,
-      usageId: undefined,
-      lastInteractive: childrenInteractive,
-      // Rewrite stream mode
-      ...(system_forbid_stream
-        ? {
-            stream: false,
-            workflowStreamResponse: undefined
-          }
-        : {}),
-      runningAppInfo: {
-        id: String(appData._id),
-        name: appData.name,
-        teamId: String(appData.teamId),
-        tmbId: String(appData.tmbId),
-        isChildApp: true
-      },
-      runningUserInfo: await getRunningUserInfoByTmbId(appData.tmbId),
-      runtimeNodes,
-      runtimeEdges,
-      histories: chatHistories,
-      variables: childrenRunVariables,
+      system_memories,
+      customFeedbacks,
+      runtimeNodeResponseSummary
+    } = await runWithDerivedWorkflowFileContext({
       query: theQuery,
-      chatConfig
+      histories: chatHistories,
+      files: getWorkflowFileVariableInputs({
+        variablesConfig: chatConfig.variables,
+        inputVariables: childrenAppVariables
+      }),
+      fn: async ({ resolveInputFile, query: childQuery, histories: childHistories }) => {
+        filteredChildHistories = childHistories;
+        filteredChildQuery = childQuery;
+        const childrenVariableState = await WorkflowVariableState.create({
+          timezone: props.timezone,
+          runningAppInfo: childRunningAppInfo,
+          chatId: props.chatId,
+          responseChatItemId: props.responseChatItemId,
+          histories: childHistories,
+          uid: props.uid,
+          variablesConfig: chatConfig.variables,
+          inputVariables: childrenAppVariables,
+          externalVariables: externalProvider?.externalWorkflowVariables,
+          sourceVariableState: variableState,
+          resolveInputFile
+        });
+
+        return runWorkflow({
+          ...props,
+          lastInteractive: childrenInteractive,
+          // Rewrite stream mode
+          ...(system_forbid_stream
+            ? {
+                stream: false,
+                workflowStreamResponse: undefined
+              }
+            : {}),
+          runningAppInfo: {
+            sourceType: ChatSourceTypeEnum.app,
+            sourceId: String(appData._id),
+            name: appData.name,
+            teamId: String(appData.teamId),
+            tmbId: String(appData.tmbId),
+            isChildApp: true
+          },
+          runningUserInfo: await getRunningUserInfoByTmbId(appData.tmbId),
+          runtimeNodes,
+          runtimeEdges,
+          histories: childHistories,
+          variableState: childrenVariableState,
+          query: childQuery,
+          chatConfig
+        });
+      }
     });
 
-    const completeMessages = chatHistories.concat([
+    const completeMessages = filteredChildHistories.concat([
       {
         obj: ChatRoleEnum.Human,
-        value: query
+        value: filteredChildQuery
       },
       {
         obj: ChatRoleEnum.AI,
@@ -173,6 +200,16 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
     const { text } = chatValue2RuntimePrompt(assistantResponses);
 
     const usagePoints = flowUsages.reduce((sum, item) => sum + (item.totalPoints || 0), 0);
+    props.usagePush([
+      {
+        moduleName: appData.name,
+        totalPoints: usagePoints
+      }
+    ]);
+    const runtimeSummary = getRuntimeNodeResponseSummary({
+      runtimeNodeResponseSummary
+    });
+    const childResponseCount = runtimeSummary.childResponseCount;
 
     return {
       data: {
@@ -196,16 +233,10 @@ export const dispatchRunAppNode = async (props: Props): Promise<Response> => {
         totalPoints: usagePoints,
         query: userChatInput,
         textOutput: text,
-        pluginDetail: appData.permission.hasWritePer ? flowResponses : undefined,
-        mergeSignId: props.node.nodeId
+        childResponseCount
       },
-      [DispatchNodeResponseKeyEnum.nodeDispatchUsages]: [
-        {
-          moduleName: appData.name,
-          totalPoints: usagePoints
-        }
-      ],
-      [DispatchNodeResponseKeyEnum.toolResponses]: text
+      [DispatchNodeResponseKeyEnum.toolResponse]: text,
+      [DispatchNodeResponseKeyEnum.customFeedbacks]: customFeedbacks
     };
   } catch (error) {
     return getNodeErrResponse({ error });

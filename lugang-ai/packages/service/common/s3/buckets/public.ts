@@ -1,51 +1,163 @@
 import { S3BaseBucket } from './base';
-import { S3Buckets } from '../constants';
-import { type S3OptionsType } from '../type';
+import { createDefaultStorageOptions } from '../config/constants';
+import {
+  type IAwsS3CompatibleStorageOptions,
+  type IR2StorageOptions,
+  type ICosStorageOptions,
+  type IOssStorageOptions,
+  createStorage,
+  MinioStorageAdapter,
+  type IStorageOptions
+} from '@fastgpt-sdk/storage';
+import { getLogger, LogCategories } from '../../logger';
+
+const logger = getLogger(LogCategories.INFRA.S3);
 
 export class S3PublicBucket extends S3BaseBucket {
-  constructor(options?: Partial<S3OptionsType>) {
-    super(S3Buckets.public, {
-      ...options,
-      afterInit: async () => {
-        const bucket = this.bucketName;
-        const policy = JSON.stringify({
-          Version: '2012-10-17',
-          Statement: [
-            {
-              Effect: 'Allow',
-              Principal: '*',
-              Action: 's3:GetObject',
-              Resource: `arn:aws:s3:::${bucket}/*`
-            }
-          ]
-        });
-        try {
-          await this.client.setBucketPolicy(bucket, policy);
-        } catch (error) {
-          // NOTE: maybe it was a cloud S3 that doesn't allow us to set the policy, so that cause the error,
-          // maybe we can ignore the error, or we have other plan to handle this.
-          console.error('Failed to set bucket policy:', error);
-        }
+  constructor() {
+    const storageOptions = createDefaultStorageOptions();
+    const { vendor, publicBucket, externalEndpoint, credentials, region } = storageOptions;
+
+    const getConfig = () => {
+      if (vendor === 'minio') {
+        const config = {
+          region,
+          vendor,
+          credentials,
+          endpoint: storageOptions.endpoint,
+          maxRetries: storageOptions.maxRetries,
+          forcePathStyle: storageOptions.forcePathStyle,
+          publicAccessExtraSubPath: storageOptions.publicAccessExtraSubPath
+        } as Omit<IAwsS3CompatibleStorageOptions, 'bucket'>;
+        return {
+          config,
+          externalConfig: {
+            ...config,
+            endpoint: externalEndpoint
+          }
+        };
+      } else if (vendor === 'aws-s3') {
+        const config = {
+          region,
+          vendor,
+          credentials,
+          endpoint: storageOptions.endpoint,
+          maxRetries: storageOptions.maxRetries,
+          forcePathStyle: storageOptions.forcePathStyle,
+          publicAccessExtraSubPath: storageOptions.publicAccessExtraSubPath
+        } as Omit<IAwsS3CompatibleStorageOptions, 'bucket'>;
+        return {
+          config,
+          externalConfig: {
+            ...config,
+            endpoint: externalEndpoint
+          }
+        };
+      } else if (vendor === 'r2') {
+        const config = {
+          region,
+          vendor,
+          credentials,
+          endpoint: storageOptions.endpoint,
+          maxRetries: storageOptions.maxRetries,
+          forcePathStyle: false,
+          publicEndpoint: storageOptions.publicEndpoint,
+          publicAccessExtraSubPath: storageOptions.publicAccessExtraSubPath
+        } as Omit<IR2StorageOptions, 'bucket'>;
+        return {
+          config,
+          externalConfig: {
+            ...config,
+            endpoint: externalEndpoint || storageOptions.endpoint
+          }
+        };
+      } else if (vendor === 'cos') {
+        return {
+          config: {
+            region,
+            vendor,
+            credentials,
+            proxy: storageOptions.proxy,
+            domain: storageOptions.domain,
+            protocol: storageOptions.protocol,
+            useAccelerate: storageOptions.useAccelerate
+          } as Omit<ICosStorageOptions, 'bucket'>
+        };
+      } else if (vendor === 'oss') {
+        return {
+          config: {
+            region,
+            vendor,
+            credentials,
+            endpoint: storageOptions.endpoint!,
+            cname: storageOptions.cname,
+            internal: storageOptions.internal,
+            secure: storageOptions.secure,
+            enableProxy: storageOptions.enableProxy
+          } as Omit<IOssStorageOptions, 'bucket'>
+        };
       }
-    });
+      throw new Error(`Unsupported storage vendor: ${vendor}`);
+    };
+
+    const { config, externalConfig } = getConfig();
+
+    const client = createStorage({ bucket: publicBucket, ...config });
+
+    let externalClient: ReturnType<typeof createStorage> | undefined = undefined;
+    if (externalEndpoint || vendor === 'r2') {
+      externalClient = createStorage({
+        bucket: publicBucket,
+        ...externalConfig
+      } as IStorageOptions);
+    }
+
+    super(client, externalClient);
+
+    client
+      .ensureBucket()
+      .then(() => {
+        if (!(client instanceof MinioStorageAdapter)) {
+          return;
+        }
+
+        client.ensurePublicBucketPolicy().catch((error) => {
+          logger.warn('Failed to ensure public bucket policy', {
+            bucketName: client.bucketName,
+            error
+          });
+        });
+      })
+      .catch((error) => {
+        logger.error('Failed to ensure public bucket exists', {
+          bucketName: client.bucketName,
+          error
+        });
+      });
+
+    externalClient
+      ?.ensureBucket()
+      .then(() => {
+        if (!(externalClient instanceof MinioStorageAdapter)) {
+          return;
+        }
+
+        externalClient.ensurePublicBucketPolicy().catch((error) => {
+          logger.warn('Failed to ensure external public bucket policy', {
+            bucketName: externalClient.bucketName,
+            error
+          });
+        });
+      })
+      .catch((error) => {
+        logger.error('Failed to ensure external public bucket exists', {
+          bucketName: externalClient.bucketName,
+          error
+        });
+      });
   }
 
   createPublicUrl(objectKey: string): string {
-    const protocol = this.options.useSSL ? 'https' : 'http';
-    const hostname = this.options.endPoint;
-    const port = this.options.port;
-    const bucket = this.bucketName;
-
-    const url = new URL(`${protocol}://${hostname}:${port}/${bucket}/${objectKey}`);
-
-    if (this.options.externalBaseURL) {
-      const externalBaseURL = new URL(this.options.externalBaseURL);
-
-      url.port = externalBaseURL.port;
-      url.hostname = externalBaseURL.hostname;
-      url.protocol = externalBaseURL.protocol;
-    }
-
-    return url.toString();
+    return this.externalClient.generatePublicGetUrl({ key: objectKey }).url;
   }
 }

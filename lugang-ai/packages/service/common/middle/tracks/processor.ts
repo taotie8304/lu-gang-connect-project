@@ -1,9 +1,12 @@
 import { delay } from '@fastgpt/global/common/system/utils';
-import { addLog } from '../../system/log';
 import { TrackModel } from './schema';
 import { TrackEnum } from '@fastgpt/global/common/middle/tracks/constants';
+import { getLogger, LogCategories } from '../../logger';
+import { serviceEnv } from '../../../env';
 
-const batchUpdateTime = Number(process.env.TRACK_BATCH_UPDATE_TIME || 10000);
+const logger = getLogger(LogCategories.EVENT.TRACK);
+
+const batchUpdateTime = serviceEnv.TRACK_BATCH_UPDATE_TIME;
 
 const getCurrentTenMinuteBoundary = () => {
   const now = new Date();
@@ -109,9 +112,9 @@ export const countTrackTimer = async () => {
 
     if (bulkOps.length > 0) {
       await TrackModel.bulkWrite(bulkOps);
-      addLog.info('Track timer processing success');
+      logger.info('Track timer processing succeeded', { operations: bulkOps.length });
     }
   } catch (error) {
-    addLog.error('Track timer processing error', error);
+    logger.error('Track timer processing failed', { error });
   }
 };

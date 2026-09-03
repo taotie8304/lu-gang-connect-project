@@ -1,20 +1,19 @@
 import React, { useMemo } from 'react';
 import { type NodeProps } from 'reactflow';
 import NodeCard from '../render/NodeCard';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import Container from '../../components/Container';
 import RenderInput from '../render/RenderInput';
 import { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { useTranslation } from 'next-i18next';
-import { type FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io.d';
+import { type FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io';
 import { useContextSelector } from 'use-context-selector';
 import IOTitle from '../../components/IOTitle';
-import RenderToolInput from '../render/RenderToolInput';
+import RenderToolInput, { hasDynamicToolInput } from '../render/RenderToolInput';
 import RenderOutput from '../render/RenderOutput';
 import CodeEditor from '@fastgpt/web/components/common/Textarea/CodeEditor';
 import { Box, Button, Flex } from '@chakra-ui/react';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
-import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import {
   JS_TEMPLATE,
   PY_TEMPLATE,
@@ -29,6 +28,10 @@ import NodeCopilot from './Copilot';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
 import { WorkflowUtilsContext } from '../../../context/workflowUtilsContext';
 import { WorkflowActionsContext } from '../../../context/workflowActionsContext';
+import { WorkflowUIContext } from '../../../context/workflowUIContext';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { getSandboxPackages } from './api';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 
 const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
   const { t } = useTranslation();
@@ -44,10 +47,27 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
   ) as FlowNodeInputItemType;
 
   const onChangeNode = useContextSelector(WorkflowActionsContext, (ctx) => ctx.onChangeNode);
+  const presentationMode = useContextSelector(WorkflowUIContext, (ctx) => ctx.presentationMode);
 
   const { ConfirmModal: SwitchLangConfirm, openConfirm: openSwitchLangConfirm } = useConfirm({
     content: t('workflow:code.Switch language confirm')
   });
+
+  const { data: packages } = useRequest(getSandboxPackages, {
+    manual: false,
+    errorToast: ''
+  });
+
+  const packageText = useMemo(() => {
+    const packagesList =
+      codeType.value === SandboxCodeTypeEnum.js
+        ? packages?.js.join(', ')
+        : packages?.python.join(', ');
+    return t('workflow:code_allow_packages_func', {
+      modules: packagesList,
+      globals: packages?.builtinGlobals.join(', ')
+    });
+  }, [packages, codeType.value]);
 
   const CustomComponent = useMemo(() => {
     return {
@@ -86,9 +106,15 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
                   })();
                 }}
               />
-              {codeType.value === 'py' && (
-                <QuestionTip ml={2} label={t('workflow:support_code_language')} />
+
+              {!!packages && (
+                <MyTooltip label={packageText}>
+                  <Box ml={2} fontSize={'sm'} color={'primary.500'}>
+                    {t('workflow:code_allow_packages')}
+                  </Box>
+                </MyTooltip>
               )}
+
               <PopoverConfirm
                 Trigger={
                   <Box cursor={'pointer'} color={'primary.500'} fontSize={'xs'} ml="auto" mr={2}>
@@ -111,25 +137,29 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
                 }
               />
             </Flex>
-            <CodeEditor
-              bg={'white'}
-              borderRadius={'sm'}
-              value={item.value}
-              onChange={(e) => {
-                onChangeNode({
-                  nodeId,
-                  type: 'updateInput',
-                  key: item.key,
-                  value: { ...item, value: e }
-                });
-              }}
-              language={codeType.value}
-            />
+            {presentationMode ? (
+              <Box h={'200px'} />
+            ) : (
+              <CodeEditor
+                bg={'white'}
+                borderRadius={'sm'}
+                value={item.value}
+                onChange={(e) => {
+                  onChangeNode({
+                    nodeId,
+                    type: 'updateInput',
+                    key: item.key,
+                    value: { ...item, value: e }
+                  });
+                }}
+                language={codeType.value}
+              />
+            )}
           </Box>
         );
       }
     };
-  }, [codeType, nodeId, t]);
+  }, [packageText, codeType, nodeId, t, presentationMode, onChangeNode]);
 
   const { isTool, commonInputs } = useMemoEnhance(
     () => splitToolInputs(inputs, nodeId),
@@ -141,6 +171,8 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
       <NodeCopilot
         key="copilot"
         nodeId={nodeId}
+        inputs={inputs}
+        outputs={outputs}
         trigger={
           <Button
             variant={'grayGhost'}
@@ -153,11 +185,11 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
         }
       />
     ];
-  }, [t]);
+  }, [t, nodeId, inputs, outputs]);
 
   return (
     <NodeCard minW={'400px'} selected={selected} rtDoms={rtDoms} {...data}>
-      {isTool && (
+      {isTool && hasDynamicToolInput(data) && (
         <Container>
           <RenderToolInput nodeId={nodeId} inputs={inputs} />
         </Container>
@@ -168,6 +200,7 @@ const NodeCode = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
           nodeId={nodeId}
           flowInputList={commonInputs}
           CustomComponent={CustomComponent}
+          isTool={isTool}
         />
       </Container>
       <Container>

@@ -2,6 +2,7 @@ import { type SourceMemberType } from '@fastgpt/global/support/user/type';
 import { MongoTeam } from './team/teamSchema';
 import { MongoTeamMember } from './team/teamMemberSchema';
 import { type ClientSession } from '../../common/mongo';
+import { TeamMemberStatusEnum } from '@fastgpt/global/support/user/team/constant';
 
 /* export dataset limit */
 export const updateExportDatasetLimit = async (teamId: string) => {
@@ -9,7 +10,7 @@ export const updateExportDatasetLimit = async (teamId: string) => {
     await MongoTeam.findByIdAndUpdate(teamId, {
       'limit.lastExportDatasetTime': new Date()
     });
-  } catch (error) {}
+  } catch {}
 };
 export const checkExportDatasetLimit = async ({
   teamId,
@@ -43,8 +44,25 @@ export const updateWebSyncLimit = async (teamId: string) => {
     await MongoTeam.findByIdAndUpdate(teamId, {
       'limit.lastWebsiteSyncTime': new Date()
     });
-  } catch (error) {}
+  } catch {}
 };
+
+/**
+ * 清除团队站点同步冷却时间。
+ *
+ * 站点同步任务入队时会先写入 `limit.lastWebsiteSyncTime` 做触发频率限制；
+ * 如果 worker 最终没有成功同步任何页面，这次空同步不应占用团队后续手动同步机会。
+ */
+export const clearWebSyncLimit = async (teamId: string) => {
+  try {
+    await MongoTeam.findByIdAndUpdate(teamId, {
+      $unset: {
+        'limit.lastWebsiteSyncTime': 1
+      }
+    });
+  } catch {}
+};
+
 export const checkWebSyncLimit = async ({
   teamId,
   limitMinutes = 0
@@ -109,7 +127,11 @@ export async function addSourceMember<T extends { tmbId: string }>({
 
       return {
         ...formatItem,
-        sourceMember: { name: tmb.name, avatar: tmb.avatar, status: tmb.status }
+        sourceMember: {
+          name: tmb.name?.trim() ? tmb.name : 'unknow',
+          avatar: tmb.avatar,
+          status: tmb.status ?? TeamMemberStatusEnum.active
+        }
       };
     })
     .filter(Boolean) as Array<T & { sourceMember: SourceMemberType }>;

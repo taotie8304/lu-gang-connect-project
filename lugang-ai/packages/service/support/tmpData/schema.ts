@@ -1,4 +1,4 @@
-import { getMongoModel, Schema } from '../../common/mongo';
+import { defineIndex, getMongoModel, Schema } from '../../common/mongo';
 import type { TmpDataSchema as SchemaType } from '@fastgpt/global/support/tmpData/type';
 
 const collectionName = 'tmp_datas';
@@ -6,8 +6,7 @@ const collectionName = 'tmp_datas';
 const TmpDataSchema = new Schema({
   dataId: {
     type: String,
-    required: true,
-    unique: true
+    required: true
   },
   data: {
     type: Object
@@ -18,11 +17,14 @@ const TmpDataSchema = new Schema({
   }
 });
 
-try {
-  TmpDataSchema.index({ dataId: -1 });
-  TmpDataSchema.index({ expireAt: -1 }, { expireAfterSeconds: 5 });
-} catch (error) {
-  console.log(error);
-}
+defineIndex(TmpDataSchema, {
+  key: { dataId: 1 },
+  options: { unique: true }
+});
+defineIndex(TmpDataSchema, { key: { dataId: -1 } });
+defineIndex(TmpDataSchema, {
+  key: { expireAt: -1 },
+  options: { expireAfterSeconds: 5 }
+});
 
-export const MongoTmpData = getMongoModel<SchemaType<Object>>(collectionName, TmpDataSchema);
+export const MongoTmpData = getMongoModel<SchemaType<object>>(collectionName, TmpDataSchema);

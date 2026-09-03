@@ -1,7 +1,7 @@
 import { getMyApps, getAppBasicInfoByIds } from '@/web/core/app/api';
 import { Box, Button, Grid, GridItem, HStack, VStack, Flex, Checkbox } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,8 @@ import FolderPath from '@/components/common/folder/Path';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { getAppFolderPath } from '@/web/core/app/api/app';
 import { ChevronRightIcon } from '@chakra-ui/icons';
+import type { ParentIdType } from '@fastgpt/global/common/parentFolder/type';
+import { MAX_QUICK_APP_COUNT } from './constants';
 
 type Props = {
   selectedIds: string[];
@@ -37,18 +39,23 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
   });
   const searchAppName = watch('name');
 
-  const [parentId, setParentId] = useState('');
+  const [parentId, setParentId] = useState<ParentIdType>('');
 
   const {
     data: appData = { apps: [], paths: [] as { parentId: string; parentName: string }[] },
     loading: isFetching
-  } = useRequest2(
+  } = useRequest(
     async () => {
       const [apps, paths] = await Promise.all([
         getMyApps({
           parentId,
           searchKey: searchAppName,
-          type: [AppTypeEnum.folder, AppTypeEnum.simple, AppTypeEnum.workflow]
+          type: [
+            AppTypeEnum.folder,
+            AppTypeEnum.simple,
+            AppTypeEnum.chatAgent,
+            AppTypeEnum.workflow
+          ]
         }),
         searchAppName.trim()
           ? Promise.resolve([])
@@ -84,7 +91,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
           });
           return prev.filter((v) => v !== id);
         }
-        if (prev.length >= 4) return prev;
+        if (prev.length >= MAX_QUICK_APP_COUNT) return prev;
         // add id and cache its info if available from current list
         const app = availableAppsMap.get(id);
         if (app) {
@@ -127,7 +134,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
       .catch(() => {});
   }, [localSelectedIds, selectedInfo]);
 
-  const { loading: isUpdating, runAsync: confirmSelect } = useRequest2(
+  const { loading: isUpdating, runAsync: confirmSelect } = useRequest(
     async () => {
       onConfirm(checkedQuickApps);
     },
@@ -158,7 +165,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
             w="100%"
             color={'myGray.900'}
             fontSize={'sm'}
-            templateColumns={['1fr', 'repeat(2, 1fr)']}
+            templateColumns={['minmax(0, 1fr)', 'repeat(2, minmax(0, 1fr))']}
             border="1px solid"
             borderColor="myGray.200"
             borderRadius="md"
@@ -171,9 +178,10 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
               borderBottom={['1px solid', 'none']}
               sx={{ borderColor: 'myGray.200 !important' }}
               minH={0}
+              minW={0}
             >
               <Flex h="100%" direction="column" minH={0} py={4} overflow="hidden">
-                <Box mb={2} px={4}>
+                <Box pb={2} px={4}>
                   <SearchInput
                     placeholder={t('chat:setting.favourite.search_placeholder')}
                     value={searchAppName}
@@ -185,7 +193,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                   />
                 </Box>
 
-                <Box mb={2} py={1} px={4} fontSize="sm" minH={8} display="flex" alignItems="center">
+                <Box pb={2} py={1} px={4} fontSize="sm" minH={8} display="flex" alignItems="center">
                   {searchAppName && (
                     <Box
                       w="100%"
@@ -199,7 +207,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                     </Box>
                   )}
                   {!searchAppName && paths.length === 0 && (
-                    <Flex flex={1} alignItems="center">
+                    <Flex flex={1} alignItems="center" gap={1}>
                       <Box
                         fontSize={['xs', 'sm']}
                         py={0.5}
@@ -215,7 +223,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                       >
                         {t('common:root_folder')}
                       </Box>
-                      <MyIcon name="common/line" color="myGray.500" mx={1} w="5px" />
+                      <MyIcon name="common/line" color="myGray.500" w="5px" />
                     </Flex>
                   )}
                   {!searchAppName && paths.length > 0 && (
@@ -243,6 +251,8 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                     <Box key={item._id} userSelect={'none'}>
                       <Flex
                         align="center"
+                        minW={0}
+                        gap={2.5}
                         pr={2}
                         pl={4}
                         py={1.5}
@@ -260,7 +270,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                           }
                         }}
                       >
-                        <Box w={'5'} onClick={(e) => e.stopPropagation()}>
+                        <Box w={'5'} flexShrink={0} onClick={(e) => e.stopPropagation()}>
                           {item.type !== AppTypeEnum.folder && (
                             <Checkbox
                               isChecked={localSelectedIds.includes(String(item._id))}
@@ -271,19 +281,24 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                           )}
                         </Box>
 
-                        <Avatar src={item.avatar} w={7} h={7} borderRadius="sm" ml={3} mr={2.5} />
+                        <Avatar src={item.avatar} w={7} h={7} borderRadius="sm" flexShrink={0} />
 
                         <Box flex={1} minW={0}>
-                          <Box fontSize="sm" color={'myGray.900'} lineHeight={1}>
+                          <Box
+                            fontSize="sm"
+                            color={'myGray.900'}
+                            lineHeight={1}
+                            className="textEllipsis"
+                          >
                             {item.name}
                           </Box>
-                          <Box fontSize="xs" color="myGray.500">
+                          <Box fontSize="xs" color="myGray.500" className="textEllipsis">
                             {item.type === AppTypeEnum.folder ? t('common:Folder') : ''}
                           </Box>
                         </Box>
 
                         {item.type === AppTypeEnum.folder && (
-                          <Box mr={10}>
+                          <Box pr={10} flexShrink={0}>
                             <ChevronRightIcon w={5} h={5} color="myGray.500" strokeWidth="1px" />
                           </Box>
                         )}
@@ -294,11 +309,11 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
               </Flex>
             </GridItem>
 
-            <GridItem minH={0}>
-              <VStack spacing={2} alignItems="stretch">
-                <Box mb={3} px={4} pt={4} fontSize="sm" color="myGray.600">
+            <GridItem minH={0} minW={0}>
+              <VStack spacing={2} alignItems="stretch" h="100%" minH={0} minW={0}>
+                <Box pb={3} px={4} pt={4} fontSize="sm" color="myGray.600">
                   {t('chat:setting.favourite.selected_list', {
-                    num: `${checkedQuickApps.length} / 4`
+                    num: `${checkedQuickApps.length} / ${MAX_QUICK_APP_COUNT}`
                   })}
                 </Box>
 
@@ -320,6 +335,7 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                         {...provided.droppableProps}
                         spacing={0}
                         alignItems="stretch"
+                        minW={0}
                         maxH={['50vh', '400px']}
                         overflowY="auto"
                       >
@@ -336,13 +352,14 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                                   ref={provided.innerRef}
                                   {...provided.draggableProps}
                                   alignItems="center"
+                                  minW={0}
                                   gap={2}
                                   px={2}
                                   py={1.5}
                                   borderRadius="md"
                                   bg={snapshot.isDragging ? 'myGray.50' : 'transparent'}
                                 >
-                                  <Box {...provided.dragHandleProps}>
+                                  <Box {...provided.dragHandleProps} flexShrink={0}>
                                     <MyIcon
                                       name={'drag'}
                                       cursor={'pointer'}
@@ -353,13 +370,23 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
                                       w={'16px'}
                                     />
                                   </Box>
-                                  <Flex alignItems="center" flex={1}>
-                                    <Avatar src={app.avatar} borderRadius={'sm'} w="1.25rem" />
-                                    <Box flex={1} className="textEllipsis" userSelect="none" ml={2}>
+                                  <Flex alignItems="center" gap={2} flex={1} minW={0}>
+                                    <Avatar
+                                      src={app.avatar}
+                                      borderRadius={'sm'}
+                                      w="1.25rem"
+                                      flexShrink={0}
+                                    />
+                                    <Box
+                                      flex={1}
+                                      minW={0}
+                                      className="textEllipsis"
+                                      userSelect="none"
+                                    >
                                       {app.name}
                                     </Box>
                                   </Flex>
-                                  <Box color="myGray.400" fontSize="xs">
+                                  <Box color="myGray.400" fontSize="xs" flexShrink={0}>
                                     <MyIcon
                                       name="common/closeLight"
                                       w="16px"
@@ -388,7 +415,12 @@ const AddQuickAppModal = ({ selectedIds, onClose, onConfirm }: Props) => {
           <Button variant="whitePrimary" isDisabled={isUpdating} onClick={onClose}>
             {t('chat:setting.home.cancel_button')}
           </Button>
-          <Button variant="primary" isLoading={isUpdating} onClick={confirmSelect}>
+          <Button
+            variant="primary"
+            isLoading={isUpdating}
+            isDisabled={checkedQuickApps.length > MAX_QUICK_APP_COUNT}
+            onClick={confirmSelect}
+          >
             {t('chat:setting.home.confirm_button')}
           </Button>
         </HStack>

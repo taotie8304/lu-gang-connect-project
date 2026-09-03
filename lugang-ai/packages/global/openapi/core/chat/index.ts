@@ -2,58 +2,41 @@ import type { OpenAPIPath } from '../../type';
 import { ChatSettingPath } from './setting';
 import { ChatFavouriteAppPath } from './favourite/index';
 import { ChatFeedbackPath } from './feedback/index';
-import { z } from 'zod';
-import { CreatePostPresignedUrlResultSchema } from '../../../../service/common/s3/type';
-import { PresignChatFileGetUrlSchema, PresignChatFilePostUrlSchema } from '../../../core/chat/api';
-import { TagsMap } from '../../tag';
+import { ChatHistoryPath } from './history/index';
+import { GetRecentlyUsedAppsResponseSchema } from './api';
+import { DevApiTagsMap } from '../../tag';
+import { ChatControllerPath } from './controler';
+import { ChatAgentHelperPath } from './chatAgentHelper';
+import { ChatInputGuidePath } from './inputGuide/index';
+import { OutLinkChatPath } from './outLink/index';
+import { ChatRecordPath } from './record/index';
+import { ChatFilePath } from './file';
+import { ChatCompletionPath } from './completion';
 
 export const ChatPath: OpenAPIPath = {
+  ...ChatFeedbackPath,
+  ...ChatFilePath,
   ...ChatSettingPath,
   ...ChatFavouriteAppPath,
-  ...ChatFeedbackPath,
+  ...ChatHistoryPath,
+  ...ChatControllerPath,
+  ...ChatAgentHelperPath,
+  ...ChatInputGuidePath,
+  ...OutLinkChatPath,
+  ...ChatRecordPath,
+  ...ChatCompletionPath,
 
-  '/core/chat/presignChatFileGetUrl': {
-    post: {
-      summary: '获取对话文件预签名 URL',
-      description: '获取对话文件的预签名 URL',
-      tags: [TagsMap.chatPage],
-      requestBody: {
-        content: {
-          'application/json': {
-            schema: PresignChatFileGetUrlSchema
-          }
-        }
-      },
+  '/core/chat/recentlyUsed': {
+    get: {
+      summary: '获取最近使用的应用',
+      description: '获取最近使用的应用',
+      tags: [DevApiTagsMap.chatPage],
       responses: {
         200: {
-          description: '成功获取对话文件预签名 URL',
+          description: '成功返回最近使用的应用',
           content: {
             'application/json': {
-              schema: z.string()
-            }
-          }
-        }
-      }
-    }
-  },
-  '/core/chat/presignChatFilePostUrl': {
-    post: {
-      summary: '上传对话文件预签名 URL',
-      description: '上传对话文件的预签名 URL',
-      tags: [TagsMap.chatPage],
-      requestBody: {
-        content: {
-          'application/json': {
-            schema: PresignChatFilePostUrlSchema
-          }
-        }
-      },
-      responses: {
-        200: {
-          description: '成功上传对话文件预签名 URL',
-          content: {
-            'application/json': {
-              schema: CreatePostPresignedUrlResultSchema
+              schema: GetRecentlyUsedAppsResponseSchema
             }
           }
         }

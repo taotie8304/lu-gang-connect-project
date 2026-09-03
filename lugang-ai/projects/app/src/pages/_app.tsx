@@ -1,135 +1,53 @@
+import type { AppProps } from 'next/app';
+import dynamic from 'next/dynamic';
+import { appWithTranslation } from 'next-i18next';
+import { clientI18nConfig } from '@fastgpt/web/i18n/clientConfig';
+import { getLangFromCookie, LANG_KEY } from '@fastgpt/web/i18n/utils';
+import AppShell from '@/web/context/AppShell';
+import { isClientOnlyRoute } from '@/web/context/clientOnlyRouteConfig';
+import '@/web/styles/reset.scss';
 import '@scalar/api-reference-react/style.css';
 
-import type { AppProps } from 'next/app';
-import Script from 'next/script';
-
-import Layout from '@/components/Layout';
-import { appWithTranslation } from 'next-i18next';
-
-import QueryClientContext from '@/web/context/QueryClient';
-import ChakraUIContext from '@/web/context/ChakraUI';
-import { useInitApp } from '@/web/context/useInitApp';
-import { useTranslation } from 'next-i18next';
-import '@/web/styles/reset.scss';
-import NextHead from '@/components/common/NextHead';
-import { type ReactElement, useEffect } from 'react';
-import { type NextPage } from 'next';
-import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
-import SystemStoreContextProvider from '@fastgpt/web/context/useSystem';
-import { useRouter } from 'next/router';
-import { errorLogger } from '@/web/common/utils/errorLogger';
-
-type NextPageWithLayout = NextPage & {
-  setLayout?: (page: ReactElement) => JSX.Element;
-};
-type AppPropsWithLayout = AppProps & {
-  Component: NextPageWithLayout;
-};
-
-// 哪些路由有自定义 Head
-const routesWithCustomHead = ['/chat', '/chat/share', '/app/detail/', '/dataset/detail'];
-// 哪些路由不需要 Layout
-const routesWithoutLayout = ['/openapi'];
-
-function App({ Component, pageProps }: AppPropsWithLayout) {
-  const { feConfigs, scripts, title } = useInitApp();
-  const { t } = useTranslation();
-
-  // Forbid touch scale
-  useEffect(() => {
-    document.addEventListener(
-      'wheel',
-      function (e) {
-        if (e.ctrlKey && Math.abs(e.deltaY) !== 0) {
-          e.preventDefault();
-        }
-      },
-      { passive: false }
-    );
-
-    // Initialize error logger
-    errorLogger.init();
-    
-    // Virtual keyboard detection for mobile - listen for focus/blur on text inputs
-    const handleInputFocus = () => document.body.classList.add('keyboard-open');
-    const handleInputBlur = () => document.body.classList.remove('keyboard-open');
-    
-    // Only run on mobile devices
-    if (window.innerWidth <= 900) {
-      // Attach listeners to text inputs and textareas when they're available
-      const attachInputListeners = () => {
-        const inputs = document.querySelectorAll('input[type="text"], textarea, input[type="search"]');
-        inputs.forEach(input => {
-          input.addEventListener('focus', handleInputFocus);
-          input.addEventListener('blur', handleInputBlur);
-        });
-      };
-      
-      // Run initially and also after DOM content loads
-      attachInputListeners();
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', attachInputListeners);
-      }
-    }
-
-    return () => {
-      // Clean up listeners
-      const inputs = document.querySelectorAll('input[type="text"], textarea, input[type="search"]');
-      inputs.forEach(input => {
-        input.removeEventListener('focus', handleInputFocus);
-        input.removeEventListener('blur', handleInputBlur);
-      });
-      document.body.classList.remove('keyboard-open');
-    };
-  }, []);
-
-  const setLayout = Component.setLayout || ((page) => <>{page}</>);
-
-  const router = useRouter();
-  const showHead = !router?.pathname || !routesWithCustomHead.includes(router.pathname);
-  const shouldUseLayout = !router?.pathname || !routesWithoutLayout.includes(router.pathname);
-
-  if (router.pathname === '/openapi') {
-    return (
-      <>
-        {showHead && (
-          <NextHead
-            title={title}
-            desc={process.env.SYSTEM_DESCRIPTION || t('common:system_intro', { title })}
-            icon={getWebReqUrl(feConfigs?.favicon || process.env.SYSTEM_FAVICON)}
-          />
-        )}
-        {setLayout(<Component {...pageProps} />)}
-      </>
-    );
-  }
+const ClientOnlyPage = dynamic(() => import('@/web/context/ClientOnlyPage'), {
+  ssr: false
+});
+const AppRouter = (props: AppProps) => {
+  const clientOnly = isClientOnlyRoute(props.router.pathname);
 
   return (
-    <>
-      {showHead && (
-        <NextHead
-          title={title}
-          desc={process.env.SYSTEM_DESCRIPTION || t('common:system_intro', { title })}
-          icon={getWebReqUrl(feConfigs?.favicon || process.env.SYSTEM_FAVICON)}
-        />
-      )}
-
-      {scripts?.map((item, i) => <Script key={i} strategy="lazyOnload" {...item}></Script>)}
-
-      <QueryClientContext>
-        <SystemStoreContextProvider device={pageProps.deviceSize}>
-          <ChakraUIContext>
-            {shouldUseLayout ? (
-              <Layout>{setLayout(<Component {...pageProps} />)}</Layout>
-            ) : (
-              setLayout(<Component {...pageProps} />)
-            )}
-          </ChakraUIContext>
-        </SystemStoreContextProvider>
-      </QueryClientContext>
-    </>
+    <AppShell
+      {...props}
+      clientOnly={clientOnly}
+      renderPage={clientOnly ? () => <ClientOnlyPage {...props} /> : undefined}
+    />
   );
-}
+};
 
-// @ts-ignore
-export default appWithTranslation(App);
+const TranslatedAppRouter = appWithTranslation(AppRouter, clientI18nConfig);
+
+/**
+ * client-only 页面没有 SSR 翻译 props；有语言 Cookie 时在 Provider 初始化前注入。
+ * 没有 Cookie 时允许先使用默认语言，挂载后再由客户端 effect 恢复本地或浏览器语言。
+ */
+const App = (props: AppProps) => {
+  const clientOnly = isClientOnlyRoute(props.router.pathname);
+  if (!clientOnly || typeof window === 'undefined') {
+    return <TranslatedAppRouter {...props} />;
+  }
+
+  const initialLocale = getLangFromCookie(LANG_KEY);
+  if (!initialLocale) {
+    return <TranslatedAppRouter {...props} />;
+  }
+  const pageProps = {
+    ...props.pageProps,
+    _nextI18Next: {
+      ...props.pageProps?._nextI18Next,
+      initialLocale
+    }
+  };
+
+  return <TranslatedAppRouter {...props} pageProps={pageProps} />;
+};
+
+export default App;

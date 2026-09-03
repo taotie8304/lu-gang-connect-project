@@ -1,10 +1,12 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { EnterpriseAuthErrEnum } from '../../../support/user/team/enterpriseAuth/constant';
+import { i18nT } from '../../i18n/utils';
 import type { ErrType } from '../errorCode';
 /* team: 500000 */
 export enum TeamErrEnum {
   notUser = 'notUser',
-  teamOverSize = 'teamOverSize',
   unAuthTeam = 'unAuthTeam',
+
+  teamOverSize = 'teamOverSize',
   teamMemberOverSize = 'teamMemberOverSize',
   aiPointsNotEnough = 'aiPointsNotEnough',
   datasetSizeNotEnough = 'datasetSizeNotEnough',
@@ -12,9 +14,12 @@ export enum TeamErrEnum {
   appAmountNotEnough = 'appAmountNotEnough',
   pluginAmountNotEnough = 'pluginAmountNotEnough',
   appFolderAmountNotEnough = 'appFolderAmountNotEnough',
+  datasetFolderAmountNotEnough = 'datasetFolderAmountNotEnough',
   websiteSyncNotEnough = 'websiteSyncNotEnough',
   reRankNotEnough = 'reRankNotEnough',
   ticketNotAvailable = 'ticketNotAvailable',
+  sandboxNotSupport = 'sandboxNotSupport',
+
   groupNameEmpty = 'groupNameEmpty',
   groupNameDuplicate = 'groupNameDuplicate',
   groupNotExist = 'groupNotExist',
@@ -30,7 +35,8 @@ export enum TeamErrEnum {
   invitationLinkInvalid = 'invitationLinkInvalid',
   youHaveBeenInTheTeam = 'youHaveBeenInTheTeam',
   tooManyInvitations = 'tooManyInvitations',
-  unPermission = 'unPermission'
+  unPermission = 'unPermission',
+  accountCancellationPending = 'accountCancellationPending'
 }
 
 const teamErr = [
@@ -41,6 +47,11 @@ const teamErr = [
   {
     statusText: TeamErrEnum.unPermission,
     message: i18nT('common:error_un_permission')
+  },
+  {
+    statusText: TeamErrEnum.accountCancellationPending,
+    message: i18nT('common:code_error.team_error.account_cancellation_pending'),
+    httpStatus: 403
   },
   {
     statusText: TeamErrEnum.teamOverSize,
@@ -142,17 +153,84 @@ const teamErr = [
   {
     statusText: TeamErrEnum.tooManyInvitations,
     message: i18nT('common:code_error.team_error.too_many_invitations')
+  },
+  {
+    statusText: TeamErrEnum.datasetFolderAmountNotEnough,
+    message: i18nT('common:code_error.team_error.dataset_folder_amount_not_enough')
+  },
+  {
+    statusText: TeamErrEnum.sandboxNotSupport,
+    message: i18nT('common:code_error.team_error.sandbox_not_support')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.disabled,
+    message: i18nT('common:enterprise_auth.error.disabled')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.serviceNotConfigured,
+    message: i18nT('common:enterprise_auth.error.service_not_configured')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.noRemainingTimes,
+    message: i18nT('common:enterprise_auth.error.no_remaining_times')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.alreadyVerified,
+    message: i18nT('common:enterprise_auth.error.already_verified')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.enterpriseOccupied,
+    message: i18nT('common:enterprise_auth.error.enterprise_occupied')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.tooFrequent,
+    message: i18nT('common:enterprise_auth.error.too_frequent')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.serviceError,
+    message: i18nT('common:enterprise_auth.error.service_error')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.serviceTimeout,
+    message: i18nT('common:enterprise_auth.error.service_timeout')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.infoFailed,
+    message: i18nT('common:enterprise_auth.error.info_failed')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.taskNotFound,
+    message: i18nT('common:enterprise_auth.error.task_not_found')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.taskExpired,
+    message: i18nT('common:enterprise_auth.error.task_expired')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.amountError,
+    message: i18nT('common:enterprise_auth.error.amount_error')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.amountFailed,
+    message: i18nT('common:enterprise_auth.error.amount_failed')
+  },
+  {
+    statusText: EnterpriseAuthErrEnum.processing,
+    message: i18nT('common:enterprise_auth.error.processing')
   }
 ];
 
-export default teamErr.reduce((acc, cur, index) => {
-  return {
-    ...acc,
-    [cur.statusText]: {
-      code: 500000 + index,
-      statusText: cur.statusText,
-      message: cur.message,
-      data: null
-    }
-  };
-}, {} as ErrType<`${TeamErrEnum}`>);
+export default teamErr.reduce(
+  (acc, cur, index) => {
+    return {
+      ...acc,
+      [cur.statusText]: {
+        code: 500000 + index,
+        statusText: cur.statusText,
+        message: cur.message,
+        data: null
+      }
+    };
+  },
+  {} as ErrType<`${TeamErrEnum}` | `${EnterpriseAuthErrEnum}`>
+);

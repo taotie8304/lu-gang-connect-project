@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Box, Flex, Switch, Input } from '@chakra-ui/react';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useForm } from 'react-hook-form';
-import type { DatasetItemType } from '@fastgpt/global/core/dataset/type.d';
+import type { DatasetItemType } from '@fastgpt/global/core/dataset/type';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import { useTranslation } from 'next-i18next';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import AIModelSelector from '@/components/Select/AIModelSelector';
-import { postRebuildEmbedding } from '@/web/core/dataset/api';
-import type { EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.d';
+import { postRebuildEmbedding } from '@/web/core/dataset/api/training';
+import type { EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.schema';
 import { useContextSelector } from 'use-context-selector';
 import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContext';
 import MyDivider from '@fastgpt/web/components/common/MyDivider/index';
@@ -21,14 +21,12 @@ import { DatasetRoleList } from '@fastgpt/global/support/permission/dataset/cons
 import MemberManager from '../../MemberManager';
 import {
   getCollaboratorList,
-  postUpdateDatasetCollaborators,
-  deleteDatasetCollaborators
+  postUpdateDatasetCollaborators
 } from '@/web/core/dataset/api/collaborator';
 import DatasetTypeTag from '@/components/core/dataset/DatasetTypeTag';
 import dynamic from 'next/dynamic';
 import type { EditAPIDatasetInfoFormType } from './components/EditApiServiceModal';
 import { type EditResourceInfoFormType } from '@/components/common/Modal/EditResourceModal';
-import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
 
 const EditResourceModal = dynamic(() => import('@/components/common/Modal/EditResourceModal'));
@@ -38,7 +36,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
   const { t } = useTranslation();
   const { datasetDetail, loadDatasetDetail, updateDataset, rebuildingCount, trainingCount } =
     useContextSelector(DatasetPageContext, (v) => v);
-  const { feConfigs, datasetModelList, embeddingModelList, getVlmModelList } = useSystemStore();
+  const { feConfigs, llmModelList, embeddingModelList, getVlmModelList } = useSystemStore();
 
   const [editedDataset, setEditedDataset] = useState<EditResourceInfoFormType>();
   const [editedAPIDataset, setEditedAPIDataset] = useState<EditAPIDatasetInfoFormType>();
@@ -66,7 +64,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
       title: t('common:action_confirm')
     });
 
-  const { runAsync: onSave } = useRequest2(
+  const { runAsync: onSave } = useRequest(
     (data: DatasetItemType) => {
       return updateDataset({
         id: datasetId,
@@ -81,7 +79,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
     }
   );
 
-  const { runAsync: onRebuilding } = useRequest2(
+  const { runAsync: onRebuilding } = useRequest(
     (vectorModel: EmbeddingModelItemType) => {
       return postRebuildEmbedding({
         datasetId,
@@ -98,7 +96,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
     }
   );
 
-  const { runAsync: onEditBaseInfo } = useRequest2(updateDataset, {
+  const { runAsync: onEditBaseInfo } = useRequest(updateDataset, {
     onSuccess() {
       setEditedDataset(undefined);
     },
@@ -170,13 +168,8 @@ const Info = ({ datasetId }: { datasetId: string }) => {
             <FormLabel fontWeight={'500'} flex={'1 0 0'} fontSize={'mini'}>
               {t('common:core.ai.model.Vector Model')}
             </FormLabel>
-            <MyTooltip label={t('dataset:vector_model_max_tokens_tip')}>
-              <Box fontSize={'mini'}>
-                {t('dataset:chunk_max_tokens')}: {vectorModel.maxToken}
-              </Box>
-            </MyTooltip>
           </Flex>
-          <Box pt={2}>
+          <Box pt={2} minW={0} maxW={'100%'} overflow={'hidden'}>
             <AIModelSelector
               w={'100%'}
               value={vectorModel.model}
@@ -210,17 +203,17 @@ const Info = ({ datasetId }: { datasetId: string }) => {
           <FormLabel fontSize={'mini'} fontWeight={'500'}>
             {t('common:core.ai.model.Dataset Agent Model')}
           </FormLabel>
-          <Box pt={2}>
+          <Box pt={2} minW={0} maxW={'100%'} overflow={'hidden'}>
             <AIModelSelector
               w={'100%'}
               value={agentModel.model}
-              list={datasetModelList.map((item) => ({
+              list={llmModelList.map((item) => ({
                 label: item.name,
                 value: item.model
               }))}
               fontSize={'mini'}
               onChange={(e) => {
-                const agentModel = datasetModelList.find((item) => item.model === e);
+                const agentModel = llmModelList.find((item) => item.model === e);
                 if (!agentModel) return;
                 setValue('agentModel', agentModel);
                 return handleSubmit((data) => onSave({ ...data, agentModel: agentModel }))();
@@ -233,7 +226,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
           <FormLabel fontSize={'mini'} fontWeight={'500'}>
             {t('dataset:vllm_model')}
           </FormLabel>
-          <Box pt={2}>
+          <Box pt={2} minW={0} maxW={'100%'} overflow={'hidden'}>
             <AIModelSelector
               w={'100%'}
               value={vlmModel?.model}
@@ -252,32 +245,33 @@ const Info = ({ datasetId }: { datasetId: string }) => {
           </Box>
         </Box>
 
-        {/* 鲁港通 - 启用定时同步功能 */}
-        <Flex alignItems={'center'} pt={5}>
-          <FormLabel fontSize={'mini'} fontWeight={'500'}>
-            {t('dataset:sync_schedule')}
-          </FormLabel>
-          <QuestionTip ml={1} label={t('dataset:sync_schedule_tip')} />
-          <Box flex={1} />
-          <Switch
-            isChecked={!!datasetDetail.autoSync}
-            onChange={(e) => {
-              e.preventDefault();
-              const autoSync = e.target.checked;
-              const text = autoSync ? t('dataset:open_auto_sync') : t('dataset:close_auto_sync');
+        {feConfigs?.isPlus && (
+          <Flex alignItems={'center'} pt={5}>
+            <FormLabel fontSize={'mini'} fontWeight={'500'}>
+              {t('dataset:sync_schedule')}
+            </FormLabel>
+            <QuestionTip ml={1} label={t('dataset:sync_schedule_tip')} />
+            <Box flex={1} />
+            <Switch
+              isChecked={!!datasetDetail.autoSync}
+              onChange={(e) => {
+                e.preventDefault();
+                const autoSync = e.target.checked;
+                const text = autoSync ? t('dataset:open_auto_sync') : t('dataset:close_auto_sync');
 
-              onOpenConfirmSyncSchedule({
-                onConfirm: async () => {
-                  return updateDataset({
-                    id: datasetId,
-                    autoSync
-                  });
-                },
-                customContent: text
-              })();
-            }}
-          />
-        </Flex>
+                onOpenConfirmSyncSchedule({
+                  onConfirm: async () => {
+                    return updateDataset({
+                      id: datasetId,
+                      autoSync
+                    });
+                  },
+                  customContent: text
+                })();
+              }}
+            />
+          </Flex>
+        )}
 
         {datasetDetail.type === DatasetTypeEnum.externalFile && (
           <>
@@ -373,6 +367,37 @@ const Info = ({ datasetId }: { datasetId: string }) => {
             </Box>
           </>
         )}
+
+        {datasetDetail.type === DatasetTypeEnum.dingtalk && (
+          <>
+            <Box w={'100%'} alignItems={'center'} pt={4}>
+              <Flex justifyContent={'space-between'} mb={1}>
+                <FormLabel fontSize={'mini'} fontWeight={'500'}>
+                  {t('dataset:dingtalk_dataset_config')}
+                </FormLabel>
+                <MyIcon
+                  name={'edit'}
+                  w={'14px'}
+                  _hover={{ color: 'primary.600' }}
+                  cursor={'pointer'}
+                  onClick={() =>
+                    setEditedAPIDataset({
+                      id: datasetDetail._id,
+                      apiDatasetServer: datasetDetail.apiDatasetServer
+                    })
+                  }
+                />
+              </Flex>
+              <Box fontSize={'mini'}>
+                {datasetDetail.apiDatasetServer?.dingtalkServer?.workspaceName ||
+                  datasetDetail.apiDatasetServer?.dingtalkServer?.workspaceId}
+              </Box>
+              <Box fontSize={'mini'} color={'myGray.500'} mt={1}>
+                {datasetDetail.apiDatasetServer?.dingtalkServer?.userId}
+              </Box>
+            </Box>
+          </>
+        )}
       </Box>
 
       {datasetDetail.permission.hasManagePer && (
@@ -389,25 +414,7 @@ const Info = ({ datasetId }: { datasetId: string }) => {
                   postUpdateDatasetCollaborators({
                     ...body,
                     datasetId
-                  }),
-                onDelOneCollaborator: async ({ groupId, tmbId, orgId }) => {
-                  if (tmbId) {
-                    return deleteDatasetCollaborators({
-                      datasetId,
-                      tmbId
-                    });
-                  } else if (groupId) {
-                    return deleteDatasetCollaborators({
-                      datasetId,
-                      groupId
-                    });
-                  } else if (orgId) {
-                    return deleteDatasetCollaborators({
-                      datasetId,
-                      orgId
-                    });
-                  }
-                }
+                  })
               }}
             />
           </Box>

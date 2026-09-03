@@ -4,7 +4,11 @@ import {
   type GetFeedbackRecordIdsResponseType
 } from '@fastgpt/global/openapi/core/chat/feedback/api';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
-import { ChatRoleEnum, ChatSourceEnum } from '@fastgpt/global/core/chat/constants';
+import {
+  ChatRoleEnum,
+  ChatSourceEnum,
+  ChatSourceTypeEnum
+} from '@fastgpt/global/core/chat/constants';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
@@ -19,7 +23,7 @@ describe('getFeedbackRecordIds api test', () => {
   let chatId: string;
 
   beforeEach(async () => {
-    testUser = await getUser('test-user-get-feedback-ids');
+    testUser = await getUser(`test-user-get-feedback-ids-${Math.random()}`);
 
     // Create test app
     const app = await MongoApp.create({
@@ -36,6 +40,7 @@ describe('getFeedbackRecordIds api test', () => {
     await MongoChat.create({
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       source: ChatSourceEnum.test
@@ -47,6 +52,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-1',
@@ -61,6 +67,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-2',
@@ -75,6 +82,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-3',
@@ -89,6 +97,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-4',
@@ -103,6 +112,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-5',
@@ -115,6 +125,7 @@ describe('getFeedbackRecordIds api test', () => {
       teamId: testUser.teamId,
       tmbId: testUser.tmbId,
       userId: testUser.userId,
+      sourceType: ChatSourceTypeEnum.app,
       appId,
       chatId,
       dataId: 'data-6',
@@ -122,21 +133,37 @@ describe('getFeedbackRecordIds api test', () => {
       value: [{ type: 'text', text: { content: 'Question' } }],
       userGoodFeedback: 'Good question'
     });
+
+    // Item 7: Same physical appId/chatId under another source type should not be included.
+    await MongoChatItem.create({
+      teamId: testUser.teamId,
+      tmbId: testUser.tmbId,
+      userId: testUser.userId,
+      appId,
+      sourceType: ChatSourceTypeEnum.skillEdit,
+      chatId,
+      dataId: 'data-skill-edit',
+      obj: ChatRoleEnum.AI,
+      value: [{ type: 'text', text: { content: 'Skill edit response' } }],
+      userGoodFeedback: 'Skill edit feedback',
+      isFeedbackRead: false
+    });
   });
 
   it('should return all good feedback records', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'good',
-          unreadOnly: false
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'good',
+        unreadOnly: false
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(2);
@@ -146,18 +173,19 @@ describe('getFeedbackRecordIds api test', () => {
   });
 
   it('should return only unread good feedback records', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'good',
-          unreadOnly: true
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'good',
+        unreadOnly: true
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(1);
@@ -166,18 +194,19 @@ describe('getFeedbackRecordIds api test', () => {
   });
 
   it('should return all bad feedback records', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'bad',
-          unreadOnly: false
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'bad',
+        unreadOnly: false
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(2);
@@ -187,18 +216,19 @@ describe('getFeedbackRecordIds api test', () => {
   });
 
   it('should return only unread bad feedback records', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'bad',
-          unreadOnly: true
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'bad',
+        unreadOnly: true
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(1);
@@ -207,18 +237,19 @@ describe('getFeedbackRecordIds api test', () => {
   });
 
   it('should return all feedback records with has_feedback type', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'has_feedback',
-          unreadOnly: false
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'has_feedback',
+        unreadOnly: false
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(4);
@@ -227,21 +258,24 @@ describe('getFeedbackRecordIds api test', () => {
     expect(res.data?.dataIds).toContain('data-2');
     expect(res.data?.dataIds).toContain('data-3');
     expect(res.data?.dataIds).toContain('data-4');
+    expect(res.data?.dataIds).not.toContain('data-6');
+    expect(res.data?.dataIds).not.toContain('data-skill-edit');
   });
 
   it('should return only unread feedback records with has_feedback type', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'has_feedback',
-          unreadOnly: true
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'has_feedback',
+        unreadOnly: true
       }
-    );
+    });
 
     expect(res.code).toBe(200);
     expect(res.data?.total).toBe(2);
@@ -250,40 +284,41 @@ describe('getFeedbackRecordIds api test', () => {
     expect(res.data?.dataIds).toContain('data-4');
   });
 
-  it('should return empty result when no appId or chatId', async () => {
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: testUser,
-        body: {
-          appId: '',
-          chatId: '',
-          feedbackType: 'good',
-          unreadOnly: false
-        }
+  it('should reject when chat target is missing or empty', async () => {
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: testUser,
+      body: {
+        appId: '',
+        chatId: '',
+        feedbackType: 'good',
+        unreadOnly: false
       }
-    );
+    });
 
-    expect(res.code).toBe(200);
-    expect(res.data?.total).toBe(0);
-    expect(res.data?.dataIds).toHaveLength(0);
+    expect(res.code).toBe(500);
+    expect(res.error).toBeDefined();
   });
 
   it('should fail when user does not have permission', async () => {
-    const unauthorizedUser = await getUser('unauthorized-user-get-ids');
+    const unauthorizedUser = await getUser(`unauthorized-user-get-ids-${Math.random()}`);
 
-    const res = await Call<GetFeedbackRecordIdsBodyType, {}, GetFeedbackRecordIdsResponseType>(
-      handler,
-      {
-        auth: unauthorizedUser,
-        body: {
-          appId,
-          chatId,
-          feedbackType: 'good',
-          unreadOnly: false
-        }
+    const res = await Call<
+      GetFeedbackRecordIdsBodyType,
+      Record<string, never>,
+      GetFeedbackRecordIdsResponseType
+    >(handler, {
+      auth: unauthorizedUser,
+      body: {
+        appId,
+        chatId,
+        feedbackType: 'good',
+        unreadOnly: false
       }
-    );
+    });
 
     expect(res.code).toBe(500);
     expect(res.error).toBeDefined();

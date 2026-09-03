@@ -1,5 +1,5 @@
 import { NextAPI } from '@/service/middleware/entry';
-import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/type';
+import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
 import { SseResponseEventEnum } from '@fastgpt/global/core/workflow/runtime/constants';
 import { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
 import { responseWrite } from '@fastgpt/service/common/response';
@@ -7,14 +7,16 @@ import { createLLMResponse } from '@fastgpt/service/core/ai/llm/request';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { createUsage } from '@fastgpt/service/support/wallet/usage/controller';
 import { formatModelChars2Points } from '@fastgpt/service/support/wallet/usage/utils';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
-import { i18nT } from '@fastgpt/web/i18n/utils';
-
-type OptimizeCodeBody = {
-  optimizerInput: string;
-  model: string;
-  conversationHistory?: Array<ChatCompletionMessageParam>;
-};
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+import {
+  OptimizeCodeBodySchema,
+  OptimizeCodeResponseSchema,
+  type OptimizeCodeBody
+} from '@fastgpt/global/openapi/core/workflow/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+const logger = getLogger(LogCategories.MODULE.WORKFLOW.OPTIMIZE_CODE);
 
 const getPromptNodeCopilotSystemPrompt = () => {
   return `
@@ -82,9 +84,16 @@ function main({paramName, paramRefer, paramType}) {
 };
 
 async function handler(req: ApiRequestProps<OptimizeCodeBody>, res: ApiResponseType) {
-  try {
-    const { optimizerInput, model, conversationHistory = [] } = req.body;
+  const {
+    optimizerInput,
+    model,
+    conversationHistory = []
+  } = parseApiInput({
+    req,
+    bodySchema: OptimizeCodeBodySchema
+  }).body;
 
+  try {
     const { teamId, tmbId } = await authCert({
       req,
       authToken: true,
@@ -108,11 +117,11 @@ async function handler(req: ApiRequestProps<OptimizeCodeBody>, res: ApiResponseT
     ];
 
     const llmResponse = await createLLMResponse({
+      teamId,
+      saveLLMResponseRecord: false,
       body: {
         model,
         messages,
-        temperature: 0.1,
-        max_tokens: 2000,
         stream: true,
         useVision: false
       },
@@ -120,15 +129,17 @@ async function handler(req: ApiRequestProps<OptimizeCodeBody>, res: ApiResponseT
         responseWrite({
           res,
           event: SseResponseEventEnum.answer,
-          data: JSON.stringify({
-            choices: [
-              {
-                delta: {
-                  content: text
+          data: OptimizeCodeResponseSchema.parse(
+            JSON.stringify({
+              choices: [
+                {
+                  delta: {
+                    content: text
+                  }
                 }
-              }
-            ]
-          })
+              ]
+            })
+          )
         });
       }
     });
@@ -137,7 +148,7 @@ async function handler(req: ApiRequestProps<OptimizeCodeBody>, res: ApiResponseT
     responseWrite({
       res,
       event: SseResponseEventEnum.answer,
-      data: '[DONE]'
+      data: OptimizeCodeResponseSchema.parse('[DONE]')
     });
 
     const { totalPoints, modelName } = formatModelChars2Points({
@@ -163,7 +174,7 @@ async function handler(req: ApiRequestProps<OptimizeCodeBody>, res: ApiResponseT
       ]
     });
   } catch (error) {
-    console.error(error);
+    logger.error('Failed to optimize workflow code', { error });
   }
   res.end();
 }

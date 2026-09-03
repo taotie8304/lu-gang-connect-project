@@ -12,12 +12,13 @@ import {
   Thead,
   Tr,
   useDisclosure,
-  Checkbox
+  Checkbox,
+  type FlexProps
 } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
-import React, { useMemo, useRef, useState } from 'react';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import React, { useMemo, useState } from 'react';
 import MySelect from '@fastgpt/web/components/common/MySelect';
-import { modelTypeList, ModelTypeEnum } from '@fastgpt/global/core/ai/model';
+import { modelTypeList, ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import Avatar from '@fastgpt/web/components/common/Avatar';
@@ -30,33 +31,51 @@ import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
 import { getModelCollaborators, updateModelCollaborators } from '@/web/common/system/api';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { LazyCollaboratorProvider } from '@/components/support/permission/MemberManager/context';
+import PriceTiersLabel from '../PriceTiersLabel';
+import TestModeBetaTag from '../TestModeBetaTag';
+import ModelCapabilityTags from '../ModelCapabilityTags';
 
 const MyModal = dynamic(() => import('@fastgpt/web/components/common/MyModal'));
 
-const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }) => {
-  const { t, i18n } = useTranslation();
+const ModelTable = ({
+  permissionConfig = false,
+  contentPx
+}: {
+  permissionConfig?: boolean;
+  contentPx?: FlexProps['px'];
+}) => {
+  const { t, i18n } = useClientTranslation();
   const { getModelProviders, getModelProvider } = useSystemStore();
   const { userInfo } = useUserStore();
+  const modelPermissionConfigHint = permissionConfig
+    ? t('common:model.permission_config_hint')
+    : '';
 
   const [provider, setProvider] = useState<string | ''>('');
-  const providerList = useRef<{ label: any; value: string | '' }[]>([
-    { label: t('common:All'), value: '' },
-    ...(getModelProviders(i18n.language).map((item) => ({
-      label: (
-        <HStack>
-          <Avatar src={item.avatar} w={'1rem'} />
-          <Box>{item.name}</Box>
-        </HStack>
-      ),
-      value: item.id
-    })) as any)
-  ]);
+  const providerList = useMemo<{ label: React.ReactNode; value: string | '' }[]>(
+    () => [
+      { label: t('common:All'), value: '' },
+      ...getModelProviders(i18n.language).map((item) => ({
+        label: (
+          <HStack>
+            <Avatar src={item.avatar} w={'1rem'} />
+            <Box>{item.name}</Box>
+          </HStack>
+        ),
+        value: item.id
+      }))
+    ],
+    [getModelProviders, i18n.language, t]
+  );
 
   const [modelType, setModelType] = useState<ModelTypeEnum | ''>('');
-  const selectModelTypeList = useRef<{ label: string; value: ModelTypeEnum | '' }[]>([
-    { label: t('common:All'), value: '' },
-    ...modelTypeList.map((item) => ({ label: t(item.label), value: item.value }))
-  ]);
+  const selectModelTypeList = useMemo<{ label: string; value: ModelTypeEnum | '' }[]>(
+    () => [
+      { label: t('common:All'), value: '' },
+      ...modelTypeList.map((item) => ({ label: t(item.label), value: item.value }))
+    ],
+    [t]
+  );
 
   const [search, setSearch] = useState('');
 
@@ -67,32 +86,12 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
     const formatLLMModelList = llmModelList.map((item) => ({
       ...item,
       typeLabel: t('common:model.type.chat'),
-      priceLabel:
-        typeof item.inputPrice === 'number' ? (
-          <Box>
-            <Flex>
-              {`${t('common:Input')}:`}
-              <Box fontWeight={'bold'} color={'myGray.900'} mr={0.5} ml={2}>
-                {item.inputPrice || 0}
-              </Box>
-              {`${t('common:support.wallet.subscription.point')} / 1K Tokens`}
-            </Flex>
-            <Flex>
-              {`${t('common:Output')}:`}
-              <Box fontWeight={'bold'} color={'myGray.900'} mr={0.5} ml={2}>
-                {item.outputPrice || 0}
-              </Box>
-              {`${t('common:support.wallet.subscription.point')} / 1K Tokens`}
-            </Flex>
-          </Box>
-        ) : (
-          <Flex color={'myGray.700'}>
-            <Box fontWeight={'bold'} color={'myGray.900'} mr={0.5}>
-              {item.charsPointsPrice || 0}
-            </Box>
-            {`${t('common:support.wallet.subscription.point')} / 1K Tokens`}
-          </Flex>
-        ),
+      priceLabel: (
+        <PriceTiersLabel
+          config={item}
+          unitLabel={`${t('common:support.wallet.subscription.point')} / 1K Tokens`}
+        />
+      ),
       tagColor: 'blue'
     }));
     const formatVectorModelList = embeddingModelList.map((item) => ({
@@ -172,6 +171,14 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
       return {
         model: item.model,
         name: item.name,
+        testMode: item.testMode,
+        contextToken:
+          'maxContext' in item ? item.maxContext : 'maxToken' in item ? item.maxToken : undefined,
+        vision: 'vision' in item ? item.vision : undefined,
+        audio: 'audio' in item ? item.audio : undefined,
+        video: 'video' in item ? item.video : undefined,
+        reasoning: 'reasoning' in item ? item.reasoning : undefined,
+        toolChoice: 'toolChoice' in item ? item.toolChoice : undefined,
         avatar: provider.avatar,
         providerId: provider.id,
         providerName: provider.name,
@@ -216,10 +223,8 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
       ...reRankModelList
     ].map((model) => model.provider);
 
-    return providerList.current.filter(
-      (item) => allProviderIds.includes(item.value) || item.value === ''
-    );
-  }, [ttsModelList, llmModelList, embeddingModelList, sttModelList, reRankModelList]);
+    return providerList.filter((item) => allProviderIds.includes(item.value) || item.value === '');
+  }, [ttsModelList, llmModelList, embeddingModelList, sttModelList, reRankModelList, providerList]);
 
   const {
     selectedItems,
@@ -234,43 +239,78 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
   });
 
   return (
-    <Flex flexDirection={'column'} h={'100%'}>
-      <Flex>
-        <HStack flexShrink={0}>
-          <Box fontSize={'sm'} color={'myGray.900'}>
+    <Flex flexDirection={'column'} h={contentPx === undefined ? '100%' : ['auto', '100%']} minW={0}>
+      <Flex
+        px={contentPx}
+        flexDirection={['column', 'row']}
+        gap={[3, 6]}
+        alignItems={['stretch', 'flex-start']}
+      >
+        <Flex flexShrink={0} w={['100%', 'auto']} alignItems={'center'} gap={2}>
+          <Box
+            w={['84px', 'auto']}
+            flexShrink={0}
+            fontSize={'sm'}
+            color={'myGray.900'}
+            textAlign={'left'}
+          >
             {t('common:model.provider')}
           </Box>
-          <MySelect
-            w={'200px'}
-            bg={'myGray.50'}
-            value={provider}
-            onChange={setProvider}
-            list={filterProviderList}
-          />
-        </HStack>
-        <HStack flexShrink={0} ml={6}>
-          <Box fontSize={'sm'} color={'myGray.900'}>
+          <Box flex={1} minW={0} w={['100%', '160px']}>
+            <MySelect
+              w={'100%'}
+              bg={'myGray.25'}
+              value={provider}
+              onChange={setProvider}
+              list={filterProviderList}
+            />
+          </Box>
+        </Flex>
+        <Flex flexShrink={0} w={['100%', 'auto']} alignItems={'center'} gap={2}>
+          <Box
+            w={['84px', 'auto']}
+            flexShrink={0}
+            fontSize={'sm'}
+            color={'myGray.900'}
+            textAlign={'left'}
+          >
             {t('common:model.model_type')}
           </Box>
-          <MySelect
-            w={'150px'}
-            bg={'myGray.50'}
-            value={modelType}
-            onChange={setModelType}
-            list={selectModelTypeList.current}
-          />
-        </HStack>
-        <Box flex={1} />
-        <Box flex={'0 0 250px'}>
+          <Box flex={1} minW={0} w={['100%', '160px']}>
+            <MySelect
+              w={'100%'}
+              bg={'myGray.25'}
+              value={modelType}
+              onChange={setModelType}
+              list={selectModelTypeList}
+            />
+          </Box>
+        </Flex>
+        <Box
+          ml={[0, 'auto']}
+          w={'100%'}
+          maxW={['100%', '200px']}
+          flex={['none', '0 0 200px']}
+          flexShrink={0}
+        >
           <SearchInput
-            bg={'myGray.50'}
+            bg={'myGray.25'}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder={t('common:model.search_name_placeholder')}
           />
         </Box>
       </Flex>
-      <TableContainer mt={5} flex={'1 0 0'} h={0} overflowY={'auto'}>
+      <TableContainer
+        mt={5}
+        px={contentPx}
+        flex={contentPx === undefined ? '1 0 0' : ['0 0 auto', '1 0 0']}
+        h={contentPx === undefined ? 0 : ['auto', 0]}
+        w={'100%'}
+        maxW={'100%'}
+        overflowY={contentPx === undefined ? 'auto' : ['visible', 'auto']}
+        overflowX={'auto'}
+      >
         <Table>
           <Thead>
             <Tr color={'myGray.600'}>
@@ -302,14 +342,25 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
                       <Checkbox
                         mr={1}
                         isChecked={isSelected(item)}
-                        onChange={(e) => toggleSelect(item)}
+                        onChange={() => toggleSelect(item)}
                       ></Checkbox>
                     )}
                     <Avatar src={item.avatar} w={'1.2rem'} />
-                    <CopyBox value={item.name} color={'myGray.900'}>
-                      {item.name}
-                    </CopyBox>
+                    <Flex alignItems={'center'} gap={1} minW={0}>
+                      <CopyBox value={item.name} color={'myGray.900'}>
+                        {item.name}
+                      </CopyBox>
+                      {item.testMode && <TestModeBetaTag />}
+                    </Flex>
                   </HStack>
+                  <ModelCapabilityTags
+                    mt={2}
+                    contextToken={item.contextToken}
+                    showVision={!!item.vision}
+                    showVideo={!!item.video}
+                    showAudio={!!item.audio}
+                    showReasoning={!!item.reasoning}
+                  />
                 </Td>
                 <Td>
                   <MyTag colorSchema={item.tagColor as any}>{item.typeLabel}</MyTag>
@@ -318,7 +369,7 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
                 {permissionConfig && userInfo?.team.permission.hasManagePer && (
                   <Td fontSize={'sm'}>
                     <LazyCollaboratorProvider
-                      selectedHint={t('account_model:model_permission_config_hint')}
+                      selectedHint={modelPermissionConfigHint}
                       defaultRole={ReadRoleVal}
                       onGetCollaboratorList={() => getModelCollaborators(item.model)}
                       onUpdateCollaborators={({ collaborators }) =>
@@ -354,7 +405,7 @@ const ModelTable = ({ permissionConfig = false }: { permissionConfig?: boolean }
         }}
         Controler={
           <LazyCollaboratorProvider
-            selectedHint={t('account_model:model_permission_config_hint')}
+            selectedHint={modelPermissionConfigHint}
             defaultRole={ReadRoleVal}
             onGetCollaboratorList={() =>
               Promise.resolve({
@@ -388,7 +439,7 @@ export const ModelPriceModal = ({
 }: {
   children: ({ onOpen }: { onOpen: () => void }) => React.ReactNode;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation();
   const { isOpen, onOpen, onClose } = useDisclosure();
 
   return (

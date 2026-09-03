@@ -1,3 +1,3 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
-dotenv.config({ path: '.env.local' });
+export async function init() {
+  // Environment variables are loaded and validated by src/env.ts.
+}

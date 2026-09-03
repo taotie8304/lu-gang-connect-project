@@ -1,16 +1,24 @@
-import type { LangEnum } from '../../common/i18n/type';
-import type { TeamPermission } from '../permission/user/controller';
+import z from 'zod';
+import { ObjectIdSchema } from '../../common/type/mongo';
+import { LanguageSchema, type LangEnum } from '../../common/i18n/type';
+import { TeamPermission } from '../permission/user/controller';
 import type { UserStatusEnum } from './constant';
 import { TeamMemberStatusEnum } from './team/constant';
-import type { TeamTmbItemType } from './team/type';
-import z from 'zod';
+import { TeamTmbItemSchema } from './team/type';
+import type { FastGPTSemType } from '../marketing/type';
+
+export const UserTagsSchema = z.enum(['wecom']);
+export const UserTagsEnum = UserTagsSchema.enum;
+export type UserTagsType = z.infer<typeof UserTagsSchema>;
+
+export type UserMetaType = {
+  isActivatedWecomLicense?: boolean;
+};
 
 export type UserModelSchema = {
   _id: string;
   username: string;
   password: string;
-  promotionRate: number;
-  inviterId?: string;
   openaiKey: string;
   createTime: number;
   timezone: string;
@@ -18,38 +26,42 @@ export type UserModelSchema = {
   status: `${UserStatusEnum}`;
   lastLoginTmbId?: string;
   passwordUpdateTime?: Date;
-  fastgpt_sem?: {
-    keyword: string;
-  };
-  contact?: string;
-  // 鲁港通：用户信息扩展字段 (Requirement 6.1)
-  nickname?: string;
-  email?: string;
-  phone?: string;
-  birth_date?: Date;
-  address?: string;
-  google_account?: string;
+  fastgpt_sem?: FastGPTSemType;
+  contact?: string | null;
+  tags: UserTagsType[];
+  meta?: UserMetaType;
 };
 
-export type UserType = {
-  _id: string;
-  username: string;
-  avatar: string; // it should be team member's avatar after 4.8.18
-  timezone: string;
-  language?: `${LangEnum}`;
-  promotionRate: UserModelSchema['promotionRate'];
-  team: TeamTmbItemType;
-  permission: TeamPermission;
-  contact?: string;
-};
+export const UserSchema = z.object({
+  _id: ObjectIdSchema,
+  username: z.string(),
+  avatar: z.string().nullish(),
+  timezone: z.string(),
+  language: LanguageSchema.optional(),
+  team: TeamTmbItemSchema,
+  permission: z.instanceof(TeamPermission),
+  contact: z.string().nullish(),
+  tags: z.array(UserTagsSchema).optional()
+});
+export type UserType = z.infer<typeof UserSchema>;
 
 export const SourceMemberSchema = z.object({
   name: z.string().meta({ example: '张三', description: '成员名称' }),
-  avatar: z
-    .string()
-    .meta({ example: 'https://cloud.fastgpt.cn/avatar.png', description: '成员头像' }),
+  avatar: z.string().nullish().meta({ description: '成员头像' }),
   status: z
     .enum(TeamMemberStatusEnum)
     .meta({ example: TeamMemberStatusEnum.active, description: '成员状态' })
 });
 export type SourceMemberType = z.infer<typeof SourceMemberSchema>;
+
+export const TeamMetaSchema = z.object({
+  wecom: z
+    .object({
+      permanentCode: z.string(),
+      corpId: z.string(),
+      licenseCapacity: z.int().min(0).default(0)
+    })
+    .optional()
+});
+
+export type TeamMetaType = z.infer<typeof TeamMetaSchema>;

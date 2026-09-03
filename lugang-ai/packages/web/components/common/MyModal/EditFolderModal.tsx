@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { ModalFooter, ModalBody, Input, Button, Box, Textarea } from '@chakra-ui/react';
-import MyModal from './index';
+import { Input, Button, Box, Textarea, Flex } from '@chakra-ui/react';
+import MyModal from '../../v2/common/MyModal';
 import { useTranslation } from 'next-i18next';
-import { useRequest2 } from '../../../hooks/useRequest';
+import { useRequest } from '../../../hooks/useRequest';
 import FormLabel from '../MyBox/FormLabel';
 import { useForm } from 'react-hook-form';
 
@@ -49,42 +49,57 @@ const EditFolderModal = ({
     [isEdit, t]
   );
 
-  const { run: onSave, loading } = useRequest2(
+  const { run: onSave, loading } = useRequest(
     ({ name = '', intro }: EditFolderFormType) => {
-      if (!name) return;
+      const trimmedName = name.trim();
+      if (!trimmedName) return;
 
-      if (isEdit) return onEdit({ id, name, intro });
-      return onCreate({ name, intro });
+      if (id) return onEdit({ id, name: trimmedName, intro });
+      return onCreate({ name: trimmedName, intro });
     },
     {
-      onSuccess: (res) => {
+      onSuccess: () => {
         onClose();
       }
     }
   );
 
   return (
-    <MyModal isOpen onClose={onClose} iconSrc="common/folderFill" title={typeMap.title}>
-      <ModalBody>
+    <MyModal
+      isOpen
+      onClose={onClose}
+      title={typeMap.title}
+      size={'sm'}
+      isCentered
+      borderRadius={'10px'}
+      closeOnOverlayClick={false}
+      footer={
+        <>
+          <Button variant={'whiteBase'} onClick={onClose}>
+            {t('common:Cancel')}
+          </Button>
+          <Button isLoading={loading} onClick={handleSubmit(onSave)}>
+            {t('common:Confirm')}
+          </Button>
+        </>
+      }
+    >
+      <Flex flexDirection={'column'} gap={6}>
         <Box>
-          <FormLabel mb={1}>{t('common:input_name')}</FormLabel>
-          <Input
-            {...register('name', { required: true })}
-            bg={'myGray.50'}
-            autoFocus
-            maxLength={100}
+          <FormLabel mb={2}>{t('common:input_name')}</FormLabel>
+          <Input {...register('name', { required: true })} size={'sm'} autoFocus maxLength={100} />
+        </Box>
+        <Box>
+          <FormLabel mb={2}>{t('common:folder_description')}</FormLabel>
+          <Textarea
+            {...register('intro')}
+            h={'100px'}
+            minH={'100px'}
+            maxLength={200}
+            resize={'vertical'}
           />
         </Box>
-        <Box mt={4}>
-          <FormLabel mb={1}>{t('common:folder_description')}</FormLabel>
-          <Textarea {...register('intro')} bg={'myGray.50'} maxLength={200} />
-        </Box>
-      </ModalBody>
-      <ModalFooter>
-        <Button isLoading={loading} onClick={handleSubmit(onSave)} px={6}>
-          {t('common:Confirm')}
-        </Button>
-      </ModalFooter>
+      </Flex>
     </MyModal>
   );
 };

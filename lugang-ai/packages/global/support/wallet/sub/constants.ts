@@ -1,4 +1,4 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../../common/i18n/utils';
 import { BillTypeEnum } from '../bill/constants';
 
 export enum SubTypeEnum {
@@ -48,11 +48,24 @@ export enum StandardSubLevelEnum {
   advanced = 'advanced',
   custom = 'custom',
 
-  // @deprecated
+  /** @deprecated */
   experience = 'experience',
+  /** @deprecated */
   team = 'team',
+  /** @deprecated */
   enterprise = 'enterprise'
 }
+
+/** 各套餐等级的审计日志默认保留天数。 */
+export const defaultAuditLogRetentionDays: Record<StandardSubLevelEnum, number> = {
+  [StandardSubLevelEnum.free]: 90,
+  [StandardSubLevelEnum.basic]: 360,
+  [StandardSubLevelEnum.advanced]: 1080,
+  [StandardSubLevelEnum.custom]: 1080,
+  [StandardSubLevelEnum.experience]: 360,
+  [StandardSubLevelEnum.team]: 1080,
+  [StandardSubLevelEnum.enterprise]: 1080
+};
 
 export const standardSubLevelMap = {
   [StandardSubLevelEnum.free]: {

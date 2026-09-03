@@ -1,4 +1,4 @@
-import { i18nT } from '../../../../../../web/i18n/utils';
+import { i18nT } from '../../../../../common/i18n/utils';
 import {
   FlowNodeTemplateTypeEnum,
   NodeInputKeyEnum,
@@ -20,12 +20,14 @@ export const ReadFilesNode: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/readFiles',
+  avatarLinear: 'core/workflow/template/readFilesLinear',
+  colorSchema: 'green',
   name: i18nT('app:workflow.read_files'),
   intro: i18nT('app:workflow.read_files_tip'),
   showStatus: true,
   version: '4.9.2',
-  isTool: false,
-  courseUrl: '/docs/introduction/guide/course/fileinput/',
+  isTool: true,
+  courseUrl: '/guide/build/general/fileInput',
   inputs: [
     {
       key: NodeInputKeyEnum.fileUrlList,
@@ -33,7 +35,9 @@ export const ReadFilesNode: FlowNodeTemplateType = {
       valueType: WorkflowIOValueTypeEnum.arrayString,
       label: i18nT('app:workflow.file_url'),
       required: true,
-      value: []
+      value: [],
+      toolDescription: i18nT('app:workflow.file_url'),
+      defaultToAgentGenerated: true
     }
   ],
   outputs: [

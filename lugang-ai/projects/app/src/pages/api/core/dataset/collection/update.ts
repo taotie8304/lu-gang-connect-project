@@ -3,11 +3,14 @@ import {
   createOrGetCollectionTags,
   getCollectionUpdateTime
 } from '@fastgpt/service/core/dataset/collection/utils';
-import { authDatasetCollection } from '@fastgpt/service/support/permission/dataset/auth';
+import {
+  authDataset,
+  authDatasetCollection
+} from '@fastgpt/service/support/permission/dataset/auth';
 import { NextAPI } from '@/service/middleware/entry';
 import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
 import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { type ClientSession } from '@fastgpt/service/common/mongo';
 import { type CollectionWithDatasetType } from '@fastgpt/global/core/dataset/type';
@@ -15,18 +18,8 @@ import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { getI18nDatasetType } from '@fastgpt/service/support/user/audit/util';
-export type UpdateDatasetCollectionParams = {
-  id?: string;
-  parentId?: string;
-  name?: string;
-  tags?: string[]; // Not tag id, is tag label
-  forbid?: boolean;
-  createTime?: Date;
-
-  // External file id
-  datasetId?: string;
-  externalFileId?: string;
-};
+import { UpdateDatasetCollectionBodySchema } from '@fastgpt/global/openapi/core/dataset/collection/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
 // Set folder collection children forbid status
 const updateFolderChildrenForbid = async ({
@@ -74,10 +67,29 @@ const updateFolderChildrenForbid = async ({
   );
 };
 
-async function handler(req: ApiRequestProps<UpdateDatasetCollectionParams>) {
-  let { datasetId, externalFileId, id, parentId, name, tags, forbid, createTime } = req.body;
+async function handler(req: ApiRequestProps) {
+  const {
+    datasetId,
+    externalFileId,
+    id: parsedCollectionId,
+    parentId,
+    name,
+    tags,
+    forbid,
+    createTime
+  } = parseApiInput({ req, bodySchema: UpdateDatasetCollectionBodySchema }).body;
+  let id = parsedCollectionId;
 
+  // 通过 externalFileId 查找 collection：先鉴权 dataset，再查询
   if (datasetId && externalFileId) {
+    await authDataset({
+      req,
+      authToken: true,
+      authApiKey: true,
+      datasetId,
+      per: WritePermissionVal
+    });
+
     const collection = await MongoDatasetCollection.findOne({ datasetId, externalFileId }, '_id');
     if (!collection) {
       return Promise.reject(CommonErrEnum.fileNotFound);

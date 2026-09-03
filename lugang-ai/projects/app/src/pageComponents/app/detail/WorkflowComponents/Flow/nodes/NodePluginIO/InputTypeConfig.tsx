@@ -14,7 +14,8 @@ import {
 } from '@chakra-ui/react';
 import {
   VariableInputEnum,
-  WorkflowIOValueTypeEnum
+  WorkflowIOValueTypeEnum,
+  textInputVariableValueTypes
 } from '@fastgpt/global/core/workflow/constants';
 import {
   FlowNodeInputTypeEnum,
@@ -26,7 +27,7 @@ import MultipleSelect, {
 } from '@fastgpt/web/components/common/MySelect/MultipleSelect';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import JsonEditor from '@fastgpt/web/components/common/Textarea/JsonEditor';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useFieldArray, type UseFormReturn } from 'react-hook-form';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
@@ -36,18 +37,21 @@ import MyTextarea from '@/components/common/Textarea/MyTextarea';
 import MyNumberInput from '@fastgpt/web/components/common/Input/NumberInput';
 import TimeInput from '@/components/core/app/formRender/TimeInput';
 
-import MySlider from '@/components/Slider';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { useUserStore } from '@/web/support/user/useUserStore';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import RadioGroup from '@fastgpt/web/components/common/Radio/RadioGroup';
 import { DatasetSelectModal } from '@/components/core/app/DatasetSelectModal';
-import type { EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.d';
 import AIModelSelector from '@/components/Select/AIModelSelector';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
 import { formatTime2YMDHMS } from '@fastgpt/global/common/string/time';
 import type { SelectedDatasetType } from '@fastgpt/global/core/workflow/type/io';
 import { FileTypeSelectorPanel } from '@fastgpt/web/components/core/app/FileTypeSelector';
 import InputSlider from '@fastgpt/web/components/common/MySlider/InputSlider';
+import { getUserFileAmountLimit } from '@fastgpt/global/core/workflow/fileLimit';
+import { canInputBeAgentGenerated } from '@fastgpt/global/core/app/formEdit/utils';
+
+const inputFormGridTemplateColumns = 'max-content minmax(0, 1fr)';
 
 const InputTypeConfig = ({
   form,
@@ -71,11 +75,12 @@ const InputTypeConfig = ({
 
   // Update methods
   onSubmitSuccess: (data: any, action: 'confirm' | 'continue') => void;
-  onSubmitError: (e: Object) => void;
+  onSubmitError: (e: object) => void;
 }) => {
   const { t } = useTranslation();
   const defaultListValue = { label: t('common:None'), value: '' };
   const { feConfigs, llmModelList } = useSystemStore();
+  const { teamPlanStatus } = useUserStore();
 
   const availableModels = useMemoEnhance(() => {
     return llmModelList.map((model) => ({
@@ -106,6 +111,12 @@ const InputTypeConfig = ({
   const minLength = watch('minLength');
   const defaultValue = watch('defaultValue');
   const valueType = watch('valueType');
+  const inputKey = watch('key');
+  const renderTypeList = watch('renderTypeList') ?? [];
+  const defaultToAgentGenerated = watch('defaultToAgentGenerated') ?? false;
+  const showDefaultToolParam =
+    type === 'plugin' &&
+    canInputBeAgentGenerated({ key: inputKey ?? '', renderTypeList: renderTypeList });
 
   const timeGranularity = watch('timeGranularity');
   const timeRangeStart = watch('timeRangeStart');
@@ -120,7 +131,14 @@ const InputTypeConfig = ({
       : undefined;
 
   const maxFiles = watch('maxFiles') ?? 5;
-  const maxSelectFiles = Math.min(feConfigs?.uploadFileMaxAmount ?? 20, 50);
+  // 模块可配置上限不能超过用户配额，额外保留节点配置的 50 个上限。
+  const maxSelectFiles = Math.min(
+    getUserFileAmountLimit({
+      teamMaxFileAmount: teamPlanStatus?.standard?.maxUploadFileCount,
+      systemMaxFileAmount: feConfigs.uploadFileMaxAmount
+    }),
+    50
+  );
   const canSelectFile = watch('canSelectFile') ?? true;
   const canSelectImg = watch('canSelectImg');
   const canSelectVideo = watch('canSelectVideo');
@@ -141,9 +159,6 @@ const InputTypeConfig = ({
   const { isSelectAll: isSelectAllValueType, setIsSelectAll: setIsSelectAllValueType } =
     useMultipleSelect(selectValueTypeList, false);
 
-  const toolDescription = watch('toolDescription');
-  const isToolInput = !!toolDescription;
-
   const listValue = watch('list') ?? [];
   const {
     fields: selectEnums,
@@ -154,10 +169,48 @@ const InputTypeConfig = ({
     name: 'list'
   });
 
-  const mergedSelectEnums = selectEnums.map((field, index) => ({
-    ...field,
-    ...listValue[index]
+  const isSelectInput =
+    inputType === FlowNodeInputTypeEnum.select || inputType === VariableInputEnum.select;
+  const isMultipleSelectInput =
+    inputType === FlowNodeInputTypeEnum.multipleSelect ||
+    inputType === VariableInputEnum.multipleSelect;
+  const isOptionInput = isSelectInput || isMultipleSelectInput;
+  const optionFields = (listValue.length ? listValue : selectEnums) as {
+    id?: string;
+    label?: string;
+    value?: string;
+  }[];
+  const optionDragList = optionFields.map((item, index) => ({
+    id: item.id || `${index}`,
+    label: item.label || '',
+    value: item.value || item.label || ''
   }));
+
+  const handleRemoveEnum = useCallback(
+    (index: number) => {
+      const removedValue = getValues(`list.${index}.value`);
+      removeEnums(index);
+
+      if (!removedValue) return;
+
+      if (isMultipleSelectInput) {
+        const cur = getValues('defaultValue');
+        if (Array.isArray(cur) && cur.includes(removedValue)) {
+          setValue(
+            'defaultValue',
+            cur.filter((v: string) => v !== removedValue)
+          );
+        }
+      } else if (isSelectInput) {
+        if (getValues('defaultValue') === removedValue) {
+          setValue('defaultValue', '');
+        }
+      }
+    },
+    [removeEnums, isMultipleSelectInput, isSelectInput, getValues, setValue]
+  );
+
+  const isOptionLimitReached = optionFields.length >= 50;
 
   const valueTypeSelectList = Object.values(FlowValueTypeMap)
     .filter((item) => !item.abandon)
@@ -166,21 +219,29 @@ const InputTypeConfig = ({
       value: item.value
     }));
 
-  const showValueTypeSelect =
-    inputType === FlowNodeInputTypeEnum.reference ||
+  const isVariableTextInput = type === 'variable' && inputType === VariableInputEnum.input;
+
+  const isDynamicValueTypeInput =
     inputType === FlowNodeInputTypeEnum.customVariable ||
     inputType === FlowNodeInputTypeEnum.hidden ||
     inputType === VariableInputEnum.custom ||
-    inputType === VariableInputEnum.internal;
+    inputType === VariableInputEnum.internal ||
+    isVariableTextInput;
+
+  const showValueTypeSelect =
+    inputType === FlowNodeInputTypeEnum.reference || isDynamicValueTypeInput;
+
+  const valueTypeOptionList = isVariableTextInput
+    ? valueTypeSelectList.filter((item) => textInputVariableValueTypes.includes(item.value))
+    : valueTypeSelectList.filter((item) => item.value !== WorkflowIOValueTypeEnum.arrayAny);
 
   const showRequired = useMemo(() => {
     const list = [
       FlowNodeInputTypeEnum.addInputParam,
       FlowNodeInputTypeEnum.customVariable,
       FlowNodeInputTypeEnum.hidden,
+      FlowNodeInputTypeEnum.agentGenerated,
       FlowNodeInputTypeEnum.switch,
-      VariableInputEnum.timePointSelect,
-      VariableInputEnum.timeRangeSelect,
       VariableInputEnum.switch,
       VariableInputEnum.custom,
       VariableInputEnum.internal
@@ -217,21 +278,8 @@ const InputTypeConfig = ({
       [VariableInputEnum.datasetSelect]: true
     };
 
-    return map[inputType as keyof typeof map];
-  }, [inputType]);
-
-  const showIsToolInput = useMemo(() => {
-    const list = [
-      FlowNodeInputTypeEnum.reference,
-      FlowNodeInputTypeEnum.JSONEditor,
-      FlowNodeInputTypeEnum.input,
-      FlowNodeInputTypeEnum.numberInput,
-      FlowNodeInputTypeEnum.switch,
-      FlowNodeInputTypeEnum.select,
-      FlowNodeInputTypeEnum.multipleSelect
-    ];
-    return type === 'plugin' && list.includes(inputType as FlowNodeInputTypeEnum);
-  }, [inputType, type]);
+    return isOptionInput || map[inputType as keyof typeof map];
+  }, [inputType, isOptionInput]);
 
   const filterValidField = useCallback(
     (data: Record<string, any>) => {
@@ -245,9 +293,25 @@ const InputTypeConfig = ({
         valueDesc: data.valueDesc,
         description: data.description,
         toolDescription: data.toolDescription,
+        defaultToAgentGenerated: data.defaultToAgentGenerated,
         required: data.required,
         defaultValue: data.defaultValue
       };
+
+      if (isOptionInput) {
+        const cleanList = (data.list ?? []).filter(
+          (item: { label?: string; value?: string }) => !!item?.label
+        );
+        commonData.list = cleanList;
+        const validValues = new Set(cleanList.map((item: { value: string }) => item.value));
+        if (isMultipleSelectInput) {
+          commonData.defaultValue = Array.isArray(commonData.defaultValue)
+            ? commonData.defaultValue.filter((v: string) => validValues.has(v))
+            : commonData.defaultValue;
+        } else if (commonData.defaultValue && !validValues.has(commonData.defaultValue)) {
+          commonData.defaultValue = '';
+        }
+      }
 
       switch (inputType) {
         case FlowNodeInputTypeEnum.input:
@@ -257,10 +321,6 @@ const InputTypeConfig = ({
         case FlowNodeInputTypeEnum.numberInput:
           commonData.max = data.max;
           commonData.min = data.min;
-          break;
-        case FlowNodeInputTypeEnum.select:
-        case FlowNodeInputTypeEnum.multipleSelect:
-          commonData.list = data.list;
           break;
         case FlowNodeInputTypeEnum.addInputParam:
           commonData.customInputConfig = data.customInputConfig;
@@ -322,17 +382,34 @@ const InputTypeConfig = ({
 
       return commonData;
     },
-    [inputType]
+    [inputType, isMultipleSelectInput, isOptionInput]
   );
 
   return (
-    <Stack flex={1} borderLeft={'1px solid #F0F1F6'} justifyContent={'space-between'}>
-      <Flex flexDirection={'column'} p={8} gap={4} flex={'1 0 0'} overflow={'auto'}>
-        <Flex alignItems={'center'}>
-          <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+    <Stack
+      flex={1}
+      minH={0}
+      overflow={'hidden'}
+      borderLeft={'1px solid #F0F1F6'}
+      justifyContent={'space-between'}
+    >
+      <Grid
+        gridTemplateColumns={inputFormGridTemplateColumns}
+        columnGap={4}
+        rowGap={4}
+        alignItems={'center'}
+        alignContent={'start'}
+        textAlign={'left'}
+        p={8}
+        flex={'0 1 auto'}
+        overflow={'auto'}
+      >
+        <Grid display={'contents'}>
+          <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
             {typeLabels.name[type] || typeLabels.name.formInput}
           </FormLabel>
           <Input
+            minW={0}
             bg={'myGray.50'}
             maxLength={30}
             placeholder="appointment/sql"
@@ -340,37 +417,40 @@ const InputTypeConfig = ({
               required: true
             })}
           />
-        </Flex>
-        <Flex alignItems={'flex-start'}>
-          <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+        </Grid>
+        <Grid display={'contents'}>
+          <FormLabel alignSelf={'flex-start'} whiteSpace={'nowrap'} fontWeight={'medium'}>
             {typeLabels.description[type] || typeLabels.description.plugin}
           </FormLabel>
           <Textarea
+            alignSelf={'flex-start'}
+            minW={0}
             bg={'myGray.50'}
             placeholder={t('workflow:field_description_placeholder')}
             rows={3}
             minH={10}
             {...register('description', {
-              required: showIsToolInput && isToolInput ? true : false
+              required: showDefaultToolParam && defaultToAgentGenerated
             })}
           />
-        </Flex>
+        </Grid>
 
         {/* value type */}
         {type !== 'formInput' && (
-          <Flex alignItems={'center'}>
-            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
               {t('common:core.module.Data Type')}
             </FormLabel>
             {showValueTypeSelect ? (
-              <Box flex={1}>
+              <Box minW={0}>
                 <MySelect<WorkflowIOValueTypeEnum>
-                  list={valueTypeSelectList.filter(
-                    (item) => item.value !== WorkflowIOValueTypeEnum.arrayAny
-                  )}
+                  list={valueTypeOptionList}
                   value={valueType}
                   onChange={(e) => {
                     setValue('valueType', e);
+                    if (isVariableTextInput) {
+                      setValue('defaultValue', '');
+                    }
                   }}
                 />
               </Box>
@@ -379,36 +459,30 @@ const InputTypeConfig = ({
                 {defaultValueType ? t(FlowValueTypeMap[defaultValueType]?.label as any) : ''}
               </Box>
             )}
-          </Flex>
+          </Grid>
         )}
         {showRequired && (
-          <Flex alignItems={'center'}>
-            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
               {t('workflow:field_required')}
             </FormLabel>
             <Switch {...register('required')} />
-          </Flex>
+          </Grid>
         )}
-        {/* reference */}
-        {showIsToolInput && (
-          <>
-            <Flex alignItems={'center'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
-                {t('workflow:field_used_as_tool_input')}
-              </FormLabel>
-              <Switch
-                isChecked={isToolInput}
-                onChange={(e) => {
-                  setValue('toolDescription', e.target.checked ? 'sign' : '');
-                }}
-              />
-            </Flex>
-          </>
+        {showDefaultToolParam && (
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
+              {t('workflow:field_used_as_tool_input')}
+            </FormLabel>
+            <Switch
+              isChecked={defaultToAgentGenerated}
+              onChange={(e) => setValue('defaultToAgentGenerated', e.target.checked)}
+            />
+          </Grid>
         )}
-
         {showMaxLenInput && (
-          <Flex alignItems={'center'}>
-            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
               {t('common:core.module.Max Length')}
             </FormLabel>
             <MyNumberInput
@@ -420,13 +494,13 @@ const InputTypeConfig = ({
                 setValue('maxLength', e ?? '');
               }}
             />
-          </Flex>
+          </Grid>
         )}
 
         {showMinMaxInput && (
           <>
-            <Flex alignItems={'center'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            <Grid display={'contents'}>
+              <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('common:core.module.Max Value')}
               </FormLabel>
               <MyNumberInput
@@ -436,9 +510,9 @@ const InputTypeConfig = ({
                   setValue('max', e ?? '');
                 }}
               />
-            </Flex>
-            <Flex alignItems={'center'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            </Grid>
+            <Grid display={'contents'}>
+              <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('common:core.module.Min Value')}
               </FormLabel>
               <MyNumberInput
@@ -448,15 +522,15 @@ const InputTypeConfig = ({
                   setValue('min', e ?? '');
                 }}
               />
-            </Flex>
+            </Grid>
           </>
         )}
 
         {(inputType === VariableInputEnum.timePointSelect ||
           inputType === VariableInputEnum.timeRangeSelect) && (
           <>
-            <Flex>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            <Grid display={'contents'}>
+              <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('app:time_granularity')}
               </FormLabel>
               <RadioGroup
@@ -469,12 +543,12 @@ const InputTypeConfig = ({
                 value={timeGranularity || 'day'}
                 onChange={(value) => setValue('timeGranularity', value)}
               />
-            </Flex>
-            <Flex alignItems={'flex-top'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            </Grid>
+            <Grid display={'contents'}>
+              <FormLabel alignSelf={'flex-start'} whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('app:time_range_limit')}
               </FormLabel>
-              <Flex flexDirection={'column'} gap={3}>
+              <Flex alignSelf={'flex-start'} flexDirection={'column'} gap={3} minW={0}>
                 <Box>
                   <Box color={'myGray.500'} fontSize="12px" mb={1}>
                     {t('app:time_range_start')}
@@ -485,7 +559,7 @@ const InputTypeConfig = ({
                       setValue('timeRangeStart', date);
                     }}
                     popPosition="top"
-                    timeGranularity={timeGranularity}
+                    timeGranularity={timeGranularity || 'day'}
                     maxDate={timeRangeEnd ? new Date(timeRangeEnd) : undefined}
                   />
                 </Box>
@@ -499,43 +573,37 @@ const InputTypeConfig = ({
                       setValue('timeRangeEnd', date);
                     }}
                     popPosition="top"
-                    timeGranularity={timeGranularity}
+                    timeGranularity={timeGranularity || 'day'}
                     minDate={timeRangeStart ? new Date(timeRangeStart) : undefined}
                   />
                 </Box>
               </Flex>
-            </Flex>
+            </Grid>
           </>
         )}
 
         {showDefaultValue && (
-          <Flex alignItems={'center'} minH={'40px'}>
-            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
               {t('common:core.module.Default Value')}
             </FormLabel>
-            <Flex flex={1} h={10}>
+            <Flex w={'full'} h={10} minW={0}>
               {(inputType === FlowNodeInputTypeEnum.numberInput ||
-                ((inputType === VariableInputEnum.custom ||
-                  inputType === VariableInputEnum.internal ||
-                  inputType === FlowNodeInputTypeEnum.customVariable ||
-                  inputType === FlowNodeInputTypeEnum.hidden) &&
-                  valueType === WorkflowIOValueTypeEnum.number)) && (
+                (isDynamicValueTypeInput && valueType === WorkflowIOValueTypeEnum.number)) && (
                 <MyNumberInput
                   value={defaultValue}
-                  min={min}
-                  max={max}
+                  min={min ? min : undefined}
+                  max={max ? max : undefined}
                   onChange={(e) => {
                     // @ts-ignore
                     setValue('defaultValue', e ?? '');
                   }}
                 />
               )}
-              {(inputType === FlowNodeInputTypeEnum.input ||
-                ((inputType === VariableInputEnum.custom ||
-                  inputType === VariableInputEnum.internal ||
-                  inputType === FlowNodeInputTypeEnum.customVariable ||
-                  inputType === FlowNodeInputTypeEnum.hidden) &&
-                  valueType === WorkflowIOValueTypeEnum.string)) && (
+              {((inputType === FlowNodeInputTypeEnum.input && !isVariableTextInput) ||
+                (isDynamicValueTypeInput &&
+                  (valueType === WorkflowIOValueTypeEnum.string ||
+                    valueType === WorkflowIOValueTypeEnum.any))) && (
                 <MyTextarea
                   value={defaultValue}
                   onChange={(e) => setValue('defaultValue', e.target.value)}
@@ -547,14 +615,12 @@ const InputTypeConfig = ({
                 />
               )}
               {(inputType === FlowNodeInputTypeEnum.JSONEditor ||
-                ((inputType === VariableInputEnum.custom ||
-                  inputType === VariableInputEnum.internal ||
-                  inputType === FlowNodeInputTypeEnum.customVariable ||
-                  inputType === FlowNodeInputTypeEnum.hidden) &&
+                (isDynamicValueTypeInput &&
                   ![
                     WorkflowIOValueTypeEnum.number,
                     WorkflowIOValueTypeEnum.string,
-                    WorkflowIOValueTypeEnum.boolean
+                    WorkflowIOValueTypeEnum.boolean,
+                    WorkflowIOValueTypeEnum.any
                   ].includes(valueType))) && (
                 <JsonEditor
                   bg={'myGray.50'}
@@ -567,16 +633,12 @@ const InputTypeConfig = ({
                 />
               )}
               {(inputType === FlowNodeInputTypeEnum.switch ||
-                ((inputType === VariableInputEnum.custom ||
-                  inputType === VariableInputEnum.internal ||
-                  inputType === FlowNodeInputTypeEnum.customVariable ||
-                  inputType === FlowNodeInputTypeEnum.hidden) &&
-                  valueType === WorkflowIOValueTypeEnum.boolean)) && (
+                (isDynamicValueTypeInput && valueType === WorkflowIOValueTypeEnum.boolean)) && (
                 <Flex h={10} alignItems={'center'}>
                   <Switch {...register('defaultValue')} />
                 </Flex>
               )}
-              {inputType === FlowNodeInputTypeEnum.select && (
+              {isSelectInput && (
                 <MySelect<string>
                   list={[defaultListValue, ...listValue]
                     .filter((item) => item.label !== '')
@@ -595,9 +657,10 @@ const InputTypeConfig = ({
                   w={'200px'}
                 />
               )}
-              {inputType === FlowNodeInputTypeEnum.multipleSelect && (
+              {isMultipleSelectInput && (
                 <MultipleSelect<string>
                   flex={'1 0 0'}
+                  size={'md'}
                   itemWrap={true}
                   bg={'myGray.50'}
                   list={listValue
@@ -623,7 +686,7 @@ const InputTypeConfig = ({
                     setValue('defaultValue', date);
                   }}
                   popPosition="top"
-                  timeGranularity={timeGranularity}
+                  timeGranularity={timeGranularity || 'day'}
                   minDate={timeRangeStart ? new Date(timeRangeStart) : undefined}
                   maxDate={timeRangeEnd ? new Date(timeRangeEnd) : undefined}
                 />
@@ -640,7 +703,7 @@ const InputTypeConfig = ({
                         setValue('defaultValue', [date, timeRangeEndDefault]);
                       }}
                       popPosition="top"
-                      timeGranularity={timeGranularity}
+                      timeGranularity={timeGranularity || 'day'}
                       minDate={timeRangeStart ? new Date(timeRangeStart) : undefined}
                       maxDate={
                         timeRangeEndDefault && timeRangeEnd
@@ -668,7 +731,7 @@ const InputTypeConfig = ({
                         setValue('defaultValue', [timeRangeStartDefault, date]);
                       }}
                       popPosition="top"
-                      timeGranularity={timeGranularity}
+                      timeGranularity={timeGranularity || 'day'}
                       minDate={
                         timeRangeStartDefault && timeRangeStart
                           ? new Date(
@@ -734,11 +797,11 @@ const InputTypeConfig = ({
                 />
               )}
             </Flex>
-          </Flex>
+          </Grid>
         )}
         {inputType === FlowNodeInputTypeEnum.addInputParam && (
           <>
-            <Box>
+            <Box gridColumn={'1 / -1'}>
               <HStack mb={1}>
                 <FormLabel fontWeight={'medium'}>{t('workflow:optional_value_type')}</FormLabel>
                 <QuestionTip label={t('workflow:optional_value_type_tip')} />
@@ -759,18 +822,13 @@ const InputTypeConfig = ({
           </>
         )}
 
-        {(inputType === FlowNodeInputTypeEnum.select ||
-          inputType == FlowNodeInputTypeEnum.multipleSelect) && (
-          <>
-            <DndDrag<{ id: string; value: string }>
+        {isOptionInput && (
+          <Stack gridColumn={'1 / -1'} gap={4}>
+            <DndDrag<{ id: string; label: string; value: string }>
               onDragEndCb={(list) => {
-                const newOrder = list.map((item) => item.id);
-                const newSelectEnums = newOrder
-                  .map((id) => mergedSelectEnums.find((item) => item.id === id))
-                  .filter(Boolean) as { id: string; value: string }[];
                 removeEnums();
-                newSelectEnums.forEach((item) =>
-                  appendEnums({ label: item.value, value: item.value })
+                list.forEach((item) =>
+                  appendEnums({ label: item.label || item.value, value: item.value || item.label })
                 );
 
                 // 防止最后一个元素被focus
@@ -780,7 +838,7 @@ const InputTypeConfig = ({
                   }
                 }, 0);
               }}
-              dataList={mergedSelectEnums}
+              dataList={optionDragList}
               renderClone={(provided, snapshot, rubric) => {
                 return (
                   <Box
@@ -793,7 +851,7 @@ const InputTypeConfig = ({
                     {...provided.draggableProps}
                     {...provided.dragHandleProps}
                   >
-                    {mergedSelectEnums[rubric.source.index].value}
+                    {optionDragList[rubric.source.index]?.value}
                   </Box>
                 );
               }}
@@ -806,7 +864,7 @@ const InputTypeConfig = ({
                   flexDirection={'column'}
                   gap={4}
                 >
-                  {mergedSelectEnums.map((item, i) => (
+                  {optionFields.map((item, i) => (
                     <Draggable key={i} draggableId={i.toString()} index={i}>
                       {(provided, snapshot) => (
                         <Box
@@ -817,13 +875,15 @@ const InputTypeConfig = ({
                             opacity: snapshot.isDragging ? 0.8 : 1
                           }}
                         >
-                          <Flex
+                          <Grid
+                            gridTemplateColumns={'max-content minmax(0, 1fr) auto'}
+                            gap={4}
                             alignItems={'center'}
                             position={'relative'}
                             transform={snapshot.isDragging ? `scale(0.5)` : ''}
                             transformOrigin={'top left'}
                           >
-                            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+                            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                               {`${t('common:core.module.variable.variable options')} ${i + 1}`}
                             </FormLabel>
                             <FormControl>
@@ -849,7 +909,7 @@ const InputTypeConfig = ({
                                   p={2}
                                   borderRadius={'md'}
                                   _hover={{ bg: 'red.100' }}
-                                  onClick={() => removeEnums(i)}
+                                  onClick={() => handleRemoveEnum(i)}
                                 />
                                 <Box {...provided.dragHandleProps}>
                                   <MyIcon
@@ -863,7 +923,7 @@ const InputTypeConfig = ({
                                 </Box>
                               </Flex>
                             )}
-                          </Flex>
+                          </Grid>
                         </Box>
                       )}
                     </Draggable>
@@ -874,7 +934,11 @@ const InputTypeConfig = ({
             <Button
               variant={'whiteBase'}
               leftIcon={<MyIcon name={'common/addLight'} w={'16px'} />}
-              onClick={() => appendEnums({ label: '', value: '' })}
+              onClick={() => {
+                if (isOptionLimitReached) return;
+                appendEnums({ label: '', value: '' });
+              }}
+              isDisabled={isOptionLimitReached}
               fontWeight={'medium'}
               fontSize={'12px'}
               w={'24'}
@@ -882,16 +946,16 @@ const InputTypeConfig = ({
             >
               {t('common:core.module.variable add option')}
             </Button>
-          </>
+          </Stack>
         )}
         {(inputType === FlowNodeInputTypeEnum.fileSelect ||
           inputType === VariableInputEnum.file) && (
           <>
-            <Flex alignItems={'center'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            <Grid display={'contents'}>
+              <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('app:upload_method')}
               </FormLabel>
-              <Grid gridTemplateColumns={'1fr 1fr'} gap={'12px'} flex={1}>
+              <Grid gridTemplateColumns={'1fr 1fr'} gap={'12px'} minW={0}>
                 <Checkbox
                   p={'3'}
                   h={'32px'}
@@ -917,14 +981,14 @@ const InputTypeConfig = ({
                   <Box fontSize={'sm'}>{t('app:url_upload')}</Box>
                 </Checkbox>
               </Grid>
-            </Flex>
-            <Flex alignItems={'center'}>
-              <HStack flex={'0 0 132px'} gap={1}>
+            </Grid>
+            <Grid display={'contents'}>
+              <HStack gap={1} whiteSpace={'nowrap'}>
                 <FormLabel fontWeight={'medium'}>{t('app:upload_file_max_amount')}</FormLabel>
                 <QuestionTip label={t('app:upload_file_max_amount_tip')} />
               </HStack>
 
-              <Box flex={'1 0 0'}>
+              <Box minW={0}>
                 <InputSlider
                   min={1}
                   max={maxSelectFiles}
@@ -935,18 +999,21 @@ const InputTypeConfig = ({
                   }}
                 />
               </Box>
-            </Flex>
-            <Box alignItems={'flex-start'}>
-              <FormLabel fontWeight={'medium'}>{t('app:upload_file_extension_types')}</FormLabel>
+            </Grid>
+            <Grid display={'contents'}>
+              <FormLabel alignSelf={'flex-start'} whiteSpace={'nowrap'} fontWeight={'medium'}>
+                {t('app:upload_file_extension_types')}
+              </FormLabel>
               <Stack
+                alignSelf={'flex-start'}
                 w="full"
+                minW={0}
                 spacing={3}
                 alignItems={'flex-start'}
                 border="1px solid"
                 borderColor="myGray.200"
                 borderRadius="md"
                 p={4}
-                mt={2}
               >
                 <FileTypeSelectorPanel
                   value={{
@@ -964,29 +1031,30 @@ const InputTypeConfig = ({
                   }}
                 />
               </Stack>
-            </Box>
+            </Grid>
           </>
         )}
 
         {inputType === VariableInputEnum.datasetSelect && (
           <>
-            <Flex w={'full'} alignItems={'center'}>
-              <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+            <Grid display={'contents'}>
+              <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
                 {t('app:dataset_select')}
               </FormLabel>
               <Button
                 variant={'primaryOutline'}
                 size={'md'}
-                flex={1}
                 onClick={onOpenDatasetSelect}
                 leftIcon={<MyIcon name={'core/dataset/datasetLightSmall'} w={4} />}
               >
                 {t('chat:select')}
               </Button>
-            </Flex>
-            <Flex>
-              <Box flex={'0 0 132px'} />
-              <Flex flex={1} gap={2} flexDirection={'column'} alignItems={'stretch'}>
+            </Grid>
+            <Grid display={'contents'}>
+              <Box visibility={'hidden'} whiteSpace={'nowrap'}>
+                {t('app:dataset_select')}
+              </Box>
+              <Flex gap={2} flexDirection={'column'} alignItems={'stretch'} minW={0}>
                 <Grid gridTemplateColumns={'1fr 1fr'} gap={'12px'}>
                   {datasetOptions.map((item: SelectedDatasetType) => (
                     <Flex
@@ -1004,14 +1072,13 @@ const InputTypeConfig = ({
                   ))}
                 </Grid>
               </Flex>
-            </Flex>
+            </Grid>
             {isOpenDatasetSelect && (
               <DatasetSelectModal
                 defaultSelectedDatasets={datasetOptions.map((item: SelectedDatasetType) => ({
                   datasetId: item.datasetId,
                   name: item.name,
-                  avatar: item.avatar,
-                  vectorModel: {} as EmbeddingModelItemType
+                  avatar: item.avatar
                 }))}
                 onChange={(selectedDatasets) => {
                   const newDatasetList = selectedDatasets.map((item: SelectedDatasetType) => ({
@@ -1028,8 +1095,8 @@ const InputTypeConfig = ({
         )}
 
         {inputType === VariableInputEnum.password && (
-          <Flex alignItems={'center'}>
-            <FormLabel flex={'0 0 132px'} fontWeight={'medium'}>
+          <Grid display={'contents'}>
+            <FormLabel whiteSpace={'nowrap'} fontWeight={'medium'}>
               {t('common:core.module.Min Length')}
             </FormLabel>
             <MyNumberInput
@@ -1040,9 +1107,9 @@ const InputTypeConfig = ({
                 setValue('minLength', e);
               }}
             />
-          </Flex>
+          </Grid>
         )}
-      </Flex>
+      </Grid>
 
       <Flex justify={'flex-end'} mt={4} gap={3} pb={6} pr={8}>
         <Button variant={'whiteBase'} fontWeight={'medium'} onClick={onClose} w={20}>

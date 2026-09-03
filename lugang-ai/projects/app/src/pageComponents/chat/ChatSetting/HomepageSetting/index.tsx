@@ -14,16 +14,16 @@ import { useCallback, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { updateChatSetting } from '@/web/core/chat/api';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import ImageUpload from '@/pageComponents/chat/ChatSetting/ImageUpload';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import ToolSelectModal from '@/pageComponents/chat/ChatSetting/ToolSelectModal';
-import type { FlowNodeTemplateType } from '@fastgpt/global/core/workflow/type/node.d';
+import type { FlowNodeTemplateType } from '@fastgpt/global/core/workflow/type/node';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import type { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { useMount } from 'ahooks';
 import { useContextSelector } from 'use-context-selector';
-import { ChatSettingContext } from '@/web/core/chat/context/chatSettingContext';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import {
   DEFAULT_LOGO_BANNER_COLLAPSED_URL,
   DEFAULT_LOGO_BANNER_URL
@@ -31,6 +31,9 @@ import {
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import dynamic from 'next/dynamic';
 import type { ChatSettingType } from '@fastgpt/global/core/chat/setting/type';
+import { getToolIdentityKey } from '@fastgpt/global/core/app/tool/utils';
+import { useToast } from '@fastgpt/web/hooks/useToast';
+import { MAX_QUICK_APP_COUNT } from './constants';
 
 const AddQuickAppModal = dynamic(
   () => import('@/pageComponents/chat/ChatSetting/HomepageSetting/AddQuickAppModal')
@@ -44,10 +47,11 @@ type Props = {
 const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
   const { isPc } = useSystem();
   const { t } = useTranslation();
+  const { toast } = useToast();
   const { feConfigs } = useSystemStore();
 
-  const chatSettings = useContextSelector(ChatSettingContext, (v) => v.chatSettings);
-  const refreshChatSetting = useContextSelector(ChatSettingContext, (v) => v.refreshChatSetting);
+  const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
+  const refreshChatSetting = useContextSelector(ChatPageContext, (v) => v.refreshChatSetting);
 
   const chatSettings2Form = useCallback(
     (data?: ChatSettingType) => {
@@ -82,12 +86,14 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
 
   const handleAddTool = useCallback(
     async (tool: FlowNodeTemplateType) => {
-      if (!selectedTools.some((t) => t.pluginId === tool.pluginId)) {
+      const toolKey = getToolIdentityKey(tool.pluginId, tool.source);
+      if (!selectedTools.some((t) => getToolIdentityKey(t.pluginId, t.source) === toolKey)) {
         const next = [
           ...selectedTools,
           {
             name: tool.name,
             pluginId: tool.pluginId || '',
+            source: tool.source,
             avatar: tool.avatar || '',
             inputs: tool.inputs?.reduce(
               (acc, input) => {
@@ -104,15 +110,18 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
     [selectedTools, setValue]
   );
   const handleRemoveToolById = useCallback(
-    (toolId?: string) => {
+    (toolId?: string, source?: string) => {
       if (!toolId) return;
-      const next = selectedTools.filter((t) => t.pluginId !== toolId);
+      const toolKey = getToolIdentityKey(toolId, source);
+      const next = selectedTools.filter(
+        (t) => getToolIdentityKey(t.pluginId, t.source) !== toolKey
+      );
       setValue('selectedTools', next);
     },
     [selectedTools, setValue]
   );
 
-  const { runAsync: onSubmit, loading: isSaving } = useRequest2(
+  const { runAsync: saveChatSetting, loading: isSaving } = useRequest(
     async (values: ChatSettingType) => {
       const { quickAppList, ...params } = values;
       return updateChatSetting({
@@ -120,6 +129,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
         quickAppIds: quickAppList.map((q) => q._id),
         selectedTools: values.selectedTools.map((tool) => ({
           pluginId: tool.pluginId,
+          source: tool.source,
           inputs: tool.inputs
         }))
       });
@@ -130,6 +140,20 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
       },
       successToast: t('chat:setting.save_success')
     }
+  );
+
+  const onSubmit = useCallback(
+    (values: ChatSettingType) => {
+      if (values.quickAppList.length > MAX_QUICK_APP_COUNT) {
+        toast({
+          status: 'warning',
+          title: t('chat:setting.home.quick_apps.over_limit', { max: MAX_QUICK_APP_COUNT })
+        });
+        return;
+      }
+      return saveChatSetting(values);
+    },
+    [saveChatSetting, t, toast]
   );
 
   const {
@@ -177,7 +201,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
 
             {/* QUICK APPS */}
             <Box fontWeight={'500'}>
-              <Flex fontWeight={'500'} fontSize="14px" mb={2} alignItems={'center'} gap={2}>
+              <Flex fontWeight={'500'} fontSize="14px" pb={2} alignItems={'center'} gap={2}>
                 <Box>{t('chat:setting.home.quick_apps')}</Box>
               </Flex>
 
@@ -235,7 +259,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
               <Flex
                 fontWeight={'500'}
                 fontSize="14px"
-                mb={2}
+                pb={2}
                 justifyContent={'space-between'}
                 alignItems={'center'}
                 gap={2}
@@ -303,7 +327,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
                         color="myGray.500"
                         display="none"
                         _hover={{ color: 'red.500' }}
-                        onClick={() => handleRemoveToolById(tool.pluginId)}
+                        onClick={() => handleRemoveToolById(tool.pluginId, tool.source)}
                       />
                     </Flex>
                   ))}
@@ -314,7 +338,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
                 <ToolSelectModal
                   selectedTools={selectedTools}
                   onAddTool={handleAddTool}
-                  onRemoveTool={(tool) => handleRemoveToolById(tool.id)}
+                  onRemoveTool={(tool) => handleRemoveToolById(tool.id, tool.source)}
                   onClose={() => setToolSelectModalOpen(false)}
                 />
               )}
@@ -322,7 +346,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
 
             {/* SLOGAN */}
             <Box fontWeight={'500'}>
-              <Flex fontWeight={'500'} fontSize="14px" mb={2} alignItems={'center'} gap={2}>
+              <Flex fontWeight={'500'} fontSize="14px" pb={2} alignItems={'center'} gap={2}>
                 <Box>{t('chat:setting.home.slogan')}</Box>
 
                 <Button
@@ -347,7 +371,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
 
             {/* DIALOGUE TIPS */}
             <Box fontWeight={'500'}>
-              <Flex fontWeight={'500'} fontSize="14px" mb={2} alignItems={'center'} gap={2}>
+              <Flex fontWeight={'500'} fontSize="14px" pb={2} alignItems={'center'} gap={2}>
                 <Box>{t('chat:setting.home.dialogue_tips')}</Box>
 
                 <Button
@@ -392,7 +416,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
                 </Flex>
 
                 <Box fontWeight={'500'}>
-                  <Flex fontWeight={'500'} fontSize="14px" mb={2} alignItems={'center'} gap={2}>
+                  <Flex fontWeight={'500'} fontSize="14px" pb={2} alignItems={'center'} gap={2}>
                     <Box>{t('chat:setting.home.home_tab_title')}</Box>
 
                     <Button
@@ -418,7 +442,7 @@ const HomepageSetting = ({ Header, onDiagramShow }: Props) => {
 
                 {/* LOGO */}
                 <Box fontWeight={'500'}>
-                  <Flex fontWeight={'500'} fontSize="14px" alignItems={'center'} gap={2} mb={2}>
+                  <Flex fontWeight={'500'} fontSize="14px" alignItems={'center'} gap={2} pb={2}>
                     <Box>{t('chat:setting.copyright.logo')}</Box>
 
                     <Button

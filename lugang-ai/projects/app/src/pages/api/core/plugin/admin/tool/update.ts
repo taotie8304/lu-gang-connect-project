@@ -1,82 +1,146 @@
 import { NextAPI } from '@/service/middleware/entry';
-import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { MongoSystemTool } from '@fastgpt/service/core/plugin/tool/systemToolSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
-import { refreshVersionKey } from '@fastgpt/service/common/cache';
-import { SystemCacheKeyEnum } from '@fastgpt/service/common/cache/type';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { UpdateToolBodyType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import {
+  UpdateSystemToolBodySchema,
+  type UpdateSystemToolBodyType
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { jsonSchema2SecretInput } from '@fastgpt/global/core/app/jsonschema';
+import { SystemToolCodec } from '@fastgpt/global/core/app/tool/systemTool/codec';
+import { SystemToolRepo } from '@fastgpt/service/core/app/tool/systemTool/systemTool.repo';
+import {
+  encryptSystemToolSecrets,
+  getSystemToolSecretKeys
+} from '@fastgpt/service/core/app/tool/systemTool/secrets';
 
-export type updateToolQuery = {};
+export type updateToolQuery = Record<string, never>;
 
-export type updateToolBody = UpdateToolBodyType;
+export type updateToolBody = UpdateSystemToolBodyType;
 
-export type updateToolResponse = {};
+export type updateToolResponse = Record<string, never>;
 
-async function handler(
+const omitUndefinedFields = <T extends Record<string, unknown>>(fields: T) =>
+  Object.fromEntries(
+    Object.entries(fields).filter(([, value]) => value !== undefined)
+  ) as Partial<T>;
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export async function handler(
   req: ApiRequestProps<updateToolBody, updateToolQuery>,
-  res: ApiResponseType<any>
+  _res: ApiResponseType<any>
 ): Promise<updateToolResponse> {
   await authSystemAdmin({ req });
-  const { pluginId, ...updateFields } = req.body;
+  const {
+    body: { id: pluginId, ...updateFields }
+  } = parseApiInput({
+    req,
+    bodySchema: UpdateSystemToolBodySchema
+  });
 
   const plugin = await MongoSystemTool.findOne({ pluginId });
 
+  if (plugin?.customConfig?.associatedPluginId) {
+    return Promise.reject('Workflow tool should be updated through app update api');
+  }
+
+  const storedSecretsVal = await (async () => {
+    if (!('secretsVal' in updateFields) || updateFields.secretsVal === null) {
+      return updateFields.secretsVal;
+    }
+
+    const toolDetail = await SystemToolRepo.getInstance().getSystemToolDetail({
+      pluginId,
+      source: 'system'
+    });
+    const inputList = jsonSchema2SecretInput({ jsonSchema: toolDetail.secretSchema });
+
+    return encryptSystemToolSecrets({
+      secretsVal: updateFields.secretsVal,
+      existingSecretsVal: SystemToolCodec.getConfiguredSecretsVal(plugin),
+      secretKeys: getSystemToolSecretKeys(inputList)
+    });
+  })();
+
   // 基础更新字段
-  const baseUpdateFields = {
+  const baseUpdateFields = omitUndefinedFields({
     pluginId,
     status: updateFields.status,
-    defaultInstalled: updateFields.defaultInstalled,
     originCost: updateFields.originCost,
     currentCost: updateFields.currentCost,
     hasTokenFee: updateFields.hasTokenFee,
     systemKeyCost: updateFields.systemKeyCost,
-    inputListVal: updateFields.inputListVal ?? null //Important
-  };
-
-  // 如果是自定义插件,需要更新 customConfig
-  if (plugin && plugin.customConfig) {
-    const isUpdateVersion =
-      plugin.customConfig.name !== updateFields.name ||
-      plugin.customConfig.avatar !== updateFields.avatar ||
-      plugin.customConfig.intro !== updateFields.intro;
-
-    await MongoSystemTool.findOneAndUpdate(
-      { pluginId },
-      {
-        ...baseUpdateFields,
-        customConfig: {
-          name: updateFields.name,
-          avatar: updateFields.avatar,
-          intro: updateFields.intro,
-          version: isUpdateVersion ? getNanoid() : plugin.customConfig.version,
-          tags: updateFields.tagIds,
-          associatedPluginId: updateFields.associatedPluginId,
-          userGuide: updateFields.userGuide,
-          author: updateFields.author
-        }
-      }
-    );
-  } else {
-    // 系统插件只更新基础字段, 如果有 child，需要更新 child
-    await mongoSessionRun(async (session) => {
-      await MongoSystemTool.updateOne({ pluginId }, baseUpdateFields, { upsert: true, session });
-
-      for await (const tool of updateFields.childTools || []) {
-        await MongoSystemTool.updateOne(
-          { pluginId: tool.pluginId },
-          {
-            pluginId: tool.pluginId,
-            systemKeyCost: tool.systemKeyCost
-          },
-          { upsert: true, session }
-        );
-      }
+    promoteTags: 'promoteTags' in updateFields ? (updateFields.promoteTags ?? null) : undefined,
+    hideTags: 'hideTags' in updateFields ? (updateFields.hideTags ?? null) : undefined
+  });
+  if ('secretsVal' in updateFields) {
+    Object.assign(baseUpdateFields, {
+      secretsVal: storedSecretsVal ?? null
     });
   }
 
-  await refreshVersionKey(SystemCacheKeyEnum.systemTool);
+  await mongoSessionRun(async (session) => {
+    // 构建 customConfig，保留现有配置并添加/更新 tags
+    const existingCustomConfig = plugin?.customConfig || {};
+    const newCustomConfig = updateFields.tags
+      ? { ...existingCustomConfig, tags: updateFields.tags }
+      : existingCustomConfig;
+
+    await MongoSystemTool.updateOne(
+      { pluginId },
+      {
+        ...baseUpdateFields,
+        ...(Object.keys(newCustomConfig).length > 0 ? { customConfig: newCustomConfig } : {})
+      },
+      { upsert: true, session }
+    );
+
+    if ('secretsVal' in updateFields) {
+      // 工具集的系统密钥只由父工具维护，覆盖历史子工具记录，避免子工具残留旧密钥。
+      await MongoSystemTool.updateMany(
+        { pluginId: { $regex: `^${escapeRegExp(pluginId)}/` } },
+        { secretsVal: storedSecretsVal ?? null },
+        { session }
+      );
+    }
+
+    if (updateFields.status !== undefined && !updateFields.children?.length) {
+      // 软卸载和恢复只传父工具状态时，同步已有子工具，避免为读取子工具列表请求 plugin 服务。
+      await MongoSystemTool.updateMany(
+        { pluginId: { $regex: `^${escapeRegExp(pluginId)}/` } },
+        { status: updateFields.status },
+        { session }
+      );
+    }
+
+    // 如果有子工具，更新子工具
+    for await (const tool of updateFields.children || []) {
+      const childPluginId = tool.id.includes('/') ? tool.id : `${pluginId}/${tool.id}`;
+      const childUpdateFields = omitUndefinedFields({
+        pluginId: childPluginId,
+        systemKeyCost: tool.systemKeyCost,
+        currentCost: updateFields.currentCost,
+        hasTokenFee: updateFields.hasTokenFee,
+        status: updateFields.status,
+        originCost: updateFields.originCost,
+        promoteTags: updateFields.promoteTags,
+        hideTags: updateFields.hideTags
+      });
+      if ('secretsVal' in updateFields) {
+        Object.assign(childUpdateFields, {
+          secretsVal: storedSecretsVal
+        });
+      }
+
+      await MongoSystemTool.updateOne({ pluginId: childPluginId }, childUpdateFields, {
+        upsert: true,
+        session
+      });
+    }
+  });
 
   return {};
 }

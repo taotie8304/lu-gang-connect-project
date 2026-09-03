@@ -1,20 +1,120 @@
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { Box, Flex } from '@chakra-ui/react';
 import type { ResponsiveValue } from '@chakra-ui/system';
+import type { SystemModelItemType } from '@fastgpt/service/core/ai/type';
 import { HUGGING_FACE_ICON } from '@fastgpt/global/common/system/constants';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import MySelect, { type SelectProps } from '@fastgpt/web/components/common/MySelect';
 import MultipleRowSelect from '@fastgpt/web/components/common/MySelect/MultipleRowSelect';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import TestModeBetaTag from '@/components/core/ai/TestModeBetaTag';
+import MultimodalTag from '@/components/core/ai/MultimodelTag';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useTranslation } from 'next-i18next';
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo } from 'react';
+import { ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 
 type Props = SelectProps & {
   disableTip?: string;
   noOfLines?: ResponsiveValue<number>;
   cacheModel?: boolean;
+  canBeUnset?: boolean;
+  unsetLabel?: string;
 };
+
+const modelAvatarSizeMap = {
+  sm: '1rem',
+  md: '1.2rem',
+  lg: '1.4rem'
+} as const;
+
+const getModelAvatarSize = (size?: Props['size']) => {
+  if (typeof size === 'string' && size in modelAvatarSizeMap) {
+    return modelAvatarSizeMap[size as keyof typeof modelAvatarSizeMap];
+  }
+
+  return modelAvatarSizeMap.md;
+};
+
+const isTestModeModel = (model?: SystemModelItemType) => {
+  return !!model?.testMode;
+};
+const isMultimodalEmbeddingModel = (model?: SystemModelItemType) => {
+  return model?.type === ModelTypeEnum.embedding && !!model.vision;
+};
+
+const UNSET_MODEL_VALUE = '';
+
+const UnsetOptionLabel = React.memo(function UnsetOptionLabel({
+  label
+}: {
+  label: string | React.ReactNode;
+}) {
+  return (
+    <Flex alignItems={'center'} py={1} w={'100%'} minW={0}>
+      <Box noOfLines={1} flex={'1 1 0'} minW={0} overflow={'hidden'}>
+        {label}
+      </Box>
+    </Flex>
+  );
+});
+
+const SelectorActiveModelTags = React.memo(function SelectorActiveModelTags({
+  model
+}: {
+  model?: SystemModelItemType;
+}) {
+  const showTestModeTip = isTestModeModel(model);
+  const showMultimodalTip = isMultimodalEmbeddingModel(model);
+
+  if (!showTestModeTip && !showMultimodalTip) return null;
+
+  return (
+    <Box
+      position={'absolute'}
+      top={'50%'}
+      right={'40px'}
+      transform={'translateY(-50%)'}
+      zIndex={3}
+      display={'flex'}
+      alignItems={'center'}
+      gap={1}
+    >
+      {showTestModeTip && <TestModeBetaTag />}
+      {showMultimodalTip && <MultimodalTag />}
+    </Box>
+  );
+});
+
+const ModelOptionLabel = React.memo(function ModelOptionLabel({
+  name,
+  showTestModeTip,
+  showMultimodalTip,
+  noOfLines
+}: {
+  name: string;
+  showTestModeTip: boolean;
+  showMultimodalTip?: boolean;
+  noOfLines?: ResponsiveValue<number>;
+}) {
+  return (
+    <Flex alignItems={'center'} flex={'1 1 0'} w={'100%'} minW={0} overflow={'hidden'}>
+      <Box noOfLines={noOfLines ?? 1} flex={'1 1 0'} minW={0} overflow={'hidden'}>
+        {name}
+      </Box>
+      {showTestModeTip && (
+        <Box ml={1} flexShrink={0} pointerEvents={'auto'}>
+          <TestModeBetaTag />
+        </Box>
+      )}
+      {showMultimodalTip && (
+        <Box ml={1} flexShrink={0} pointerEvents={'auto'}>
+          <MultimodalTag />
+        </Box>
+      )}
+    </Flex>
+  );
+});
 
 const OneRowSelector = ({
   list,
@@ -22,9 +122,12 @@ const OneRowSelector = ({
   disableTip,
   noOfLines,
   cacheModel = true,
+  canBeUnset = false,
+  unsetLabel,
   ...props
 }: Props) => {
   const { t } = useTranslation();
+
   const {
     llmModelList,
     embeddingModelList,
@@ -35,7 +138,7 @@ const OneRowSelector = ({
     getMyModelList
   } = useSystemStore();
 
-  const { data: myModels } = useRequest2(
+  const { data: myModels, loading } = useRequest(
     async () => {
       const set = await getMyModelList();
       if (cacheModel) {
@@ -48,25 +151,25 @@ const OneRowSelector = ({
     }
   );
 
-  const avatarSize = useMemo(() => {
-    const size = {
-      sm: '1rem',
-      md: '1.2rem',
-      lg: '1.4rem'
-    };
-    //@ts-ignore
-    return props.size ? size[props.size] : size['md'];
-  }, [props.size]);
-
-  const avatarList = useMemo(() => {
-    const allModels = [
+  const avatarSize = useMemo(() => getModelAvatarSize(props.size), [props.size]);
+  const allModels = useMemo(
+    () => [
       ...llmModelList,
       ...embeddingModelList,
       ...ttsModelList,
       ...sttModelList,
       ...reRankModelList
-    ];
-    return list
+    ],
+    [llmModelList, embeddingModelList, ttsModelList, sttModelList, reRankModelList]
+  );
+  const selectedModelData = useMemo(
+    () => allModels.find((model) => model.model === props.value),
+    [allModels, props.value]
+  );
+  const selectedUnsetLabel = canBeUnset && props.value === UNSET_MODEL_VALUE;
+
+  const avatarList = useMemo(() => {
+    const modelOptions = list
       .map((item) => {
         const modelData = allModels.find((model) => model.model === item.value);
         if (!modelData) return;
@@ -78,7 +181,7 @@ const OneRowSelector = ({
         return {
           value: item.value,
           label: (
-            <Flex alignItems={'center'} py={1}>
+            <Flex alignItems={'center'} py={1} w={'100%'} minW={0}>
               <Avatar
                 borderRadius={'0'}
                 mr={2}
@@ -86,8 +189,12 @@ const OneRowSelector = ({
                 w={avatarSize}
                 fallbackSrc={HUGGING_FACE_ICON}
               />
-
-              <Box noOfLines={noOfLines}>{modelData.name}</Box>
+              <ModelOptionLabel
+                name={modelData.name}
+                noOfLines={noOfLines}
+                showTestModeTip={isTestModeModel(modelData)}
+                showMultimodalTip={isMultimodalEmbeddingModel(modelData)}
+              />
             </Flex>
           )
         };
@@ -96,21 +203,31 @@ const OneRowSelector = ({
       value: any;
       label: React.JSX.Element;
     }[];
+
+    if (!canBeUnset) return modelOptions;
+
+    return [
+      {
+        value: UNSET_MODEL_VALUE,
+        label: <UnsetOptionLabel label={unsetLabel ?? t('common:not_model_config')} />
+      },
+      ...modelOptions
+    ];
   }, [
-    llmModelList,
-    embeddingModelList,
-    ttsModelList,
-    sttModelList,
-    reRankModelList,
+    allModels,
     list,
     getModelProvider,
     avatarSize,
     noOfLines,
-    myModels
+    myModels,
+    canBeUnset,
+    unsetLabel,
+    t
   ]);
 
   return (
     <Box
+      position={'relative'}
       css={{
         span: {
           display: 'block'
@@ -122,14 +239,37 @@ const OneRowSelector = ({
           className="nowheel"
           isDisabled={!!disableTip}
           list={avatarList}
-          placeholder={t('common:not_model_config')}
+          valueLabel={
+            selectedUnsetLabel ? (
+              <UnsetOptionLabel label={unsetLabel ?? t('common:not_model_config')} />
+            ) : selectedModelData ? (
+              <Flex alignItems={'center'} py={1} minW={0} overflow={'hidden'}>
+                <Avatar
+                  borderRadius={'0'}
+                  mr={2}
+                  src={getModelProvider(selectedModelData.provider)?.avatar || HUGGING_FACE_ICON}
+                  w={avatarSize}
+                  fallbackSrc={HUGGING_FACE_ICON}
+                />
+                <ModelOptionLabel
+                  name={selectedModelData.name}
+                  noOfLines={noOfLines}
+                  showTestModeTip={false}
+                  showMultimodalTip={false}
+                />
+              </Flex>
+            ) : undefined
+          }
+          placeholder={loading ? t('common:model_loading') : t('common:not_model_config')}
           h={'40px'}
+          whiteSpace={'nowrap'}
           {...props}
           onChange={(e) => {
             return onChange?.(e);
           }}
         />
       </MyTooltip>
+      <SelectorActiveModelTags model={selectedModelData} />
     </Box>
   );
 };
@@ -140,6 +280,8 @@ const MultipleRowSelector = ({
   disableTip,
   placeholder,
   noOfLines,
+  canBeUnset = false,
+  unsetLabel,
   ...props
 }: Props) => {
   const { t, i18n } = useTranslation();
@@ -154,7 +296,7 @@ const MultipleRowSelector = ({
     getMyModelList
   } = useSystemStore();
 
-  const { data: myModels } = useRequest2(getMyModelList, {
+  const { data: myModels, loading } = useRequest(getMyModelList, {
     manual: false
   });
 
@@ -180,17 +322,20 @@ const MultipleRowSelector = ({
     myModels
   ]);
 
-  const [value, setValue] = useState<string[]>([]);
-
-  const avatarSize = useMemo(() => {
-    const size = {
-      sm: '1rem',
-      md: '1.2rem',
-      lg: '1.4rem'
-    };
-    //@ts-ignore
-    return props.size ? size[props.size] : size['md'];
-  }, [props.size]);
+  const avatarSize = useMemo(() => getModelAvatarSize(props.size), [props.size]);
+  const selectedModelData = useMemo(
+    () => modelList.find((model) => model?.model === props.value),
+    [modelList, props.value]
+  );
+  const value = useMemo(
+    () =>
+      selectedModelData
+        ? [selectedModelData.provider, selectedModelData.model]
+        : canBeUnset && props.value === UNSET_MODEL_VALUE
+          ? [UNSET_MODEL_VALUE]
+          : [],
+    [canBeUnset, props.value, selectedModelData]
+  );
 
   const selectorList = useMemo(() => {
     const renderList = getModelProviders(i18n.language).map<{
@@ -214,6 +359,14 @@ const MultipleRowSelector = ({
       children: []
     }));
 
+    if (canBeUnset) {
+      renderList.unshift({
+        label: <UnsetOptionLabel label={unsetLabel ?? t('common:not_model_config')} />,
+        value: UNSET_MODEL_VALUE,
+        children: []
+      });
+    }
+
     for (const item of list) {
       const modelData = modelList.find((model) => model?.model === item.value);
       if (!modelData) continue;
@@ -222,33 +375,43 @@ const MultipleRowSelector = ({
         renderList[renderList.length - 1];
 
       provider?.children.push({
-        label: modelData.name,
+        label: (
+          <Flex w={'100%'} minW={0}>
+            <ModelOptionLabel
+              name={modelData.name}
+              showTestModeTip={isTestModeModel(modelData)}
+              showMultimodalTip={isMultimodalEmbeddingModel(modelData)}
+            />
+          </Flex>
+        ),
         value: modelData.model
       });
     }
 
-    return renderList.filter((item) => item.children.length > 0);
-  }, [getModelProviders, i18n.language, avatarSize, list, modelList]);
+    return renderList.filter(
+      (item) => item.value === UNSET_MODEL_VALUE || item.children.length > 0
+    );
+  }, [getModelProviders, i18n.language, avatarSize, canBeUnset, unsetLabel, t, list, modelList]);
 
   const onSelect = useCallback(
-    (e: string[]) => {
-      return onChange?.(e[1]);
+    (e: (string | undefined)[]) => {
+      return onChange?.(e[0] === UNSET_MODEL_VALUE ? UNSET_MODEL_VALUE : e[1]);
     },
     [onChange]
   );
 
   const SelectedLabel = useMemo(() => {
+    if (loading) return <>{t('common:model_loading')}</>;
+    if (canBeUnset && props.value === UNSET_MODEL_VALUE) {
+      return <UnsetOptionLabel label={unsetLabel ?? t('common:not_model_config')} />;
+    }
     if (!props.value) return <>{t('common:not_model_config')}</>;
-    const modelData = modelList.find((model) => model?.model === props.value);
+    if (!selectedModelData) return <>{t('common:not_model_config')}</>;
 
-    if (!modelData) return <>{t('common:not_model_config')}</>;
-
-    setValue([modelData.provider, props.value]);
-
-    const avatar = getModelProvider(modelData.provider)?.avatar;
+    const avatar = getModelProvider(selectedModelData.provider)?.avatar;
 
     return (
-      <Flex alignItems={'center'} py={1}>
+      <Flex alignItems={'center'} py={1} minW={0} overflow={'hidden'}>
         <Avatar
           borderRadius={'0'}
           mr={2}
@@ -256,13 +419,29 @@ const MultipleRowSelector = ({
           fallbackSrc={HUGGING_FACE_ICON}
           w={avatarSize}
         />
-        <Box noOfLines={noOfLines}>{modelData?.name}</Box>
+        <ModelOptionLabel
+          name={selectedModelData.name}
+          noOfLines={noOfLines}
+          showTestModeTip={false}
+          showMultimodalTip={false}
+        />
       </Flex>
     );
-  }, [props.value, t, modelList, getModelProvider, avatarSize, noOfLines]);
+  }, [
+    loading,
+    canBeUnset,
+    props.value,
+    unsetLabel,
+    t,
+    selectedModelData,
+    getModelProvider,
+    avatarSize,
+    noOfLines
+  ]);
 
   return (
     <Box
+      position={'relative'}
       css={{
         span: {
           display: 'block'
@@ -280,10 +459,12 @@ const MultipleRowSelector = ({
           ButtonProps={{
             isDisabled: !!disableTip,
             h: '40px',
+            whiteSpace: 'nowrap',
             ...props
           }}
         />
       </MyTooltip>
+      <SelectorActiveModelTags model={selectedModelData} />
     </Box>
   );
 };

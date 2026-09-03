@@ -1,6 +1,6 @@
-import { type FlowNodeOutputItemType } from '@fastgpt/global/core/workflow/type/io.d';
+import { type FlowNodeOutputItemType } from '@fastgpt/global/core/workflow/type/io';
 import React from 'react';
-import { useTranslation } from 'next-i18next';
+import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
 import { Box, Flex } from '@chakra-ui/react';
 import { FlowNodeOutputTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { MySourceHandle } from '../Handle';
@@ -14,7 +14,7 @@ import { useContextSelector } from 'use-context-selector';
 import { WorkflowActionsContext } from '../../../../context/workflowActionsContext';
 
 const OutputLabel = ({ nodeId, output }: { nodeId: string; output: FlowNodeOutputItemType }) => {
-  const { t } = useTranslation();
+  const { t } = useSafeTranslation();
   const { label = '', description, valueType, valueDesc } = output;
 
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
@@ -22,8 +22,6 @@ const OutputLabel = ({ nodeId, output }: { nodeId: string; output: FlowNodeOutpu
   return (
     <Box position={'relative'}>
       <Flex
-        className="nodrag"
-        cursor={'default'}
         alignItems={'center'}
         fontWeight={'medium'}
         color={'myGray.600'}
@@ -34,20 +32,22 @@ const OutputLabel = ({ nodeId, output }: { nodeId: string; output: FlowNodeOutpu
           : {})}
       >
         <Box
+          className="nodrag"
           position={'relative'}
           mr={1}
           ml={output.type === FlowNodeOutputTypeEnum.source ? 1 : 0}
         >
           {t(label as any)}
         </Box>
-        {description && <QuestionTip ml={1} label={t(description as any)} />}
-        <ValueTypeLabel valueType={valueType} valueDesc={valueDesc} />
+        {description && <QuestionTip className="nodrag" ml={1} label={t(description as any)} />}
+        <ValueTypeLabel className="nodrag" valueType={valueType} valueDesc={valueDesc} />
 
         {output.deprecated && (
           <>
             <Box flex={'1'} />
             <MyTooltip label={t('app:Click_to_delete_this_field')}>
               <Flex
+                className="nodrag"
                 px={1.5}
                 py={1}
                 bg={'adora.50'}

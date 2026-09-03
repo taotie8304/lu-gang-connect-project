@@ -13,7 +13,7 @@ import {
 } from '@chakra-ui/react';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import Avatar from '@fastgpt/web/components/common/Avatar';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useTranslation } from 'next-i18next';
 import { useRouter } from 'next/router';
@@ -22,9 +22,11 @@ import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useLocalStorageState } from 'ahooks';
 import { useState } from 'react';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
-import { form2AppWorkflow } from '@/web/core/app/utils';
+import { form2AppWorkflow } from '@/pageComponents/app/detail/Edit/SimpleApp/utils';
 import { webPushTrack } from '@/web/common/middle/tracks/utils';
 import { appTypeTagMap } from '../constant';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
+import { getAppDetailRoute, isWorkflowAppType } from '@/web/core/app/utils';
 
 const TemplateCreatePanel = ({ type }: { type: AppTypeEnum | 'all' }) => {
   const { t } = useTranslation();
@@ -45,7 +47,7 @@ const TemplateCreatePanel = ({ type }: { type: AppTypeEnum | 'all' }) => {
     runAsync: fetchTemplates,
     data: templateData,
     loading: isFetchingTemplates
-  } = useRequest2(
+  } = useRequest(
     (ids?: string[]) => {
       const excludeIds = (() => {
         try {
@@ -68,36 +70,45 @@ const TemplateCreatePanel = ({ type }: { type: AppTypeEnum | 'all' }) => {
 
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
 
-  const { runAsync: handleCreateFromTemplate } = useRequest2(
+  const { runAsync: handleCreateFromTemplate } = useRequest(
     async (templateId: string) => {
       setCreatingTemplateId(templateId);
       const templateDetail = await getTemplateMarketItemDetail(templateId);
 
       if (templateDetail.type === AppTypeEnum.simple) {
-        const completeWorkflow = form2AppWorkflow(templateDetail.workflow, t);
+        const completeWorkflow = form2AppWorkflow(
+          templateDetail.workflow as unknown as AppFormEditFormType,
+          t
+        );
         templateDetail.workflow = completeWorkflow;
       }
 
-      return postCreateApp({
+      const appType = templateDetail.type as AppTypeEnum;
+      const appId = await postCreateApp({
         avatar: templateDetail.avatar,
         name: templateDetail.name,
-        type: templateDetail.type as AppTypeEnum,
+        type: appType,
         modules: templateDetail.workflow.nodes || [],
         edges: templateDetail.workflow.edges || [],
         chatConfig: templateDetail.workflow.chatConfig || {},
         templateId: templateDetail.templateId
-      }).then((res) => {
-        webPushTrack.useAppTemplate({
-          id: res,
-          name: templateDetail.name
-        });
-
-        return res;
       });
+
+      webPushTrack.useAppTemplate({
+        id: appId,
+        name: templateDetail.name
+      });
+
+      return { appId, appType };
     },
     {
-      onSuccess: (appId: string) => {
-        router.push(`/app/detail?appId=${appId}`);
+      onSuccess: ({ appId, appType }) => {
+        router.push(
+          getAppDetailRoute({
+            appId,
+            openSystemConfig: isWorkflowAppType(appType)
+          })
+        );
       },
       onFinally: () => {
         setCreatingTemplateId(null);

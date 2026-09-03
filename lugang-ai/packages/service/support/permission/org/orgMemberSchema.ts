@@ -1,10 +1,11 @@
 import { OrgCollectionName } from '@fastgpt/global/support/user/team/org/constant';
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
 import { type OrgMemberSchemaType } from '@fastgpt/global/support/user/team/org/type';
+import { getLogger, LogCategories } from '../../../common/logger';
 const { Schema } = connectionMongo;
 
 export const OrgMemberCollectionName = 'team_org_members';
@@ -40,24 +41,24 @@ OrgMemberSchema.virtual('org', {
   justOne: true
 });
 
-try {
-  OrgMemberSchema.index(
-    {
-      teamId: 1,
-      orgId: 1,
-      tmbId: 1
-    },
-    {
-      unique: true
-    }
-  );
-  OrgMemberSchema.index({
+const logger = getLogger(LogCategories.INFRA.MONGO);
+
+defineIndex(OrgMemberSchema, {
+  key: {
+    teamId: 1,
+    orgId: 1,
+    tmbId: 1
+  },
+  options: {
+    unique: true
+  }
+});
+defineIndex(OrgMemberSchema, {
+  key: {
     teamId: 1,
     tmbId: 1
-  });
-} catch (error) {
-  console.log(error);
-}
+  }
+});
 
 export const MongoOrgMemberModel = getMongoModel<OrgMemberSchemaType>(
   OrgMemberCollectionName,

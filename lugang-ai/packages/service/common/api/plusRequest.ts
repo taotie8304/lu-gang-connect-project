@@ -1,5 +1,4 @@
-// 鲁港通 - 商业版 API 请求模块
-import axios, {
+import {
   type Method,
   type InternalAxiosRequestConfig,
   type AxiosResponse,
@@ -7,18 +6,25 @@ import axios, {
 } from 'axios';
 import { FastGPTProUrl } from '../system/constants';
 import { UserError } from '@fastgpt/global/common/error/utils';
-import { addLog } from '../system/log';
+import { createProxyAxios } from './axios';
+import { getLogger, LogCategories } from '../logger';
+import { assertRelativePath } from '../security/network';
+import { serviceEnv } from '../../env';
+import { FASTGPT_PRO_TOKEN_HEADER } from '@fastgpt/global/common/system/constants';
 
-interface ConfigType {
+const logger = getLogger(LogCategories.HTTP.ERROR);
+
+type ConfigType = {
   headers?: { [key: string]: string };
   hold?: boolean;
   timeout?: number;
-}
-interface ResponseDataType {
+};
+type ResponseDataType = {
   code: number;
   message: string;
   data: any;
-}
+  errorType?: string;
+};
 
 /**
  * 请求开始
@@ -37,13 +43,14 @@ function responseSuccess(response: AxiosResponse<ResponseDataType>) {
   return response;
 }
 /**
- * 鲁港通 - 响应数据检查
+ * 响应数据检查
  */
 function checkRes(data: ResponseDataType) {
   if (data === undefined) {
-    addLog.error('Plus request response is empty', data);
+    logger.error('Plus request response is empty', { data });
     return Promise.reject('服务器异常');
   } else if (data?.code && (data.code < 200 || data.code >= 400)) {
+    if (data.errorType === 'UserError') return Promise.reject(new UserError(data.message));
     return Promise.reject(data);
   }
   return data.data;
@@ -61,32 +68,58 @@ function responseError(err: any) {
   }
 
   if (err?.response?.data) {
+    if (err.response.data.errorType === 'UserError') {
+      return Promise.reject(new UserError(err.response.data.message));
+    }
     return Promise.reject(err?.response?.data);
   }
   return Promise.reject(err);
 }
 
-/* 鲁港通 - 创建请求实例 */
-const instance = axios.create({
-  timeout: 60000,
-  headers: {
-    'content-type': 'application/json',
-    'Cache-Control': 'no-cache',
-    rootkey: process.env.ROOT_KEY
+/**
+ * 校验 FastGPT app 服务端访问 pro/admin 的内部请求配置。
+ *
+ * 本文件同时保留 GET/POST 等快捷封装和原始 axios config 两种入口；集中处理
+ * PRO_URL、PRO_TOKEN 和相对路径校验，避免两条入口出现鉴权语义分叉。
+ */
+const assertInternalProRequestConfig = ({ url }: { url?: string }) => {
+  if (!FastGPTProUrl) {
+    logger.warn('FastGPT Pro API is not configured', { url });
+    throw new UserError('The request was denied...');
   }
-});
+  if (!serviceEnv.PRO_TOKEN) {
+    logger.error('FastGPT Pro token is not configured', { url });
+    throw new UserError('FastGPT Pro token is not configured');
+  }
+
+  // plusRequest 仅用于访问商业版 Pro 服务,会自动携带内部 Pro token,SSRF 拦截已被显式关闭。
+  // 强制要求相对路径,防止调用方传入绝对 URL 覆盖 baseURL 形成带高权限头的 SSRF。
+  assertRelativePath(url, 'plusRequest');
+};
+
+/* 创建请求实例 */
+const instance = createProxyAxios(
+  {
+    timeout: 60000,
+    headers: {
+      'content-type': 'application/json',
+      'Cache-Control': 'no-cache',
+      [FASTGPT_PRO_TOKEN_HEADER]: serviceEnv.PRO_TOKEN
+    }
+  },
+  false
+);
 
 /* 请求拦截 */
 instance.interceptors.request.use(requestStart, (err) => Promise.reject(err));
 /* 响应拦截 */
 instance.interceptors.response.use(responseSuccess, (err) => Promise.reject(err));
 
-// 鲁港通 - 核心请求函数
 export function request(url: string, data: any, config: ConfigType, method: Method): any {
-  // 鲁港通 - 未配置商业版时记录警告并拒绝请求
-  if (!FastGPTProUrl) {
-    addLog.warn('鲁港通商业版 API 未配置', { url });
-    return Promise.reject(new UserError('The request was denied...'));
+  try {
+    assertInternalProRequestConfig({ url });
+  } catch (err) {
+    return Promise.reject(err);
   }
 
   /* 去空 */
@@ -132,8 +165,14 @@ export function DELETE<T = undefined>(url: string, data = {}, config: ConfigType
   return request(url, data, config, 'DELETE');
 }
 
-export const plusRequest = (config: AxiosRequestConfig) =>
-  instance.request({
+export const plusRequest = (config: AxiosRequestConfig) => {
+  try {
+    assertInternalProRequestConfig({ url: config.url });
+  } catch (err) {
+    return Promise.reject(err);
+  }
+  return instance.request({
     ...config,
     baseURL: FastGPTProUrl
   });
+};

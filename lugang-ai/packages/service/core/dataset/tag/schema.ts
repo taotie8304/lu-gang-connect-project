@@ -1,5 +1,5 @@
 import { TeamCollectionName } from '@fastgpt/global/support/user/team/constant';
-import { connectionMongo, getMongoModel, type Model } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel, type Model } from '../../../common/mongo';
 import { DatasetCollectionName } from '../schema';
 import { type DatasetCollectionTagsSchemaType } from '@fastgpt/global/core/dataset/type';
 const { Schema } = connectionMongo;
@@ -23,11 +23,9 @@ const DatasetCollectionTagsSchema = new Schema({
   }
 });
 
-try {
-  DatasetCollectionTagsSchema.index({ teamId: 1, datasetId: 1, tag: 1 });
-} catch (error) {
-  console.log(error);
-}
+defineIndex(DatasetCollectionTagsSchema, {
+  key: { teamId: 1, datasetId: 1, tag: 1 }
+});
 
 export const MongoDatasetCollectionTags = getMongoModel<DatasetCollectionTagsSchemaType>(
   DatasetCollectionTagsName,

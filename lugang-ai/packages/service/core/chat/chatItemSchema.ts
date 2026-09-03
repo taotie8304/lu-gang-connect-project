@@ -1,13 +1,12 @@
-import { connectionMongo, getMongoModel } from '../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../common/mongo';
 const { Schema } = connectionMongo;
-import { type ChatItemSchema as ChatItemType } from '@fastgpt/global/core/chat/type';
-import { ChatRoleMap } from '@fastgpt/global/core/chat/constants';
+import { type ChatItemDBSchemaType } from '@fastgpt/global/core/chat/type';
+import { ChatRoleMap, ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
-import { AppCollectionName } from '../app/schema';
 import { userCollectionName } from '../../support/user/schema';
 import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
 import { ChatItemCollectionName } from './constants';
@@ -31,14 +30,19 @@ const ChatItemSchema = new Schema({
     type: String,
     require: true
   },
+  sourceType: {
+    type: String,
+    enum: Object.values(ChatSourceTypeEnum),
+    required: true
+  },
   dataId: {
     type: String,
     require: true,
     default: () => getNanoid(24)
   },
+  // 历史物理字段名，业务语义为 sourceId；App 场景才是真实 appId。
   appId: {
     type: Schema.Types.ObjectId,
-    ref: AppCollectionName,
     required: true
   },
   time: {
@@ -81,22 +85,45 @@ const ChatItemSchema = new Schema({
     }
   },
   isFeedbackRead: Boolean,
+  deleteTime: {
+    type: Date,
+    default: null
+  },
 
-  // @deprecated
-  [DispatchNodeResponseKeyEnum.nodeResponse]: Array
+  /** @deprecated nodeResponses 已迁移到 chat_item_responses；保留 schema path 仅避免历史数据被误清理。 */
+  [DispatchNodeResponseKeyEnum.nodeResponse]: {
+    type: Array,
+    default: undefined
+  }
 });
 
-/* 
-  delete by app; 
+/* TODO: 未全面检查操作，所以这里暂时不加 sourceType 的索引。 */
+/*
+  delete by app;
   delete by chat id;
-  get chat list; 
-  get chat logs; 
-  close custom feedback; 
+  close custom feedback;
 */
-ChatItemSchema.index({ appId: 1, chatId: 1, dataId: 1 });
-// Anchor filter
-ChatItemSchema.index({ appId: 1, chatId: 1, _id: -1 });
-// timer, clear history
-ChatItemSchema.index({ teamId: 1, time: -1 });
+defineIndex(ChatItemSchema, { key: { appId: 1, chatId: 1, dataId: 1 } });
+defineIndex(ChatItemSchema, {
+  key: { sourceType: 1, appId: 1, chatId: 1, dataId: 1 }
+});
+// Get histories
+defineIndex(ChatItemSchema, { key: { appId: 1, chatId: 1, deleteTime: 1 } });
+defineIndex(ChatItemSchema, {
+  key: { sourceType: 1, appId: 1, chatId: 1, deleteTime: 1 }
+});
+// get chatitem list,Anchor filter
+defineIndex(ChatItemSchema, { key: { appId: 1, chatId: 1, _id: -1 } });
+defineIndex(ChatItemSchema, {
+  key: { sourceType: 1, appId: 1, chatId: 1, _id: -1 }
+});
+// Query by role (AI/Human), get latest chat item, permission check
+defineIndex(ChatItemSchema, { key: { appId: 1, chatId: 1, obj: 1, _id: -1 } });
+defineIndex(ChatItemSchema, {
+  key: { sourceType: 1, appId: 1, chatId: 1, obj: 1, _id: -1 }
+});
 
-export const MongoChatItem = getMongoModel<ChatItemType>(ChatItemCollectionName, ChatItemSchema);
+export const MongoChatItem = getMongoModel<ChatItemDBSchemaType>(
+  ChatItemCollectionName,
+  ChatItemSchema
+);

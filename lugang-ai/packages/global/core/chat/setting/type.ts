@@ -1,9 +1,13 @@
 import { ObjectIdSchema } from '../../../common/type/mongo';
-import { z } from 'zod';
+import z from 'zod';
 import { ChatFavouriteTagSchema } from '../favouriteApp/type';
 
 export const ChatSelectedToolSchema = z.object({
-  pluginId: ObjectIdSchema,
+  pluginId: z.string().meta({
+    example: 'systemTool-websearch',
+    description: '工具 ID，支持任意字符串格式'
+  }),
+  source: z.string().optional().meta({ description: '工具来源，未填写时使用系统来源' }),
   inputs: z.record(z.string(), z.any()).meta({ example: null, description: '工具输入参数' }),
   name: z.string().meta({ example: '测试应用', description: '工具名称' }),
   avatar: z.string().meta({ example: '测试应用', description: '工具头像' })
@@ -42,17 +46,22 @@ export const ChatSettingModelSchema = z.object({
   quickAppIds: z
     .array(ObjectIdSchema)
     .meta({ example: ['68ad85a7463006c963799a05'], description: '快捷应用 ID 列表' }),
-  selectedTools: z.array(ChatSelectedToolSchema.pick({ pluginId: true, inputs: true })).meta({
-    example: [{ pluginId: '68ad85a7463006c963799a05', inputs: {} }],
-    description: '已选工具列表'
-  }),
-  favouriteTags: z.array(ChatFavouriteTagSchema).meta({
-    example: [
-      { id: 'ptqn6v4I', name: '效率' },
-      { id: 'jHLWiqff', name: '学习' }
-    ],
-    description: '精选应用标签列表'
-  })
+  selectedTools: z
+    .array(ChatSelectedToolSchema.pick({ pluginId: true, source: true, inputs: true }))
+    .meta({
+      example: [{ pluginId: '68ad85a7463006c963799a05', source: 'system', inputs: {} }],
+      description: '已选工具列表'
+    }),
+  favouriteTags: z
+    .array(ChatFavouriteTagSchema)
+    .default([])
+    .meta({
+      example: [
+        { id: 'ptqn6v4I', name: '效率' },
+        { id: 'jHLWiqff', name: '学习' }
+      ],
+      description: '精选应用标签列表，历史配置缺失时返回空数组'
+    })
 });
 export type ChatSettingModelType = z.infer<typeof ChatSettingModelSchema>;
 
@@ -68,7 +77,7 @@ export const ChatSettingSchema = z.object({
         pluginId: '68ad85a7463006c963799a05',
         inputs: {},
         name: '获取当前应用',
-        avatar: '/icon/logo.png'
+        avatar: '/icon/logo.svg'
       }
     ],
     description: '已选工具列表'

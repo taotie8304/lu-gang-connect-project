@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useCallback } from 'react';
-import { Flex, Box } from '@chakra-ui/react';
+import { Flex, Box, IconButton } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { HUMAN_ICON } from '@fastgpt/global/common/system/constants';
 import { getInitChatInfo } from '@/web/core/chat/api';
@@ -9,19 +9,21 @@ import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import dynamic from 'next/dynamic';
 import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
 import { PluginRunBoxTabEnum } from '@/components/core/chat/ChatContainer/PluginRunBox/constants';
-import CloseIcon from '@fastgpt/web/components/common/Icon/close';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { PcHeader } from '@/pageComponents/chat/ChatHeader';
-import { GetChatTypeEnum } from '@/global/core/chat/constants';
+import { ChatSourceTypeEnum, GetChatTypeEnum } from '@fastgpt/global/core/chat/constants';
 import ChatItemContextProvider, { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
 import ChatRecordContextProvider, {
   ChatRecordContext
 } from '@/web/core/chat/context/chatRecordContext';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useContextSelector } from 'use-context-selector';
 import ChatQuoteList from '@/pageComponents/chat/ChatQuoteList';
 import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
 import { DetailLogsModalFeedbackTypeFilter } from './FeedbackTypeFilter';
+import { useSandboxEditor, useSandboxStatus } from '@/pageComponents/chat/SandboxEditor/hook';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+import { getAppChatSourceKey } from '@/web/core/chat/utils';
+import type { GetPaginationRecordsBodyType } from '@fastgpt/global/openapi/core/chat/record/api';
 
 const PluginRunBox = dynamic(() => import('@/components/core/chat/ChatContainer/PluginRunBox'));
 const ChatBox = dynamic(() => import('@/components/core/chat/ChatContainer/ChatBox'));
@@ -29,12 +31,14 @@ const ChatBox = dynamic(() => import('@/components/core/chat/ChatContainer/ChatB
 type Props = {
   appId: string;
   chatId: string;
+  feedbackUserName?: string;
   onClose: () => void;
 };
 
 const DetailLogsModal = ({
   appId,
   chatId,
+  feedbackUserName,
   onClose,
 
   feedbackRecordId,
@@ -46,7 +50,7 @@ const DetailLogsModal = ({
   const { t } = useTranslation();
   const { isPc } = useSystem();
 
-  const [refreshTrigger, setRefreshTrigger] = useState(false);
+  const [, setRefreshTrigger] = useState(false);
   const [feedbackType, setFeedbackType] = useState<'all' | 'has_feedback' | 'good' | 'bad'>('all');
   const [unreadOnly, setUnreadOnly] = useState<boolean>(false);
 
@@ -58,14 +62,17 @@ const DetailLogsModal = ({
   const setCiteModalData = useContextSelector(ChatItemContext, (v) => v.setCiteModalData);
 
   const chatRecords = useContextSelector(ChatRecordContext, (v) => v.chatRecords);
-  const totalRecordsCount = useContextSelector(ChatRecordContext, (v) => v.totalRecordsCount);
 
-  const { data: chat } = useRequest2(
+  const { data: chat } = useRequest(
     async () => {
       const res = await getInitChatInfo({ appId, chatId, loadCustomFeedbacks: true });
       res.userAvatar = HUMAN_ICON;
 
-      setChatBoxData(res);
+      setChatBoxData({
+        ...res,
+        appId,
+        sourceKey: getAppChatSourceKey(appId)
+      });
       resetVariables({
         variables: res.variables,
         variableList: res.app?.chatConfig?.variables
@@ -76,31 +83,25 @@ const DetailLogsModal = ({
     {
       manual: false,
       refreshDeps: [chatId],
-      onError(e) {
+      onError() {
         onClose();
       }
     }
   );
 
-  const handleScrollToChatItem = React.useCallback((dataId: string) => {
-    setTimeout(() => {
-      const element = document.querySelector(`[data-chat-id="${dataId}"]`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-    }, 100);
-  }, []);
-
   const title = chat?.title;
-  const chatModels = chat?.app?.chatModels;
   const isPlugin = chat?.app.type === AppTypeEnum.workflowTool;
+
+  // Sandbox: Status Hook 负责网络同步，UI Hook 负责弹窗渲染
+  const { SandboxEntryIcon } = useSandboxStatus({ appId, chatId });
+  const { SandboxEditorModal, onOpenSandboxModal } = useSandboxEditor({ appId, chatId });
 
   return (
     <>
       <MyBox
         display={'flex'}
         flexDirection={'column'}
-        zIndex={3}
+        zIndex={1000}
         position={['fixed', 'absolute']}
         top={[0, '2%']}
         right={0}
@@ -108,8 +109,8 @@ const DetailLogsModal = ({
         w={'100%'}
         maxW={datasetCiteData ? ['100%', '1080px'] : ['100%', '600px']}
         bg={'white'}
-        boxShadow={'3px 0 20px rgba(0,0,0,0.2)'}
-        borderRadius={'md'}
+        boxShadow={'0px 8px 24px rgba(19, 51, 107, 0.12), 0px 0px 1px rgba(19, 51, 107, 0.08)'}
+        borderRadius={'8px'}
         overflow={'hidden'}
         transition={'.2s ease'}
       >
@@ -141,57 +142,86 @@ const DetailLogsModal = ({
               fontSize={'sm'}
             />
 
-            <CloseIcon onClick={onClose} />
+            <IconButton
+              variant={'whiteBase'}
+              size={'smSquare'}
+              icon={<MyIcon name={'common/closeLight'} w={'16px'} />}
+              onClick={onClose}
+              aria-label="Close"
+            />
           </Flex>
         ) : (
-          <Flex
-            alignItems={'center'}
-            px={[3, 5]}
-            h={['46px', '60px']}
-            borderBottom={'base'}
-            borderBottomColor={'gray.200'}
-            color={'myGray.900'}
-          >
+          <Flex alignItems={'center'} gap={2} px={[4, 5]} h={['48px', '56px']} color={'myGray.900'}>
             {isPc ? (
-              <>
-                <PcHeader
-                  totalRecordsCount={totalRecordsCount}
-                  title={title || ''}
-                  chatModels={chatModels}
-                  chatId={chatId}
-                />
-                <Box flex={1} />
-              </>
+              <Box
+                flex={'1 1 0'}
+                minW={0}
+                className="textEllipsis"
+                fontSize={'16px'}
+                fontWeight={500}
+                lineHeight={'24px'}
+              >
+                {title}
+              </Box>
             ) : (
-              <>
-                <Flex px={3} alignItems={'center'} flex={'1 0 0'} w={0} justifyContent={'center'}>
-                  <Box ml={1} className="textEllipsis">
-                    {title}
-                  </Box>
-                </Flex>
-              </>
+              <Flex px={3} alignItems={'center'} flex={'1 1 0'} w={0} justifyContent={'center'}>
+                <Box ml={1} className="textEllipsis">
+                  {title}
+                </Box>
+              </Flex>
             )}
-            <CloseIcon onClick={onClose} />
+
+            <SandboxEntryIcon size={'smSquare'} onOpen={onOpenSandboxModal} />
+            <IconButton
+              variant={'ghost'}
+              w={'32px'}
+              h={'32px'}
+              minW={'32px'}
+              p={0}
+              bg={'transparent'}
+              border={'none'}
+              boxShadow={'none'}
+              aria-label="Close"
+              icon={<MyIcon name={'common/closeLight'} w={'16px'} />}
+              onClick={onClose}
+            />
           </Flex>
         )}
 
         {/* Chat container */}
-        <Flex pt={2} flex={'1 0 0'} h={0} flexDirection={'column'}>
+        <Flex flex={'1 0 0'} h={0} flexDirection={'column'}>
           <Flex flex={'1 0 0'} h={0}>
-            <Box flex={'1 0 0'} h={'100%'} overflow={'auto'}>
+            <Box flex={'1 0 0'} h={'100%'} minH={0} overflow={isPlugin ? 'hidden' : 'auto'}>
               {isPlugin ? (
-                <Box px={5} py={2}>
+                <Box
+                  px={5}
+                  py={2}
+                  h={'100%'}
+                  minH={0}
+                  minW={0}
+                  overflowY={'auto'}
+                  display={'flex'}
+                  flexDirection={'column'}
+                >
                   <PluginRunBox appId={appId} chatId={chatId} />
                 </Box>
               ) : (
                 <ChatBox
                   isReady
-                  appId={appId}
+                  sourceTarget={{ sourceType: ChatSourceTypeEnum.app, sourceId: appId }}
                   chatId={chatId}
-                  feedbackType={'admin'}
-                  showMarkIcon
-                  showVoiceIcon={false}
+                  features={{
+                    feedbackType: 'admin',
+                    mark: true,
+                    voice: false,
+                    tts: false,
+                    inputGuide: false,
+                    sandbox: false,
+                    disableFooterHoverTranslate: true,
+                    footerRunDetailPosition: 'afterCopy'
+                  }}
                   chatType={ChatTypeEnum.log}
+                  feedbackUserName={feedbackUserName}
                   onTriggerRefresh={() => setRefreshTrigger((prev) => !prev)}
                 />
               )}
@@ -213,33 +243,45 @@ const DetailLogsModal = ({
                 <ChatQuoteList
                   rawSearch={datasetCiteData.rawSearch}
                   metadata={datasetCiteData.metadata}
+                  singleQuote={datasetCiteData.singleQuote}
                   onClose={() => setCiteModalData(undefined)}
                 />
               </Box>
             )}
           </Flex>
 
-          {/* Feedback filter bar - commented out, moved to Render component */}
-          <Flex bg="white" px={6} py={3} borderTop="1px solid" borderColor="gray.200">
-            <DetailLogsModalFeedbackTypeFilter
-              feedbackType={feedbackType}
-              setFeedbackType={setFeedbackType}
-              unreadOnly={unreadOnly}
-              setUnreadOnly={setUnreadOnly}
-              appId={appId}
-              chatId={chatId}
-              currentRecordId={feedbackRecordId}
-              onRecordChange={handleRecordChange}
-              menuButtonProps={{
-                color: 'myGray.700',
-                _active: {}
-              }}
-            />
-          </Flex>
+          {!isPlugin && (
+            <Flex
+              bg="white"
+              mx={6}
+              py={6}
+              h={'85px'}
+              minH={'85px'}
+              flexShrink={0}
+              borderTop="1px solid"
+              borderColor="myGray.200"
+            >
+              <DetailLogsModalFeedbackTypeFilter
+                feedbackType={feedbackType}
+                setFeedbackType={setFeedbackType}
+                unreadOnly={unreadOnly}
+                setUnreadOnly={setUnreadOnly}
+                appId={appId}
+                chatId={chatId}
+                currentRecordId={feedbackRecordId}
+                onRecordChange={handleRecordChange}
+                menuButtonProps={{
+                  color: 'myGray.700',
+                  _active: {}
+                }}
+              />
+            </Flex>
+          )}
         </Flex>
       </MyBox>
 
       <Box zIndex={2} position={'fixed'} top={0} left={0} bottom={0} right={0} onClick={onClose} />
+      <SandboxEditorModal />
     </>
   );
 };
@@ -248,12 +290,13 @@ const Render = (props: Props) => {
   const { appId, chatId } = props;
   const [feedbackRecordId, setFeedbackRecordId] = useState<string | undefined>(undefined);
 
-  const params = useMemo(() => {
+  const params = useMemo<GetPaginationRecordsBodyType>(() => {
     return {
       chatId,
       appId,
       loadCustomFeedbacks: true,
-      type: GetChatTypeEnum.normal
+      type: GetChatTypeEnum.normal,
+      includeDeleted: true
     };
   }, [appId, chatId]);
 
@@ -264,10 +307,12 @@ const Render = (props: Props) => {
   return (
     <ChatItemContextProvider
       showRouteToDatasetDetail={true}
-      isShowReadRawSource={true}
-      isResponseDetail={true}
-      // isShowFullText={true}
-      showNodeStatus
+      canDownloadSource={true}
+      isShowCite={true}
+      isShowFullText={true}
+      showRunningStatus={true}
+      showSkillReferences={true}
+      showWholeResponse={true}
     >
       <ChatRecordContextProvider params={params} feedbackRecordId={feedbackRecordId}>
         <DetailLogsModal

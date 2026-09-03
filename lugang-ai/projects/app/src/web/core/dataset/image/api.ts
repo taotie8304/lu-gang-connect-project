@@ -1,5 +1,5 @@
 import { POST } from '@/web/common/api/request';
-import type { ImageCreateDatasetCollectionParams } from '@fastgpt/global/core/dataset/api';
+import type { ImageCreateDatasetCollectionParams } from '@fastgpt/global/openapi/core/dataset/collection/createApi';
 
 export const createImageDatasetCollection = async ({
   files,
@@ -11,7 +11,7 @@ export const createImageDatasetCollection = async ({
 }) => {
   const formData = new FormData();
   files.forEach((file) => {
-    formData.append('file', file, encodeURIComponent(file.name));
+    formData.append('file', file, file.name);
   });
   formData.append('data', JSON.stringify(data));
 
@@ -39,7 +39,7 @@ export const insertImagesToCollection = async ({
 }) => {
   const formData = new FormData();
   files.forEach((file) => {
-    formData.append('file', file, encodeURIComponent(file.name));
+    formData.append('file', file, file.name);
   });
   formData.append('data', JSON.stringify({ collectionId }));
 

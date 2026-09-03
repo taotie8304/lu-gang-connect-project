@@ -1,15 +1,17 @@
 import type {
-  ApiFileReadContentResponse,
-  APIFileReadResponse,
+  ApiFileReadContentResponseType,
+  APIFileReadResponseType,
   ApiDatasetDetailResponse,
-  APIFileServer
+  APIFileServerType
 } from '@fastgpt/global/core/dataset/apiDataset/type';
-import axios, { type Method } from 'axios';
-import { addLog } from '../../../../common/system/log';
+import { type Method } from 'axios';
+import { createProxyAxios } from '../../../../common/api/axios';
 import { readFileRawTextByUrl } from '../../read';
 import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
 import { type RequireOnlyOne } from '@fastgpt/global/common/type/utils';
 import { getS3RawTextSource } from '../../../../common/s3/sources/rawText';
+import { getNanoid } from '@fastgpt/global/common/string/tools';
+import { getLogger, LogCategories } from '../../../../common/logger';
 
 type ResponseDataType = {
   success: boolean;
@@ -27,8 +29,9 @@ type APIFileListResponse = {
   hasChild?: boolean;
 };
 
-export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }) => {
-  const instance = axios.create({
+export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServerType }) => {
+  const logger = getLogger(LogCategories.MODULE.DATASET.API_DATASET);
+  const instance = createProxyAxios({
     baseURL: apiServer.baseUrl,
     timeout: 60000, // 超时时间
     headers: {
@@ -42,7 +45,7 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
    */
   const checkRes = (data: ResponseDataType) => {
     if (data === undefined) {
-      addLog.info('Api dataset data is empty');
+      logger.warn('API dataset response data is empty');
       return Promise.reject('服务器异常');
     } else if (!data.success) {
       return Promise.reject(data);
@@ -50,7 +53,7 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
     return data.data;
   };
   const responseError = (err: any) => {
-    console.log('error->', '请求错误', err);
+    logger.error('API dataset request failed', { error: err });
 
     if (!err) {
       return Promise.reject({ message: '未知错误' });
@@ -87,6 +90,47 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
       })
       .then((res) => checkRes(res.data))
       .catch((err) => responseError(err));
+  };
+
+  const getPreviewUrlFilename = (previewUrl: string) => {
+    const parseFilename = (pathname: string) => {
+      const filename = pathname.split('/').pop() || '';
+      if (!filename) return '';
+
+      try {
+        return decodeURIComponent(filename);
+      } catch {
+        return filename;
+      }
+    };
+
+    try {
+      return parseFilename(new URL(previewUrl).pathname);
+    } catch {
+      return parseFilename(previewUrl.split('?')[0].split('#')[0]);
+    }
+  };
+
+  const getFallbackTitle = async ({
+    apiFileId,
+    previewUrl
+  }: {
+    apiFileId: string;
+    previewUrl: string;
+  }) => {
+    try {
+      const fileDetail = await getFileDetail({ apiFileId });
+      if (fileDetail.name) {
+        return fileDetail.name;
+      }
+    } catch (error) {
+      logger.warn('Get api dataset file detail for title fallback failed', {
+        apiFileId,
+        error
+      });
+    }
+
+    return getPreviewUrlFilename(previewUrl) || getNanoid();
   };
 
   const listFiles = async ({
@@ -126,14 +170,16 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
     tmbId,
     apiFileId,
     customPdfParse,
-    datasetId
+    datasetId,
+    usageId
   }: {
     teamId: string;
     tmbId: string;
     apiFileId: string;
     customPdfParse?: boolean;
     datasetId: string;
-  }): Promise<ApiFileReadContentResponse> => {
+    usageId?: string;
+  }): Promise<ApiFileReadContentResponseType> => {
     const data = await request<
       {
         title?: string;
@@ -153,6 +199,8 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
       };
     }
     if (previewUrl) {
+      const fallbackTitle = title || (await getFallbackTitle({ apiFileId, previewUrl }));
+
       // Get from buffer
       const rawTextBuffer = await getS3RawTextSource().getRawTextBuffer({
         sourceId: previewUrl,
@@ -160,7 +208,7 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
       });
       if (rawTextBuffer) {
         return {
-          title,
+          title: title || rawTextBuffer.filename || fallbackTitle,
           rawText: rawTextBuffer.text
         };
       }
@@ -172,18 +220,21 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
         relatedId: apiFileId,
         datasetId,
         customPdfParse,
+        usageId,
         getFormatText: true
       });
 
+      const sourceName = fallbackTitle;
+
       getS3RawTextSource().addRawTextBuffer({
         sourceId: previewUrl,
-        sourceName: title || '',
+        sourceName,
         text: rawText,
         customPdfParse
       });
 
       return {
-        title,
+        title: fallbackTitle,
         rawText
       };
     }
@@ -191,7 +242,11 @@ export const useApiDatasetRequest = ({ apiServer }: { apiServer: APIFileServer }
   };
 
   const getFilePreviewUrl = async ({ apiFileId }: { apiFileId: string }) => {
-    const { url } = await request<APIFileReadResponse>(`/v1/file/read`, { id: apiFileId }, 'GET');
+    const { url } = await request<APIFileReadResponseType>(
+      `/v1/file/read`,
+      { id: apiFileId },
+      'GET'
+    );
 
     if (!url || typeof url !== 'string') {
       return Promise.reject('Invalid response url');

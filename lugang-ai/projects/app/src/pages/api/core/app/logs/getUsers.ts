@@ -1,0 +1,117 @@
+import { MongoChat } from '@fastgpt/service/core/chat/chatSchema';
+import { Types } from '@fastgpt/service/common/mongo';
+import { authApp } from '@fastgpt/service/support/permission/app/auth';
+import { NextAPI } from '@/service/middleware/entry';
+import { readFromSecondary } from '@fastgpt/service/common/mongo/utils';
+import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
+import { AppReadChatLogPerVal } from '@fastgpt/global/support/permission/app/constant';
+import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
+import type { ApiRequestProps } from '@fastgpt/next/type';
+import { replaceRegChars } from '@fastgpt/global/common/string/tools';
+import {
+  GetLogUsersBodySchema,
+  GetLogUsersResponseSchema,
+  type LogUserType,
+  type GetLogUsersResponse
+} from '@fastgpt/global/openapi/core/app/log/api';
+import { DEFAULT_USER_AVATAR } from '@fastgpt/global/common/system/constants';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+
+const appChatSourceMatch = {
+  $or: [{ sourceType: ChatSourceTypeEnum.app }, { sourceType: { $exists: false } }]
+};
+
+async function handler(req: ApiRequestProps): Promise<GetLogUsersResponse> {
+  const {
+    body: { appId, dateStart, dateEnd, searchKey, sources }
+  } = parseApiInput({
+    req,
+    bodySchema: GetLogUsersBodySchema
+  });
+
+  if (!appId) {
+    return Promise.reject(CommonErrEnum.missingParams);
+  }
+
+  const { teamId } = await authApp({
+    req,
+    authToken: true,
+    authApiKey: true,
+    appId,
+    per: AppReadChatLogPerVal
+  });
+
+  // Get tmbId and outlinkUid
+  const aggregateResult = await MongoChat.aggregate(
+    [
+      {
+        $match: {
+          appId: new Types.ObjectId(appId),
+          ...appChatSourceMatch,
+          updateTime: {
+            $gte: new Date(dateStart),
+            $lte: new Date(dateEnd)
+          },
+          ...(sources?.length && { source: { $in: sources } })
+        }
+      },
+      {
+        $group: {
+          _id: {
+            outLinkUid: '$outLinkUid',
+            tmbId: '$tmbId'
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 100 }
+    ],
+    { ...readFromSecondary }
+  );
+
+  const tmbIds = aggregateResult
+    .filter((item) => item._id.tmbId && !item._id.outLinkUid)
+    .map((item) => item._id.tmbId);
+
+  const teamMembers = tmbIds.length
+    ? await MongoTeamMember.find(
+        {
+          _id: { $in: tmbIds },
+          teamId: new Types.ObjectId(teamId)
+        },
+        '_id name avatar'
+      ).lean()
+    : [];
+
+  const tmbMap = new Map(teamMembers.map((m) => [String(m._id), m]));
+
+  const searchPattern = searchKey ? new RegExp(replaceRegChars(searchKey), 'i') : null;
+
+  const list = aggregateResult.map((item): LogUserType => {
+    const outLinkUid = item._id.outLinkUid || null;
+    const tmbId = item._id.tmbId ? String(item._id.tmbId) : null;
+
+    const { name, avatar } = (() => {
+      if (outLinkUid) {
+        return { name: outLinkUid, avatar: DEFAULT_USER_AVATAR };
+      }
+      if (tmbId) {
+        const member = tmbMap.get(tmbId);
+        return { name: member?.name || tmbId, avatar: member?.avatar || DEFAULT_USER_AVATAR };
+      }
+      return { name: '-', avatar: DEFAULT_USER_AVATAR };
+    })();
+
+    return { outLinkUid, tmbId, name, avatar, count: item.count };
+  });
+
+  return GetLogUsersResponseSchema.parse({
+    list: searchPattern
+      ? list.filter((item) => !searchPattern || searchPattern.test(item.name)).slice(0, 50)
+      : list.slice(0, 50)
+  });
+}
+
+export default NextAPI(handler);

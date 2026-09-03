@@ -1,6 +1,11 @@
 import type { DragEvent } from 'react';
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
-import type { UserInputFileItemType } from '../../chat/ChatContainer/ChatBox/type';
+import type {
+  FileSelectorInputObjectItemType,
+  FileSelectorInputValueType,
+  FileSelectorRenderItemType,
+  FileSelectorValueItemType
+} from './type';
 import {
   Box,
   CircularProgress,
@@ -14,23 +19,150 @@ import MyBox from '@fastgpt/web/components/common/MyBox';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { ChatFileTypeEnum } from '@fastgpt/global/core/chat/constants';
 import { getFileIcon } from '@fastgpt/global/common/file/icon';
-import type { AppFileSelectConfigType } from '@fastgpt/global/core/app/type';
+import type { AppFileSelectConfigType } from '@fastgpt/global/core/app/type/config.schema';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { useUserStore } from '@/web/support/user/useUserStore';
 import { getUploadFileType } from '@fastgpt/global/core/app/constants';
 import { useToast } from '@fastgpt/web/hooks/useToast';
-import { useTranslation } from 'next-i18next';
 import { useSelectFile } from '@/web/common/file/hooks/useSelectFile';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import MyDivider from '@fastgpt/web/components/common/MyDivider';
 import MyAvatar from '@fastgpt/web/components/common/Avatar';
-import { z } from 'zod';
-import { getPresignedChatFileGetUrl, getUploadChatFilePresignedUrl } from '@/web/common/file/api';
+import z from 'zod';
+import {
+  getPresignedChatFileGetUrl,
+  getUploadChatFilePresignedUrl,
+  getUploadDraftChatFilePresignedUrl
+} from '@/web/common/file/api';
 import { useContextSelector } from 'use-context-selector';
-import { POST } from '@/web/common/api/request';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import { WorkflowRuntimeContext } from '@/components/core/chat/ChatContainer/context/workflowRuntimeContext';
 import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
+import { S3FileUploader } from '@fastgpt/web/common/file/uploader';
+import {
+  getFileSelectorDisplayIcon,
+  hasFileSelectorError,
+  inferFileSelectorType,
+  isFileSelectorCleanValueEcho,
+  isFileSelectorPreviewUrlMissing,
+  isFileSelectorUploading,
+  markFileSelectorUploadError,
+  markFileSelectorUploading,
+  markFileSelectorUploadSuccess,
+  mergeFileSelectorExternalValue,
+  sanitizeFileSelectValue
+} from './utils';
+import { isEqual } from 'lodash-es';
+import {
+  getChatAuthTargetInput,
+  hasChatTargetInput,
+  useChatApiTarget
+} from '@/web/core/chat/utils';
+import { getFileAmountLimit, getFileSizeLimitBytes } from '@fastgpt/global/core/workflow/fileLimit';
+
+type WebkitFileSystemFileEntry = {
+  isFile: true;
+  isDirectory: false;
+  file: (successCallback: (file: File) => void) => void;
+};
+
+type WebkitFileSystemDirectoryEntry = {
+  isFile: false;
+  isDirectory: true;
+  createReader: () => WebkitFileSystemDirectoryReader;
+};
+
+type WebkitFileSystemEntry = WebkitFileSystemFileEntry | WebkitFileSystemDirectoryEntry;
+
+type WebkitFileSystemDirectoryReader = {
+  readEntries: (successCallback: (entries: WebkitFileSystemEntry[]) => void) => void;
+};
+
+type WebkitDataTransferItem = DataTransferItem & {
+  webkitGetAsEntry?: () => WebkitFileSystemEntry | null;
+};
+
+const getFileSystemEntry = (item?: DataTransferItem): WebkitFileSystemEntry | null =>
+  ((item as WebkitDataTransferItem | undefined)?.webkitGetAsEntry?.() as
+    | WebkitFileSystemEntry
+    | null
+    | undefined) ?? null;
+
+const isFileSelectorInputObject = (
+  file: FileSelectorInputValueType[number]
+): file is FileSelectorInputObjectItemType => !!file && typeof file === 'object';
+
+const findExistingRenderFile = (
+  file: FileSelectorValueItemType | undefined,
+  existingFiles: FileSelectorRenderItemType[]
+) => {
+  if (!file) return;
+
+  if (file.key) {
+    return existingFiles.find((item) => item.key === file.key);
+  }
+
+  return existingFiles.find((item) => item.url === file.url);
+};
+
+/**
+ * 将外部 value 转成组件内部渲染态。
+ *
+ * FileSelector 对外只暴露可存储值（key/url + name/type），但渲染还需要 id、
+ * 上传进度、错误、临时预览 URL 等字段。外部重新传入 key-only 存储值时，
+ * 这里会复用已有的 url/icon/id，避免图片预览在父组件回写时反复闪烁。
+ */
+const formatFileSelectorInternalValue = (
+  files: FileSelectorInputValueType,
+  existingFiles: FileSelectorRenderItemType[] = []
+): FileSelectorRenderItemType[] => {
+  if (!Array.isArray(files)) return [];
+
+  return files
+    .map((file): FileSelectorRenderItemType | undefined => {
+      const valueFile = sanitizeFileSelectValue([file])[0];
+      const inputFile = isFileSelectorInputObject(file) ? file : undefined;
+      const rawFile = inputFile?.rawFile;
+      if (!valueFile && !rawFile) return;
+
+      const existingFile = findExistingRenderFile(valueFile, existingFiles);
+      const inputUrl = inputFile?.url;
+      const previewUrl =
+        (inputUrl && !inputUrl.startsWith('data:') ? inputUrl : valueFile?.url) ||
+        existingFile?.url;
+      const renderType = valueFile?.type || inputFile?.type || ChatFileTypeEnum.file;
+      const fileName =
+        valueFile?.name ||
+        inputFile?.name ||
+        valueFile?.url ||
+        valueFile?.key ||
+        rawFile?.name ||
+        previewUrl ||
+        '';
+      const fileIcon = inputFile?.icon || existingFile?.icon;
+
+      return {
+        ...valueFile,
+        ...(previewUrl ? { url: previewUrl } : {}),
+        id: inputFile?.id || existingFile?.id || getNanoid(6),
+        rawFile,
+        type: renderType,
+        name: fileName,
+        icon: getFileSelectorDisplayIcon({
+          type: renderType,
+          url: previewUrl,
+          icon: fileIcon,
+          name: fileName,
+          key: valueFile?.key
+        }),
+        status: inputFile?.status ?? 1,
+        process: inputFile?.process,
+        error: inputFile?.error
+      };
+    })
+    .filter((file): file is FileSelectorRenderItemType => Boolean(file));
+};
 
 const FileSelector = ({
   value,
@@ -44,32 +176,176 @@ const FileSelector = ({
   customFileExtensionList,
   canLocalUpload,
   canUrlUpload,
-  isDisabled = false
+  onFileErrorChange,
+  isDisabled = false,
+  isInvalid = false
 }: AppFileSelectConfigType & {
-  value: UserInputFileItemType[];
-  onChange: (e: any[]) => void;
+  value: FileSelectorInputValueType;
+  onChange?: (e: FileSelectorValueItemType[]) => void;
+  onFileErrorChange?: (hasError: boolean) => void;
   canLocalUpload?: boolean;
   canUrlUpload?: boolean;
   isDisabled?: boolean;
+  isInvalid?: boolean;
 }) => {
   const { feConfigs } = useSystemStore();
+  const { teamPlanStatus } = useUserStore();
   const { toast } = useToast();
   const { t } = useSafeTranslation();
 
-  const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
+  const sourceTarget = useContextSelector(WorkflowRuntimeContext, (v) => v.sourceTarget);
+  const chatTarget = useChatApiTarget(sourceTarget);
   const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v.chatId);
   const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
+  const fileUploadMode = useContextSelector(WorkflowRuntimeContext, (v) => v.fileUploadMode);
+  const chatAuthTarget = useMemo(
+    () => getChatAuthTargetInput({ ...chatTarget, outLinkAuthData }),
+    [chatTarget, outLinkAuthData]
+  );
   const setFileUploadingCount = useContextSelector(
     WorkflowRuntimeContext,
     (v) => v.setFileUploadingCount
   );
 
-  const handleChangeFiles = useCallback(
-    (files: UserInputFileItemType[]) => {
-      onChange([...files]);
-    },
-    [onChange]
+  const lastEmittedValue = useRef<FileSelectorValueItemType[]>();
+  const skipNextCleanEcho = useRef(false);
+  const onChangeRef = useRef(onChange);
+  const onFileErrorChangeRef = useRef(onFileErrorChange);
+  const fetchingPreviewUrlKeys = useRef(new Set<string>());
+  const [fileList, setFileList] = useState<FileSelectorRenderItemType[]>(() =>
+    formatFileSelectorInternalValue(value)
   );
+
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  useEffect(() => {
+    onFileErrorChangeRef.current = onFileErrorChange;
+  }, [onFileErrorChange]);
+
+  const hasFileError = hasFileSelectorError(fileList);
+  useEffect(() => {
+    onFileErrorChangeRef.current?.(hasFileError);
+
+    return () => {
+      onFileErrorChangeRef.current?.(false);
+    };
+  }, [hasFileError]);
+
+  useEffect(() => {
+    const cleanedValue = sanitizeFileSelectValue(value);
+    if (
+      skipNextCleanEcho.current &&
+      isFileSelectorCleanValueEcho({
+        value,
+        cleanedValue,
+        lastEmittedValue: lastEmittedValue.current
+      })
+    ) {
+      skipNextCleanEcho.current = false;
+      return;
+    }
+
+    skipNextCleanEcho.current = false;
+    setFileList((currentFiles) => {
+      const nextFiles = mergeFileSelectorExternalValue({
+        currentFiles,
+        externalFiles: formatFileSelectorInternalValue(value, currentFiles)
+      });
+      return isEqual(nextFiles, currentFiles) ? currentFiles : nextFiles;
+    });
+    lastEmittedValue.current = cleanedValue;
+    if (!isEqual(cleanedValue, value)) {
+      onChangeRef.current?.(cleanedValue);
+    }
+  }, [value]);
+
+  const handleChangeFiles = useCallback(
+    (files: FileSelectorRenderItemType[], emitChange = true) => {
+      setFileList([...files]);
+
+      if (emitChange) {
+        const cleanedFiles = sanitizeFileSelectValue(files);
+        lastEmittedValue.current = cleanedFiles;
+        skipNextCleanEcho.current = true;
+        onChangeRef.current?.(cleanedFiles);
+      }
+    },
+    []
+  );
+
+  // 后端存储值只保留 key；组件渲染时再为 key-only 文件补临时预览 URL。
+  // 这里不会触发 onChange，避免把预览 URL 写回全局变量或表单存储值。
+  useEffect(() => {
+    if (!hasChatTargetInput(chatTarget)) return;
+
+    const filesNeedPreviewUrl = fileList.filter(
+      (file): file is FileSelectorRenderItemType & { key: string; url?: undefined } =>
+        isFileSelectorPreviewUrlMissing(file) && !fetchingPreviewUrlKeys.current.has(file.key)
+    );
+    if (filesNeedPreviewUrl.length === 0) return;
+
+    let isUnmounted = false;
+
+    filesNeedPreviewUrl.forEach((file) => {
+      fetchingPreviewUrlKeys.current.add(file.key);
+    });
+
+    void Promise.allSettled(
+      filesNeedPreviewUrl.map(async (file) => {
+        const key = file.key;
+        const url = await getPresignedChatFileGetUrl({
+          key,
+          ...chatAuthTarget,
+          chatId
+        });
+
+        return {
+          key,
+          url
+        };
+      })
+    )
+      .then((results) => {
+        if (isUnmounted) return;
+
+        const previewUrlMap = new Map<string, string>();
+        results.forEach((result) => {
+          if (result.status === 'fulfilled') {
+            previewUrlMap.set(result.value.key, result.value.url);
+          }
+        });
+        if (previewUrlMap.size === 0) return;
+
+        setFileList((currentFiles) =>
+          currentFiles.map((file) => {
+            if (!file.key || file.url) return file;
+
+            const previewUrl = previewUrlMap.get(file.key);
+            if (!previewUrl) return file;
+
+            return {
+              ...file,
+              url: previewUrl,
+              icon: getFileSelectorDisplayIcon({
+                ...file,
+                url: previewUrl
+              })
+            };
+          })
+        );
+      })
+      .finally(() => {
+        filesNeedPreviewUrl.forEach((file) => {
+          fetchingPreviewUrlKeys.current.delete(file.key);
+        });
+      });
+
+    return () => {
+      isUnmounted = true;
+    };
+  }, [chatTarget, chatAuthTarget, chatId, fileList]);
 
   const fileType = useMemo(() => {
     return getUploadFileType({
@@ -88,21 +364,47 @@ const FileSelector = ({
     canSelectCustomFileExtension,
     customFileExtensionList
   ]);
-  const maxSelectFiles = maxFiles ?? 10;
-  const maxSize = (feConfigs?.uploadFileMaxSize || 1024) * 1024 * 1024; // nkb
-  const canSelectFileAmount = maxSelectFiles - value.length;
+  const fileSelectConfig = useMemo<AppFileSelectConfigType>(
+    () => ({
+      maxFiles,
+      canSelectFile,
+      canSelectImg,
+      canSelectVideo,
+      canSelectAudio,
+      canSelectCustomFileExtension,
+      customFileExtensionList
+    }),
+    [
+      maxFiles,
+      canSelectFile,
+      canSelectImg,
+      canSelectVideo,
+      canSelectAudio,
+      canSelectCustomFileExtension,
+      customFileExtensionList
+    ]
+  );
+  // Form/Plugin 文件输入的模块配额与用户配额取更小值。
+  const maxSelectFiles = getFileAmountLimit({
+    moduleMaxFileAmount: maxFiles,
+    defaultModuleMaxFileAmount: 5,
+    teamMaxFileAmount: teamPlanStatus?.standard?.maxUploadFileCount,
+    systemMaxFileAmount: feConfigs?.uploadFileMaxAmount ?? 10
+  });
+  const maxSize = getFileSizeLimitBytes({
+    teamMaxFileSize: teamPlanStatus?.standard?.maxUploadFileSize,
+    systemMaxFileSize: feConfigs?.uploadFileMaxSize ?? 500
+  });
+  const canSelectFileAmount = Math.max(maxSelectFiles - fileList.length, 0);
   const isMaxSelected = canSelectFileAmount <= 0;
 
   const uploadFiles = useCallback(
-    async (files: UserInputFileItemType[]) => {
-      const filterFiles = files.filter((item) => item.status === 0);
+    async (files: FileSelectorRenderItemType[]) => {
+      const filterFiles = markFileSelectorUploading(files);
       if (filterFiles.length === 0) return;
 
-      files.forEach((file) => {
-        file.status = 1;
-        file.process = 0;
-      });
-      handleChangeFiles(files);
+      // 上传完成前只更新组件内部渲染态，不能把尚无 key/url 的文件清洗成空数组回写表单。
+      handleChangeFiles(files, false);
 
       await Promise.allSettled(
         filterFiles.map(async (file) => {
@@ -111,70 +413,90 @@ const FileSelector = ({
 
           try {
             // Get Upload Post Presigned URL
-            const { url, fields } = await getUploadChatFilePresignedUrl({
+            const uploadParams = {
               filename: file.rawFile.name,
-              appId,
-              chatId,
-              outLinkAuthData
-            });
+              contentType: file.rawFile.type || undefined,
+              size: file.rawFile.size,
+              ...chatAuthTarget,
+              chatId
+            };
+            const uploadResult =
+              fileUploadMode === 'draft'
+                ? await getUploadDraftChatFilePresignedUrl({
+                    ...uploadParams,
+                    fileSelectConfig
+                  })
+                : await getUploadChatFilePresignedUrl(uploadParams);
+            const { key, previewUrl } = uploadResult;
 
-            // Upload File to S3
-            const formData = new FormData();
-            Object.entries(fields).forEach(([k, v]) => formData.set(k, v));
-            formData.set('file', file.rawFile);
-            await POST(url, formData, {
-              onUploadProgress: (e) => {
-                if (!e.total) return;
-                const percent = Math.round((e.loaded / e.total) * 100);
+            const uploader = new S3FileUploader({
+              ...uploadResult,
+              file: file.rawFile,
+              onProgress: (loaded, total) => {
+                if (!total) return;
+                const percent = Math.round((loaded / total) * 100);
                 files.forEach((item) => {
                   if (item.id === file.id) {
                     item.process = percent;
                   }
                 });
-                handleChangeFiles(files);
+                handleChangeFiles(files, false);
               },
-              timeout: 5 * 60 * 1000 // 5 minutes
+              t,
+              maxSize
             });
-            const previewUrl = await getPresignedChatFileGetUrl({
-              key: fields.key,
-              appId,
-              outLinkAuthData
-            });
+            await uploader.upload();
 
             // Update file url and key
-            files.forEach((item) => {
-              if (item.id === file.id) {
-                item.url = previewUrl;
-                item.key = fields.key;
-                item.process = 100;
-              }
+            markFileSelectorUploadSuccess({
+              files,
+              id: file.id,
+              key,
+              url: previewUrl
             });
             handleChangeFiles(files);
           } catch (error) {
-            files.forEach((item) => {
-              if (item.id === file.id) {
-                item.error = getErrText(error);
-              }
+            markFileSelectorUploadError({
+              files,
+              id: file.id,
+              error: getErrText(error)
             });
             handleChangeFiles(files);
+          } finally {
+            setFileUploadingCount((state) => Math.max(0, state - 1));
           }
-
-          setFileUploadingCount((state) => state - 1);
         })
       );
     },
-    [handleChangeFiles, setFileUploadingCount, appId, chatId, outLinkAuthData]
+    [
+      handleChangeFiles,
+      setFileUploadingCount,
+      chatAuthTarget,
+      chatId,
+      fileSelectConfig,
+      fileUploadMode,
+      t,
+      maxSize
+    ]
   );
 
   // Selector props
   const [isDragging, setIsDragging] = useState(false);
   const onSelectFile = useCallback(
     async (files: File[]) => {
-      if (files.length > maxSelectFiles) {
-        files = files.slice(0, maxSelectFiles);
+      const remainingFileAmount = Math.max(maxSelectFiles - fileList.length, 0);
+      if (remainingFileAmount === 0) {
         toast({
           status: 'warning',
-          title: t('chat:file_amount_over', { max: maxSelectFiles })
+          title: t('file:some_file_count_exceeds_limit', { maxCount: maxSelectFiles })
+        });
+        return;
+      }
+      if (files.length > remainingFileAmount) {
+        files = files.slice(0, remainingFileAmount);
+        toast({
+          status: 'warning',
+          title: t('file:some_file_count_exceeds_limit', { maxCount: maxSelectFiles })
         });
       }
       const filterFilesByMaxSize = files.filter((file) => file.size <= maxSize);
@@ -188,12 +510,12 @@ const FileSelector = ({
       const loadFiles = await Promise.all(
         filterFilesByMaxSize.map(
           (file) =>
-            new Promise<UserInputFileItemType>((resolve, reject) => {
+            new Promise<FileSelectorRenderItemType>((resolve, reject) => {
               if (file.type.includes('image')) {
                 const reader = new FileReader();
                 reader.readAsDataURL(file);
                 reader.onload = () => {
-                  const item: UserInputFileItemType = {
+                  const item: FileSelectorRenderItemType = {
                     id: getNanoid(6),
                     rawFile: file,
                     type: ChatFileTypeEnum.image,
@@ -219,11 +541,11 @@ const FileSelector = ({
             })
         )
       );
-      const newFiles = [...loadFiles, ...value];
-      handleChangeFiles(newFiles);
+      const newFiles = [...loadFiles, ...fileList];
+      handleChangeFiles(newFiles, false);
       uploadFiles(newFiles);
     },
-    [maxSelectFiles, value, handleChangeFiles, uploadFiles, toast, t, maxSize]
+    [maxSelectFiles, fileList, handleChangeFiles, uploadFiles, toast, t, maxSize]
   );
   const handleDragEnter = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -246,52 +568,57 @@ const FileSelector = ({
     );
     const items = e.dataTransfer.items;
 
-    const firstEntry = items[0].webkitGetAsEntry();
+    const firstEntry = getFileSystemEntry(items[0]);
 
     if (firstEntry?.isDirectory && items.length === 1) {
       {
-        const readFile = (entry: any) => {
-          return new Promise((resolve) => {
+        const selectedFiles: File[] = [];
+        const readFile = (entry: WebkitFileSystemFileEntry) => {
+          return new Promise<void>((resolve) => {
             entry.file((file: File) => {
               if (filterTypeReg.test(file?.name)) {
-                onSelectFile([file]);
+                selectedFiles.push(file);
               }
-              resolve(file);
+              resolve();
             });
           });
         };
-        const traverseFileTree = (dirReader: any) => {
-          return new Promise((resolve) => {
+        const traverseFileTree = (dirReader: WebkitFileSystemDirectoryReader) => {
+          return new Promise<void>((resolve) => {
             let fileNum = 0;
-            dirReader.readEntries(async (entries: any[]) => {
-              for await (const entry of entries) {
-                if (entry.isFile) {
-                  await readFile(entry);
-                  fileNum++;
-                } else if (entry.isDirectory) {
-                  await traverseFileTree(entry.createReader());
+            dirReader.readEntries((entries) => {
+              void (async () => {
+                for await (const entry of entries) {
+                  if (entry.isFile) {
+                    await readFile(entry);
+                    fileNum++;
+                  } else if (entry.isDirectory) {
+                    await traverseFileTree(entry.createReader());
+                  }
                 }
-              }
 
-              // chrome: readEntries will return 100 entries at most
-              if (fileNum === 100) {
-                await traverseFileTree(dirReader);
-              }
-              resolve('');
+                // chrome: readEntries will return 100 entries at most
+                if (fileNum === 100) {
+                  await traverseFileTree(dirReader);
+                }
+                resolve();
+              })();
             });
           });
         };
 
-        for await (const item of items) {
-          const entry = item.webkitGetAsEntry();
+        for await (const item of Array.from(items)) {
+          const entry = getFileSystemEntry(item);
           if (entry) {
             if (entry.isFile) {
               await readFile(entry);
             } else if (entry.isDirectory) {
-              //@ts-ignore
               await traverseFileTree(entry.createReader());
             }
           }
+        }
+        if (selectedFiles.length > 0) {
+          await onSelectFile(selectedFiles);
         }
       }
     } else if (firstEntry?.isFile) {
@@ -329,32 +656,40 @@ const FileSelector = ({
 
       const trimmedUrl = url.trim();
       if (trimmedUrl) {
+        const type = inferFileSelectorType(trimmedUrl);
         handleChangeFiles([
-          ...value,
+          ...fileList,
           {
             id: getNanoid(6),
             status: 1,
-            type: ChatFileTypeEnum.file,
+            type,
             url: trimmedUrl,
             name: trimmedUrl,
-            icon: 'common/link'
+            icon:
+              type === ChatFileTypeEnum.image
+                ? trimmedUrl
+                : getFileSelectorDisplayIcon({
+                    type,
+                    url: trimmedUrl,
+                    name: trimmedUrl
+                  })
           }
         ]);
       }
 
       setUrlInput('');
     },
-    [t, toast, handleChangeFiles, value]
+    [t, toast, handleChangeFiles, fileList]
   );
 
   const handleDeleteFile = useCallback(
     (id: string) => {
-      handleChangeFiles(value.filter((file) => file.id !== id));
+      handleChangeFiles(fileList.filter((file) => file.id !== id));
     },
-    [handleChangeFiles, value]
+    [handleChangeFiles, fileList]
   );
 
-  const isUploading = value.some((file) => !file.url && !file.error);
+  const isUploading = fileList.some(isFileSelectorUploading);
   const disabled = isDisabled || isUploading;
 
   return (
@@ -371,7 +706,7 @@ const FileSelector = ({
             px={3}
             py={[4, 7]}
             border={'1.5px dashed'}
-            borderColor={'myGray.250'}
+            borderColor={isInvalid ? 'red.500' : 'myGray.250'}
             borderRadius={'md'}
             userSelect={'none'}
             {...(isMaxSelected || disabled
@@ -383,9 +718,13 @@ const FileSelector = ({
                   cursor: 'pointer',
                   _hover: {
                     bg: 'primary.50',
-                    borderColor: 'primary.600'
+                    borderColor: isInvalid ? 'red.500' : 'primary.600'
                   },
-                  borderColor: isDragging ? 'primary.600' : 'borderColor.high',
+                  borderColor: isInvalid
+                    ? 'red.500'
+                    : isDragging
+                      ? 'primary.600'
+                      : 'borderColor.high',
                   onDragEnter: handleDragEnter,
                   onDragOver: (e) => e.preventDefault(),
                   onDragLeave: handleDragLeave,
@@ -425,17 +764,25 @@ const FileSelector = ({
               />
               <Input
                 isDisabled={isMaxSelected || disabled}
+                isInvalid={isInvalid}
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 onBlur={(e) => handleAddUrl(e.target.value)}
                 border={'1.5px dashed'}
-                borderColor={'myGray.250'}
+                borderColor={isInvalid ? 'red.500' : 'myGray.250'}
                 borderRadius={'md'}
                 pl={8}
                 py={1.5}
                 placeholder={
                   isMaxSelected ? t('file:reached_max_file_count') : t('chat:click_to_add_url')
                 }
+                _hover={{
+                  borderColor: isInvalid ? 'red.500' : 'myGray.300'
+                }}
+                _focus={{
+                  borderColor: isInvalid ? 'red.500' : 'primary.600',
+                  boxShadow: isInvalid ? '0 0 0 1px var(--chakra-colors-red-500)' : undefined
+                }}
               />
             </InputGroup>
           </Box>
@@ -443,13 +790,13 @@ const FileSelector = ({
       </VStack>
 
       {/* Preview */}
-      {value.length > 0 && (
+      {fileList.length > 0 && (
         <>
           <MyDivider />
           <VStack>
-            {value.map((file) => {
-              const fileIcon =
-                file.type === ChatFileTypeEnum.image ? file.url : getFileIcon(file?.name);
+            {fileList.map((file) => {
+              const fileIcon = getFileSelectorDisplayIcon(file);
+              const isUploadingFile = isFileSelectorUploading(file);
               return (
                 <Box key={file?.id} w={'full'}>
                   <HStack py={1} px={3} bg={'white'} borderRadius={'md'} border={'sm'}>
@@ -467,28 +814,40 @@ const FileSelector = ({
                     </Box>
 
                     {/* Status icon */}
-                    <>
-                      {!!file?.url || !!file?.error || file.process === undefined ? (
-                        <IconButton
-                          size={'xsSquare'}
-                          borderRadius={'xs'}
-                          variant={'transparentDanger'}
-                          aria-label={'Delete file'}
-                          icon={<MyIcon name={'close'} w={'1rem'} />}
-                          onClick={() => handleDeleteFile(file?.id)}
-                          isDisabled={disabled}
-                        />
-                      ) : (
-                        <HStack w={'24px'} h={'24px'} justifyContent={'center'}>
-                          <CircularProgress
-                            value={file.process}
-                            color="primary.600"
-                            bg={'white'}
-                            size={'1.2rem'}
+                    {!isUploadingFile ? (
+                      <HStack spacing={1}>
+                        {/* View button - 查看文件 */}
+                        {file?.url && (
+                          <IconButton
+                            size={'xsSquare'}
+                            variant={'grayGhost'}
+                            aria-label={'View file'}
+                            icon={<MyIcon name={'common/viewLight'} w={'1rem'} />}
+                            onClick={() => window.open(file.url, '_blank')}
                           />
-                        </HStack>
-                      )}
-                    </>
+                        )}
+                        {/* Delete button - 只在未禁用时显示 */}
+                        {!disabled && (
+                          <IconButton
+                            size={'xsSquare'}
+                            borderRadius={'xs'}
+                            variant={'transparentDanger'}
+                            aria-label={'Delete file'}
+                            icon={<MyIcon name={'close'} w={'1rem'} />}
+                            onClick={() => handleDeleteFile(file?.id)}
+                          />
+                        )}
+                      </HStack>
+                    ) : (
+                      <HStack w={'24px'} h={'24px'} justifyContent={'center'}>
+                        <CircularProgress
+                          value={file.process}
+                          color="primary.600"
+                          bg={'white'}
+                          size={'1.2rem'}
+                        />
+                      </HStack>
+                    )}
                   </HStack>
                   {file?.error && (
                     <Box mt={1} fontSize={'xs'} color={'red.600'}>

@@ -1,9 +1,9 @@
 import { redeemCoupon } from '@/web/support/user/team/api';
 import { Button, Input, VStack, Text, ModalBody, Box, ModalFooter } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import React from 'react';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 
 const RedeemCouponModal = ({
   onClose,
@@ -12,11 +12,11 @@ const RedeemCouponModal = ({
   onClose: () => void;
   onSuccess: () => void;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_info');
 
   const [couponCode, setCouponCode] = React.useState('');
 
-  const { runAsync: redeemCouponAsync, loading } = useRequest2(redeemCoupon, {
+  const { runAsync: redeemCouponAsync, loading } = useRequest(redeemCoupon, {
     manual: true,
     onSuccess: () => {
       onSuccess();
@@ -46,7 +46,7 @@ const RedeemCouponModal = ({
         <Button variant={'whiteBase'} onClick={onClose}>
           {t('account_info:cancel')}
         </Button>
-        <Button ml={2} isLoading={loading} onClick={() => redeemCouponAsync(couponCode)}>
+        <Button ml={2} isLoading={loading} onClick={() => redeemCouponAsync(couponCode.trim())}>
           {t('account_info:confirm')}
         </Button>
       </ModalFooter>

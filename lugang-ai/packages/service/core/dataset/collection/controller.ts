@@ -2,7 +2,6 @@ import {
   DatasetCollectionDataProcessModeEnum,
   DatasetCollectionTypeEnum
 } from '@fastgpt/global/core/dataset/constants';
-import type { CreateDatasetCollectionParams } from '@fastgpt/global/core/dataset/api.d';
 import { MongoDatasetCollection } from './schema';
 import type {
   DatasetCollectionSchemaType,
@@ -23,9 +22,10 @@ import { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants'
 import { getLLMModel, getEmbeddingModel, getVlmModel } from '../../ai/model';
 import { pushDataListToTrainingQueue, pushDatasetToParseQueue } from '../training/controller';
 import { hashStr } from '@fastgpt/global/common/string/tools';
-import { MongoDatasetDataText } from '../data/dataTextSchema';
+import { getFullTextStore } from '../data/textStore';
 import { retryFn } from '@fastgpt/global/common/system/utils';
 import { getTrainingModeByCollection } from './utils';
+import { getDatasetImageIndexCapability } from '../utils';
 import {
   computedCollectionChunkSettings,
   getLLMMaxChunkSize
@@ -33,6 +33,10 @@ import {
 import { DatasetDataIndexTypeEnum } from '@fastgpt/global/core/dataset/data/constants';
 import { getS3DatasetSource } from '../../../common/s3/sources/dataset';
 import { removeS3TTL, isS3ObjectKey } from '../../../common/s3/utils';
+import type {
+  CreateCollectionWithResultResponseType,
+  ApiCreateDatasetCollectionParams
+} from '@fastgpt/global/openapi/core/dataset/collection/createApi';
 
 export const createCollectionAndInsertData = async ({
   dataset,
@@ -52,7 +56,7 @@ export const createCollectionAndInsertData = async ({
 
   billId?: string;
   session?: ClientSession;
-}) => {
+}): Promise<CreateCollectionWithResultResponseType> => {
   // Adapter 4.9.0
   if (createCollectionParams.trainingType === DatasetCollectionDataProcessModeEnum.auto) {
     createCollectionParams.trainingType = DatasetCollectionDataProcessModeEnum.chunk;
@@ -74,7 +78,11 @@ export const createCollectionAndInsertData = async ({
   const trainingMode = getTrainingModeByCollection({
     trainingType: trainingType,
     autoIndexes: formatCreateCollectionParams.autoIndexes,
-    imageIndex: formatCreateCollectionParams.imageIndex
+    imageIndex: formatCreateCollectionParams.imageIndex,
+    supportImageIndex: getDatasetImageIndexCapability({
+      vectorModel: dataset.vectorModel,
+      vlmModel: dataset.vlmModel
+    }).supportImageIndex
   });
 
   if (
@@ -166,7 +174,7 @@ export const createCollectionAndInsertData = async ({
     insertLen: predictDataLimitLength(trainingMode, chunks)
   });
 
-  const fn = async (session: ClientSession) => {
+  const fn = async (session: ClientSession): Promise<CreateCollectionWithResultResponseType> => {
     // 3. Create collection
     const { _id: collectionId } = await createOneCollection({
       ...formatCreateCollectionParams,
@@ -236,7 +244,9 @@ export const createCollectionAndInsertData = async ({
 
     return {
       collectionId: String(collectionId),
-      insertResults
+      results: {
+        insertLen: insertResults.insertLen
+      }
     };
   };
 
@@ -246,9 +256,21 @@ export const createCollectionAndInsertData = async ({
   return mongoSessionRun(fn);
 };
 
-export type CreateOneCollectionParams = CreateDatasetCollectionParams & {
+export type CreateOneCollectionParams = ApiCreateDatasetCollectionParams & {
   teamId: string;
   tmbId: string;
+  name: string;
+  type: DatasetCollectionTypeEnum;
+  fileId?: string;
+  rawLink?: string;
+  externalFileId?: string;
+  externalFileUrl?: string;
+  apiFileId?: string;
+  apiFileParentId?: string;
+  rawTextLength?: number;
+  hashRawText?: string;
+  createTime?: Date;
+  updateTime?: Date;
   session?: ClientSession;
 };
 export async function createOneCollection({ session, ...props }: CreateOneCollectionParams) {
@@ -384,12 +406,8 @@ export async function delCollection({
         datasetId: { $in: datasetIds },
         collectionId: { $in: collectionIds }
       }),
-      // Delete dataset_data_texts
-      MongoDatasetDataText.deleteMany({
-        teamId,
-        datasetId: { $in: datasetIds },
-        collectionId: { $in: collectionIds }
-      }),
+      // Delete dataset_data_texts(store 分发:mongo 真实删除,milvus 空操作——全文随向量删除)
+      getFullTextStore().deleteByCollectionIds({ teamId, datasetIds, collectionIds }, session),
       // Delete dataset_datas
       MongoDatasetData.deleteMany({
         teamId,

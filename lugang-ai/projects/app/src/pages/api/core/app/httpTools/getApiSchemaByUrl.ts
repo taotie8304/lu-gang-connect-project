@@ -1,26 +1,44 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
-import { loadOpenAPISchemaFromUrl } from '@fastgpt/global/common/string/swagger';
+import {
+  bundleOpenAPISchema,
+  parseOpenAPISchemaString
+} from '@fastgpt/global/common/string/swagger';
 import { NextAPI } from '@/service/middleware/entry';
-import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
-import { isInternalAddress } from '@fastgpt/service/common/system/utils';
+import type { ApiRequestProps } from '@fastgpt/next/type';
+import { axios } from '@fastgpt/service/common/api/axios';
+import { checkUrlSafety } from '@fastgpt/service/common/system/utils';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  GetApiSchemaByUrlBodySchema,
+  GetApiSchemaByUrlResponseSchema,
+  type GetApiSchemaByUrlBodyType,
+  type GetApiSchemaByUrlResponseType
+} from '@fastgpt/global/openapi/core/app/httpTools/api';
 
-async function handler(req: NextApiRequest, res: NextApiResponse<any>) {
-  const apiURL = req.body.url as string;
-
-  if (!apiURL) {
-    return Promise.reject(CommonErrEnum.missingParams);
-  }
+export async function handler(
+  req: ApiRequestProps<GetApiSchemaByUrlBodyType>
+): Promise<GetApiSchemaByUrlResponseType> {
+  const {
+    body: { url }
+  } = parseApiInput({
+    req,
+    bodySchema: GetApiSchemaByUrlBodySchema
+  });
 
   await authCert({ req, authToken: true });
 
-  const isInternal = isInternalAddress(apiURL);
+  await checkUrlSafety(url, 'OpenAPI Schema URL');
 
-  if (isInternal) {
-    return Promise.reject('Invalid url');
-  }
+  const { data } = await axios.get<string>(url, {
+    responseType: 'text',
+    maxRedirects: 0,
+    timeout: 30000,
+    transformResponse: (value) => value
+  });
 
-  return await loadOpenAPISchemaFromUrl(apiURL);
+  return GetApiSchemaByUrlResponseSchema.parse(
+    await bundleOpenAPISchema(parseOpenAPISchemaString(data))
+  );
 }
 
 export default NextAPI(handler);

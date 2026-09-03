@@ -14,7 +14,7 @@ import {
   useDisclosure,
   VStack
 } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import {
   delRemoveMember,
@@ -28,38 +28,36 @@ import { TeamContext } from './context';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import dynamic from 'next/dynamic';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { delLeaveTeam } from '@/web/support/user/team/api';
-import { GetSearchUserGroupOrg, postSyncMembers } from '@/web/support/user/api';
+import { postSyncMembers } from '@/web/support/user/api';
 import {
   TeamMemberRoleEnum,
   TeamMemberStatusEnum
 } from '@fastgpt/global/support/user/team/constant';
-import format from 'date-fns/format';
+import { format } from 'date-fns/format';
 import OrgTags from '@/components/support/user/team/OrgTags';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
-import { useCallback, useEffect, useState } from 'react';
-import { downloadFetch } from '@/web/common/system/utils';
+import { useCallback, useState, useMemo } from 'react';
+import { downloadFetch, getIsMemberSyncMode } from '@/web/common/system/utils';
 import { type TeamMemberItemType } from '@fastgpt/global/support/user/team/type';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
-import { type PaginationResponse } from '@fastgpt/web/common/fetch/type';
-import _ from 'lodash';
+import { type PaginationResponse } from '@fastgpt/global/openapi/api';
 import MySelect from '@fastgpt/web/components/common/MySelect';
 import { useEditTitle } from '@/web/common/hooks/useEditTitle';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import MyIconButton from '@fastgpt/web/components/common/Icon/button';
 
 const InviteModal = dynamic(() => import('./Invite/InviteModal'));
-const TeamTagModal = dynamic(() => import('@/components/support/user/team/TeamTagModal'));
-
+const TransferOwnershipModal = dynamic(() => import('./TransferOwnershipModal'));
 function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['account_team', 'user']);
   const { toast } = useToast();
-  const { userInfo } = useUserStore();
+  const { userInfo, initUserInfo } = useUserStore();
   const { feConfigs } = useSystemStore();
-  const isSyncMode = feConfigs?.register_method?.includes('sync');
+  const isSyncMode = getIsMemberSyncMode(feConfigs);
 
   const { myTeams, onSwitchTeam } = useContextSelector(TeamContext, (v) => v);
 
@@ -88,10 +86,14 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
   ];
   const [status, setStatus] = useState<string>();
 
+  const isWecomTeam = useMemo(() => {
+    return !!userInfo?.team?.isWecomTeam;
+  }, [userInfo?.team?.isWecomTeam]);
+
   const {
-    isOpen: isOpenTeamTagsAsync,
-    onOpen: onOpenTeamTagsAsync,
-    onClose: onCloseTeamTagsAsync
+    isOpen: isOpenTransferModal,
+    onOpen: onOpenTransferModal,
+    onClose: onCloseTransferModal
   } = useDisclosure();
 
   // member action
@@ -123,13 +125,13 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
 
   const { isOpen: isOpenInvite, onOpen: onOpenInvite, onClose: onCloseInvite } = useDisclosure();
 
-  const { runAsync: onSyncMember, loading: isSyncing } = useRequest2(postSyncMembers, {
+  const { runAsync: onSyncMember, loading: isSyncing } = useRequest(postSyncMembers, {
     onSuccess: onRefreshMembers,
     successToast: t('account_team:sync_member_success'),
     errorToast: t('account_team:sync_member_failed')
   });
 
-  const { runAsync: onLeaveTeam } = useRequest2(delLeaveTeam, {
+  const { runAsync: onLeaveTeam } = useRequest(delLeaveTeam, {
     onSuccess() {
       const defaultTeam = myTeams[0];
       onSwitchTeam(defaultTeam.teamId);
@@ -137,11 +139,11 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
     errorToast: t('account_team:user_team_leave_team_failed')
   });
 
-  const { runAsync: onRemoveMember } = useRequest2(delRemoveMember, {
+  const { runAsync: onRemoveMember } = useRequest(delRemoveMember, {
     onSuccess: onRefreshMembers
   });
 
-  const { runAsync: onRestore } = useRequest2(postRestoreMember, {
+  const { runAsync: onRestore } = useRequest(postRestoreMember, {
     onSuccess: onRefreshMembers,
     successToast: t('common:Success'),
     errorToast: t('common:user.team.invite.Reject')
@@ -162,7 +164,7 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
           onRefreshMembers();
         });
       },
-      onError: (err) => {
+      onError: (_err) => {
         toast({
           title: '',
           status: 'error'
@@ -173,38 +175,44 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
 
   return (
     <>
-      <Flex justify={'space-between'} align={'center'} pb={'1rem'}>
-        {Tabs}
-        <HStack alignItems={'center'}>
-          <Box>
-            <MySelect list={statusOptions} value={status} onChange={(v) => setStatus(v)} />
-          </Box>
-          <Box width={'200px'}>
-            <SearchInput
-              placeholder={t('account_team:search_member')}
-              onChange={(e) => setSearchKey(e.target.value)}
-            />
-          </Box>
-          {userInfo?.team.permission.hasManagePer && feConfigs?.show_team_chat && (
-            <Button
-              variant={'whitePrimary'}
-              size="md"
-              borderRadius={'md'}
-              ml={3}
-              leftIcon={<MyIcon name="core/dataset/tag" w={'16px'} />}
-              onClick={() => {
-                onOpenTeamTagsAsync();
-              }}
-            >
-              {t('account_team:label_sync')}
-            </Button>
-          )}
+      <Flex
+        px={6}
+        justify={'space-between'}
+        align={['stretch', 'center']}
+        flexDirection={['column', 'row']}
+        pb={'1rem'}
+      >
+        <Box w={['100%', 'auto']}>{Tabs}</Box>
+        <Flex
+          mt={[3, 0]}
+          w={['100%', 'auto']}
+          flexDirection={['column', 'row']}
+          alignItems={['stretch', 'center']}
+          gap={2}
+        >
+          <HStack w={['100%', 'auto']} gap={2}>
+            <Box flexShrink={0}>
+              <MySelect
+                bg={'white'}
+                list={statusOptions}
+                value={status}
+                onChange={(v) => setStatus(v)}
+              />
+            </Box>
+            <Box flex={['1 0 0', 'initial']} w={['auto', '200px']}>
+              <SearchInput
+                bg={'white'}
+                placeholder={t('account_team:search_member')}
+                onChange={(e) => setSearchKey(e.target.value)}
+              />
+            </Box>
+          </HStack>
           {userInfo?.team.permission.hasManagePer && isSyncMode && (
             <Button
+              w={['100%', 'auto']}
               variant={'primary'}
               size="md"
               borderRadius={'md'}
-              ml={3}
               leftIcon={<MyIcon name="common/retryLight" w={'16px'} color={'white'} />}
               onClick={() => {
                 onSyncMember();
@@ -213,24 +221,35 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
               {t('account_team:sync_immediately')}
             </Button>
           )}
-          {userInfo?.team.permission.hasManagePer && !isSyncMode && (
+          {userInfo?.team.permission.hasManagePer && !isSyncMode && !isWecomTeam && (
             <Button
+              w={['100%', 'auto']}
               variant={'primary'}
               size="md"
               borderRadius={'md'}
-              ml={3}
               leftIcon={<MyIcon name="common/inviteLight" w={'16px'} color={'white'} />}
               onClick={onOpenInvite}
             >
               {t('account_team:user_team_invite_member')}
             </Button>
           )}
-          {userInfo?.team.permission.isOwner && isSyncMode && (
+          {userInfo?.team.permission.isOwner && !isSyncMode && isWecomTeam && (
             <Button
+              w={['100%', 'auto']}
               variant={'whitePrimary'}
               size="md"
               borderRadius={'md'}
-              ml={3}
+              onClick={onOpenTransferModal}
+            >
+              {t('account_team:transfer_team_ownership')}
+            </Button>
+          )}
+          {userInfo?.team.permission.isOwner && isSyncMode && (
+            <Button
+              w={['100%', 'auto']}
+              variant={'whitePrimary'}
+              size="md"
+              borderRadius={'md'}
               leftIcon={<MyIcon name="export" w={'16px'} />}
               onClick={() => {
                 downloadFetch({
@@ -242,29 +261,31 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
               {t('account_team:export_members')}
             </Button>
           )}
-          {!userInfo?.team.permission.isOwner && !isSyncMode && (
-            <PopoverConfirm
-              Trigger={
-                <Button
-                  variant={'whitePrimary'}
-                  size="md"
-                  borderRadius={'md'}
-                  ml={3}
-                  leftIcon={<MyIcon name={'support/account/loginoutLight'} w={'14px'} />}
-                >
-                  {t('account_team:user_team_leave_team')}
-                </Button>
-              }
-              type="delete"
-              content={t('account_team:confirm_leave_team')}
-              onConfirm={() => onLeaveTeam()}
-            />
+          {!userInfo?.team.permission.isOwner && !isSyncMode && !isWecomTeam && (
+            <Box w={['100%', 'auto']}>
+              <PopoverConfirm
+                Trigger={
+                  <Button
+                    w={'100%'}
+                    variant={'whitePrimary'}
+                    size="md"
+                    borderRadius={'md'}
+                    leftIcon={<MyIcon name={'support/account/loginoutLight'} w={'14px'} />}
+                  >
+                    {t('account_team:user_team_leave_team')}
+                  </Button>
+                }
+                type="delete"
+                content={t('account_team:confirm_leave_team')}
+                onConfirm={() => onLeaveTeam()}
+              />
+            </Box>
           )}
-        </HStack>
+        </Flex>
       </Flex>
 
-      <MyBox isLoading={isLoading} flex={'1 0 0'} overflow={'auto'}>
-        <MemberScrollData>
+      <MyBox isLoading={isLoading} flex={['0 0 auto', '1 0 0']} h={['auto', 0]} minH={0}>
+        <MemberScrollData px={6} h={['auto', '100%']} overflowY={['visible', 'auto']}>
           <TableContainer overflow={'unset'} fontSize={'sm'}>
             <Table overflow={'unset'}>
               <Thead>
@@ -375,13 +396,22 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
                 ))}
               </Tbody>
             </Table>
-            <EditMemberNameModal />
+            <EditMemberNameModal size="sm" />
           </TableContainer>
         </MemberScrollData>
       </MyBox>
 
       {isOpenInvite && userInfo?.team?.teamId && <InviteModal onClose={onCloseInvite} />}
-      {isOpenTeamTagsAsync && <TeamTagModal onClose={onCloseTeamTagsAsync} />}
+      {isOpenTransferModal && (
+        <TransferOwnershipModal
+          onClose={onCloseTransferModal}
+          onSuccess={() => {
+            onCloseTransferModal();
+            initUserInfo();
+            refetchMemberList();
+          }}
+        />
+      )}
     </>
   );
 }

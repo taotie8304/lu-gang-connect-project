@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import type { RenderInputProps } from '../../type';
 import { Box, Flex, HStack, Input } from '@chakra-ui/react';
-import { useTranslation } from 'next-i18next';
+import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import {
   type FlowNodeInputItemType,
@@ -14,7 +14,7 @@ import MyIconButton from '@fastgpt/web/components/common/Icon/button';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import {
   FlowNodeInputTypeEnum,
-  FlowValueTypeMap
+  getFlowValueTypeMeta
 } from '@fastgpt/global/core/workflow/node/constant';
 import { WorkflowIOValueTypeEnum } from '@fastgpt/global/core/workflow/constants';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
@@ -24,6 +24,7 @@ import { WorkflowActionsContext } from '@/pageComponents/app/detail/WorkflowComp
 
 const defaultInput: FlowNodeInputItemType = {
   renderTypeList: [FlowNodeInputTypeEnum.reference],
+  selectedType: FlowNodeInputTypeEnum.reference,
   valueType: WorkflowIOValueTypeEnum.any,
   canEdit: true,
   key: '',
@@ -31,18 +32,20 @@ const defaultInput: FlowNodeInputItemType = {
 };
 
 const DynamicInputs = ({ item, inputs = [], nodeId }: RenderInputProps) => {
-  const { t } = useTranslation();
+  const { t } = useSafeTranslation();
 
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
 
   const dynamicInputs = useMemoEnhance(() => inputs.filter((item) => item.canEdit), [inputs]);
   const existsKeys = useMemoEnhance(() => inputs.map((item) => item.key), [inputs]);
 
+  const hideBottomDivider = item.customInputConfig?.hideBottomDivider;
+
   return (
-    <Box borderBottom={'base'} pb={3}>
+    <Box borderBottom={hideBottomDivider ? undefined : 'base'} pb={hideBottomDivider ? 0 : 3}>
       <HStack className="nodrag" cursor={'default'} position={'relative'}>
         <HStack spacing={1} position={'relative'} fontWeight={'medium'} color={'myGray.600'}>
-          <Box>{item.label || t('workflow:custom_input')}</Box>
+          <Box>{item.label ? t(item.label as any) : t('workflow:custom_input')}</Box>
           {item.description && <QuestionTip label={t(item.description as any)} />}
 
           {item.deprecated && (
@@ -123,7 +126,7 @@ const Reference = ({
   inputChildren: FlowNodeInputItemType;
   hasDynamicInputs: boolean;
 }) => {
-  const { t } = useTranslation();
+  const { t } = useSafeTranslation();
   const { toast } = useToast();
   const onChangeNode = useContextSelector(WorkflowActionsContext, (v) => v.onChangeNode);
 
@@ -134,7 +137,9 @@ const Reference = ({
 
   const { referenceList } = useReference({
     nodeId,
-    valueType: WorkflowIOValueTypeEnum.any
+    valueType: WorkflowIOValueTypeEnum.any,
+    // Container nodes (loopRun) need to reference outputs from their sub-workflow.
+    includeChildren: true
   });
 
   const onlBlurLabel = useCallback(
@@ -237,7 +242,7 @@ const Reference = ({
             borderLeftColor: 'transparent',
             borderRightColor: 'transparent',
             isDisabled: isEmptyItem,
-            minW: '240px',
+            w: '240px',
             _hover: {
               borderColor: 'blue.300'
             }
@@ -255,7 +260,7 @@ const Reference = ({
           fontSize={'sm'}
           fontWeight={'medium'}
         >
-          {t(FlowValueTypeMap[inputChildren.valueType || WorkflowIOValueTypeEnum.any].label)}
+          {t(getFlowValueTypeMeta(inputChildren.valueType).label)}
         </Flex>
       </Flex>
       {!isEmptyItem && (

@@ -1,6 +1,6 @@
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { type ChannelInfoType } from './type';
-import { i18nT } from '@fastgpt/web/i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 export enum ChannelStatusEnum {
   ChannelStatusUnknown = 0,
@@ -10,32 +10,28 @@ export enum ChannelStatusEnum {
 }
 export const ChannelStautsMap = {
   [ChannelStatusEnum.ChannelStatusUnknown]: {
-    label: i18nT('account_model:channel_status_unknown'),
+    label: i18nT('config_model:channel_status_unknown'),
     colorSchema: 'gray'
   },
   [ChannelStatusEnum.ChannelStatusEnabled]: {
-    label: i18nT('account_model:channel_status_enabled'),
+    label: i18nT('config_model:channel_status_enabled'),
     colorSchema: 'green'
   },
   [ChannelStatusEnum.ChannelStatusDisabled]: {
-    label: i18nT('account_model:channel_status_disabled'),
+    label: i18nT('config_model:channel_status_disabled'),
     colorSchema: 'red'
   },
   [ChannelStatusEnum.ChannelStatusAutoDisabled]: {
-    label: i18nT('account_model:channel_status_auto_disabled'),
+    label: i18nT('config_model:channel_status_auto_disabled'),
     colorSchema: 'gray'
   }
 };
 
-const firstProviderId = useSystemStore.getState().getModelProviders('en')[0]?.id;
-const firstChannelType =
-  Object.entries(useSystemStore.getState().aiproxyIdMap).find(
-    ([id, item]) => item.provider === firstProviderId
-  )?.[0] || 1;
+const aiproxyChannels = useSystemStore.getState().aiproxyChannels;
 export const defaultChannel: ChannelInfoType = {
   id: 0,
   status: ChannelStatusEnum.ChannelStatusEnabled,
-  type: Number(firstChannelType),
+  type: aiproxyChannels[0]?.channelId || 1,
   created_at: 0,
   models: [],
   model_mapping: {},

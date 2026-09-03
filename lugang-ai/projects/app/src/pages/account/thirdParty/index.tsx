@@ -1,7 +1,7 @@
 import AccountContainer from '@/pageComponents/account/AccountContainer';
 import { Box, Flex, Grid, Progress, useDisclosure } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { TeamMemberRoleEnum } from '@fastgpt/global/support/user/team/constant';
@@ -9,13 +9,16 @@ import dynamic from 'next/dynamic';
 import { useState, useMemo } from 'react';
 import WorkflowVariableModal from '@/pageComponents/account/thirdParty/WorkflowVariableModal';
 import { useToast } from '@fastgpt/web/hooks/useToast';
-import { serviceSideProps } from '@/web/common/i18n/utils';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { GET } from '@/web/common/api/request';
 import type { checkUsageResponse } from '@/pages/api/support/user/team/thirtdParty/checkUsage';
 import MyBox from '@fastgpt/web/components/common/MyBox';
+import {
+  accountContentScrollStyles,
+  accountPageRootStyles,
+  accountTitleTextStyles
+} from '@/pageComponents/account/styles';
 
-const LafAccountModal = dynamic(() => import('@/components/support/laf/LafAccountModal'));
 const OpenAIAccountModal = dynamic(
   () => import('@/pageComponents/account/thirdParty/OpenAIAccountModal')
 );
@@ -36,10 +39,9 @@ export type ThirdPartyAccountType = {
 };
 
 const ThirdParty = () => {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_thirdParty');
   const { feConfigs } = useSystemStore();
   const { toast } = useToast();
-  const { isOpen: isOpenLaf, onClose: onCloseLaf, onOpen: onOpenLaf } = useDisclosure();
   const { isOpen: isOpenOpenai, onClose: onCloseOpenai, onOpen: onOpenOpenai } = useDisclosure();
 
   const [workflowVariable, setWorkflowVariable] = useState<ThirdPartyAccountType>();
@@ -51,14 +53,6 @@ const ThirdParty = () => {
   const defaultAccountList: ThirdPartyAccountType[] = useMemo(
     () => [
       {
-        name: t('account_thirdParty:laf_account'),
-        icon: 'support/account/laf',
-        intro: t('common:support.user.Laf account intro'),
-        onClick: onOpenLaf,
-        isOpen: !!feConfigs?.lafEnv,
-        active: !!userInfo?.team?.lafAccount?.appid
-      },
-      {
         name: t('account_thirdParty:openai_account_configuration'),
         iconColor: 'black',
         icon: 'common/openai',
@@ -68,18 +62,10 @@ const ThirdParty = () => {
         active: userInfo?.team?.openaiAccount?.key !== undefined
       }
     ],
-    [
-      feConfigs?.lafEnv,
-      feConfigs?.show_openai_account,
-      onOpenLaf,
-      onOpenOpenai,
-      t,
-      userInfo?.team?.lafAccount?.appid,
-      userInfo?.team?.openaiAccount?.key
-    ]
+    [feConfigs?.show_openai_account, onOpenOpenai, t, userInfo?.team?.openaiAccount?.key]
   );
 
-  const { data: workflowVariables = [], loading } = useRequest2(
+  const { data: workflowVariables = [], loading } = useRequest(
     async (): Promise<ThirdPartyAccountType[]> => {
       return Promise.all(
         (feConfigs?.externalProviderWorkflowVariables || []).map(async (item) => {
@@ -88,7 +74,7 @@ const ThirdParty = () => {
               return await GET<checkUsageResponse>('/support/user/team/thirtdParty/checkUsage', {
                 key: item.key
               });
-            } catch (err) {
+            } catch {
               return;
             }
           })();
@@ -127,16 +113,24 @@ const ThirdParty = () => {
 
   return (
     <AccountContainer>
-      <MyBox isLoading={loading} px={[4, 8]} py={[4, 6]} bg={'white'} h={'full'}>
-        <Flex>
-          <MyIcon name={'common/thirdParty'} w={'24px'} color={'myGray.900'} />
-          <Box ml={3}>
-            <Box fontSize={'md'} color={'myGray.900'}>
-              {t('account_thirdParty:third_party_account')}
-            </Box>
-            <Box fontSize={'mini'} color={'myGray.500'}>
-              {t('account_thirdParty:third_party_account_desc')}
-            </Box>
+      <MyBox
+        isLoading={loading}
+        bg={'white'}
+        {...accountPageRootStyles}
+        display={'flex'}
+        flexDirection={'column'}
+      >
+        <Flex
+          display={['none', 'flex']}
+          h={'64px'}
+          flexShrink={0}
+          px={[4, 6]}
+          alignItems={'center'}
+          borderBottom={'1px solid'}
+          borderColor={'myGray.200'}
+        >
+          <Box as={'h1'} {...accountTitleTextStyles}>
+            {t('account_thirdParty:third_party_account')}
           </Box>
         </Flex>
         <Grid
@@ -149,8 +143,9 @@ const ThirdParty = () => {
           ]}
           gridGap={4}
           alignItems={'stretch'}
-          mt={5}
-          pb={5}
+          alignContent={'flex-start'}
+          {...accountContentScrollStyles}
+          p={[4, 6]}
         >
           {accountList
             .filter((item) => item.isOpen)
@@ -238,9 +233,6 @@ const ThirdParty = () => {
         </Grid>
       </MyBox>
 
-      {isOpenLaf && userInfo && (
-        <LafAccountModal defaultData={userInfo?.team?.lafAccount} onClose={onCloseLaf} />
-      )}
       {isOpenOpenai && userInfo && (
         <OpenAIAccountModal defaultData={userInfo?.team?.openaiAccount} onClose={onCloseOpenai} />
       )}
@@ -253,13 +245,5 @@ const ThirdParty = () => {
     </AccountContainer>
   );
 };
-
-export async function getServerSideProps(content: any) {
-  return {
-    props: {
-      ...(await serviceSideProps(content, ['account', 'account_thirdParty']))
-    }
-  };
-}
 
 export default ThirdParty;

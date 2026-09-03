@@ -1,6 +1,7 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../../common/i18n/utils';
 import { WorkflowIOValueTypeEnum } from '../constants';
-export enum FlowNodeInputTypeEnum { // render ui
+export enum FlowNodeInputTypeEnum {
+  // render ui
   reference = 'reference', // reference to other node output
   input = 'input', // one line input
   textarea = 'textarea',
@@ -28,10 +29,15 @@ export enum FlowNodeInputTypeEnum { // render ui
   hidden = 'hidden',
   custom = 'custom', // 自定义渲染
 
+  selectSkill = 'selectSkill',
+  selectTool = 'selectTool',
+
   fileSelect = 'fileSelect',
   timePointSelect = 'timePointSelect',
   timeRangeSelect = 'timeRangeSelect',
-  password = 'password'
+  password = 'password',
+
+  agentGenerated = 'agentGenerated' // for compatibility for >= v4.16.0
 }
 export const FlowNodeInputMap: Record<
   FlowNodeInputTypeEnum,
@@ -87,6 +93,12 @@ export const FlowNodeInputMap: Record<
   [FlowNodeInputTypeEnum.custom]: {
     icon: 'core/workflow/inputType/custom'
   },
+  [FlowNodeInputTypeEnum.selectSkill]: {
+    icon: 'core/workflow/inputType/selectDataset'
+  },
+  [FlowNodeInputTypeEnum.selectTool]: {
+    icon: 'core/workflow/inputType/selectDataset'
+  },
   [FlowNodeInputTypeEnum.input]: {
     icon: 'core/workflow/inputType/input'
   },
@@ -104,6 +116,9 @@ export const FlowNodeInputMap: Record<
   },
   [FlowNodeInputTypeEnum.password]: {
     icon: 'core/workflow/inputType/password'
+  },
+  [FlowNodeInputTypeEnum.agentGenerated]: {
+    icon: 'core/workflow/inputType/agentGenerated'
   }
 };
 
@@ -117,8 +132,6 @@ export enum FlowNodeOutputTypeEnum {
 
 export enum FlowNodeTypeEnum {
   emptyNode = 'emptyNode',
-  systemConfig = 'userGuide',
-  pluginConfig = 'pluginConfig',
   globalVariable = 'globalVariable',
   comment = 'comment',
 
@@ -135,10 +148,10 @@ export enum FlowNodeTypeEnum {
   pluginInput = 'pluginInput',
   pluginOutput = 'pluginOutput',
   queryExtension = 'cfr',
-  agent = 'tools',
+  agent = 'agent',
+  toolCall = 'tools',
   stopTool = 'stopTool',
   toolParams = 'toolParams',
-  lafModule = 'lafModule',
   ifElseNode = 'ifElseNode',
   variableUpdate = 'variableUpdate',
   code = 'code',
@@ -147,8 +160,12 @@ export enum FlowNodeTypeEnum {
   readFiles = 'readFiles',
   userSelect = 'userSelect',
   loop = 'loop',
-  loopStart = 'loopStart',
-  loopEnd = 'loopEnd',
+  nestedStart = 'loopStart',
+  nestedEnd = 'loopEnd',
+  parallelRun = 'parallelRun',
+  loopRun = 'loopRun',
+  loopRunStart = 'loopRunStart',
+  loopRunBreak = 'loopRunBreak',
   formInput = 'formInput',
   tool = 'tool',
   toolSet = 'toolSet',
@@ -231,6 +248,16 @@ export const FlowValueTypeMap: Record<
   }
 };
 
+export const getFlowValueTypeMeta = (
+  valueType?: WorkflowIOValueTypeEnum | string | null
+): (typeof FlowValueTypeMap)[WorkflowIOValueTypeEnum] => {
+  if (valueType == null || valueType === '') {
+    return FlowValueTypeMap[WorkflowIOValueTypeEnum.any];
+  }
+  const meta = FlowValueTypeMap[valueType as WorkflowIOValueTypeEnum];
+  return meta ?? FlowValueTypeMap[WorkflowIOValueTypeEnum.any];
+};
+
 export const EDGE_TYPE = 'default';
 
 export const chatHistoryValueDesc = `{
@@ -246,9 +273,11 @@ export const datasetQuoteValueDesc = `{
   q: string;
   a: string
 }[]`;
-export const datasetSelectValueDesc = `{
-  datasetId: string;
-}[]`;
+export const datasetSelectValueDesc = `[
+  {
+    "datasetId": "6693a4a6b69b7a9b0e37d9b0"
+  }
+]`;
 
 export const AppNodeFlowNodeTypeMap: Record<any, boolean> = {
   [FlowNodeTypeEnum.pluginModule]: true,
@@ -256,3 +285,105 @@ export const AppNodeFlowNodeTypeMap: Record<any, boolean> = {
   [FlowNodeTypeEnum.tool]: true,
   [FlowNodeTypeEnum.toolSet]: true
 };
+
+export const NodeGradients = {
+  pink: 'linear-gradient(180deg, rgba(255, 161, 206, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  blue: 'linear-gradient(180deg, rgba(104, 192, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  blueLight: 'linear-gradient(180deg, rgba(85, 184, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  blueDark: 'linear-gradient(180deg, rgba(125, 153, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  orange: 'linear-gradient(180deg, rgba(255, 199, 90, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  purple: 'linear-gradient(180deg, rgba(235, 120, 254, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  teal: 'linear-gradient(180deg, rgba(97, 210, 196, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  green: 'linear-gradient(180deg, rgba(62, 217, 170, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  greenLight:
+    'linear-gradient(180deg, rgba(94, 209, 128, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  indigo: 'linear-gradient(180deg, rgba(120, 147, 254, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  coral: 'linear-gradient(180deg, rgba(252, 162, 143, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  lime: 'linear-gradient(0deg, rgba(255, 255, 255, 0.00) 0%, rgba(92, 216, 201, 0.25) 100%)',
+  violet: 'linear-gradient(180deg, rgba(155, 142, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  violetDeep:
+    'linear-gradient(180deg, rgba(212, 117, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  yellowGreen:
+    'linear-gradient(180deg, rgba(166, 218, 114, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  lafTeal: 'linear-gradient(180deg, rgba(72, 213, 186, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  skyBlue: 'linear-gradient(180deg, rgba(137, 229, 255, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  salmon: 'linear-gradient(180deg, rgba(255, 160, 160, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  gray: 'linear-gradient(180deg, rgba(136, 136, 136, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  emerald: 'linear-gradient(180deg, rgba(20, 168, 70, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)',
+  loopRun: 'linear-gradient(180deg, rgba(110, 231, 183, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%)'
+};
+export const NodeBorderColors = {
+  pink: 'rgba(255, 161, 206, 0.6)',
+  blue: 'rgba(104, 192, 255, 0.6)',
+  blueLight: 'rgba(85, 184, 255, 0.6)',
+  blueDark: 'rgba(125, 153, 255, 0.6)',
+  orange: 'rgba(255, 199, 90, 0.6)',
+  purple: 'rgba(235, 120, 254, 0.6)',
+  teal: 'rgba(97, 210, 196, 0.6)',
+  green: 'rgba(62, 217, 170, 0.6)',
+  greenLight: 'rgba(94, 209, 128, 0.6)',
+  indigo: 'rgba(120, 147, 254, 0.6)',
+  coral: 'rgba(252, 162, 143, 0.6)',
+  lime: 'rgba(92, 216, 201, 0.6)',
+  violet: 'rgba(155, 142, 255, 0.6)',
+  violetDeep: 'rgba(212, 117, 255, 0.6)',
+  yellowGreen: 'rgba(166, 218, 114, 0.6)',
+  lafTeal: 'rgba(72, 213, 186, 0.6)',
+  skyBlue: 'rgba(137, 229, 255, 0.6)',
+  salmon: 'rgba(255, 160, 160, 0.6)',
+  gray: 'rgba(136, 136, 136, 0.6)',
+  emerald: 'rgba(20, 168, 70, 0.6)',
+  loopRun: 'rgba(110, 231, 183, 0.6)'
+};
+export const NodeColorSchemaEnum = [
+  'pink',
+  'blue',
+  'blueLight',
+  'blueDark',
+  'orange',
+  'purple',
+  'teal',
+  'green',
+  'greenLight',
+  'indigo',
+  'coral',
+  'lime',
+  'violet',
+  'violetDeep',
+  'yellowGreen',
+  'lafTeal',
+  'skyBlue',
+  'salmon',
+  'gray',
+  'emerald',
+  'loopRun'
+] as const;
+
+/** 嵌套父容器节点类型集合（loop / parallelRun / loopRun）。 */
+export const NESTED_PARENT_NODE_TYPES: ReadonlySet<FlowNodeTypeEnum> = new Set([
+  FlowNodeTypeEnum.loop,
+  FlowNodeTypeEnum.parallelRun,
+  FlowNodeTypeEnum.loopRun
+]);
+
+export const isNestedParentNodeType = (flowNodeType: FlowNodeTypeEnum | string): boolean =>
+  NESTED_PARENT_NODE_TYPES.has(flowNodeType as FlowNodeTypeEnum);
+
+/** 交互类节点类型集合（在 parallelRun 体内禁止使用；loopRun 允许）。 */
+export const INTERACTIVE_NODE_TYPES: ReadonlySet<FlowNodeTypeEnum> = new Set([
+  FlowNodeTypeEnum.userSelect,
+  FlowNodeTypeEnum.formInput
+]);
+
+export const isInteractiveNodeType = (flowNodeType: FlowNodeTypeEnum | string): boolean =>
+  INTERACTIVE_NODE_TYPES.has(flowNodeType as FlowNodeTypeEnum);
+
+/** 嵌套容器的系统子节点类型集合（只能由容器自动创建，不允许从模板面板添加）。 */
+export const NESTED_CHILD_SYSTEM_NODE_TYPES: ReadonlySet<FlowNodeTypeEnum> = new Set([
+  FlowNodeTypeEnum.nestedStart,
+  FlowNodeTypeEnum.nestedEnd,
+  FlowNodeTypeEnum.loopRunStart
+]);
+
+export const isNestedChildSystemNodeType = (flowNodeType: FlowNodeTypeEnum | string): boolean =>
+  NESTED_CHILD_SYSTEM_NODE_TYPES.has(flowNodeType as FlowNodeTypeEnum);

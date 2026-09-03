@@ -1,5 +1,5 @@
 import { useSpeech } from '@/web/common/hooks/useSpeech';
-import { Box, Flex, HStack, Spinner } from '@chakra-ui/react';
+import { Box, Flex, Spinner } from '@chakra-ui/react';
 import React, {
   useRef,
   useEffect,
@@ -166,8 +166,7 @@ const MobileVoiceInput = ({
   const startYRef = useRef(0);
 
   const [isCancel, setIsCancel] = useState(false);
-  const canvasPosition = canvasRef.current?.getBoundingClientRect();
-  const maskBottom = canvasPosition ? `${window.innerHeight - canvasPosition.top}px` : '50px';
+  const [maskBottom, setMaskBottom] = useState('50px');
 
   const handleTouchStart = useCallback(
     (e: React.TouchEvent<HTMLDivElement>) => {
@@ -177,10 +176,16 @@ const MobileVoiceInput = ({
       startTimeRef.current = Date.now();
       const touch = e.touches[0];
       startYRef.current = touch.pageY;
+      const canvasPosition = canvasRef.current?.getBoundingClientRect();
+      setMaskBottom(
+        canvasPosition && typeof window !== 'undefined'
+          ? `${window.innerHeight - canvasPosition.top}px`
+          : '50px'
+      );
 
       onStartSpeak();
     },
-    [onStartSpeak]
+    [canvasRef, onStartSpeak]
   );
 
   const handleTouchMove = useCallback(
@@ -198,21 +203,18 @@ const MobileVoiceInput = ({
     [startYRef]
   );
 
-  const handleTouchEnd = useCallback(
-    (e: React.TouchEvent<HTMLDivElement>) => {
-      if (!isPressing.current) return;
+  const handleTouchEnd = useCallback(() => {
+    if (!isPressing.current) return;
 
-      const endTime = Date.now();
-      const timeDifference = endTime - startTimeRef.current;
+    const endTime = Date.now();
+    const timeDifference = endTime - startTimeRef.current;
 
-      if (isCancel || timeDifference < 200) {
-        stopSpeak(true);
-      } else {
-        stopSpeak(false);
-      }
-    },
-    [isCancel, stopSpeak]
-  );
+    if (isCancel || timeDifference < 200) {
+      stopSpeak(true);
+    } else {
+      stopSpeak(false);
+    }
+  }, [isCancel, stopSpeak]);
 
   return (
     <Flex position="relative" h="100%">
@@ -238,7 +240,11 @@ const MobileVoiceInput = ({
         flex="1 0 0"
         bg={isSpeaking ? (isCancel ? 'red.500' : 'primary.500') : 'rgba(255, 255, 255, 0.95)'}
         backdropFilter={!isSpeaking ? 'blur(4px)' : 'none'}
-        borderRadius="xxl"
+        borderRadius={['xl', 'xxl']}
+        sx={{
+          WebkitTapHighlightColor: 'transparent',
+          WebkitTouchCallout: 'none'
+        }}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onTouchStart={handleTouchStart}
@@ -288,7 +294,8 @@ const VoiceInput = forwardRef<VoiceInputComponentRef, VoiceInputProps>(
     const { isPc } = useSystem();
 
     const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
-    const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
+    const sourceTarget = useContextSelector(WorkflowRuntimeContext, (v) => v.sourceTarget);
+    const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v.chatId);
     const whisperConfig = useContextSelector(ChatBoxContext, (v) => v.whisperConfig);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -301,7 +308,12 @@ const VoiceInput = forwardRef<VoiceInputComponentRef, VoiceInputProps>(
       renderAudioGraphPc,
       renderAudioGraphMobile,
       stream
-    } = useSpeech({ appId, ...outLinkAuthData });
+    } = useSpeech({
+      sourceType: sourceTarget.sourceType,
+      sourceId: sourceTarget.sourceId,
+      chatId,
+      outLinkAuthData
+    });
 
     // Canvas render
     useEffect(() => {
@@ -377,7 +389,7 @@ const VoiceInput = forwardRef<VoiceInputComponentRef, VoiceInputProps>(
       getVoiceInputState: () => ({ isSpeaking: isSpeaking || mobilePreSpeak, isTransCription })
     }));
 
-    if (!whisperConfig?.open) return null;
+    if (!sourceTarget.sourceId || !whisperConfig?.open) return null;
     if (!mobilePreSpeak && !isSpeaking && !isTransCription) return null;
 
     return (
@@ -391,7 +403,7 @@ const VoiceInput = forwardRef<VoiceInputComponentRef, VoiceInputProps>(
         bottom={0}
         bg="transparent"
         zIndex={5}
-        borderRadius={isPc ? 'md' : ''}
+        borderRadius={isPc ? 'md' : ['xl', 'xxl']}
         onContextMenu={(e) => e.preventDefault()}
       >
         {isMobileDevice ? (

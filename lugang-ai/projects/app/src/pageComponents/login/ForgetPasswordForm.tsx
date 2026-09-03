@@ -4,16 +4,20 @@ import { useForm } from 'react-hook-form';
 import { LoginPageTypeEnum } from '@/web/support/user/login/constants';
 import { postFindPassword } from '@/web/support/user/api';
 import { useSendCode } from '@/web/support/user/hooks/useSendCode';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes.d';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useTranslation } from 'next-i18next';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { checkPasswordRule } from '@fastgpt/global/common/string/password';
+import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
+import type { LangEnum } from '@fastgpt/global/common/i18n/type';
+import { VerificationCodeTypeEnum } from '@fastgpt/global/support/user/account/verification/constants';
+
+type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<void>;
 
 interface Props {
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
-  loginSuccess: (e: LoginSuccessResponse) => void;
+  loginSuccess: LoginSuccessHandler;
 }
 
 interface RegisterType {
@@ -25,7 +29,7 @@ interface RegisterType {
 
 const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { feConfigs } = useSystemStore();
   const {
     register,
@@ -38,7 +42,10 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
   });
   const username = watch('username');
 
-  const { SendCodeBox } = useSendCode({ type: 'findPassword' });
+  const { SendCodeBox } = useSendCode({
+    type: VerificationCodeTypeEnum.findPassword,
+    purpose: 'forgetPassword'
+  });
 
   const placeholder = feConfigs?.find_password_method
     ?.map((item) => {
@@ -53,22 +60,22 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     })
     .join('/');
 
-  const { runAsync: onclickFindPassword, loading: requesting } = useRequest2(
+  const { runAsync: onclickFindPassword, loading: requesting } = useRequest(
     async ({ username, code, password }: RegisterType) => {
-      loginSuccess(
-        await postFindPassword({
-          username,
-          code,
-          password
-        })
-      );
+      const loginResponse = await postFindPassword({
+        username,
+        code,
+        password,
+        language: i18n.language as LangEnum
+      });
+      await loginSuccess(loginResponse);
       toast({
         status: 'success',
         title: t('user:password.retrieved')
       });
     },
     {
-      refreshDeps: [loginSuccess, t, toast]
+      refreshDeps: [i18n.language, loginSuccess, t, toast]
     }
   );
   const onSubmitErr = (err: Record<string, any>) => {
@@ -84,41 +91,34 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
     }
   };
 
-  // 鲁港通：淡蓝色输入框样式
-  const inputStyles = {
-    bg: 'white',
-    borderColor: 'blue.200',
-    _hover: { borderColor: 'blue.300' },
-    _focus: { borderColor: 'blue.500', boxShadow: '0 0 0 1px #3B82F6' }
-  };
-
   return (
     <>
-      {/* 鲁港通：淡蓝色渐变标题 */}
-      <Box 
-        fontWeight={'semibold'} 
-        fontSize={'xl'} 
-        textAlign={'center'} 
-        background="linear-gradient(135deg, #3B82F6 0%, #1E40AF 100%)"
-        backgroundClip="text"
-        sx={{
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent'
-        }}
+      <Box
+        fontWeight={'medium'}
+        fontSize={'lg'}
+        lineHeight={'30px'}
+        textAlign={'center'}
+        color={'myGray.900'}
       >
         {t('user:password.retrieved_account', { account: feConfigs?.systemTitle })}
       </Box>
       <Box
-        mt={8}
+        mt={9}
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && !e.shiftKey && !requesting) {
+          if (
+            e.key === 'Enter' &&
+            !e.shiftKey &&
+            !e.nativeEvent.isComposing &&
+            e.keyCode !== 229 &&
+            !requesting
+          ) {
             handleSubmit(onclickFindPassword, onSubmitErr)();
           }
         }}
       >
         <FormControl isInvalid={!!errors.username}>
           <Input
-            {...inputStyles}
+            bg={'myGray.50'}
             size={'lg'}
             placeholder={placeholder}
             {...register('username', {
@@ -132,14 +132,14 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
         </FormControl>
         <FormControl
-          mt={5}
+          mt={6}
           isInvalid={!!errors.code}
           display={'flex'}
           alignItems={'center'}
           position={'relative'}
         >
           <Input
-            {...inputStyles}
+            bg={'myGray.50'}
             size={'lg'}
             flex={1}
             maxLength={8}
@@ -150,26 +150,41 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
           <SendCodeBox username={username} />
         </FormControl>
-        <FormControl mt={5} isInvalid={!!errors.password}>
+        <FormControl mt={6} isInvalid={!!errors.password}>
           <Input
-            {...inputStyles}
+            bg={'myGray.50'}
             type={'password'}
             size={'lg'}
-            placeholder={t('login:password_tip')}
+            placeholder={t('common:support.user.login.Password')}
+            _invalid={{
+              borderColor: 'red.500',
+              boxShadow: '0 0 0 1px #F04438'
+            }}
             {...register('password', {
               required: true,
               validate: (val) => {
                 if (!checkPasswordRule(val)) {
-                  return t('login:password_tip');
+                  return t('login:reset_password_tip');
                 }
                 return true;
               }
             })}
-          ></Input>
+          />
+          <Box
+            mt={2}
+            fontSize={'mini'}
+            lineHeight={'16px'}
+            fontWeight={'medium'}
+            letterSpacing={'0.5px'}
+            wordBreak={'break-word'}
+            color={errors.password ? 'red.600' : 'myGray.400'}
+          >
+            {t('login:reset_password_tip')}
+          </Box>
         </FormControl>
-        <FormControl mt={5} isInvalid={!!errors.password2}>
+        <FormControl mt={6} isInvalid={!!errors.password2}>
           <Input
-            {...inputStyles}
+            bg={'myGray.50'}
             type={'password'}
             size={'lg'}
             placeholder={t('user:password.confirm')}
@@ -180,19 +195,15 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
           ></Input>
         </FormControl>
 
-        {/* 鲁港通：蓝色按钮 */}
         <Button
           type="submit"
-          mt={8}
+          mt={12}
           w={'100%'}
-          size={['md', 'lg']}
-          h={[10, 12]}
-          fontWeight={'semibold'}
-          bg={'linear-gradient(135deg, #3B82F6 0%, #2563EB 100%)'}
-          color={'white'}
-          _hover={{ bg: 'linear-gradient(135deg, #2563EB 0%, #1D4ED8 100%)' }}
-          _active={{ bg: 'linear-gradient(135deg, #1D4ED8 0%, #1E40AF 100%)' }}
-          borderRadius={'lg'}
+          size={['md', 'md']}
+          rounded={['sm', 'md']}
+          h={['34px', '40px']}
+          fontWeight={['medium', 'medium']}
+          colorScheme="blue"
           isLoading={requesting}
           onClick={handleSubmit(onclickFindPassword, onSubmitErr)}
         >
@@ -200,12 +211,13 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
         </Button>
         <Box
           float={'right'}
-          fontSize="sm"
-          mt={4}
+          fontSize="mini"
+          lineHeight={'18px'}
+          mt={3}
           fontWeight={'medium'}
-          color={'blue.600'}
+          color={'primary.700'}
           cursor={'pointer'}
-          _hover={{ textDecoration: 'underline', color: 'blue.700' }}
+          _hover={{ textDecoration: 'underline' }}
           onClick={() => setPageType(LoginPageTypeEnum.passwordLogin)}
         >
           {t('user:password.to_login')}

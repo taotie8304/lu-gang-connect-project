@@ -1,14 +1,28 @@
 import { base64ToFile, fileToBase64 } from '../utils';
+import { S3FileUploader } from '../uploader';
 import { compressBase64Img } from '../img';
 import { useToast } from '../../../hooks/useToast';
 import { useCallback, useRef, useTransition } from 'react';
 import { useTranslation } from 'next-i18next';
-import { type CreatePostPresignedUrlResult } from '../../../../service/common/s3/type';
 import { imageBaseUrl } from '@fastgpt/global/common/file/image/constants';
+import type {
+  CreatePostPresignedUrlResponseType,
+  PresignFileUploadParams
+} from '@fastgpt/global/common/file/s3/type';
 
 export const useUploadAvatar = (
-  api: (params: { filename: string }) => Promise<CreatePostPresignedUrlResult>,
-  { onSuccess }: { onSuccess?: (avatar: string) => void } = {}
+  api: (params: PresignFileUploadParams) => Promise<CreatePostPresignedUrlResponseType>,
+  {
+    onSuccess,
+    maxW = 300,
+    maxH = 300,
+    maxSize = 1024 * 500 // 500KB
+  }: {
+    onSuccess?: (avatar: string) => void;
+    maxW?: number;
+    maxH?: number;
+    maxSize?: number;
+  } = {}
 ) => {
   const { toast } = useToast();
   const { t } = useTranslation();
@@ -32,19 +46,23 @@ export const useUploadAvatar = (
         const compressed = base64ToFile(
           await compressBase64Img({
             base64Img: await fileToBase64(file),
-            maxW: 300,
-            maxH: 300
+            maxW,
+            maxH,
+            maxSize
           }),
           file.name
         );
-        const { url, fields } = await api({ filename: file.name });
-        const formData = new FormData();
-        Object.entries(fields).forEach(([k, v]) => formData.set(k, v));
-        formData.set('file', compressed);
-        const res = await fetch(url, { method: 'POST', body: formData }); // 204
-        if (res.ok && res.status === 204) {
-          onSuccess?.(`${imageBaseUrl}${fields.key}`);
-        }
+        const uploadResult = await api({ filename: file.name, size: compressed.size });
+
+        const uploader = new S3FileUploader({
+          ...uploadResult,
+          file: compressed,
+          onSuccess() {
+            onSuccess?.(`${imageBaseUrl}${uploadResult.key}`);
+          },
+          t
+        });
+        await uploader.upload();
       });
     },
     [t, toast, api, onSuccess]

@@ -1,4 +1,4 @@
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 const { Schema } = connectionMongo;
 import { TeamCollectionName } from '@fastgpt/global/support/user/team/constant';
 import { DiscountCouponTypeEnum } from '@fastgpt/global/support/wallet/sub/discountCoupon/constants';
@@ -29,12 +29,8 @@ const DiscountCouponSchema = new Schema({
   }
 });
 
-try {
-  DiscountCouponSchema.index({ status: 1, type: 1 });
-  DiscountCouponSchema.index({ teamId: 1, status: 1 });
-} catch (error) {
-  console.log(error);
-}
+defineIndex(DiscountCouponSchema, { key: { status: 1, type: 1 } });
+defineIndex(DiscountCouponSchema, { key: { teamId: 1, status: 1 } });
 
 export const MongoDiscountCoupon = getMongoModel<DiscountCouponSchemaType>(
   discountCouponCollectionName,

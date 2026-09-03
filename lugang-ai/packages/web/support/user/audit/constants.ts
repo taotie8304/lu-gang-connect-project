@@ -1,21 +1,11 @@
 import { AuditEventEnum, AdminAuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
-import { i18nT } from '../../../i18n/utils';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 export const adminAuditLogMap = {
   [AdminAuditEventEnum.ADMIN_LOGIN]: {
     content: i18nT('account_team:log_admin_login'),
     typeLabel: i18nT('account_team:admin_login'),
     params: {} as { name?: string }
-  },
-  [AdminAuditEventEnum.ADMIN_UPDATE_SYSTEM_MODAL]: {
-    content: i18nT('account_team:log_admin_update_system_modal'),
-    typeLabel: i18nT('account_team:admin_update_system_modal'),
-    params: {} as { name?: string }
-  },
-  [AdminAuditEventEnum.ADMIN_SEND_SYSTEM_INFORM]: {
-    content: i18nT('account_team:log_admin_send_system_inform'),
-    typeLabel: i18nT('account_team:admin_send_system_inform'),
-    params: {} as { name?: string; informTitle?: string; level?: string }
   },
   [AdminAuditEventEnum.ADMIN_ADD_USER]: {
     content: i18nT('account_team:log_admin_add_user'),
@@ -27,6 +17,20 @@ export const adminAuditLogMap = {
     typeLabel: i18nT('account_team:admin_update_user'),
     params: {} as {
       userName?: string;
+    }
+  },
+  [AdminAuditEventEnum.ADMIN_DELETE_USER]: {
+    content: i18nT('account_team:log_admin_delete_user'),
+    typeLabel: i18nT('account_team:admin_delete_user'),
+    params: {} as {
+      userId?: string;
+      userName?: string;
+      operatorUserId?: string;
+      operatorType?: 'admin';
+      requestSource?: 'admin';
+      requestedAt?: Date;
+      scheduledCancelAt?: Date;
+      requestId?: string;
     }
   },
   [AdminAuditEventEnum.ADMIN_UPDATE_TEAM]: {
@@ -108,6 +112,28 @@ export const adminAuditLogMap = {
     content: i18nT('account_team:log_admin_delete_plugin_group'),
     typeLabel: i18nT('account_team:admin_delete_plugin_group'),
     params: {} as { name?: string; groupName: string }
+  },
+
+  // Inform
+  [AdminAuditEventEnum.ADMIN_UPDATE_SYSTEM_MODAL]: {
+    content: i18nT('account_team:log_admin_update_system_modal'),
+    typeLabel: i18nT('account_team:admin_update_system_modal'),
+    params: {} as { name?: string }
+  },
+  [AdminAuditEventEnum.ADMIN_SEND_SYSTEM_INFORM]: {
+    content: i18nT('account_team:log_admin_send_system_inform'),
+    typeLabel: i18nT('account_team:admin_send_system_inform'),
+    params: {} as { name?: string; informTitle?: string; level?: string }
+  },
+  [AdminAuditEventEnum.ADMIN_UPDATE_ACTIVITY_AD]: {
+    content: i18nT('account_team:log_admin_update_activity_ad'),
+    typeLabel: i18nT('account_team:admin_update_activity_ad'),
+    params: {}
+  },
+  [AdminAuditEventEnum.ADMIN_UPDATE_OPERATIONAL_AD]: {
+    content: i18nT('account_team:log_admin_update_operational_ad'),
+    typeLabel: i18nT('account_team:admin_update_operational_ad'),
+    params: {}
   }
 };
 
@@ -464,6 +490,50 @@ export const auditLogMap = {
     typeLabel: i18nT('account_team:change_member_name_self'),
     params: {} as { name?: string; oldName: string; newName: string }
   },
+  [AuditEventEnum.ACCOUNT_CANCELLATION_SUBMIT]: {
+    content: i18nT('account_team:log_account_cancellation_submit'),
+    typeLabel: i18nT('account_team:account_cancellation_submit'),
+    params: {} as {
+      userId: string;
+      operatorUserId: string;
+      operatorType: 'self';
+      requestSource: 'self';
+      verificationMethod: string;
+      verificationProvider?: string;
+      affectedTeamIds: string[];
+      requestedAt: Date;
+      scheduledCancelAt: Date;
+      requestId?: string;
+    }
+  },
+  [AuditEventEnum.ACCOUNT_CANCELLATION_CANCEL]: {
+    content: i18nT('account_team:log_account_cancellation_cancel'),
+    typeLabel: i18nT('account_team:account_cancellation_cancel'),
+    params: {} as {
+      userId: string;
+      operatorUserId: string;
+      operatorType: 'self';
+      requestSource: 'self';
+      requestedAt: Date;
+      scheduledCancelAt: Date;
+      requestId?: string;
+    }
+  },
+  [AuditEventEnum.ACCOUNT_CANCELLATION_FINALIZE]: {
+    content: i18nT('account_team:log_account_cancellation_finalize'),
+    typeLabel: i18nT('account_team:account_cancellation_finalize'),
+    params: {} as {
+      userId: string;
+      operatorUserId: string;
+      operatorType: 'system' | 'admin';
+      requestSource: 'self' | 'admin';
+      requestedAt: Date;
+      scheduledCancelAt: Date;
+      finalizedAt: Date;
+      requestId?: string;
+      cronExecutionId?: string;
+    }
+  },
   [AuditEventEnum.PURCHASE_PLAN]: {
     content: i18nT('account_team:log_purchase_plan'),
     typeLabel: i18nT('account_team:purchase_plan'),
@@ -484,6 +554,21 @@ export const auditLogMap = {
     typeLabel: i18nT('account_team:set_invoice_header'),
     params: {} as { name?: string }
   },
+  [AuditEventEnum.START_ENTERPRISE_AUTH]: {
+    content: i18nT('account_team:log_start_enterprise_auth'),
+    typeLabel: i18nT('account_team:start_enterprise_auth'),
+    params: {} as { name?: string; enterpriseName: string }
+  },
+  [AuditEventEnum.VERIFY_ENTERPRISE_AUTH_AMOUNT]: {
+    content: i18nT('account_team:log_verify_enterprise_auth_amount'),
+    typeLabel: i18nT('account_team:verify_enterprise_auth_amount'),
+    params: {} as { name?: string; enterpriseName: string }
+  },
+  [AuditEventEnum.RESET_ENTERPRISE_AUTH_TASK]: {
+    content: i18nT('account_team:log_reset_enterprise_auth_task'),
+    typeLabel: i18nT('account_team:reset_enterprise_auth_task'),
+    params: {} as { name?: string; enterpriseName: string }
+  },
   [AuditEventEnum.CREATE_API_KEY]: {
     content: i18nT('account_team:log_create_api_key'),
     typeLabel: i18nT('account_team:create_api_key'),
@@ -494,9 +579,95 @@ export const auditLogMap = {
     typeLabel: i18nT('account_team:update_api_key'),
     params: {} as { name?: string; keyName: string }
   },
+  [AuditEventEnum.COPY_API_KEY]: {
+    content: i18nT('account_team:log_copy_api_key'),
+    typeLabel: i18nT('account_team:copy_api_key'),
+    params: {} as { name?: string; keyName: string }
+  },
   [AuditEventEnum.DELETE_API_KEY]: {
     content: i18nT('account_team:log_delete_api_key'),
     typeLabel: i18nT('account_team:delete_api_key'),
     params: {} as { name?: string; keyName: string }
+  },
+  //Agent Skills
+  [AuditEventEnum.CREATE_SKILL]: {
+    content: i18nT('account_team:log_create_skill'),
+    typeLabel: i18nT('account_team:create_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.UPDATE_SKILL]: {
+    content: i18nT('account_team:log_update_skill'),
+    typeLabel: i18nT('account_team:update_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.DEPLOY_SKILL]: {
+    content: i18nT('account_team:log_deploy_skill'),
+    typeLabel: i18nT('account_team:deploy_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.DELETE_SKILL]: {
+    content: i18nT('account_team:log_delete_skill'),
+    typeLabel: i18nT('account_team:delete_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.IMPORT_SKILL]: {
+    content: i18nT('account_team:log_import_skill'),
+    typeLabel: i18nT('account_team:import_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.CREATE_SKILL_FOLDER]: {
+    content: i18nT('account_team:log_create_skill_folder'),
+    typeLabel: i18nT('account_team:create_skill_folder'),
+    params: {} as { name?: string; folderName: string }
+  },
+  [AuditEventEnum.EXPORT_SKILL]: {
+    content: i18nT('account_team:log_export_skill'),
+    typeLabel: i18nT('account_team:export_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.COPY_SKILL]: {
+    content: i18nT('account_team:log_copy_skill'),
+    typeLabel: i18nT('account_team:copy_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string }
+  },
+  [AuditEventEnum.MOVE_SKILL]: {
+    content: i18nT('account_team:log_move_skill'),
+    typeLabel: i18nT('account_team:move_skill'),
+    params: {} as { name?: string; skillName: string; skillType: string; targetFolderName: string }
+  },
+  [AuditEventEnum.UPDATE_SKILL_COLLABORATOR]: {
+    content: i18nT('account_team:log_update_skill_collaborator'),
+    typeLabel: i18nT('account_team:update_skill_collaborator'),
+    params: {} as {
+      name?: string;
+      skillName: string;
+      skillType: string;
+      tmbList: string[];
+      groupList: string[];
+      orgList: string[];
+      permission: string;
+    }
+  },
+  [AuditEventEnum.DELETE_SKILL_COLLABORATOR]: {
+    content: i18nT('account_team:log_delete_skill_collaborator'),
+    typeLabel: i18nT('account_team:delete_skill_collaborator'),
+    params: {} as {
+      name?: string;
+      skillName: string;
+      skillType: string;
+      itemName: string;
+      itemValueName: string;
+    }
+  },
+  [AuditEventEnum.TRANSFER_SKILL_OWNERSHIP]: {
+    content: i18nT('account_team:log_transfer_skill_ownership'),
+    typeLabel: i18nT('account_team:transfer_skill_ownership'),
+    params: {} as {
+      name?: string;
+      skillName: string;
+      skillType: string;
+      oldOwnerName: string;
+      newOwnerName: string;
+    }
   }
 } as const;

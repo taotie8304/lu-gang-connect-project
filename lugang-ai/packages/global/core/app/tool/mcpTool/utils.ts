@@ -1,5 +1,5 @@
 import { NodeOutputKeyEnum, WorkflowIOValueTypeEnum } from '../../../workflow/constants';
-import { i18nT } from '../../../../../web/i18n/utils';
+import { i18nT } from '../../../../common/i18n/utils';
 import { FlowNodeOutputTypeEnum, FlowNodeTypeEnum } from '../../../workflow/node/constant';
 import { type McpToolConfigType } from '../../tool/mcpTool/type';
 import { type RuntimeNodeItemType } from '../../../workflow/runtime/type';
@@ -7,21 +7,20 @@ import { type StoreSecretValueType } from '../../../../common/secret/type';
 import { jsonSchema2NodeInput } from '../../jsonschema';
 import { getNanoid } from '../../../../common/string/tools';
 import { AppToolSourceEnum } from '../constants';
+import type { NodeToolConfigType } from '../../../workflow/type/node';
 
 export const getMCPToolSetRuntimeNode = ({
   url,
   toolList,
   headerSecret,
   name,
-  avatar,
-  toolId
+  avatar
 }: {
   url: string;
   toolList: McpToolConfigType[];
   headerSecret?: StoreSecretValueType;
   name?: string;
   avatar?: string;
-  toolId: string;
 }): RuntimeNodeItemType => {
   return {
     nodeId: getNanoid(16),
@@ -32,8 +31,7 @@ export const getMCPToolSetRuntimeNode = ({
       mcpToolSet: {
         toolList,
         headerSecret,
-        url,
-        toolId
+        url
       }
     },
     inputs: [],
@@ -46,23 +44,39 @@ export const getMCPToolSetRuntimeNode = ({
 export const getMCPToolRuntimeNode = ({
   tool,
   avatar = 'core/app/type/mcpToolsFill',
-  parentId
+  nodeId,
+  toolsetName,
+  toolSetId,
+  mcpToolSet
 }: {
+  nodeId: string;
   tool: McpToolConfigType;
+  toolSetId: string;
+  toolsetName: string;
   avatar?: string;
-  parentId: string;
+  mcpToolSet?: NonNullable<NodeToolConfigType['mcpToolSet']>;
 }): RuntimeNodeItemType => {
+  const inputs = jsonSchema2NodeInput({ jsonSchema: tool.inputSchema, schemaType: 'mcp' }).map(
+    (input) => ({
+      ...input,
+      // MCP schema 没有 FastGPT 的手动配置上下文，子工具参数默认交给 Agent 生成。
+      defaultToAgentGenerated: input.defaultToAgentGenerated ?? true
+    })
+  );
+
   return {
-    nodeId: getNanoid(),
+    nodeId,
     flowNodeType: FlowNodeTypeEnum.tool,
     avatar,
     intro: tool.description,
     toolConfig: {
       mcpTool: {
-        toolId: `${AppToolSourceEnum.mcp}-${parentId}/${tool.name}`
-      }
+        toolId: `${AppToolSourceEnum.mcp}-${toolSetId}/${tool.name}` // When runtool is used, parentId and toolname will be employed
+      },
+      ...(mcpToolSet ? { mcpToolSet } : {})
     },
-    inputs: jsonSchema2NodeInput({ jsonSchema: tool.inputSchema, schemaType: 'mcp' }),
+    jsonSchema: tool.inputSchema,
+    inputs,
     outputs: [
       {
         id: NodeOutputKeyEnum.rawResponse,
@@ -74,16 +88,26 @@ export const getMCPToolRuntimeNode = ({
         type: FlowNodeOutputTypeEnum.static
       }
     ],
-    name: tool.name,
+    name: `${toolsetName}/${tool.name}`,
     version: ''
   };
 };
 
-/**
- * Get the parent id of the mcp toolset
- * mcp-123123/toolName ==> 123123
- * 123123/toolName ==> 123123
- * @param id mcp-parentId/name or parentId/name
- * @returns parentId
- */
-export const getMCPParentId = (id: string) => id.split('-').pop()?.split('/')[0];
+export const parsetMcpToolConfig = (
+  config: NonNullable<NodeToolConfigType['mcpTool']>
+):
+  | {
+      toolsetId: string;
+      toolName: string;
+    }
+  | undefined => {
+  const prefix = `${AppToolSourceEnum.mcp}-`;
+  if (!config.toolId.startsWith(prefix)) return undefined;
+  const [toolsetId, ...rest] = config.toolId.slice(prefix.length).split('/');
+  const toolName = rest.join('/');
+  if (!toolsetId || !toolName) return undefined;
+  return {
+    toolsetId,
+    toolName
+  };
+};

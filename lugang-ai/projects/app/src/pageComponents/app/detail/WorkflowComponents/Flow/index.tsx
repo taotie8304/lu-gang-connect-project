@@ -1,25 +1,28 @@
 import dynamic from 'next/dynamic';
-import ButtonEdge from './components/ButtonEdge';
+import ButtonEdge, { CustomConnectionLine } from './components/ButtonEdge';
 import NodeTemplatesModal from './NodeTemplatesModal';
 import 'reactflow/dist/style.css';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
-import { connectionLineStyle, defaultEdgeOptions, maxZoom, minZoom } from '../constants';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
+import { defaultEdgeOptions, maxZoom, minZoom } from '../constants';
 import 'reactflow/dist/style.css';
 import { useContextSelector } from 'use-context-selector';
 import NodeTemplatesPopover from './NodeTemplatesPopover';
 import SearchButton from '../../Workflow/components/SearchButton';
+import SystemConfigDrawer from './SystemConfigDrawer';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { WorkflowInitContext, WorkflowBufferDataContext } from '../context/workflowInitContext';
 import ContextMenu from './components/ContextMenu';
 import FlowController from './components/FlowController';
-import HelperLines from './components/HelperLines';
+import HelperLines, { type HelperLinesController } from './components/HelperLines';
 import { useWorkflow } from './hooks/useWorkflow';
 import { EDGE_TYPE, FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import type { NodeProps } from 'reactflow';
-import ReactFlow, { SelectionMode } from 'reactflow';
+import ReactFlow, { SelectionMode, useReactFlow } from 'reactflow';
 import { Box, IconButton, useDisclosure } from '@chakra-ui/react';
-import React from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkflowUIContext } from '../context/workflowUIContext';
+import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import { useTranslation } from 'next-i18next';
 
 const NodeSimple = dynamic(() => import('./nodes/NodeSimple'));
 const NodeStopTool = React.memo((props: NodeProps<FlowNodeItemType>) => (
@@ -32,8 +35,6 @@ const nodeTypes: Record<FlowNodeTypeEnum, any> = {
   [FlowNodeTypeEnum.globalVariable]: NodeSimple,
   [FlowNodeTypeEnum.textEditor]: NodeSimple,
   [FlowNodeTypeEnum.customFeedback]: NodeSimple,
-  [FlowNodeTypeEnum.systemConfig]: dynamic(() => import('./nodes/NodeSystemConfig')),
-  [FlowNodeTypeEnum.pluginConfig]: dynamic(() => import('./nodes/NodePluginIO/NodePluginConfig')),
   [FlowNodeTypeEnum.workflowStart]: dynamic(() => import('./nodes/NodeWorkflowStart')),
   [FlowNodeTypeEnum.chatNode]: NodeSimple,
   [FlowNodeTypeEnum.readFiles]: NodeSimple,
@@ -49,19 +50,23 @@ const nodeTypes: Record<FlowNodeTypeEnum, any> = {
   [FlowNodeTypeEnum.pluginOutput]: dynamic(() => import('./nodes/NodePluginIO/PluginOutput')),
   [FlowNodeTypeEnum.pluginModule]: NodeSimple,
   [FlowNodeTypeEnum.queryExtension]: NodeSimple,
-  [FlowNodeTypeEnum.agent]: dynamic(() => import('./nodes/NodeAgent')),
   [FlowNodeTypeEnum.stopTool]: NodeStopTool,
+  [FlowNodeTypeEnum.agent]: dynamic(() => import('./nodes/NodeAgent')),
+  [FlowNodeTypeEnum.toolCall]: dynamic(() => import('./nodes/NodeToolCall')),
   [FlowNodeTypeEnum.tool]: NodeSimple,
   [FlowNodeTypeEnum.toolSet]: dynamic(() => import('./nodes/NodeToolSet')),
   [FlowNodeTypeEnum.toolParams]: dynamic(() => import('./nodes/NodeToolParams')),
-  [FlowNodeTypeEnum.lafModule]: dynamic(() => import('./nodes/NodeLaf')),
   [FlowNodeTypeEnum.ifElseNode]: dynamic(() => import('./nodes/NodeIfElse')),
   [FlowNodeTypeEnum.variableUpdate]: dynamic(() => import('./nodes/NodeVariableUpdate')),
   [FlowNodeTypeEnum.code]: dynamic(() => import('./nodes/NodeCode')),
   [FlowNodeTypeEnum.userSelect]: dynamic(() => import('./nodes/NodeUserSelect')),
   [FlowNodeTypeEnum.loop]: dynamic(() => import('./nodes/Loop/NodeLoop')),
-  [FlowNodeTypeEnum.loopStart]: dynamic(() => import('./nodes/Loop/NodeLoopStart')),
-  [FlowNodeTypeEnum.loopEnd]: dynamic(() => import('./nodes/Loop/NodeLoopEnd')),
+  [FlowNodeTypeEnum.parallelRun]: dynamic(() => import('./nodes/Loop/NodeParallelRun')),
+  [FlowNodeTypeEnum.loopRun]: dynamic(() => import('./nodes/Loop/NodeLoopRun')),
+  [FlowNodeTypeEnum.loopRunStart]: dynamic(() => import('./nodes/Loop/NodeLoopRunStart')),
+  [FlowNodeTypeEnum.loopRunBreak]: dynamic(() => import('./nodes/Loop/NodeLoopRunBreak')),
+  [FlowNodeTypeEnum.nestedStart]: dynamic(() => import('./nodes/Loop/NodeLoopStart')),
+  [FlowNodeTypeEnum.nestedEnd]: dynamic(() => import('./nodes/Loop/NodeLoopEnd')),
   [FlowNodeTypeEnum.formInput]: dynamic(() => import('./nodes/NodeFormInput')),
   [FlowNodeTypeEnum.comment]: dynamic(() => import('./nodes/NodeComment'))
 };
@@ -70,9 +75,11 @@ const edgeTypes = {
 };
 
 const Workflow = () => {
+  const { t } = useTranslation();
   const nodes = useContextSelector(WorkflowInitContext, (v) => v.nodes);
   const edges = useContextSelector(WorkflowBufferDataContext, (v) => v.edges);
-  const { reactFlowWrapper, workflowControlMode, menu } = useContextSelector(
+  const helperLinesRef = useRef<HelperLinesController>(null);
+  const { reactFlowWrapperCallback, workflowControlMode, menu } = useContextSelector(
     WorkflowUIContext,
     (v) => v
   );
@@ -85,18 +92,40 @@ const Workflow = () => {
     customOnConnect,
     onEdgeMouseEnter,
     onEdgeMouseLeave,
-    helperLineHorizontal,
-    helperLineVertical,
     onNodeDragStop,
     onPaneContextMenu,
     onPaneClick
-  } = useWorkflow();
+  } = useWorkflow({ helperLinesRef });
 
   const {
     isOpen: isOpenTemplate,
     onOpen: onOpenTemplate,
     onClose: onCloseTemplate
   } = useDisclosure();
+
+  const [movingCanvas, setMovingCanvas] = useState(false);
+
+  const { fitView } = useReactFlow();
+  const fitViewDone = useRef(false);
+  const reactFlowInitialized = useRef(false);
+
+  const onInit = useCallback(() => {
+    reactFlowInitialized.current = true;
+  }, []);
+
+  useEffect(() => {
+    // 自动定位画布：需等待 ReactFlow 初始化完成(onInit) + 节点数据加载并渲染出宽高后执行，仅执行一次
+    if (
+      !reactFlowInitialized.current ||
+      fitViewDone.current ||
+      !nodes.length ||
+      !nodes.every((node) => node.width && node.height)
+    )
+      return;
+
+    fitViewDone.current = true;
+    setTimeout(() => fitView({ padding: 0.3, nodes }), 0);
+  }, [nodes, fitView]);
 
   return (
     <>
@@ -112,38 +141,46 @@ const Workflow = () => {
       >
         {/* open module template */}
         <>
-          <IconButton
-            position={'absolute'}
-            top={6}
-            left={6}
-            size={'mdSquare'}
-            borderRadius={'50%'}
-            icon={<MyIcon name="common/addLight" w={'26px'} />}
-            transition={'0.2s ease'}
-            aria-label={''}
-            zIndex={1}
-            boxShadow={
-              '0px 4px 10px 0px rgba(19, 51, 107, 0.20), 0px 0px 1px 0px rgba(19, 51, 107, 0.50)'
-            }
-            onClick={() => {
-              isOpenTemplate ? onCloseTemplate() : onOpenTemplate();
-            }}
-          />
+          <Box position={'absolute'} top={20} left={6} zIndex={1}>
+            <MyTooltip shouldWrapChildren={false} label={t('workflow:to_add_node')}>
+              <IconButton
+                icon={<MyIcon name="core/app/workflowToolbarAdd" boxSize={6} color={'white'} />}
+                w={9}
+                minW={9}
+                h={9}
+                p={1.5}
+                borderRadius={'50%'}
+                bg={'black'}
+                _hover={{ bg: 'myGray.700' }}
+                aria-label={t('workflow:to_add_node')}
+                border={'none'}
+                boxShadow={'0 4px 5px rgba(19, 51, 107, 0.20), 0 0 0.5px rgba(19, 51, 107, 0.50)'}
+                onClick={() => {
+                  if (isOpenTemplate) {
+                    onCloseTemplate();
+                  } else {
+                    onOpenTemplate();
+                  }
+                }}
+              />
+            </MyTooltip>
+          </Box>
           <SearchButton />
+          <SystemConfigDrawer />
           <NodeTemplatesModal isOpen={isOpenTemplate} onClose={onCloseTemplate} />
           <NodeTemplatesPopover />
         </>
 
         <ReactFlow
-          ref={reactFlowWrapper}
-          fitView
+          ref={reactFlowWrapperCallback}
           nodes={nodes}
           edges={edges}
           minZoom={minZoom}
           maxZoom={maxZoom}
+          onInit={onInit}
           defaultEdgeOptions={defaultEdgeOptions}
           elevateEdgesOnSelect
-          connectionLineStyle={connectionLineStyle}
+          connectionLineComponent={CustomConnectionLine}
           nodeTypes={nodeTypes}
           edgeTypes={edgeTypes}
           connectionRadius={50}
@@ -158,6 +195,7 @@ const Workflow = () => {
           onPaneContextMenu={onPaneContextMenu}
           onPaneClick={onPaneClick}
           snapToGrid
+          style={{ background: '#F7F8FA' }}
           {...(workflowControlMode === 'select'
             ? {
                 selectionMode: SelectionMode.Full,
@@ -169,10 +207,19 @@ const Workflow = () => {
               }
             : {})}
           onNodeDragStop={onNodeDragStop}
+          noWheelClassName={
+            !movingCanvas || workflowControlMode === 'drag' ? 'nowheel' : 'nowheel-moving'
+          }
+          onMoveStart={() => {
+            setMovingCanvas(true);
+          }}
+          onMoveEnd={() => {
+            setMovingCanvas(false);
+          }}
         >
           {!!menu && <ContextMenu />}
           <FlowController />
-          <HelperLines horizontal={helperLineHorizontal} vertical={helperLineVertical} />
+          <HelperLines ref={helperLinesRef} />
         </ReactFlow>
       </Box>
     </>

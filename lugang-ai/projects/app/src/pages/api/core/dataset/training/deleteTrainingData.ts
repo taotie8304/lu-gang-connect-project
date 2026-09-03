@@ -2,24 +2,21 @@ import { ManagePermissionVal } from '@fastgpt/global/support/permission/constant
 import { MongoDatasetTraining } from '@fastgpt/service/core/dataset/training/schema';
 import { authDatasetCollection } from '@fastgpt/service/support/permission/dataset/auth';
 import { NextAPI } from '@/service/middleware/entry';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
+import { type ApiRequestProps } from '@fastgpt/next/type';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  DeleteTrainingDataBodySchema,
+  DeleteTrainingDataResponseSchema,
+  type DeleteTrainingDataResponse
+} from '@fastgpt/global/openapi/core/dataset/training/api';
 
-export type deleteTrainingDataBody = {
-  datasetId: string;
-  collectionId: string;
-  dataId: string;
-};
+async function handler(req: ApiRequestProps): Promise<DeleteTrainingDataResponse> {
+  const { collectionId, dataId } = parseApiInput({
+    req,
+    bodySchema: DeleteTrainingDataBodySchema
+  }).body;
 
-export type deleteTrainingDataQuery = {};
-
-export type deleteTrainingDataResponse = {};
-
-async function handler(
-  req: ApiRequestProps<deleteTrainingDataBody, deleteTrainingDataQuery>
-): Promise<deleteTrainingDataResponse> {
-  const { datasetId, collectionId, dataId } = req.body;
-
-  const { teamId } = await authDatasetCollection({
+  const { collection } = await authDatasetCollection({
     req,
     authToken: true,
     authApiKey: true,
@@ -28,12 +25,16 @@ async function handler(
   });
 
   await MongoDatasetTraining.deleteOne({
-    teamId,
-    datasetId,
+    teamId: collection.teamId,
+    datasetId: collection.datasetId,
+    collectionId: collection._id,
     _id: dataId
   });
 
-  return {};
+  return DeleteTrainingDataResponseSchema.parse(undefined);
 }
 
 export default NextAPI(handler);
+export type deleteTrainingDataBody =
+  import('@fastgpt/global/openapi/core/dataset/training/api').DeleteTrainingDataBody;
+export type deleteTrainingDataResponse = DeleteTrainingDataResponse;

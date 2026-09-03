@@ -1,29 +1,38 @@
 import { describe, expect, it } from 'vitest';
+import { filterSensitiveFormData, getAppQGuideCustomURL } from '@/web/core/app/utils';
 import {
-  form2AppWorkflow,
-  filterSensitiveFormData,
-  getAppQGuideCustomURL
-} from '@/web/core/app/utils';
-import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
-import { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
+  appWorkflow2Form,
+  form2AppWorkflow
+} from '@/pageComponents/app/detail/Edit/SimpleApp/utils';
+import {
+  agentForm2AppWorkflow,
+  appWorkflow2AgentForm
+} from '@/pageComponents/app/detail/Edit/ChatAgent/utils';
+import {
+  FlowNodeInputTypeEnum,
+  FlowNodeTypeEnum
+} from '@fastgpt/global/core/workflow/node/constant';
+import { NodeInputKeyEnum, NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { getDefaultAppForm } from '@fastgpt/global/core/app/utils';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
 
 describe('form2AppWorkflow', () => {
   const mockT = (str: string) => str;
 
   it('should generate simple chat workflow when no datasets or tools selected', () => {
-    const form = {
+    const form: AppFormEditFormType = {
       aiSettings: {
-        model: 'gpt-3.5',
-        temperature: 0.7,
-        maxToken: 2000,
-        systemPrompt: 'You are a helpful assistant',
+        [NodeInputKeyEnum.aiModel]: 'gpt-3.5',
+        [NodeInputKeyEnum.aiChatTemperature]: 0.7,
+        [NodeInputKeyEnum.aiChatMaxToken]: 2000,
+        [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful assistant',
         maxHistories: 5,
-        aiChatReasoning: true,
-        aiChatTopP: 0.8,
-        aiChatStopSign: '',
-        aiChatResponseFormat: '',
-        aiChatJsonSchema: ''
+        [NodeInputKeyEnum.aiChatIsResponseText]: true,
+        [NodeInputKeyEnum.aiChatReasoning]: true,
+        [NodeInputKeyEnum.aiChatTopP]: 0.8,
+        [NodeInputKeyEnum.aiChatStopSign]: '',
+        [NodeInputKeyEnum.aiChatResponseFormat]: '',
+        [NodeInputKeyEnum.aiChatJsonSchema]: ''
       },
       dataset: {
         datasets: [],
@@ -44,26 +53,121 @@ describe('form2AppWorkflow', () => {
 
     const result = form2AppWorkflow(form, mockT);
 
-    expect(result.nodes).toHaveLength(3);
+    expect(result.nodes.map((node) => node.flowNodeType)).toEqual([
+      FlowNodeTypeEnum.workflowStart,
+      FlowNodeTypeEnum.chatNode
+    ]);
     expect(result.edges).toHaveLength(1);
   });
 
-  it('should generate dataset workflow when datasets are selected', () => {
-    const form = {
+  it('should preserve file upload settings independently from model capabilities', () => {
+    const fileSelectConfigs = [
+      {
+        canSelectFile: true,
+        canSelectImg: true,
+        canSelectAudio: true,
+        canSelectVideo: true
+      },
+      {
+        canSelectFile: false,
+        canSelectImg: false,
+        canSelectAudio: false,
+        canSelectVideo: false
+      }
+    ];
+    const workflows = fileSelectConfigs.map((fileSelectConfig) => {
+      const form = getDefaultAppForm();
+      form.chatConfig.fileSelectConfig = fileSelectConfig;
+
+      return form2AppWorkflow(form, mockT);
+    });
+
+    expect(workflows.map((workflow) => workflow.chatConfig.fileSelectConfig)).toEqual(
+      fileSelectConfigs
+    );
+
+    const getMultimodalInputs = (workflow: (typeof workflows)[number]) => {
+      const aiNode = workflow.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.chatNode);
+
+      return [
+        NodeInputKeyEnum.aiChatVision,
+        NodeInputKeyEnum.aiChatAudio,
+        NodeInputKeyEnum.aiChatVideo
+      ].map((key) => aiNode?.inputs.find((input) => input.key === key)?.value);
+    };
+
+    expect(getMultimodalInputs(workflows[0])).toEqual(getMultimodalInputs(workflows[1]));
+  });
+
+  it('roundtrips simple app sandbox entrypoint through the tool call node', () => {
+    const form: AppFormEditFormType = {
       aiSettings: {
-        model: 'gpt-3.5',
-        temperature: 0.7,
-        maxToken: 2000,
-        systemPrompt: 'You are a helpful assistant',
+        [NodeInputKeyEnum.aiModel]: 'gpt-4',
+        [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful assistant',
         maxHistories: 5,
-        aiChatReasoning: true,
-        aiChatTopP: 0.8,
-        aiChatStopSign: '',
-        aiChatResponseFormat: '',
-        aiChatJsonSchema: ''
+        [NodeInputKeyEnum.aiChatIsResponseText]: true,
+        [NodeInputKeyEnum.useAgentSandbox]: true,
+        [NodeInputKeyEnum.sandboxEntrypoint]: 'pip install -r requirements.txt'
       },
       dataset: {
-        datasets: ['dataset1'],
+        datasets: [],
+        similarity: 0.8,
+        limit: 1500,
+        searchMode: 'embedding',
+        embeddingWeight: 0.7,
+        usingReRank: false,
+        rerankModel: '',
+        rerankWeight: 0.5,
+        datasetSearchUsingExtensionQuery: false,
+        datasetSearchExtensionModel: '',
+        datasetSearchExtensionBg: ''
+      },
+      selectedTools: [],
+      chatConfig: {}
+    };
+
+    const workflow = form2AppWorkflow(form, mockT);
+    const toolCallNode = workflow.nodes.find(
+      (node) => node.flowNodeType === FlowNodeTypeEnum.toolCall
+    );
+
+    expect(
+      toolCallNode?.inputs.find((input) => input.key === NodeInputKeyEnum.sandboxEntrypoint)?.value
+    ).toBe('pip install -r requirements.txt');
+
+    const restored = appWorkflow2Form({
+      nodes: workflow.nodes,
+      chatConfig: workflow.chatConfig
+    });
+
+    expect(restored.aiSettings.useAgentSandbox).toBe(true);
+    expect(restored.aiSettings.sandboxEntrypoint).toBe('pip install -r requirements.txt');
+  });
+
+  it('should generate dataset workflow when datasets are selected', () => {
+    const form: AppFormEditFormType = {
+      aiSettings: {
+        [NodeInputKeyEnum.aiModel]: 'gpt-3.5',
+        [NodeInputKeyEnum.aiChatTemperature]: 0.7,
+        [NodeInputKeyEnum.aiChatMaxToken]: 2000,
+        [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful assistant',
+        maxHistories: 5,
+        [NodeInputKeyEnum.aiChatIsResponseText]: true,
+        [NodeInputKeyEnum.aiChatReasoning]: true,
+        [NodeInputKeyEnum.aiChatTopP]: 0.8,
+        [NodeInputKeyEnum.aiChatStopSign]: '',
+        [NodeInputKeyEnum.aiChatResponseFormat]: '',
+        [NodeInputKeyEnum.aiChatJsonSchema]: ''
+      },
+      dataset: {
+        datasets: [
+          {
+            datasetId: 'dataset1',
+            avatar: '',
+            name: 'Test Dataset',
+            vectorModel: { model: 'text-embedding-ada-002' } as any
+          }
+        ],
         similarity: 0.8,
         limit: 1500,
         searchMode: 'embedding',
@@ -81,51 +185,230 @@ describe('form2AppWorkflow', () => {
 
     const result = form2AppWorkflow(form, mockT);
 
-    expect(result.nodes).toHaveLength(4);
+    expect(result.nodes).toHaveLength(3);
     expect(result.edges).toHaveLength(2);
+
+    const datasetNode = result.nodes.find(
+      (node) => node.flowNodeType === FlowNodeTypeEnum.datasetSearchNode
+    );
+    const aiNode = result.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.chatNode);
+
+    expect(
+      aiNode?.inputs.find((input) => input.key === NodeInputKeyEnum.aiChatDatasetQuote)?.value
+    ).toEqual([datasetNode?.nodeId, NodeOutputKeyEnum.datasetQuoteQA]);
+    expect(
+      result.edges.some(
+        (edge) => edge.source === datasetNode?.nodeId && edge.target === aiNode?.nodeId
+      )
+    ).toBe(true);
+  });
+
+  it('should roundtrip dataset auth setting through dataset search node', () => {
+    const form = getDefaultAppForm();
+    form.aiSettings = {
+      [NodeInputKeyEnum.aiModel]: 'gpt-3.5',
+      [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful assistant',
+      maxHistories: 5,
+      [NodeInputKeyEnum.aiChatIsResponseText]: true
+    };
+    form.dataset.datasets = [
+      {
+        datasetId: 'dataset1',
+        avatar: '',
+        name: 'Test Dataset',
+        vectorModel: { model: 'text-embedding-ada-002' } as any
+      }
+    ];
+    form.dataset.authTmbId = true;
+
+    const workflow = form2AppWorkflow(form, mockT);
+    const datasetNode = workflow.nodes.find(
+      (node) => node.flowNodeType === FlowNodeTypeEnum.datasetSearchNode
+    );
+
+    expect(
+      datasetNode?.inputs.find((input) => input.key === NodeInputKeyEnum.authTmbId)?.value
+    ).toBe(true);
+
+    const restored = appWorkflow2Form({
+      nodes: workflow.nodes,
+      chatConfig: workflow.chatConfig
+    });
+
+    expect(restored.dataset.authTmbId).toBe(true);
+  });
+
+  it('should mark dataset search input as agent-generated when used with tools', () => {
+    const form = getDefaultAppForm();
+    form.dataset.datasets = [
+      {
+        datasetId: 'dataset1',
+        avatar: '',
+        name: 'Test Dataset',
+        vectorModel: { model: 'text-embedding-ada-002' } as any
+      }
+    ];
+    form.selectedTools = [
+      {
+        id: 'tool-node-1',
+        pluginId: 'systemTool-weather',
+        source: 'system',
+        flowNodeType: FlowNodeTypeEnum.tool,
+        templateType: 'other',
+        name: 'Weather Tool',
+        avatar: '',
+        intro: '',
+        inputs: [],
+        outputs: [],
+        showStatus: true
+      } as any
+    ];
+
+    const workflow = form2AppWorkflow(form, mockT);
+    const datasetSearchInput = workflow.nodes
+      .find((node) => node.flowNodeType === FlowNodeTypeEnum.datasetSearchNode)
+      ?.inputs.find((input) => input.key === NodeInputKeyEnum.datasetSearchInput);
+
+    expect(datasetSearchInput).toMatchObject({
+      value: '',
+      defaultToAgentGenerated: true
+    });
+  });
+
+  it('should preserve debug tool source when roundtripping simple app tools', () => {
+    const form = getDefaultAppForm();
+    form.aiSettings = {
+      [NodeInputKeyEnum.aiModel]: 'gpt-4o-mini',
+      [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful assistant',
+      maxHistories: 5,
+      [NodeInputKeyEnum.aiChatIsResponseText]: true
+    };
+    form.selectedTools = [
+      {
+        id: 'tool-node-1',
+        pluginId: 'systemTool-weather',
+        source: 'debug:tmbId:tmb-1',
+        flowNodeType: FlowNodeTypeEnum.tool,
+        templateType: 'other',
+        name: 'Weather Tool',
+        avatar: '',
+        intro: '',
+        inputs: [],
+        outputs: [],
+        showStatus: true
+      } as any
+    ];
+
+    const workflow = form2AppWorkflow(form, mockT);
+    const toolNode = workflow.nodes.find((node) => node.pluginId === 'systemTool-weather');
+
+    expect(toolNode).not.toHaveProperty('id');
+    expect(toolNode?.source).toBe('debug:tmbId:tmb-1');
+
+    const restored = appWorkflow2Form({
+      nodes: workflow.nodes,
+      chatConfig: workflow.chatConfig
+    });
+
+    expect(restored.selectedTools[0]?.source).toBe('debug:tmbId:tmb-1');
   });
 });
 
 describe('filterSensitiveFormData', () => {
   it('should filter sensitive data from app form', () => {
-    const appForm = {
+    const toolSecretValue = {
+      type: 'manual',
+      value: {
+        apiKey: {
+          secret: '',
+          value: 'secret-key'
+        }
+      }
+    };
+    const appForm: AppFormEditFormType = {
       aiSettings: {
-        model: 'gpt-4',
-        temperature: 0.8
+        [NodeInputKeyEnum.aiModel]: 'gpt-4',
+        [NodeInputKeyEnum.aiChatTemperature]: 0.8,
+        maxHistories: 5,
+        [NodeInputKeyEnum.aiChatIsResponseText]: true
       },
       dataset: {
-        datasets: ['sensitive-dataset'],
-        similarity: 0.9
+        datasets: [
+          {
+            datasetId: 'sensitive-dataset',
+            avatar: '',
+            name: 'Sensitive Dataset',
+            vectorModel: { model: 'text-embedding-ada-002' } as any
+          }
+        ],
+        searchMode: 'embedding' as any,
+        similarity: 0.9,
+        limit: 1500,
+        embeddingWeight: 0.7,
+        usingReRank: false,
+        rerankModel: '',
+        rerankWeight: 0.5,
+        datasetSearchUsingExtensionQuery: false,
+        datasetSearchExtensionModel: '',
+        datasetSearchExtensionBg: ''
       },
-      selectedTools: [],
+      selectedTools: [
+        {
+          id: 'tool-1',
+          pluginId: 'plugin-1',
+          flowNodeType: FlowNodeTypeEnum.tool,
+          templateType: 'other',
+          name: 'Weather Tool',
+          avatar: '',
+          intro: '',
+          inputs: [
+            {
+              key: NodeInputKeyEnum.systemInputConfig,
+              value: toolSecretValue,
+              renderTypeList: [],
+              valueType: 'any'
+            },
+            {
+              key: NodeInputKeyEnum.history,
+              value: 5,
+              renderTypeList: [],
+              valueType: 'number'
+            }
+          ],
+          outputs: []
+        } as any
+      ],
       chatConfig: {}
     };
 
     const result = filterSensitiveFormData(appForm);
     const defaultForm = getDefaultAppForm();
+    const resultSecretInput = result.selectedTools[0].inputs.find(
+      (input) => input.key === NodeInputKeyEnum.systemInputConfig
+    );
+    const resultHistoryInput = result.selectedTools[0].inputs.find(
+      (input) => input.key === NodeInputKeyEnum.history
+    );
 
     expect(result.dataset).toEqual(defaultForm.dataset);
     expect(result.aiSettings).toEqual(appForm.aiSettings);
+    expect(resultSecretInput?.value).toBeUndefined();
+    expect(resultHistoryInput?.value).toBe(5);
+    expect(appForm.selectedTools[0].inputs[0].value).toEqual(toolSecretValue);
   });
 });
 
 describe('getAppQGuideCustomURL', () => {
   it('should get custom URL from app detail', () => {
     const appDetail = {
-      modules: [
-        {
-          flowNodeType: FlowNodeTypeEnum.systemConfig,
-          inputs: [
-            {
-              key: NodeInputKeyEnum.chatInputGuide,
-              value: {
-                customUrl: 'https://example.com'
-              }
-            }
-          ]
+      modules: [],
+      chatConfig: {
+        chatInputGuide: {
+          open: true,
+          customUrl: 'https://example.com'
         }
-      ]
-    };
+      }
+    } as any;
 
     const result = getAppQGuideCustomURL(appDetail);
     expect(result).toBe('https://example.com');
@@ -133,15 +416,195 @@ describe('getAppQGuideCustomURL', () => {
 
   it('should return empty string if no custom URL found', () => {
     const appDetail = {
-      modules: [
-        {
-          flowNodeType: FlowNodeTypeEnum.systemConfig,
-          inputs: []
-        }
-      ]
-    };
+      modules: []
+    } as any;
 
     const result = getAppQGuideCustomURL(appDetail);
     expect(result).toBe('');
+  });
+});
+
+describe('appWorkflow2AgentForm', () => {
+  const mockT = (str: string) => str;
+
+  it('should preserve agent file upload settings independently from model capabilities', () => {
+    const fileSelectConfigs = [
+      {
+        canSelectFile: true,
+        canSelectImg: true,
+        canSelectAudio: true,
+        canSelectVideo: true
+      },
+      {
+        canSelectFile: false,
+        canSelectImg: false,
+        canSelectAudio: false,
+        canSelectVideo: false
+      }
+    ];
+    const workflows = fileSelectConfigs.map((fileSelectConfig) => {
+      const form = getDefaultAppForm();
+      form.chatConfig.fileSelectConfig = fileSelectConfig;
+
+      return agentForm2AppWorkflow(form, mockT);
+    });
+
+    expect(workflows.map((workflow) => workflow.chatConfig.fileSelectConfig)).toEqual(
+      fileSelectConfigs
+    );
+
+    const getMultimodalInputs = (workflow: (typeof workflows)[number]) => {
+      const agentNode = workflow.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.agent);
+
+      return [
+        NodeInputKeyEnum.aiChatVision,
+        NodeInputKeyEnum.aiChatAudio,
+        NodeInputKeyEnum.aiChatVideo
+      ].map((key) => agentNode?.inputs.find((input) => input.key === key)?.value);
+    };
+
+    expect(getMultimodalInputs(workflows[0])).toEqual(getMultimodalInputs(workflows[1]));
+  });
+
+  it('should normalize dataset rerank fields from partial datasetParams', () => {
+    const result = appWorkflow2AgentForm({
+      nodes: [
+        {
+          flowNodeType: FlowNodeTypeEnum.agent,
+          inputs: [
+            {
+              key: NodeInputKeyEnum.datasetParams,
+              value: {
+                datasets: [],
+                searchMode: 'embedding'
+              }
+            }
+          ]
+        } as any
+      ],
+      chatConfig: {} as any
+    });
+
+    expect(result.dataset.usingReRank).toBe(false);
+    expect(result.dataset.rerankModel).toBe('');
+    expect(result.dataset.rerankWeight).toBe(0.5);
+  });
+
+  it('should roundtrip agent reasoning settings through workflow inputs', () => {
+    const form: AppFormEditFormType = {
+      aiSettings: {
+        [NodeInputKeyEnum.aiModel]: 'qwen-3.6-flash',
+        [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful agent.',
+        maxHistories: 6,
+        [NodeInputKeyEnum.aiChatIsResponseText]: true,
+        [NodeInputKeyEnum.aiChatReasoning]: false,
+        [NodeInputKeyEnum.aiChatReasoningEffort]: 'high'
+      },
+      dataset: {
+        datasets: [],
+        similarity: 0.8,
+        limit: 1500,
+        searchMode: 'embedding',
+        embeddingWeight: 0.7,
+        usingReRank: false,
+        rerankModel: '',
+        rerankWeight: 0.5,
+        datasetSearchUsingExtensionQuery: false,
+        datasetSearchExtensionModel: '',
+        datasetSearchExtensionBg: ''
+      },
+      selectedTools: [],
+      chatConfig: {}
+    };
+
+    const workflow = agentForm2AppWorkflow(form, mockT);
+    const agentNode = workflow.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.agent);
+
+    expect(
+      agentNode?.inputs.find((input) => input.key === NodeInputKeyEnum.aiChatReasoning)?.value
+    ).toBe(false);
+    expect(
+      agentNode?.inputs.find((input) => input.key === NodeInputKeyEnum.aiChatReasoningEffort)?.value
+    ).toBe('high');
+
+    const restored = appWorkflow2AgentForm({
+      nodes: workflow.nodes,
+      chatConfig: workflow.chatConfig
+    });
+
+    expect(restored.aiSettings.aiChatReasoning).toBe(false);
+    expect(restored.aiSettings.aiChatReasoningEffort).toBe('high');
+  });
+
+  it('should persist dataset auth setting in agent dataset params', () => {
+    const form = getDefaultAppForm();
+    form.aiSettings = {
+      [NodeInputKeyEnum.aiModel]: 'qwen-3.6-flash',
+      [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful agent.',
+      maxHistories: 6,
+      [NodeInputKeyEnum.aiChatIsResponseText]: true
+    };
+    form.dataset.authTmbId = true;
+
+    const workflow = agentForm2AppWorkflow(form, mockT);
+    const agentNode = workflow.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.agent);
+
+    expect(
+      agentNode?.inputs.find((input) => input.key === NodeInputKeyEnum.datasetParams)?.value
+        ?.authTmbId
+    ).toBe(true);
+
+    const restored = appWorkflow2AgentForm({
+      nodes: workflow.nodes,
+      chatConfig: workflow.chatConfig
+    });
+
+    expect(restored.dataset.authTmbId).toBe(true);
+  });
+
+  it('should omit forbid stream and agent generated values from agent selected tool config', () => {
+    const form = getDefaultAppForm();
+    form.aiSettings = {
+      [NodeInputKeyEnum.aiModel]: 'qwen-3.6-flash',
+      [NodeInputKeyEnum.aiSystemPrompt]: 'You are a helpful agent.',
+      maxHistories: 6,
+      [NodeInputKeyEnum.aiChatIsResponseText]: true
+    };
+    form.selectedTools = [
+      {
+        id: 'workflow-tool',
+        pluginId: 'workflow-tool',
+        flowNodeType: FlowNodeTypeEnum.pluginModule,
+        inputs: [
+          {
+            key: NodeInputKeyEnum.forbidStream,
+            value: false
+          },
+          {
+            key: 'query',
+            value: 'hello',
+            renderTypeList: [FlowNodeInputTypeEnum.input, FlowNodeInputTypeEnum.agentGenerated],
+            selectedType: FlowNodeInputTypeEnum.agentGenerated,
+            defaultToAgentGenerated: true,
+            toolDescription: 'Query'
+          }
+        ],
+        outputs: []
+      } as any
+    ];
+
+    const workflow = agentForm2AppWorkflow(form, mockT);
+    const agentNode = workflow.nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.agent);
+    const selectedTools = agentNode?.inputs.find(
+      (input) => input.key === NodeInputKeyEnum.selectedTools
+    )?.value as Array<{ config: Record<string, any>; inputs: any[] }>;
+
+    expect(selectedTools[0].config).toEqual({});
+    expect(selectedTools[0].inputs).toEqual([
+      {
+        key: 'query',
+        mode: 'agentGenerated'
+      }
+    ]);
   });
 });

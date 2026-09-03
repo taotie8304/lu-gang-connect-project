@@ -6,8 +6,8 @@ import { useTranslation } from 'next-i18next';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import FolderPath from '@/components/common/folder/Path';
 import List from '@/pageComponents/dataset/list/List';
-import { DatasetsContext } from './context';
-import DatasetContextProvider from './context';
+import { DatasetsContext } from '../../../pageComponents/dataset/list/context';
+import DatasetContextProvider from '../../../pageComponents/dataset/list/context';
 import { useContextSelector } from 'use-context-selector';
 import MultipleMenu from '@fastgpt/web/components/common/MyMenu/Multiple';
 import { AddIcon } from '@chakra-ui/icons';
@@ -21,16 +21,21 @@ import FolderSlideCard from '@/components/common/folder/SlideCard';
 import { DatasetRoleList } from '@fastgpt/global/support/permission/dataset/constant';
 import {
   postUpdateDatasetCollaborators,
-  deleteDatasetCollaborators,
   getCollaboratorList
 } from '@/web/core/dataset/api/collaborator';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { type CreateDatasetType } from '@/pageComponents/dataset/list/CreateModal';
+import { resolveDatasetCreateAction } from '@/pageComponents/dataset/list/commercialDatasetTypes';
 import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
-import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import {
+  canCreateSubFolder,
+  DEFAULT_MAX_FOLDER_DEPTH,
+  normalizeParentId
+} from '@fastgpt/global/common/parentFolder/depth';
 import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
+import ProModal from '@/components/ProTip/ProModal';
 
 const EditFolderModal = dynamic(
   () => import('@fastgpt/web/components/common/MyModal/EditFolderModal')
@@ -42,7 +47,7 @@ const Dataset = () => {
   const { isPc } = useSystem();
   const { t } = useTranslation();
   const router = useRouter();
-  const { parentId } = router.query as { parentId: string };
+  const parentId = normalizeParentId(router.query.parentId);
 
   const {
     myDatasets,
@@ -60,16 +65,22 @@ const Dataset = () => {
   } = useContextSelector(DatasetsContext, (v) => v);
   const { userInfo } = useUserStore();
   const { feConfigs } = useSystemStore();
-  const { toast } = useToast();
+  const maxFolderDepth = feConfigs?.limit?.maxFolderDepth ?? DEFAULT_MAX_FOLDER_DEPTH;
+  const canCreateFolder = canCreateSubFolder(parentId, paths, maxFolderDepth);
+
   const [editFolderData, setEditFolderData] = useState<EditFolderFormType>();
   const [createDatasetType, setCreateDatasetType] = useState<CreateDatasetType>();
+  const [proModalOpen, setProModalOpen] = useState(false);
 
-  // 鲁港通：移除 isPlus 限制，允许所有用户创建 Web 站点同步知识库
   const onSelectDatasetType = useCallback(
-    (e: CreateDatasetType) => {
-      setCreateDatasetType(e);
+    (type: CreateDatasetType) => {
+      if (resolveDatasetCreateAction(type, feConfigs?.isPlus) === 'proModal') {
+        setProModalOpen(true);
+        return;
+      }
+      setCreateDatasetType(type);
     },
-    []
+    [feConfigs?.isPlus]
   );
 
   const RenderSearchInput = useMemo(
@@ -191,6 +202,16 @@ const Dataset = () => {
                                         onClick: () => onSelectDatasetType(DatasetTypeEnum.yuque)
                                       }
                                     ]
+                                  : []),
+                                ...(feConfigs?.show_dataset_dingtalk !== false
+                                  ? [
+                                      {
+                                        icon: 'core/dataset/dingtalkDatasetColor',
+                                        label: t('dataset:dingtalk_dataset'),
+                                        description: t('dataset:dingtalk_dataset_desc'),
+                                        onClick: () => onSelectDatasetType(DatasetTypeEnum.dingtalk)
+                                      }
+                                    ]
                                   : [])
                               ]
                             }
@@ -203,6 +224,8 @@ const Dataset = () => {
                         {
                           icon: FolderIcon,
                           label: t('common:Folder'),
+                          disabled: !canCreateFolder,
+                          disabledTip: t('common:folder_depth_limit_tip'),
                           onClick: () => setEditFolderData({})
                         }
                       ]
@@ -259,11 +282,6 @@ const Dataset = () => {
                     ...params,
                     datasetId: folderDetail._id
                   }),
-                onDelOneCollaborator: async (params) =>
-                  deleteDatasetCollaborators({
-                    ...params,
-                    datasetId: folderDetail._id
-                  }),
                 refreshDeps: [folderDetail._id, folderDetail.inheritPermission]
               }}
             />
@@ -307,6 +325,9 @@ const Dataset = () => {
           onClose={() => setCreateDatasetType(undefined)}
           parentId={parentId || undefined}
         />
+      )}
+      {!feConfigs?.isPlus && (
+        <ProModal isOpen={proModalOpen} onClose={() => setProModalOpen(false)} />
       )}
     </MyBox>
   );

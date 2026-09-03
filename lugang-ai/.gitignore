@@ -2,10 +2,8 @@
 node_modules/
 # next.js
 .next/
+.turbo/
 out/
-# production
-build/
-.astro/
 
 # misc
 .DS_Store
@@ -40,9 +38,15 @@ coverage
 document/.source
 
 projects/app/worker/
+pro/admin/worker/
 
-# 测试报告文件（除了汇总报告）
-projects/app/test/**/*-report.md
-projects/app/test/**/task*.md
-!projects/app/test/REPORTS.md
-!projects/app/test/README.md
+.turbo
+.antigravitycli
+.chrome-user-data
+
+# content_benchmark local secrets and generated artifacts
+/pro/llm_benchmark/content_benchmark/.env.local
+/pro/llm_benchmark/content_benchmark/.env.*.local
+/pro/llm_benchmark/content_benchmark/eval-runs/
+/pro/llm_benchmark/content_benchmark/.cache/
+.gstack/

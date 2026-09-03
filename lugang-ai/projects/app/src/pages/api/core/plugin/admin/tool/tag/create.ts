@@ -1,21 +1,26 @@
 import { NextAPI } from '@/service/middleware/entry';
 import { MongoPluginToolTag } from '@fastgpt/service/core/plugin/tool/tagSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { CreatePluginToolTagBody } from '@fastgpt/global/openapi/core/plugin/admin/tool/tag/api';
+import {
+  CreatePluginToolTagBodySchema,
+  type CreatePluginToolTagBody
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/tag/api';
+import type { SystemPluginToolTagType } from '@fastgpt/global/core/plugin/type';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-export type CreatePluginTagQuery = {};
+export type CreatePluginTagQuery = Record<string, never>;
 
-export type CreatePluginTagResponse = {};
+export type CreatePluginTagResponse = SystemPluginToolTagType;
 
 async function handler(
   req: ApiRequestProps<CreatePluginToolTagBody, CreatePluginTagQuery>,
-  res: ApiResponseType<any>
+  _res: ApiResponseType<any>
 ): Promise<CreatePluginTagResponse> {
   await authSystemAdmin({ req });
 
-  const { tagName } = req.body;
+  const { tagName } = parseApiInput({ req, bodySchema: CreatePluginToolTagBodySchema }).body;
 
   if (!tagName || !tagName.trim()) {
     return Promise.reject('Tag name is required');

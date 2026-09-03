@@ -1,3 +1,6 @@
+/**
+ * @deprecated Use /core/dataset/collection/listV2 instead.
+ */
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { NextAPI } from '@/service/middleware/entry';
@@ -5,40 +8,36 @@ import { DatasetTrainingCollectionName } from '@fastgpt/service/core/dataset/tra
 import { Types } from '@fastgpt/service/common/mongo';
 import { DatasetDataCollectionName } from '@fastgpt/service/core/dataset/data/schema';
 import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection/schema';
-import { DatasetCollectionTypeEnum } from '@fastgpt/global/core/dataset/constants';
-import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
-import { type PaginationProps, type PaginationResponse } from '@fastgpt/web/common/fetch/type';
-import type { DatasetCollectionsListItemType } from '@/global/core/dataset/type.d';
+import {
+  CollectionTrainingStatusEnum,
+  DatasetCollectionTypeEnum
+} from '@fastgpt/global/core/dataset/constants';
+import { type ApiRequestProps } from '@fastgpt/next/type';
+import { type PaginationResponse } from '@fastgpt/global/openapi/api';
+import type { DatasetCollectionsListItemType } from '@fastgpt/global/openapi/core/dataset/collection/api';
 import { parsePaginationRequest } from '@fastgpt/service/common/api/pagination';
+import { replaceRegChars } from '@fastgpt/global/common/string/tools';
+import { ScrollCollectionsBodySchema } from '@fastgpt/global/openapi/core/dataset/collection/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-export type GetScrollCollectionsProps = PaginationProps<{
-  datasetId: string;
-  parentId?: string | null;
-  searchText?: string;
-  selectFolder?: boolean;
-  filterTags?: string[];
-  simple?: boolean;
-}>;
+const defaultCollectionTrainingStatus = {
+  activeTrainingAmount: 0,
+  finalErrorAmount: 0,
+  hasError: false,
+  slowestTrainingStatus: CollectionTrainingStatusEnum.ready
+};
 
 async function handler(
-  req: ApiRequestProps<GetScrollCollectionsProps, {}>
+  req: ApiRequestProps
 ): Promise<PaginationResponse<DatasetCollectionsListItemType>> {
-  let {
-    datasetId,
-    parentId = null,
-    searchText = '',
-    selectFolder = false,
-    filterTags = [],
-    simple = false
-  } = req.body;
-  if (!datasetId) {
-    return Promise.reject(CommonErrEnum.missingParams);
-  }
-  let { offset, pageSize } = parsePaginationRequest(req);
+  const { datasetId, parentId, searchText, selectFolder, filterTags, simple } = parseApiInput({
+    req,
+    bodySchema: ScrollCollectionsBodySchema
+  }).body;
+  const { offset, pageSize: rawPageSize } = parsePaginationRequest(req);
 
-  searchText = searchText?.replace(/'/g, '');
-  pageSize = Math.min(pageSize, 30);
+  const regexText = searchText ? replaceRegChars(searchText) : '';
+  const pageSize = Math.min(rawPageSize, 30);
 
   // auth dataset and get my role
   const { teamId, permission } = await authDataset({
@@ -54,9 +53,9 @@ async function handler(
     datasetId: new Types.ObjectId(datasetId),
     parentId: parentId ? new Types.ObjectId(parentId) : null,
     ...(selectFolder ? { type: DatasetCollectionTypeEnum.folder } : {}),
-    ...(searchText
+    ...(regexText
       ? {
-          name: new RegExp(searchText, 'i')
+          name: { $regex: regexText, $options: 'i' }
         }
       : {}),
     ...(filterTags.length ? { tags: { $all: filterTags } } : {})
@@ -94,6 +93,7 @@ async function handler(
           ...item,
           dataAmount: 0,
           trainingAmount: 0,
+          ...defaultCollectionTrainingStatus,
           indexAmount: 0,
           permission
         }))
@@ -164,7 +164,11 @@ async function handler(
           },
           trainingAmount: {
             $ifNull: [{ $arrayElemAt: ['$trainingCount.count', 0] }, 0]
-          }
+          },
+          activeTrainingAmount: { $literal: 0 },
+          finalErrorAmount: { $literal: 0 },
+          hasError: { $literal: false },
+          slowestTrainingStatus: { $literal: CollectionTrainingStatusEnum.ready }
         }
       }
     ]),

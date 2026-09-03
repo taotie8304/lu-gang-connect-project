@@ -3,29 +3,31 @@ import {
   FlowNodeOutputTypeEnum,
   FlowNodeTypeEnum
 } from '../../../node/constant';
-import { type FlowNodeTemplateType } from '../../../type/node.d';
+import { type FlowNodeTemplateType } from '../../../type/node';
 import {
   FlowNodeTemplateTypeEnum,
   NodeInputKeyEnum,
   NodeOutputKeyEnum,
   WorkflowIOValueTypeEnum
 } from '../../../constants';
-import { i18nT } from '../../../../../../web/i18n/utils';
+import { i18nT } from '../../../../../common/i18n/utils';
 
 export const LoopStartNode: FlowNodeTemplateType = {
-  id: FlowNodeTypeEnum.loopStart,
+  id: FlowNodeTypeEnum.nestedStart,
   templateType: FlowNodeTemplateTypeEnum.systemInput,
-  flowNodeType: FlowNodeTypeEnum.loopStart,
+  flowNodeType: FlowNodeTypeEnum.nestedStart,
   showSourceHandle: true,
   showTargetHandle: false,
   avatar: 'core/workflow/template/loopStart',
+  avatarLinear: 'core/workflow/template/loopStartLinear',
+  colorSchema: 'violetDeep',
   name: i18nT('workflow:loop_start'),
   unique: true,
   forbidDelete: true,
   showStatus: false,
   inputs: [
     {
-      key: NodeInputKeyEnum.loopStartInput,
+      key: NodeInputKeyEnum.nestedStartInput,
       renderTypeList: [FlowNodeInputTypeEnum.hidden],
       valueType: WorkflowIOValueTypeEnum.any,
       label: '',
@@ -33,7 +35,7 @@ export const LoopStartNode: FlowNodeTemplateType = {
       value: ''
     },
     {
-      key: NodeInputKeyEnum.loopStartIndex,
+      key: NodeInputKeyEnum.nestedStartIndex,
       renderTypeList: [FlowNodeInputTypeEnum.hidden],
       valueType: WorkflowIOValueTypeEnum.number,
       label: i18nT('workflow:Array_element_index')
@@ -41,8 +43,8 @@ export const LoopStartNode: FlowNodeTemplateType = {
   ],
   outputs: [
     {
-      id: NodeOutputKeyEnum.loopStartIndex,
-      key: NodeOutputKeyEnum.loopStartIndex,
+      id: NodeOutputKeyEnum.nestedStartIndex,
+      key: NodeOutputKeyEnum.nestedStartIndex,
       label: i18nT('workflow:Array_element_index'),
       type: FlowNodeOutputTypeEnum.static,
       valueType: WorkflowIOValueTypeEnum.number

@@ -1,22 +1,13 @@
 import React, { useCallback } from 'react';
 import { useForm } from 'react-hook-form';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
-import MyModal from '@fastgpt/web/components/common/MyModal';
-import {
-  Box,
-  Button,
-  Flex,
-  HStack,
-  Input,
-  ModalBody,
-  ModalFooter,
-  useDisclosure
-} from '@chakra-ui/react';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
+import { Box, Button, Flex, HStack, Input, useDisclosure } from '@chakra-ui/react';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import { postCreateTeam, putUpdateTeam } from '@/web/support/user/team/api';
-import { type CreateTeamProps } from '@fastgpt/global/support/user/team/controller.d';
+import { type CreateTeamProps } from '@fastgpt/global/support/user/team/controller';
 import { DEFAULT_TEAM_AVATAR } from '@fastgpt/global/common/system/constants';
 import Icon from '@fastgpt/web/components/common/Icon';
 import dynamic from 'next/dynamic';
@@ -43,7 +34,7 @@ function EditModal({
   onClose: () => void;
   onSuccess: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['account_team', 'user']);
 
   const { register, setValue, handleSubmit, watch } = useForm<CreateTeamProps>({
     defaultValues: defaultData
@@ -51,32 +42,37 @@ function EditModal({
   const avatar = watch('avatar');
   const notificationAccount = watch('notificationAccount');
 
-  const { mutate: onclickCreate, isLoading: creating } = useRequest({
-    mutationFn: async (data: CreateTeamProps) => {
+  const { runAsync: onclickCreate, loading: creating } = useRequest(
+    async (data: CreateTeamProps) => {
       return postCreateTeam(data);
     },
-    onSuccess() {
-      onSuccess();
-      onClose();
-    },
-    successToast: t('common:create_success'),
-    errorToast: t('common:create_failed')
-  });
-  const { mutate: onclickUpdate, isLoading: updating } = useRequest({
-    mutationFn: async (data: EditTeamFormDataType) => {
+    {
+      onSuccess() {
+        onSuccess();
+        onClose();
+      },
+      successToast: t('common:create_success'),
+      errorToast: t('common:create_failed')
+    }
+  );
+
+  const { runAsync: onclickUpdate, loading: updating } = useRequest(
+    async (data: EditTeamFormDataType) => {
       if (!data.id) return Promise.resolve('');
       return putUpdateTeam({
         name: data.name,
         avatar: data.avatar
       });
     },
-    onSuccess() {
-      onSuccess();
-      onClose();
-    },
-    successToast: t('common:update_success'),
-    errorToast: t('common:update_failed')
-  });
+    {
+      onSuccess() {
+        onSuccess();
+        onClose();
+      },
+      successToast: t('common:update_success'),
+      errorToast: t('common:update_failed')
+    }
+  );
 
   const { isOpen: isOpenContact, onClose: onCloseContact, onOpen: onOpenContact } = useDisclosure();
 
@@ -94,14 +90,32 @@ function EditModal({
   );
 
   return (
-    <MyModal
-      isOpen
-      onClose={onClose}
-      iconSrc="support/team/group"
-      iconColor="primary.600"
-      title={defaultData.id ? t('user:team.Update Team') : t('user:team.Create Team')}
-    >
-      <ModalBody>
+    <>
+      <MyModal
+        isOpen
+        onClose={onClose}
+        title={defaultData.id ? t('user:team.Update Team') : t('user:team.Create Team')}
+        footer={
+          !!defaultData.id ? (
+            <>
+              <Button variant={'whiteBase'} onClick={onClose}>
+                {t('common:Close')}
+              </Button>
+              <Button isLoading={updating} onClick={handleSubmit((data) => onclickUpdate(data))}>
+                {t('common:Confirm')}
+              </Button>
+            </>
+          ) : (
+            <Button
+              w={'100%'}
+              isLoading={creating}
+              onClick={handleSubmit((data) => onclickCreate(data))}
+            >
+              {t('common:comfirn_create')}
+            </Button>
+          )
+        }
+      >
         <Box color={'myGray.800'} fontWeight={'bold'}>
           {t('account_team:set_name_avatar')}
         </Box>
@@ -162,29 +176,7 @@ function EditModal({
             {t('common:Setting')}
           </Button>
         </HStack>
-      </ModalBody>
-
-      <ModalFooter>
-        {!!defaultData.id ? (
-          <>
-            <Box flex={1} />
-            <Button variant={'whiteBase'} mr={3} onClick={onClose}>
-              {t('common:Close')}
-            </Button>
-            <Button isLoading={updating} onClick={handleSubmit((data) => onclickUpdate(data))}>
-              {t('common:confirm_update')}
-            </Button>
-          </>
-        ) : (
-          <Button
-            w={'100%'}
-            isLoading={creating}
-            onClick={handleSubmit((data) => onclickCreate(data))}
-          >
-            {t('common:comfirn_create')}
-          </Button>
-        )}
-      </ModalFooter>
+      </MyModal>
       {isOpenContact && (
         <UpdateContact
           onClose={onCloseContact}
@@ -194,7 +186,7 @@ function EditModal({
           mode="notification_account"
         />
       )}
-    </MyModal>
+    </>
   );
 }
 

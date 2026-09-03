@@ -1,23 +1,25 @@
 import { NextAPI } from '@/service/middleware/entry';
-import { refreshVersionKey } from '@fastgpt/service/common/cache';
-import { SystemCacheKeyEnum } from '@fastgpt/service/common/cache/type';
 import { MongoSystemTool } from '@fastgpt/service/core/plugin/tool/systemToolSchema';
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { authSystemAdmin } from '@fastgpt/service/support/permission/user/auth';
-import type { UpdateToolOrderBodyType } from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import {
+  UpdateToolOrderBodySchema,
+  type UpdateToolOrderBodyType
+} from '@fastgpt/global/openapi/core/plugin/admin/tool/api';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-export type updateToolOrderQuery = {};
+export type updateToolOrderQuery = Record<string, never>;
 
 export type updateToolOrderBody = UpdateToolOrderBodyType;
 
-export type updateToolOrderResponse = {};
+export type updateToolOrderResponse = Record<string, never>;
 
 async function handler(
   req: ApiRequestProps<updateToolOrderBody, updateToolOrderQuery>,
-  res: ApiResponseType<any>
+  _res: ApiResponseType<any>
 ): Promise<updateToolOrderResponse> {
   await authSystemAdmin({ req });
-  const { plugins } = req.body;
+  const { plugins } = parseApiInput({ req, bodySchema: UpdateToolOrderBodySchema }).body;
 
   await MongoSystemTool.bulkWrite(
     plugins.map((plugin, index) => ({
@@ -28,9 +30,6 @@ async function handler(
       }
     }))
   );
-
-  await refreshVersionKey(SystemCacheKeyEnum.systemTool);
-
   return {};
 }
 

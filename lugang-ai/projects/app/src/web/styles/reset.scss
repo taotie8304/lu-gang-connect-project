@@ -1,6 +1,6 @@
-@import './reactflow.scss';
-@import './default.scss';
-@import './chakraui.scss';
+@use './reactflow.scss';
+@use './default.scss';
+@use './chakraui.scss';
 
 body,
 h1,
@@ -29,34 +29,13 @@ svg {
   margin: 0;
 }
 
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+* {
+  scrollbar-color: rgba(189, 193, 197, 0.7) transparent;
+  scrollbar-width: auto;
 }
-::-webkit-scrollbar-track {
-  background: transparent;
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(189, 193, 197, 0.7);
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(189, 193, 197, 1);
-}
+
 :root {
   --lexical-indent-base-value: 24px;
-}
-
-div {
-  &::-webkit-scrollbar-thumb {
-    background: rgba(189, 193, 197, 0.7) !important;
-    transition: background 1s;
-  }
-
-  &::-webkit-scrollbar-thumb:hover {
-    background: rgba(189, 193, 197, 1) !important;
-  }
 }
 
 input::placeholder,
@@ -79,58 +58,11 @@ textarea::placeholder {
   html {
     font-size: 14px;
   }
-  ::-webkit-scrollbar {
-    width: 2px;
-    height: 2px;
-  }
 }
 
 @supports (bottom: constant(safe-area-inset-bottom)) or (bottom: env(safe-area-inset-bottom)) {
   body {
     padding-bottom: constant(safe-area-inset-bottom);
     padding-bottom: env(safe-area-inset-bottom);
-  }
-}
-
-/* Mobile-specific styles for chat interface */
-@media (max-width: 900px) {
-  .chat-container {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-  }
-  
-  .chat-content {
-    flex: 1;
-    overflow-y: auto;
-  }
-  
-  .chat-input-container {
-    position: fixed !important;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    width: 100%;
-    z-index: 1000;
-    background: white;
-    border-top: 1px solid #eee;
-    padding: 0.5rem 0;
-  }
-  
-  .quick-apps-container {
-    position: fixed !important;
-    bottom: calc(4rem + env(safe-area-inset-bottom)); /* Position above input area */
-    left: 0;
-    right: 0;
-    width: 100%;
-    z-index: 999;
-    background: white;
-    padding: 1rem;
-    box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-  }
-  
-  /* Adjust main content to account for fixed elements */
-  .main-content-with-fixed-input {
-    padding-bottom: 8rem; /* Space for input and quick apps */
   }
 }

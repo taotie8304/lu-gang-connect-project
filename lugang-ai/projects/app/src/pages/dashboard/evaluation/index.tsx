@@ -1,5 +1,4 @@
 'use client';
-import MyBox from '@fastgpt/web/components/common/MyBox';
 import DashboardContainer from '../../../pageComponents/dashboard/Container';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { useTranslation } from 'next-i18next';
@@ -19,12 +18,12 @@ import {
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useRouter } from 'next/router';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { deleteEvaluation, getEvaluationList } from '@/web/core/app/api/evaluation';
 import { formatTime2YMDHM } from '@fastgpt/global/common/string/time';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import { usePagination } from '@fastgpt/web/hooks/usePagination';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import EvaluationDetailModal from '../../../pageComponents/app/evaluation/DetailModal';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
@@ -42,6 +41,7 @@ const Evaluation = () => {
   const [evalDetailId, setEvalDetailId] = useState<string>();
 
   const [pollingInterval, setPollingInterval] = useState(10000);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     data: evaluationList,
@@ -51,13 +51,15 @@ const Evaluation = () => {
     pageSize
   } = usePagination(getEvaluationList, {
     defaultPageSize: 20,
+    pageSizeCacheKey: 'dashboard-evaluation-list',
     pollingInterval,
     pollingWhenHidden: true,
     params: {
       searchKey
     },
     EmptyTip: <EmptyTip />,
-    refreshDeps: [searchKey]
+    refreshDeps: [searchKey],
+    scrollContainerRef
   });
 
   const evalDetail = useMemo(() => {
@@ -72,10 +74,14 @@ const Evaluation = () => {
       return !isCompleted || errorCount > 0;
     });
 
-    setPollingInterval(hasRunningOrErrorTasks ? 10000 : 0);
+    const frameId = window.requestAnimationFrame(() => {
+      setPollingInterval(hasRunningOrErrorTasks ? 10000 : 0);
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
   }, [evaluationList]);
 
-  const { runAsync: onDeleteEval } = useRequest2(deleteEvaluation, {
+  const { runAsync: onDeleteEval } = useRequest(deleteEvaluation, {
     onSuccess: () => {
       fetchData();
     }
@@ -187,7 +193,13 @@ const Evaluation = () => {
           <Flex h={'full'} bg={'white'} p={6} flexDirection="column">
             {renderHeader(MenuIcon)}
 
-            <TableContainer mt={3} fontSize={'sm'} flex={'1 0 0'} overflowY="auto">
+            <TableContainer
+              ref={scrollContainerRef}
+              mt={3}
+              fontSize={'sm'}
+              flex={'1 0 0'}
+              overflowY="auto"
+            >
               <Table variant={'simple'}>
                 <Thead>
                   <Tr color={'myGray.600'}>
@@ -224,7 +236,7 @@ const Evaluation = () => {
                         <Td>
                           <Flex alignItems={'center'} gap={1.5}>
                             <Avatar src={item.appAvatar} w={5} borderRadius={'4px'} />
-                            <Box color={'myGray.900'}>{item.appName}</Box>
+                            <Box color={'myGray.900'}>{t(item.appName)}</Box>
                           </Flex>
                         </Td>
                         <Td color={'myGray.900'}>

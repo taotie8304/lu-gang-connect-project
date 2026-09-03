@@ -1,27 +1,28 @@
-import React, { useCallback } from 'react';
-import { Box, Flex } from '@chakra-ui/react';
+import React, { useCallback, useState } from 'react';
+import { Box, Checkbox, Divider, Flex } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { filterSensitiveNodesData } from '@/web/core/workflow/utils';
 import { useCopyData } from '@fastgpt/web/hooks/useCopyData';
 import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import { fileDownload } from '@/web/common/file/utils';
-import { type AppChatConfigType, type AppSimpleEditFormType } from '@fastgpt/global/core/app/type';
+import type { AppChatConfigType } from '@fastgpt/global/core/app/type';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { filterSensitiveFormData } from '@/web/core/app/utils';
 import { type RequireOnlyOne } from '@fastgpt/global/common/type/utils';
 import { type StoreNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import { type StoreEdgeItemType } from '@fastgpt/global/core/workflow/type/edge';
+import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
+import type { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 
-const ExportConfigPopover = ({
-  appForm,
-  getWorkflowData,
-
-  chatConfig,
-  appName
-}: {
+type ExportConfigPopoverProps = {
+  appType: AppTypeEnum;
   appName: string;
+  appIntro?: string | null;
   chatConfig?: AppChatConfigType;
+  filterSensitiveInfo?: boolean;
+  onFilterSensitiveInfoChange?: (value: boolean) => void;
 } & RequireOnlyOne<{
   getWorkflowData: () =>
     | {
@@ -29,25 +30,66 @@ const ExportConfigPopover = ({
         edges: StoreEdgeItemType[];
       }
     | undefined;
-  appForm: AppSimpleEditFormType;
-}>) => {
+  appForm: AppFormEditFormType;
+}>;
+
+const ExportConfigPopover = ({
+  appForm,
+  getWorkflowData,
+  chatConfig,
+  appType,
+  appName,
+  appIntro,
+  filterSensitiveInfo: filterSensitiveInfoProp,
+  onFilterSensitiveInfoChange
+}: ExportConfigPopoverProps) => {
   const { t } = useTranslation();
   const { copyData } = useCopyData();
+
+  const [localFilterSensitiveInfo, setLocalFilterSensitiveInfo] = useState<boolean>(true);
+  const filterSensitiveInfo = filterSensitiveInfoProp ?? localFilterSensitiveInfo;
+
+  const setFilterSensitiveInfo = useCallback(
+    (value: boolean) => {
+      onFilterSensitiveInfoChange?.(value);
+
+      if (filterSensitiveInfoProp === undefined) {
+        setLocalFilterSensitiveInfo(value);
+      }
+    },
+    [filterSensitiveInfoProp, onFilterSensitiveInfoChange]
+  );
 
   const onExportWorkflow = useCallback(
     async (mode: 'copy' | 'json') => {
       let config = '';
 
       if (appForm) {
-        config = JSON.stringify(filterSensitiveFormData(appForm), null, 2);
+        const appConfig = filterSensitiveInfo ? filterSensitiveFormData(appForm) : appForm;
+        config = JSON.stringify(
+          {
+            ...appConfig,
+            type: appType,
+            name: appName,
+            intro: appIntro ?? ''
+          },
+          null,
+          2
+        );
       } else if (getWorkflowData) {
         const workflowData = getWorkflowData();
         if (!workflowData) return;
+        const nodes = filterSensitiveInfo
+          ? filterSensitiveNodesData(workflowData.nodes)
+          : workflowData.nodes;
         config = JSON.stringify(
           {
-            nodes: filterSensitiveNodesData(workflowData.nodes),
+            nodes,
             edges: workflowData.edges,
-            chatConfig
+            chatConfig,
+            type: appType,
+            name: appName,
+            intro: appIntro ?? ''
           },
           null,
           2
@@ -59,7 +101,12 @@ const ExportConfigPopover = ({
       }
 
       if (mode === 'copy') {
-        copyData(config, t('app:export_config_successful'));
+        copyData(
+          config,
+          filterSensitiveInfo
+            ? t('app:export_filtered_sensitive_config_successful')
+            : t('app:export_config_successful')
+        );
       } else if (mode === 'json') {
         fileDownload({
           text: config,
@@ -68,26 +115,54 @@ const ExportConfigPopover = ({
         });
       }
     },
-    [appForm, appName, chatConfig, copyData, getWorkflowData, t]
+    [
+      appForm,
+      appIntro,
+      appName,
+      appType,
+      chatConfig,
+      copyData,
+      getWorkflowData,
+      t,
+      filterSensitiveInfo
+    ]
   );
 
   return (
     <MyPopover
       placement={'right-start'}
-      offset={[0, 20]}
-      hasArrow
+      offset={[0, 0]}
+      hasArrow={true}
       trigger={'hover'}
-      w={'8.6rem'}
+      flip={false}
+      zIndex={2000}
+      data-my-menu-ignore-outside-click
+      w={'8.8rem'}
       Trigger={
-        <MyBox display={'flex'} cursor={'pointer'}>
-          <MyIcon name={'export'} w={'16px'} mr={2} />
-          <Box fontSize={'sm'}>{t('app:export_configs')}</Box>
+        <MyBox
+          display={'flex'}
+          alignItems={'center'}
+          w={'100%'}
+          cursor={'pointer'}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <MyIcon name={'export'} w={'16px'} mr={2} flexShrink={0} />
+          <Box flex={1} minW={0} fontSize={'sm'}>
+            {t('app:export_configs')}
+          </Box>
         </MyBox>
       }
     >
-      {({ onClose }) => (
-        <Box p={1}>
+      {() => (
+        <Box
+          p={1}
+          w={'100%'}
+          onPointerDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
           <Flex
+            w={'100%'}
             py={'0.38rem'}
             px={1}
             color={'myGray.600'}
@@ -99,10 +174,13 @@ const ExportConfigPopover = ({
             borderRadius={'xs'}
             onClick={() => onExportWorkflow('copy')}
           >
-            <MyIcon name={'copy'} w={'1rem'} mr={2} />
-            <Box fontSize={'mini'}>{t('common:copy_to_clipboard')}</Box>
+            <MyIcon name={'copy'} w={'1rem'} mr={2} flexShrink={0} />
+            <Box flex={1} minW={0} fontSize={'mini'}>
+              {t('common:copy_to_clipboard')}
+            </Box>
           </Flex>
           <Flex
+            w={'100%'}
             py={'0.38rem'}
             px={1}
             color={'myGray.600'}
@@ -114,8 +192,51 @@ const ExportConfigPopover = ({
             borderRadius={'xs'}
             onClick={() => onExportWorkflow('json')}
           >
-            <MyIcon name={'configmap'} w={'1rem'} mr={2} />
-            <Box fontSize={'mini'}>{t('common:export_to_json')}</Box>
+            <MyIcon name={'configmap'} w={'1rem'} mr={2} flexShrink={0} />
+            <Box flex={1} minW={0} fontSize={'mini'}>
+              {t('common:export_to_json')}
+            </Box>
+          </Flex>
+
+          <Divider my={1} />
+
+          <Flex
+            w={'100%'}
+            py={'0.38rem'}
+            px={1}
+            alignItems={'center'}
+            color={'myGray.600'}
+            _hover={{
+              bg: 'myGray.05',
+              color: 'primary.600',
+              cursor: 'pointer'
+            }}
+            borderRadius={'xs'}
+            onClick={() => setFilterSensitiveInfo(!filterSensitiveInfo)}
+          >
+            <Checkbox
+              flex={1}
+              size="sm"
+              colorScheme="primary"
+              isChecked={filterSensitiveInfo}
+              pointerEvents={'none'}
+            >
+              <Box fontSize={'mini'}>{t('common:filter_sensitive_info')}</Box>
+            </Checkbox>
+            <Box
+              display={'flex'}
+              alignItems={'center'}
+              ml={1}
+              flexShrink={0}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <QuestionTip
+                color={'inherit'}
+                maxW={'320px'}
+                label={t('common:filter_sensitive_info_tip')}
+              />
+            </Box>
           </Flex>
         </Box>
       )}

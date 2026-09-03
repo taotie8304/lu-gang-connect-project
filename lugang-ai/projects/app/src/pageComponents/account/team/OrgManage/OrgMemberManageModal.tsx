@@ -5,8 +5,8 @@ import Avatar from '@fastgpt/web/components/common/Avatar';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { useTranslation } from 'next-i18next';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useEffect, useState } from 'react';
 import { type OrgListItemType } from '@fastgpt/global/support/user/team/org/type';
 import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
@@ -29,7 +29,7 @@ function OrgMemberManageModal({
   refetchOrgs: () => void;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('user');
   const [searchKey, setSearchKey] = useState('');
 
   const { data: allMembers, ScrollData: MemberScrollData } = useScrollPagination(getTeamMembers, {
@@ -69,7 +69,7 @@ function OrgMemberManageModal({
     );
   }, [orgMembers]);
 
-  const { run: onUpdate, loading: isLoadingUpdate } = useRequest2(
+  const { run: onUpdate, loading: isLoadingUpdate } = useRequest(
     () => {
       return putUpdateOrgMembers({
         orgId: currentOrg._id,

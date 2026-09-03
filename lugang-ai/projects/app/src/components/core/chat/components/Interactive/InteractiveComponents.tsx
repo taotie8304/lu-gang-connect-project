@@ -1,21 +1,33 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Box, Flex, FormControl, FormErrorMessage } from '@chakra-ui/react';
 import { Controller, useForm, type UseFormHandleSubmit } from 'react-hook-form';
 import Markdown from '@/components/Markdown';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
-import {
-  type UserInputInteractive,
-  type UserSelectInteractive,
-  type UserSelectOptionItemType
+import type {
+  UserInputInteractive,
+  UserSelectInteractive,
+  UserSelectOptionItemType
 } from '@fastgpt/global/core/workflow/template/system/interactive/type';
 import InputRender from '@/components/core/app/formRender';
 import { nodeInputTypeToInputType } from '@/components/core/app/formRender/utils';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import LeftRadio from '@fastgpt/web/components/common/Radio/LeftRadio';
-import { getPresignedChatFileGetUrl } from '@/web/common/file/api';
+import { useTranslation } from 'next-i18next';
 import { useContextSelector } from 'use-context-selector';
 import { WorkflowRuntimeContext } from '@/components/core/chat/ChatContainer/context/workflowRuntimeContext';
-import { useTranslation } from 'next-i18next';
+
+type FormFileValue = {
+  key?: unknown;
+  url?: unknown;
+  error?: unknown;
+};
+
+const isPendingFileValue = (file: unknown) => {
+  if (!file || typeof file !== 'object') return false;
+
+  const { key, url, error } = file as FormFileValue;
+  return !key && !url && !error;
+};
 
 const DescriptionBox = React.memo(function DescriptionBox({
   description
@@ -69,117 +81,57 @@ export const SelectOptionsComponent = React.memo(function SelectOptionsComponent
 export const FormInputComponent = React.memo(function FormInputComponent({
   interactiveParams: { description, inputForm, submitted },
   defaultValues = {},
-  chatItemDataId,
   SubmitButton
 }: {
   interactiveParams: UserInputInteractive['params'];
   defaultValues?: Record<string, any>;
-  chatItemDataId?: string;
   SubmitButton: (e: {
     onSubmit: UseFormHandleSubmit<Record<string, any>>;
     isFileUploading: boolean;
+    hasFileError: boolean;
   }) => React.JSX.Element;
 }) {
   const { t } = useTranslation();
-  const savedFormData = React.useMemo(() => {
-    const saved = sessionStorage.getItem(`interactiveForm_${chatItemDataId}`);
-    if (saved) {
-      try {
-        const parsedData = JSON.parse(saved);
-        inputForm?.forEach((item) => {
-          if (
-            item.type === 'fileSelect' &&
-            Array.isArray(parsedData[item.key]) &&
-            parsedData[item.key].length > 0
-          ) {
-            const files = parsedData[item.key];
-            if (files[0]?.url && !files[0]?.id) {
-              parsedData[item.key] = files.map((file: any) => ({
-                id: file.key || `${Date.now()}-${Math.random()}`,
-                type: file.type || 'file',
-                name: file.name || 'file',
-                url: file.url,
-                key: file.key,
-                icon: file.type === 'image' ? file.url : 'common/file',
-                status: 1
-              }));
-            }
-          }
-        });
-        return parsedData;
-      } catch (e) {}
-    }
-    return defaultValues;
-  }, [chatItemDataId, defaultValues, inputForm]);
 
-  const { handleSubmit, control, watch, reset, setValue } = useForm({
-    defaultValues: savedFormData
+  const { handleSubmit, control, watch, reset } = useForm({
+    defaultValues
   });
 
-  const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
-  const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
+  const runtimeFileUploading = useContextSelector(WorkflowRuntimeContext, (v) => v.fileUploading);
+  const formValues = watch();
+  const [fileErrorKeys, setFileErrorKeys] = React.useState<Set<string>>(() => new Set());
 
   React.useEffect(() => {
-    reset(savedFormData);
-  }, [savedFormData, reset]);
-
-  // 刷新文件 URL（处理 TTL 过期）
-  useEffect(() => {
-    if (!submitted || !inputForm) return;
-
-    const refreshFileUrls = async () => {
-      for (const item of inputForm) {
-        if (item.type === 'fileSelect' && savedFormData[item.key]) {
-          const files = savedFormData[item.key];
-          if (Array.isArray(files) && files.length > 0 && files[0]?.key) {
-            try {
-              const refreshedFiles = await Promise.all(
-                files.map(async (file: any) => {
-                  if (file.key) {
-                    try {
-                      const newUrl = await getPresignedChatFileGetUrl({
-                        key: file.key,
-                        appId,
-                        outLinkAuthData
-                      });
-                      return {
-                        ...file,
-                        url: newUrl,
-                        icon: file.type === 'image' ? newUrl : file.icon
-                      };
-                    } catch (e) {}
-                  }
-                  return file;
-                })
-              );
-              setValue(item.key, refreshedFiles);
-            } catch (e) {}
-          }
-        }
-      }
-    };
-
-    refreshFileUrls();
-  }, [submitted, inputForm, savedFormData, appId, outLinkAuthData, setValue]);
-
-  const formValues = watch();
-  useEffect(() => {
-    if (typeof window !== 'undefined' && chatItemDataId && !submitted) {
-      sessionStorage.setItem(`interactiveForm_${chatItemDataId}`, JSON.stringify(formValues));
-    }
-  }, [formValues, chatItemDataId, submitted]);
+    reset(defaultValues);
+  }, [defaultValues, reset]);
 
   const isFileUploading = React.useMemo(() => {
+    if (runtimeFileUploading) return true;
+
     return inputForm.some((input) => {
       if (input.type === 'fileSelect') {
         const files = formValues[input.key];
         if (Array.isArray(files)) {
-          return files.some((file: any) => !file.url && !file.error);
+          return files.some(isPendingFileValue);
         }
       }
       return false;
     });
-  }, [inputForm, formValues]);
+  }, [inputForm, formValues, runtimeFileUploading]);
+
+  const updateFileError = React.useCallback((key: string, hasError: boolean) => {
+    setFileErrorKeys((currentKeys) => {
+      if (currentKeys.has(key) === hasError) return currentKeys;
+
+      const nextKeys = new Set(currentKeys);
+      if (hasError) {
+        nextKeys.add(key);
+      } else {
+        nextKeys.delete(key);
+      }
+      return nextKeys;
+    });
+  }, []);
 
   return (
     <Box>
@@ -198,7 +150,7 @@ export const FormInputComponent = React.memo(function FormInputComponent({
                 validate: (value) => {
                   if (input.type === 'password' && input.minLength) {
                     if (!value || typeof value !== 'object' || !value.value) {
-                      return false;
+                      return t('common:required');
                     }
                     if (value.value.length < input.minLength) {
                       return t('common:min_length', { minLenth: input.minLength });
@@ -215,10 +167,23 @@ export const FormInputComponent = React.memo(function FormInputComponent({
               render={({ field: { onChange, value }, fieldState: { error } }) => {
                 return (
                   <FormControl isInvalid={!!error}>
-                    <Flex alignItems={'center'} mb={1}>
-                      {input.required && <Box color={'red.500'}>*</Box>}
-                      <FormLabel>{input.label}</FormLabel>
-                      {input.description && <QuestionTip ml={1} label={input.description} />}
+                    <Flex alignItems={'flex-start'} mb={1} minW={0}>
+                      {input.required && (
+                        <Box color={'red.500'} flexShrink={0}>
+                          *
+                        </Box>
+                      )}
+                      <FormLabel
+                        minW={0}
+                        flexShrink={1}
+                        whiteSpace={'pre-wrap'}
+                        wordBreak={'break-word'}
+                      >
+                        {input.label}
+                      </FormLabel>
+                      {input.description && (
+                        <QuestionTip flexShrink={0} ml={1} mt={'2px'} label={input.description} />
+                      )}
                     </Flex>
                     <InputRender
                       {...input}
@@ -228,8 +193,9 @@ export const FormInputComponent = React.memo(function FormInputComponent({
                       isDisabled={submitted}
                       isInvalid={!!error}
                       isRichText={false}
+                      onFileErrorChange={(hasError) => updateFileError(input.key, hasError)}
                     />
-                    {error && <FormErrorMessage>{error.message}</FormErrorMessage>}
+                    {error && error.message && <FormErrorMessage>{error.message}</FormErrorMessage>}
                   </FormControl>
                 );
               }}
@@ -240,7 +206,11 @@ export const FormInputComponent = React.memo(function FormInputComponent({
 
       {!submitted && (
         <Flex justifyContent={'flex-end'} mt={4}>
-          <SubmitButton onSubmit={handleSubmit} isFileUploading={isFileUploading} />
+          <SubmitButton
+            onSubmit={handleSubmit}
+            isFileUploading={isFileUploading}
+            hasFileError={fileErrorKeys.size > 0}
+          />
         </Flex>
       )}
     </Box>

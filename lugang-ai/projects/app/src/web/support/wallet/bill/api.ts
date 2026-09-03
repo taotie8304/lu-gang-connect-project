@@ -16,7 +16,9 @@ export const getBills = (data: GetBillListQueryType) =>
   POST<GetBillListResponseType>(`/proApi/support/wallet/bill/list`, data);
 
 export const postCreatePayBill = (data: CreateBillPropsType) =>
-  POST<CreateBillResponseType>(`/proApi/support/wallet/bill/create`, data);
+  POST<CreateBillResponseType>(`/proApi/support/wallet/bill/create`, data, {
+    deduplicate: true
+  });
 
 export const checkBalancePayResult = (payId: string): Promise<CheckPayResultResponseType> =>
   GET<CheckPayResultResponseType>(`/proApi/support/wallet/bill/pay/checkPayResult`, { payId }).then(
@@ -33,7 +35,7 @@ export const checkBalancePayResult = (payId: string): Promise<CheckPayResultResp
 export const putUpdatePayment = (data: UpdatePaymentPropsType) =>
   PUT<UpdateBillResponseType>(`/proApi/support/wallet/bill/pay/updatePayment`, data);
 
-export const balanceConversion = () => GET<string>(`/proApi/support/wallet/bill/balanceConversion`);
+export const balanceConversion = () => GET<void>(`/proApi/support/wallet/bill/balanceConversion`);
 
 export const cancelBill = (data: CancelBillPropsType) =>
   POST(`/proApi/support/wallet/bill/cancel`, data);

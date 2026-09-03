@@ -1,0 +1,321 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { useContextSelector } from 'use-context-selector';
+import { AppContext } from '../../context';
+import FolderPath from '@/components/common/folder/Path';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { getAppFolderPath } from '@/web/core/app/api/app';
+import { Box, Flex, IconButton } from '@chakra-ui/react';
+import { useRouter } from 'next/router';
+import RouteTab from '../../RouteTab';
+import { useTranslation } from 'next-i18next';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
+import { TabEnum } from '../../context';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+import MyTag from '@fastgpt/web/components/common/Tag/index';
+import { publishStatusStyle } from '../../constants';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
+import { formatTime2YMDHMS } from '@fastgpt/global/common/string/time';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import SaveButton from '../../Workflow/components/SaveButton';
+import { useBoolean, useDebounceEffect, useLockFn } from 'ahooks';
+import {
+  compareSimpleAppSnapshot,
+  type onSaveSnapshotFnType,
+  type SimpleAppSnapshotType
+} from './useSnapshots';
+import PublishHistories from '../../PublishHistoriesSlider';
+import type { AppVersionSchemaType } from '@fastgpt/global/core/app/version/type';
+import { useBeforeunload } from '@fastgpt/web/hooks/useBeforeunload';
+import { isProduction } from '@fastgpt/global/common/system/constants';
+import { useToast } from '@fastgpt/web/hooks/useToast';
+import { storeEdge2RenderEdge, storeNode2FlowNode } from '@/web/core/workflow/utils';
+import { checkWorkflowBeforeRunOrPublish } from '@/web/core/workflow/workflowCheck';
+import type { AppForm2WorkflowFnType, Form2WorkflowFnType } from './type';
+import type { ParentIdType } from '@fastgpt/global/common/parentFolder/type';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import { checkAgentSkillSandboxUnavailable } from '../ChatAgent/utils';
+import { NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
+
+const Header = ({
+  forbiddenSaveSnapshot: forbiddenSaveSnapshotRef,
+  appForm,
+  setAppForm,
+  past,
+  setPast,
+  saveSnapshot,
+  form2WorkflowFn,
+  form2AppWorkflowFn
+}: {
+  forbiddenSaveSnapshot: React.MutableRefObject<boolean>;
+  appForm: AppFormEditFormType;
+  setAppForm: (form: AppFormEditFormType) => void;
+  past: SimpleAppSnapshotType[];
+  setPast: (value: React.SetStateAction<SimpleAppSnapshotType[]>) => void;
+  saveSnapshot: onSaveSnapshotFnType;
+  form2AppWorkflowFn: AppForm2WorkflowFnType;
+  form2WorkflowFn: Form2WorkflowFnType;
+}) => {
+  const { t } = useTranslation();
+  const { isPc } = useSystem();
+  const { toast } = useToast();
+  const router = useRouter();
+  const appId = useContextSelector(AppContext, (v) => v.appId);
+  const onSaveApp = useContextSelector(AppContext, (v) => v.onSaveApp);
+  const currentTab = useContextSelector(AppContext, (v) => v.currentTab);
+
+  const { lastAppListRouteType, feConfigs } = useSystemStore();
+  const { teamPlanStatus } = useUserStore();
+  const enableSandbox = !teamPlanStatus?.standard || !!teamPlanStatus?.standard?.enableSandbox;
+  const showSandbox = feConfigs.show_agent_sandbox;
+
+  const { data: paths = [] } = useRequest(
+    () => getAppFolderPath({ sourceId: appId, type: 'parent' }),
+    {
+      manual: false,
+      refreshDeps: [appId]
+    }
+  );
+  const onClickRoute = useCallback(
+    (parentId: ParentIdType) => {
+      router.push({
+        pathname: '/dashboard/agent',
+        query: {
+          parentId: parentId || '',
+          type: lastAppListRouteType
+        }
+      });
+    },
+    [router, lastAppListRouteType]
+  );
+
+  const { runAsync: onClickSave, loading } = useRequest(
+    async ({
+      isPublish,
+      versionName = formatTime2YMDHMS(new Date()),
+      autoSave
+    }: {
+      isPublish?: boolean;
+      versionName?: string;
+      autoSave?: boolean;
+    }) => {
+      const { nodes, edges } = form2WorkflowFn(appForm, t);
+      await onSaveApp({
+        nodes,
+        edges,
+        chatConfig: appForm.chatConfig,
+        isPublish,
+        versionName,
+        autoSave
+      });
+      setPast((prevPast) =>
+        prevPast.map((item, index) =>
+          index === 0
+            ? {
+                ...item,
+                isSaved: true
+              }
+            : item
+        )
+      );
+    }
+  );
+
+  const [isShowHistories, { setTrue: setIsShowHistories, setFalse: closeHistories }] =
+    useBoolean(false);
+
+  const onSwitchTmpVersion = useCallback(
+    (data: SimpleAppSnapshotType, customTitle: string) => {
+      setAppForm(data.appForm);
+
+      // Remove multiple "copy-"
+      const copyText = t('app:version_copy');
+      const regex = new RegExp(`(${copyText}-)\\1+`, 'g');
+      const title = customTitle.replace(regex, `$1`);
+
+      return saveSnapshot({
+        appForm: data.appForm,
+        title
+      });
+    },
+    [saveSnapshot, setAppForm, t]
+  );
+  const onSwitchCloudVersion = useCallback(
+    (appVersion: AppVersionSchemaType) => {
+      const appForm = form2AppWorkflowFn({
+        nodes: appVersion.nodes,
+        chatConfig: appVersion.chatConfig
+      });
+
+      const res = saveSnapshot({
+        appForm,
+        title: `${t('app:version_copy')}-${appVersion.versionName}`
+      });
+      forbiddenSaveSnapshotRef.current = true;
+
+      setAppForm(appForm);
+
+      return res;
+    },
+    [forbiddenSaveSnapshotRef, saveSnapshot, setAppForm, t]
+  );
+
+  // Check if the workflow is published
+  const [isSaved, setIsSaved] = useState(false);
+  useDebounceEffect(
+    () => {
+      const savedSnapshot = past.find((snapshot) => snapshot.isSaved);
+      const val = compareSimpleAppSnapshot(savedSnapshot?.appForm, appForm);
+      setIsSaved(val);
+    },
+    [past],
+    { wait: 500 }
+  );
+
+  const onLeaveAutoSave = useLockFn(async () => {
+    if (isSaved) return;
+    try {
+      console.log('Leave auto save');
+      return onClickSave({ isPublish: false, autoSave: true });
+    } catch (error) {
+      console.error(error);
+    }
+  });
+  useEffect(() => {
+    return () => {
+      if (isProduction) {
+        onLeaveAutoSave();
+      }
+    };
+  }, []);
+  useBeforeunload({
+    tip: t('common:core.tip.leave page'),
+    callback: onLeaveAutoSave
+  });
+
+  return (
+    <Box h={14}>
+      {!isPc && (
+        <Flex justifyContent={'center'}>
+          <RouteTab />
+        </Flex>
+      )}
+      <Flex w={'full'} alignItems={'center'} position={'relative'} h={'full'}>
+        <Box flex={'1'} ml={'16px'}>
+          <FolderPath
+            rootName={t('common:All')}
+            paths={paths}
+            hoverStyle={{ color: 'primary.600' }}
+            onClick={onClickRoute}
+            fontSize={'14px'}
+          />
+        </Box>
+        {isPc && (
+          <Box position={'absolute'} left={'50%'} transform={'translateX(-50%)'}>
+            <RouteTab />
+          </Box>
+        )}
+        {currentTab === TabEnum.appEdit && (
+          <Flex alignItems={'center'}>
+            {!isShowHistories && isPc && (
+              <MyTag
+                mr={3}
+                type={'borderFill'}
+                showDot
+                colorSchema={
+                  isSaved
+                    ? publishStatusStyle.published.colorSchema
+                    : publishStatusStyle.unPublish.colorSchema
+                }
+              >
+                {t(isSaved ? publishStatusStyle.published.text : publishStatusStyle.unPublish.text)}
+              </MyTag>
+            )}
+
+            <IconButton
+              mr={[2, 4]}
+              icon={<MyIcon name={'history'} w={'18px'} />}
+              aria-label={''}
+              size={'sm'}
+              w={'34px'}
+              h={'34px'}
+              variant={'whitePrimary'}
+              onClick={isShowHistories ? closeHistories : setIsShowHistories}
+            />
+            <SaveButton
+              colorSchema="primary"
+              isLoading={loading}
+              isDisabled={isShowHistories}
+              onClickSave={onClickSave}
+              checkData={() => {
+                if (
+                  checkAgentSkillSandboxUnavailable({
+                    appForm,
+                    showSandbox,
+                    enableSandbox
+                  })
+                ) {
+                  toast({
+                    title: t('skill:sandbox_skill_unavailable_toast'),
+                    status: 'warning'
+                  });
+                  return false;
+                }
+
+                if (appForm.aiSettings.useAgentSandbox) {
+                  if (!showSandbox) {
+                    toast({
+                      title: t('skill:sandbox_system_not_configured_toast'),
+                      status: 'warning'
+                    });
+                    return false;
+                  }
+                  if (!enableSandbox) {
+                    toast({
+                      title: t('app:sandbox_free_not_support'),
+                      status: 'warning'
+                    });
+                    return false;
+                  }
+                }
+
+                const { nodes: storeNodes, edges: storeEdges } = form2WorkflowFn(appForm, t);
+
+                const toolNodeIds = new Set(
+                  storeEdges
+                    .filter((edge) => edge.targetHandle === NodeOutputKeyEnum.selectedTools)
+                    .map((edge) => edge.target)
+                );
+                const nodes = storeNodes.map((item) =>
+                  storeNode2FlowNode({ item, t, isTool: toolNodeIds.has(item.nodeId) })
+                );
+                const edges = storeEdges.map((item) => storeEdge2RenderEdge({ edge: item }));
+
+                const checkResults = checkWorkflowBeforeRunOrPublish({ nodes, edges, t });
+
+                if (checkResults.hasError) {
+                  toast({
+                    title: t('app:app.error.publish_unExist_app'),
+                    status: 'warning'
+                  });
+                }
+                return !checkResults.hasError;
+              }}
+            />
+          </Flex>
+        )}
+      </Flex>
+
+      <PublishHistories<SimpleAppSnapshotType>
+        isOpen={isShowHistories && currentTab === TabEnum.appEdit}
+        onClose={closeHistories}
+        past={past}
+        onSwitchTmpVersion={onSwitchTmpVersion}
+        onSwitchCloudVersion={onSwitchCloudVersion}
+        topOffset={14}
+        panelHeight={'calc(100vh - 68px)'}
+      />
+    </Box>
+  );
+};
+
+export default Header;

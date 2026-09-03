@@ -1,6 +1,6 @@
-import { connectionMongo, getMongoModel } from '../../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../../common/mongo';
 const { Schema, model, models } = connectionMongo;
-import { type DatasetDataSchemaType } from '@fastgpt/global/core/dataset/type.d';
+import { type DatasetDataSchemaType } from '@fastgpt/global/core/dataset/type';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
@@ -32,15 +32,15 @@ const DatasetDataSchema = new Schema({
     ref: DatasetColCollectionName,
     required: true
   },
-  q: {
-    type: String,
-    required: true
-  },
+  q: String,
   a: {
     type: String
   },
   imageId: String,
   imageDescMap: Object,
+  metadata: {
+    type: Object
+  },
   history: {
     type: [
       {
@@ -91,25 +91,27 @@ const DatasetDataSchema = new Schema({
   initJieba: Boolean
 });
 
-try {
-  // list collection and count data; list data; delete collection(relate data)
-  DatasetDataSchema.index({
+// list collection and count data; list data; delete collection(relate data)
+defineIndex(DatasetDataSchema, {
+  key: {
     teamId: 1,
     datasetId: 1,
     collectionId: 1,
     chunkIndex: 1,
     updateTime: -1
-  });
-  // Recall vectors after data matching
-  DatasetDataSchema.index({ teamId: 1, datasetId: 1, collectionId: 1, 'indexes.dataId': 1 });
-  // rebuild data
-  DatasetDataSchema.index({ rebuilding: 1, teamId: 1, datasetId: 1 });
+  }
+});
+// Recall vectors after data matching
+defineIndex(DatasetDataSchema, {
+  key: { teamId: 1, datasetId: 1, collectionId: 1, 'indexes.dataId': 1 }
+});
+// rebuild data
+defineIndex(DatasetDataSchema, {
+  key: { rebuilding: 1, teamId: 1, datasetId: 1 }
+});
 
-  // Cron clear invalid data
-  DatasetDataSchema.index({ updateTime: 1 });
-} catch (error) {
-  console.log(error);
-}
+// Cron clear invalid data
+defineIndex(DatasetDataSchema, { key: { updateTime: 1 } });
 
 export const MongoDatasetData = getMongoModel<DatasetDataSchemaType>(
   DatasetDataCollectionName,

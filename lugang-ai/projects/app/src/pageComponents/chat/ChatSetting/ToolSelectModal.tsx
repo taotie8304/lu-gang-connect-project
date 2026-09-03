@@ -4,36 +4,45 @@ import MyModal from '@fastgpt/web/components/common/MyModal';
 import { useTranslation } from 'next-i18next';
 import { Box, Button, Flex, Grid } from '@chakra-ui/react';
 import { parseI18nString } from '@fastgpt/global/common/i18n/utils';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import {
   type FlowNodeTemplateType,
   type NodeTemplateListItemType
-} from '@fastgpt/global/core/workflow/type/node.d';
+} from '@fastgpt/global/core/workflow/type/node';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { getToolPreviewNode, getAppToolTemplates, getAppToolPaths } from '@/web/core/app/api/tool';
+import {
+  getClientToolPreviewNode,
+  getAppToolTemplates,
+  getAppToolPaths
+} from '@/web/core/app/api/tool';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { type ParentIdType } from '@fastgpt/global/common/parentFolder/type';
 import FolderPath from '@/components/common/folder/Path';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { NodeInputKeyEnum, NodeOutputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import SearchInput from '@fastgpt/web/components/common/Input/SearchInput';
-import { useMemoizedFn } from 'ahooks';
 import MyAvatar from '@fastgpt/web/components/common/Avatar';
 import { FlowNodeInputTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
-import { type AppSimpleEditFormType } from '@fastgpt/global/core/app/type';
+import type { AppFormEditFormType } from '@fastgpt/global/core/app/formEdit/type';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { workflowStartNodeId } from '@/web/core/app/constants';
-import ConfigToolModal from '@/pageComponents/app/detail/SimpleApp/components/ConfigToolModal';
 import type { ChatSettingType } from '@fastgpt/global/core/chat/setting/type';
 import CostTooltip from '@/components/core/app/tool/CostTooltip';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import ToolTagFilterBox from '@fastgpt/web/components/core/plugin/tool/TagFilterBox';
 import { getPluginToolTags } from '@/web/core/plugin/toolTag/api';
+import ConfigToolModal from '@/pageComponents/app/detail/Edit/component/ConfigToolModal';
+import { getToolIdentityKey, isDebugToolSource } from '@fastgpt/global/core/app/tool/utils';
+import DebugToolTag from '@fastgpt/web/components/core/plugin/tool/DebugToolTag';
+import {
+  checkNeedsUserConfiguration,
+  validateToolConfiguration
+} from '@fastgpt/global/core/app/formEdit/utils';
 
 type Props = {
   selectedTools: ChatSettingType['selectedTools'];
-  chatConfig?: AppSimpleEditFormType['chatConfig'];
+  chatConfig?: AppFormEditFormType['chatConfig'];
   onAddTool: (tool: FlowNodeTemplateType) => void;
   onRemoveTool: (tool: NodeTemplateListItemType) => void;
 };
@@ -48,6 +57,7 @@ export const childAppSystemKey: string[] = [
 const ToolSelectModal = ({ onClose, ...props }: Props & { onClose: () => void }) => {
   const { t } = useTranslation();
   const [parentId, setParentId] = useState<ParentIdType>('');
+  const [parentSource, setParentSource] = useState<string>();
   const [searchKey, setSearchKey] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
 
@@ -55,26 +65,28 @@ const ToolSelectModal = ({ onClose, ...props }: Props & { onClose: () => void })
     data: rawTemplates = [],
     runAsync: loadTemplates,
     loading: isLoading
-  } = useRequest2(
+  } = useRequest(
     async ({
       parentId = '',
-      searchVal = searchKey
+      searchVal = searchKey,
+      source
     }: {
       parentId?: ParentIdType;
       searchVal?: string;
+      source?: string;
     }) => {
-      return getAppToolTemplates({ parentId, searchKey: searchVal });
+      return getAppToolTemplates({ parentId, searchKey: searchVal, source });
     },
     {
-      onSuccess(_, [{ parentId = '' }]) {
+      onSuccess(_, [{ parentId = '', source }]) {
         setParentId(parentId);
+        setParentSource(parentId ? (source ?? parentSource) : undefined);
       },
-      refreshDeps: [searchKey, parentId],
-      errorToast: t('common:core.module.templates.Load plugin error')
+      refreshDeps: [searchKey, parentId]
     }
   );
 
-  const { data: allTags = [] } = useRequest2(getPluginToolTags, {
+  const { data: allTags = [] } = useRequest(getPluginToolTags, {
     manual: false
   });
 
@@ -87,26 +99,32 @@ const ToolSelectModal = ({ onClose, ...props }: Props & { onClose: () => void })
     });
   }, [rawTemplates, selectedTagIds]);
 
-  const { data: paths = [] } = useRequest2(
+  const { data: paths = [] } = useRequest(
     () => {
-      return getAppToolPaths({ sourceId: parentId, type: 'current' });
+      return getAppToolPaths({ sourceId: parentId, source: parentSource, type: 'current' });
     },
     {
       manual: false,
-      refreshDeps: [parentId]
+      refreshDeps: [parentId, parentSource]
     }
   );
 
   const onUpdateParentId = useCallback(
-    (parentId: ParentIdType) => {
+    (parentId: ParentIdType, source?: string) => {
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur();
+      }
+      const nextParentSource = parentId ? (source ?? parentSource) : undefined;
+
       loadTemplates({
-        parentId
+        parentId,
+        source: nextParentSource
       });
     },
-    [loadTemplates]
+    [loadTemplates, parentSource]
   );
 
-  useRequest2(() => loadTemplates({ searchVal: searchKey }), {
+  useRequest(() => loadTemplates({ searchVal: searchKey }), {
     manual: false,
     throttleWait: 300,
     refreshDeps: [searchKey]
@@ -134,7 +152,7 @@ const ToolSelectModal = ({ onClose, ...props }: Props & { onClose: () => void })
       </Box>
       {/* Tag filter */}
       {allTags.length > 0 && (
-        <Box mt={3} mb={-1} px={[3, 6]}>
+        <Box pt={3} mb={-1} px={[3, 6]}>
           <ToolTagFilterBox
             size="sm"
             tags={allTags}
@@ -145,16 +163,18 @@ const ToolSelectModal = ({ onClose, ...props }: Props & { onClose: () => void })
       )}
       {/* route components */}
       {!searchKey && parentId && (
-        <Flex mt={2} px={[3, 6]}>
+        <Flex pt={2} px={[3, 6]}>
           <FolderPath paths={paths} FirstPathDom={null} onClick={onUpdateParentId} />
         </Flex>
       )}
-      <MyBox isLoading={isLoading} mt={2} pb={3} flex={'1 0 0'} h={0}>
+      <MyBox isLoading={isLoading} pt={2} pb={3} flex={'1 0 0'} h={0}>
         <Box px={[3, 6]} overflow={'overlay'} height={'100%'}>
           <RenderList
             templates={templates}
+            parentId={parentId}
+            searchKey={searchKey}
+            selectedTagIds={selectedTagIds}
             setParentId={onUpdateParentId}
-            allTags={allTags}
             {...props}
           />
         </Box>
@@ -167,16 +187,20 @@ export default React.memo(ToolSelectModal);
 
 const RenderList = React.memo(function RenderList({
   templates,
+  parentId,
+  searchKey,
+  selectedTagIds,
   onAddTool,
   onRemoveTool,
   setParentId,
   selectedTools,
-  chatConfig = {},
-  allTags
+  chatConfig = {}
 }: Props & {
   templates: NodeTemplateListItemType[];
-  setParentId: (parentId: ParentIdType) => any;
-  allTags: Array<{ tagId: string; tagName: any }>;
+  parentId: ParentIdType;
+  searchKey: string;
+  selectedTagIds: string[];
+  setParentId: (parentId: ParentIdType, source?: string) => any;
 }) {
   const { t, i18n } = useTranslation();
   const { feConfigs } = useSystemStore();
@@ -184,69 +208,39 @@ const RenderList = React.memo(function RenderList({
   const [configTool, setConfigTool] = useState<FlowNodeTemplateType>();
   const onCloseConfigTool = useCallback(() => setConfigTool(undefined), []);
   const { toast } = useToast();
+  const listScopeKey = useMemo(
+    () => `${parentId ?? ''}:${searchKey}:${selectedTagIds.join(',')}`,
+    [parentId, searchKey, selectedTagIds]
+  );
+  const [tooltipEnabledScopeKey, setTooltipEnabledScopeKey] = useState('');
+  const isTooltipEnabled = tooltipEnabledScopeKey === listScopeKey;
 
-  const { runAsync: onClickAdd, loading: isLoading } = useRequest2(
+  const { runAsync: onClickAdd, loading: isLoading } = useRequest(
     async (template: NodeTemplateListItemType) => {
-      const res = await getToolPreviewNode({ appId: template.id });
-
-      /* Invalid plugin check
-        1. Reference type. but not tool description;
-        2. Has dataset select
-        3. Has dynamic external data
-      */
-      const oneFileInput =
-        res.inputs.filter((input) =>
-          input.renderTypeList.includes(FlowNodeInputTypeEnum.fileSelect)
-        ).length === 1;
-      const canUploadFile =
-        chatConfig?.fileSelectConfig?.canSelectFile || chatConfig?.fileSelectConfig?.canSelectImg;
-      const invalidFileInput = oneFileInput && !!canUploadFile;
-      if (
-        res.inputs.some(
-          (input) =>
-            (input.renderTypeList.length === 1 &&
-              input.renderTypeList[0] === FlowNodeInputTypeEnum.reference &&
-              !input.toolDescription) ||
-            input.renderTypeList.includes(FlowNodeInputTypeEnum.selectDataset) ||
-            input.renderTypeList.includes(FlowNodeInputTypeEnum.addInputParam) ||
-            (input.renderTypeList.includes(FlowNodeInputTypeEnum.fileSelect) && !invalidFileInput)
+      const res = await getClientToolPreviewNode({
+        appId: template.id,
+        versionId: '',
+        source: template.source
+      });
+      const toolValid = validateToolConfiguration({
+        toolTemplate: res,
+        isAppTool: true,
+        canUploadFile: !!(
+          chatConfig?.fileSelectConfig?.canSelectFile ||
+          chatConfig?.fileSelectConfig?.canSelectImg ||
+          chatConfig?.fileSelectConfig?.canSelectVideo ||
+          chatConfig?.fileSelectConfig?.canSelectAudio ||
+          chatConfig?.fileSelectConfig?.canSelectCustomFileExtension
         )
-      ) {
+      });
+      if (!toolValid) {
         return toast({
           title: t('app:simple_tool_tips'),
           status: 'warning'
         });
       }
 
-      // 判断是否可以直接添加工具,满足以下任一条件:
-      // 1. 有工具描述
-      // 2. 是模型选择类型
-      // 3. 是文件上传类型且:已开启文件上传、非必填、只有一个文件上传输入
-      const hasInputForm =
-        res.inputs.length > 0 &&
-        res.inputs.some((input) => {
-          if (input.toolDescription) {
-            return false;
-          }
-          if (input.key === NodeInputKeyEnum.forbidStream) {
-            return false;
-          }
-          if (input.key === NodeInputKeyEnum.systemInputConfig) {
-            return true;
-          }
-
-          // Check if input has any of the form render types
-          const formRenderTypes = [
-            FlowNodeInputTypeEnum.input,
-            FlowNodeInputTypeEnum.textarea,
-            FlowNodeInputTypeEnum.numberInput,
-            FlowNodeInputTypeEnum.switch,
-            FlowNodeInputTypeEnum.select,
-            FlowNodeInputTypeEnum.JSONEditor
-          ];
-
-          return formRenderTypes.some((type) => input.renderTypeList.includes(type));
-        });
+      const hasInputForm = checkNeedsUserConfiguration(res);
 
       // 构建默认表单数据
       const defaultForm = {
@@ -268,9 +262,6 @@ const RenderList = React.memo(function RenderList({
       } else {
         onAddTool(defaultForm);
       }
-    },
-    {
-      errorToast: t('common:core.module.templates.Load plugin error')
     }
   );
 
@@ -280,142 +271,153 @@ const RenderList = React.memo(function RenderList({
     avatarSize: '1.75rem'
   };
 
-  const PluginListRender = useMemoizedFn(() => {
-    return (
-      <>
-        {templates.length > 0 ? (
-          <Grid gridTemplateColumns={gridStyle.gridTemplateColumns} rowGap={3} columnGap={3} mt={3}>
-            {templates.map((template) => {
-              const selected = selectedTools.some((tool) => tool.pluginId === template.id);
+  const pluginListRender =
+    templates.length > 0 ? (
+      <Grid
+        key={listScopeKey}
+        onMouseMove={() => setTooltipEnabledScopeKey(listScopeKey)}
+        gridTemplateColumns={gridStyle.gridTemplateColumns}
+        rowGap={3}
+        columnGap={3}
+        pt={3}
+      >
+        {templates.map((template) => {
+          const selected = selectedTools.some(
+            (tool) =>
+              getToolIdentityKey(tool.pluginId, tool.source) ===
+              getToolIdentityKey(template.id, template.source)
+          );
+          const isDebugTool = isDebugToolSource(template.source);
 
-              return (
-                <MyTooltip
-                  key={template.id}
-                  placement={'right'}
-                  label={
-                    <Box py={2}>
-                      <Flex alignItems={'center'}>
-                        <MyAvatar
-                          src={template.avatar}
-                          w={'1.75rem'}
-                          objectFit={'contain'}
-                          borderRadius={'sm'}
-                        />
-                        <Box fontWeight={'bold'} ml={3} color={'myGray.900'} flex={'1'}>
-                          {template.name}
-                        </Box>
-                        <Box color={'myGray.500'}>
-                          By {template.author || feConfigs?.systemTitle}
-                        </Box>
-                      </Flex>
-                      <Box mt={2} color={'myGray.500'} maxH={'100px'} overflow={'hidden'}>
-                        {template.intro || t('common:core.workflow.Not intro')}
-                      </Box>
-                      <CostTooltip cost={template.currentCost} hasTokenFee={template.hasTokenFee} />
-                    </Box>
-                  }
-                >
-                  <Flex
-                    alignItems={'center'}
-                    py={gridStyle.py}
-                    px={3}
-                    _hover={{ bg: 'myWhite.600' }}
-                    borderRadius={'sm'}
-                    h={'100%'}
-                  >
+          return (
+            <MyTooltip
+              key={getToolIdentityKey(template.id, template.source)}
+              isDisabled={!isTooltipEnabled}
+              placement={'right'}
+              label={
+                <Box py={2}>
+                  <Flex alignItems={'center'} gap={3}>
                     <MyAvatar
                       src={template.avatar}
-                      w={gridStyle.avatarSize}
+                      w={'1.75rem'}
                       objectFit={'contain'}
                       borderRadius={'sm'}
-                      flexShrink={0}
                     />
-                    <Box flex={'1 0 0'} ml={3}>
-                      <Box
-                        color={'myGray.900'}
-                        fontWeight={'500'}
-                        fontSize={'sm'}
-                        className="textEllipsis"
-                      >
-                        {t(parseI18nString(template.name, i18n.language))}
-                      </Box>
+                    <Box fontWeight={'bold'} color={'myGray.900'} flex={'1'}>
+                      {template.name}
                     </Box>
-
-                    {selected ? (
-                      <Button
-                        size={'sm'}
-                        variant={'grayDanger'}
-                        leftIcon={<MyIcon name={'delete'} w={'16px'} mr={-1} />}
-                        onClick={() => onRemoveTool(template)}
-                        px={2}
-                        fontSize={'mini'}
-                      >
-                        {t('common:Remove')}
-                      </Button>
-                    ) : template.flowNodeType === 'toolSet' ? (
-                      <Flex gap={2}>
-                        <Button
-                          size={'sm'}
-                          variant={'whiteBase'}
-                          isLoading={isLoading}
-                          leftIcon={<MyIcon name={'common/arrowRight'} w={'16px'} mr={-1.5} />}
-                          onClick={() => setParentId(template.id)}
-                          px={2}
-                          fontSize={'mini'}
-                        >
-                          {t('common:Open')}
-                        </Button>
-                        <Button
-                          size={'sm'}
-                          variant={'primaryOutline'}
-                          leftIcon={<MyIcon name={'common/addLight'} w={'16px'} mr={-1.5} />}
-                          isLoading={isLoading}
-                          onClick={() => onClickAdd(template)}
-                          px={2}
-                          fontSize={'mini'}
-                        >
-                          {t('common:Add')}
-                        </Button>
-                      </Flex>
-                    ) : template.isFolder ? (
-                      <Button
-                        size={'sm'}
-                        variant={'whiteBase'}
-                        leftIcon={<MyIcon name={'common/arrowRight'} w={'16px'} mr={-1.5} />}
-                        onClick={() => setParentId(template.id)}
-                        px={2}
-                        fontSize={'mini'}
-                      >
-                        {t('common:Open')}
-                      </Button>
-                    ) : (
-                      <Button
-                        size={'sm'}
-                        variant={'primaryOutline'}
-                        leftIcon={<MyIcon name={'common/addLight'} w={'16px'} mr={-1.5} />}
-                        isLoading={isLoading}
-                        onClick={() => onClickAdd(template)}
-                        px={2}
-                        fontSize={'mini'}
-                      >
-                        {t('common:Add')}
-                      </Button>
-                    )}
+                    {isDebugTool && <DebugToolTag />}
+                    <Box color={'myGray.500'}>By {template.author || feConfigs?.systemTitle}</Box>
                   </Flex>
-                </MyTooltip>
-              );
-            })}
-          </Grid>
-        ) : (
-          <EmptyTip text={t('app:module.No Modules')} />
-        )}
-      </>
+                  <Box pt={2} color={'myGray.500'} maxH={'100px'} overflow={'hidden'}>
+                    {template.intro || t('common:core.workflow.Not intro')}
+                  </Box>
+                  <CostTooltip cost={template.currentCost} hasTokenFee={template.hasTokenFee} />
+                </Box>
+              }
+            >
+              <Flex
+                gap={3}
+                alignItems={'center'}
+                py={gridStyle.py}
+                px={3}
+                _hover={{ bg: 'myWhite.600' }}
+                borderRadius={'sm'}
+                h={'100%'}
+              >
+                <MyAvatar
+                  src={template.avatar}
+                  w={gridStyle.avatarSize}
+                  objectFit={'contain'}
+                  borderRadius={'sm'}
+                  flexShrink={0}
+                />
+                <Box flex={'1 0 0'} minW={0}>
+                  <Flex alignItems={'center'} gap={2} minW={0}>
+                    <Box
+                      color={'myGray.900'}
+                      fontWeight={'500'}
+                      fontSize={'sm'}
+                      className="textEllipsis"
+                    >
+                      {t(parseI18nString(template.name, i18n.language))}
+                    </Box>
+                    {isDebugTool && <DebugToolTag />}
+                  </Flex>
+                </Box>
+
+                {selected ? (
+                  <Button
+                    size={'sm'}
+                    variant={'grayDanger'}
+                    leftIcon={<MyIcon name={'delete'} w={'16px'} mr={-1} />}
+                    onClick={() => onRemoveTool(template)}
+                    px={2}
+                    fontSize={'mini'}
+                  >
+                    {t('common:Remove')}
+                  </Button>
+                ) : template.flowNodeType === 'toolSet' ? (
+                  <Flex gap={2}>
+                    <Button
+                      size={'sm'}
+                      variant={'whiteBase'}
+                      isLoading={isLoading}
+                      leftIcon={<MyIcon name={'common/arrowRight'} w={'16px'} mr={-1.5} />}
+                      onClick={() => setParentId(template.id, template.source)}
+                      px={2}
+                      fontSize={'mini'}
+                    >
+                      {t('common:Open')}
+                    </Button>
+                    <Button
+                      size={'sm'}
+                      variant={'primaryOutline'}
+                      leftIcon={<MyIcon name={'common/addLight'} w={'16px'} mr={-1.5} />}
+                      isLoading={isLoading}
+                      onClick={() => onClickAdd(template)}
+                      px={2}
+                      fontSize={'mini'}
+                    >
+                      {t('common:Add')}
+                    </Button>
+                  </Flex>
+                ) : template.isFolder ? (
+                  <Button
+                    size={'sm'}
+                    variant={'whiteBase'}
+                    leftIcon={<MyIcon name={'common/arrowRight'} w={'16px'} mr={-1.5} />}
+                    onClick={() => setParentId(template.id, template.source)}
+                    px={2}
+                    fontSize={'mini'}
+                  >
+                    {t('common:Open')}
+                  </Button>
+                ) : (
+                  <Button
+                    size={'sm'}
+                    variant={'primaryOutline'}
+                    leftIcon={<MyIcon name={'common/addLight'} w={'16px'} mr={-1.5} />}
+                    isLoading={isLoading}
+                    onClick={() => onClickAdd(template)}
+                    px={2}
+                    fontSize={'mini'}
+                  >
+                    {t('common:Add')}
+                  </Button>
+                )}
+              </Flex>
+            </MyTooltip>
+          );
+        })}
+      </Grid>
+    ) : (
+      <EmptyTip text={t('app:module.No Modules')} />
     );
-  });
 
   return (
     <>
-      <PluginListRender />
+      {pluginListRender}
 
       {!!configTool && (
         <ConfigToolModal

@@ -1,5 +1,5 @@
-import React, { useCallback, useState, useEffect } from 'react';
-import { Box, Flex, Text, Spinner, useDisclosure } from '@chakra-ui/react';
+import React, { useCallback } from 'react';
+import { Box, Flex, Text, useDisclosure } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
@@ -7,22 +7,15 @@ import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import Avatar from '@fastgpt/web/components/common/Avatar';
-import { useRouter } from 'next/router';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
-import { GET } from '@/web/common/api/request';
-import UserSettingsPanel from '@/components/UserSettingsPanel';
+import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMenuItems';
+import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
+import PhoneDrawer from '@fastgpt/web/components/common/PhoneDrawer';
 
 type UserAvatarPopoverProps = {
   isCollapsed: boolean;
   children: React.ReactNode;
   placement?: Parameters<typeof MyPopover>[0]['placement'];
-};
-
-// 额度响应类型
-type QuotaResponse = {
-  quota: number;
-  usedQuota: number;
-  remainingQuota: number;
 };
 
 const UserAvatarPopover = ({
@@ -32,40 +25,10 @@ const UserAvatarPopover = ({
   ...props
 }: UserAvatarPopoverProps) => {
   const { t } = useTranslation();
-  const router = useRouter();
   const { setUserInfo, userInfo } = useUserStore();
-  const { feConfigs } = useSystemStore();
-
-  // 鲁港通：用户设置面板状态
-  const { isOpen: isSettingsPanelOpen, onOpen: onOpenSettingsPanel, onClose: onCloseSettingsPanel } = useDisclosure();
-
-  // 检查是否为管理员
-  const isAdmin = !!userInfo?.team?.permission?.hasManagePer;
-  // 鲁港通：所有非管理员用户点击头像都显示设置面板
-  const showSettingsPanel = !!userInfo && !isAdmin;
-
-  // 鲁港通：额度状态
-  const [quotaData, setQuotaData] = useState<QuotaResponse | null>(null);
-  const [quotaLoading, setQuotaLoading] = useState(false);
-
-  // 鲁港通：获取用户额度（非管理员用户）
-  useEffect(() => {
-    if (showSettingsPanel && userInfo) {
-      setQuotaLoading(true);
-      GET<QuotaResponse>('/integration/oneapi/quota')
-        .then((data) => {
-          setQuotaData(data);
-        })
-        .catch((err) => {
-          console.error('Failed to fetch quota:', err);
-          // 如果获取失败，显示默认值
-          setQuotaData({ quota: 0, usedQuota: 0, remainingQuota: 0 });
-        })
-        .finally(() => {
-          setQuotaLoading(false);
-        });
-    }
-  }, [showSettingsPanel, userInfo]);
+  const { isPc } = useSystem();
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const { currentLang, onChangeLanguage } = useChatLanguageSwitch('account');
 
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
 
@@ -74,176 +37,127 @@ const UserAvatarPopover = ({
     clearToken();
   }, [setUserInfo]);
 
-  const handleGoToProfile = useCallback(() => {
-    router.push('/account/info');
-  }, [router]);
+  const onLogout = useCallback(
+    (closeMenu?: () => void) => {
+      closeMenu?.();
+      openConfirm({ onConfirm: handleLogout })();
+    },
+    [handleLogout, openConfirm]
+  );
 
-  const handleGoToAdmin = useCallback(() => {
-    router.push('/dashboard/agent');
-  }, [router]);
+  const logoutContent = (
+    <>
+      <MyIcon name="core/chat/sidebar/logout" w="18px" />
+      <Text fontSize="14px">{t('common:logout')}</Text>
+    </>
+  );
 
-  // 鲁港通：跳转到充值页面
-  const handleGoToRecharge = useCallback(() => {
-    // 跳转到 One API 充值页面
-    const oneApiUrl = feConfigs?.oneApiUrl || 'https://api.airscend.com';
-    window.open(`${oneApiUrl}/topup`, '_blank');
-  }, [feConfigs?.oneApiUrl]);
+  // 移动端没有 hover，头像点击后复用通用底部抽屉，并额外挂载登出操作。
+  if (!isPc) {
+    return (
+      <>
+        <Box cursor="pointer" w="full" onClick={onOpen}>
+          {children}
+        </Box>
 
-  // 格式化额度显示（One API 额度单位是 1/500000 美元）
-  const formatQuota = (value: number) => {
-    // 转换为人民币显示（假设 1 美元 = 7.2 人民币）
-    const cnyValue = (value / 500000) * 7.2;
-    if (cnyValue >= 10000) {
-      return `${(cnyValue / 10000).toFixed(2)}万`;
-    }
-    return cnyValue.toFixed(2);
-  };
+        <PhoneDrawer
+          isOpen={isOpen}
+          onClose={onClose}
+          bodyProps={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+        >
+          <LanguageMenuItems
+            currentLang={currentLang}
+            variant="mobileList"
+            onSelect={(lng) => onChangeLanguage(lng, onClose)}
+          />
 
-  // 鲁港通：处理头像点击事件
-  const handleAvatarClick = useCallback(() => {
-    // 如果是普通用户在分享聊天页面，打开设置面板
-    if (showSettingsPanel) {
-      onOpenSettingsPanel();
-    }
-  }, [showSettingsPanel, onOpenSettingsPanel]);
+          <Box borderTop="1px solid" borderColor="myGray.150" w="100%" />
+
+          <Flex
+            alignItems="center"
+            cursor="pointer"
+            _hover={{ bg: 'myGray.100' }}
+            py={1}
+            px={2}
+            borderRadius="4px"
+            gap={1}
+            h="44px"
+            color="myGray.600"
+            fontWeight={500}
+            letterSpacing="0.15px"
+            onClick={() => onLogout(onClose)}
+            w="100%"
+          >
+            <MyIcon name="core/chat/sidebar/logout" w="16px" />
+            <Text fontSize="16px" lineHeight="24px">
+              {t('common:logout')}
+            </Text>
+          </Flex>
+        </PhoneDrawer>
+
+        <ConfirmModal />
+      </>
+    );
+  }
 
   return (
     <>
-      {/* 鲁港通：普通用户在分享聊天页面点击打开设置面板 */}
-      {showSettingsPanel ? (
-        <>
-          <Box cursor="pointer" w="full" onClick={handleAvatarClick}>
+      <MyPopover
+        Trigger={
+          <Box cursor="pointer" w="full">
             {children}
           </Box>
-          <UserSettingsPanel isOpen={isSettingsPanelOpen} onClose={onCloseSettingsPanel} />
-        </>
-      ) : (
-        /* 管理员或其他页面使用 Popover */
-        <MyPopover
-          Trigger={
-            <Box cursor="pointer" w="full">
-              {children}
-            </Box>
-          }
-          trigger="hover"
-          placement={placement}
-          w="200px"
-          {...props}
-        >
-          {({ onClose }) => {
-            const onLogout = useCallback(() => {
-              onClose();
-              openConfirm({ onConfirm: handleLogout })();
-            }, [onClose]);
-
-            const onProfile = useCallback(() => {
-              onClose();
-              handleGoToProfile();
-            }, [onClose]);
-
-            const onAdmin = useCallback(() => {
-              onClose();
-              handleGoToAdmin();
-            }, [onClose]);
-
-            const onRecharge = useCallback(() => {
-              onClose();
-              handleGoToRecharge();
-            }, [onClose]);
-
-            return (
-              <Flex p={2} direction="column" gap={1}>
-                {/* 用户信息头部 */}
-                {!!isCollapsed && (
-                  <Flex
-                    borderBottom="1px solid"
-                    alignItems="center"
-                    borderColor="myGray.200"
-                    pb={2}
-                    px={2}
-                    mb={1}
-                    fontWeight="500"
-                    fontSize="14px"
-                    gap={2}
-                  >
-                    <Avatar src={userInfo?.avatar} bg="myGray.200" borderRadius="50%" w={5} h={5} />
-                    <Box flex="1 1 0" minW="0" whiteSpace="pre-wrap">
-                      {userInfo?.team.memberName ?? '-'}
-                    </Box>
-                  </Flex>
-                )}
-
-                {/* 个人中心 */}
-                <Flex
-                  alignItems="center"
-                  cursor="pointer"
-                  _hover={{ bg: 'myGray.100' }}
-                  py={1.5}
-                  px={2}
-                  borderRadius="4px"
-                  gap={2}
-                  onClick={onProfile}
-                  w="100%"
-                >
-                  <MyIcon name="support/user/userLight" w="16px" />
-                  <Text fontSize="14px">{t('common:user.Personal_Center') || '个人中心'}</Text>
-                </Flex>
-
-                {/* 管理后台入口 - 仅管理员显示 */}
-                {isAdmin && (
-                  <Flex
-                    alignItems="center"
-                    cursor="pointer"
-                    _hover={{ bg: 'myGray.100' }}
-                    py={1.5}
-                    px={2}
-                    borderRadius="4px"
-                    gap={2}
-                    onClick={onAdmin}
-                    w="100%"
-                  >
-                    <MyIcon name="common/setting" w="16px" />
-                    <Text fontSize="14px">管理后台</Text>
-                  </Flex>
-                )}
-
-                {/* 分隔线 */}
-                <Box borderTop="1px solid" borderColor="myGray.200" my={1} />
-
-                {/* 退出登录 */}
-                <Flex
-                  alignItems="center"
-                  cursor="pointer"
-                  _hover={{ bg: 'myGray.100' }}
-                  py={1.5}
-                  px={2}
-                  borderRadius="4px"
-                  gap={2}
-                  onClick={onLogout}
-                  w="100%"
-                  color="red.500"
-                >
-                  <MyIcon name="core/chat/sidebar/logout" w="16px" />
-                  <Text fontSize="14px">{t('common:logout')}</Text>
-                </Flex>
-
-                {/* 版本号 */}
-                <Box
-                  textAlign="center"
-                  fontSize="12px"
-                  color="myGray.400"
-                  mt={1}
-                  pt={1}
-                  borderTop="1px solid"
-                  borderColor="myGray.100"
-                >
-                  v{global?.systemVersion || '1.0.0'}
+        }
+        trigger="hover"
+        placement={placement}
+        w="178px"
+        {...props}
+      >
+        {({ onClose }) => (
+          <Flex p={2} direction="column" gap={1}>
+            {!!isCollapsed && (
+              <Flex
+                borderBottom="1px solid"
+                alignItems="center"
+                borderColor="myGray.200"
+                pb={2}
+                px={2}
+                fontWeight="500"
+                fontSize="14px"
+                gap={2}
+              >
+                <Avatar src={userInfo?.avatar} bg="myGray.200" borderRadius="50%" w={5} h={5} />
+                <Box flex="1 1 0" minW="0" whiteSpace="pre-wrap">
+                  {userInfo?.team.memberName ?? '-'}
                 </Box>
               </Flex>
-            );
-          }}
-        </MyPopover>
-      )}
+            )}
+
+            <LanguageMenuItems
+              currentLang={currentLang}
+              variant="list"
+              onSelect={(lng) => onChangeLanguage(lng, onClose)}
+            />
+
+            <Box borderTop="1px solid" borderColor="myGray.100" w="100%" />
+
+            <Flex
+              alignItems="center"
+              cursor="pointer"
+              _hover={{ bg: 'myGray.100' }}
+              py={1}
+              px={2}
+              borderRadius="4px"
+              gap={1}
+              h="30px"
+              onClick={() => onLogout(onClose)}
+              w="100%"
+            >
+              {logoutContent}
+            </Flex>
+          </Flex>
+        )}
+      </MyPopover>
 
       <ConfirmModal />
     </>

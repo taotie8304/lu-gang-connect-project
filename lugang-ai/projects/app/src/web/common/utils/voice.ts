@@ -1,28 +1,61 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import type { AppTTSConfigType } from '@fastgpt/global/core/app/type.d';
+import type { AppTTSConfigType } from '@fastgpt/global/core/app/type';
 import { TTSTypeEnum } from '@/web/core/app/constants';
 import { useTranslation } from 'next-i18next';
-import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat.d';
+import type { OutLinkChatAuthProps } from '@fastgpt/global/support/permission/chat';
 import { useMount } from 'ahooks';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
+import { getLangMapping } from '@fastgpt/web/i18n/utils';
+import type { localeType } from '@fastgpt/global/common/i18n/type';
 
 const splitMarker = 'SPLIT_MARKER';
 const contentType = 'audio/mpeg';
+
+const speechVoiceLanguageMap: Record<localeType, readonly string[]> = {
+  en: ['en-us', 'en-gb', 'en'],
+  'zh-CN': ['zh-cn', 'zh-hans', 'zh'],
+  'zh-Hant': ['zh-tw', 'zh-hk', 'zh-hant', 'zh'],
+  'ko-KR': ['ko-kr', 'ko']
+};
+
+/** 按当前界面语言选择浏览器语音，优先地区精确匹配，再回退到同语言声音。 */
+export const findSpeechVoice = <T extends { lang: string }>(
+  voices: readonly T[],
+  language: string
+) => {
+  const candidates = speechVoiceLanguageMap[getLangMapping(language)];
+
+  return candidates
+    .map((candidate) =>
+      voices.find(({ lang }) => {
+        const normalizedLang = lang.toLowerCase();
+        return normalizedLang === candidate || normalizedLang.startsWith(`${candidate}-`);
+      })
+    )
+    .find((voice): voice is T => Boolean(voice));
+};
+
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException
+    ? error.name === 'AbortError'
+    : error instanceof Error && error.name === 'AbortError';
 
 // 添加 MediaSource 支持检测函数
 const isMediaSourceSupported = () => {
   return typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported?.(contentType);
 };
 
-export const useAudioPlay = (
-  props?: OutLinkChatAuthProps & { appId: string; ttsConfig?: AppTTSConfigType }
-) => {
-  const { t } = useTranslation();
-  const { appId, ttsConfig, shareId, outLinkUid, teamId, teamToken } = props || {};
+export const useAudioPlay = (props?: {
+  appId?: string;
+  ttsConfig?: AppTTSConfigType;
+  outLinkAuthData?: OutLinkChatAuthProps;
+}) => {
+  const { t, i18n } = useTranslation();
+  const { appId, ttsConfig, outLinkAuthData } = props || {};
   const { toast } = useToast();
   const audioRef = useRef<HTMLAudioElement>();
   const [audioLoading, setAudioLoading] = useState(false);
@@ -32,36 +65,33 @@ export const useAudioPlay = (
   // Check whether the voice is supported
   const hasAudio = (() => {
     if (typeof window === 'undefined') return false;
+    if (!appId) return false;
     if (ttsConfig?.type === TTSTypeEnum.none) return false;
     if (ttsConfig?.type === TTSTypeEnum.model) return true;
     const voices = window?.speechSynthesis?.getVoices?.() || []; // 获取语言包
-    const voice = voices.find((item) => {
-      return item.lang === 'zh-CN' || item.lang === 'zh';
-    });
+    const voice = findSpeechVoice(voices, i18n.language);
     return !!voice;
   })();
 
   const getAudioStream = useCallback(
     async (input: string) => {
       if (!input) return Promise.reject('Text is empty');
+      if (!appId) return Promise.reject('App ID is empty');
 
       setAudioLoading(true);
       audioController.current = new AbortController();
+      const hasOutLinkAuth = !!(outLinkAuthData?.shareId && outLinkAuthData.outLinkUid);
 
-      const response = await fetch(getWebReqUrl('/api/core/chat/item/getSpeech'), {
+      const response = await fetch(getWebReqUrl('/api/core/chat/record/getSpeech'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         signal: audioController.current.signal,
         body: JSON.stringify({
-          appId,
+          ...(hasOutLinkAuth ? { outLinkAuthData } : { appId }),
           ttsConfig,
-          input: input.trim(),
-          shareId,
-          outLinkUid,
-          teamId,
-          teamToken
+          input: input.trim()
         })
       }).finally(() => {
         setAudioLoading(false);
@@ -73,34 +103,37 @@ export const useAudioPlay = (
       }
       return response.body;
     },
-    [appId, outLinkUid, shareId, t, teamId, teamToken, toast, ttsConfig]
+    [appId, outLinkAuthData, ttsConfig]
   );
-  const playWebAudio = useCallback((text: string) => {
-    // window speech
-    window?.speechSynthesis?.cancel();
-    const msg = new SpeechSynthesisUtterance(text);
-    const voices = window?.speechSynthesis?.getVoices?.() || []; // 获取语言包
-    const voice = voices.find((item) => {
-      return item.lang === 'zh-CN';
-    });
-    if (voice) {
-      msg.onstart = () => {
-        setAudioPlaying(true);
-      };
-      msg.onend = () => {
-        setAudioPlaying(false);
-        msg.onstart = null;
-        msg.onend = null;
-      };
-      msg.voice = voice;
-      window.speechSynthesis?.speak(msg);
-    }
-  }, []);
+  const playWebAudio = useCallback(
+    (text: string) => {
+      // window speech
+      window?.speechSynthesis?.cancel();
+      const msg = new SpeechSynthesisUtterance(text);
+      const voices = window?.speechSynthesis?.getVoices?.() || []; // 获取语言包
+      const voice = findSpeechVoice(voices, i18n.language);
+      if (voice) {
+        msg.onstart = () => {
+          setAudioPlaying(true);
+        };
+        msg.onend = () => {
+          setAudioPlaying(false);
+          msg.onstart = null;
+          msg.onend = null;
+        };
+        msg.voice = voice;
+        window.speechSynthesis?.speak(msg);
+      }
+    },
+    [i18n.language]
+  );
   const cancelAudio = useCallback(() => {
     try {
       window.speechSynthesis?.cancel();
-      !audioController.current.signal.aborted && audioController.current.abort();
-    } catch (error) {}
+      if (!audioController.current.signal.aborted) {
+        audioController.current.abort();
+      }
+    } catch {}
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.src = '';
@@ -125,25 +158,31 @@ export const useAudioPlay = (
 
         if (!isMediaSourceSupported()) {
           // 不支持 MediaSource 时，直接读取完整流并播放
-          return new Promise<Uint8Array>(async (resolve) => {
+          return new Promise<Uint8Array>(async (resolve, reject) => {
             const reader = stream.getReader();
-            let chunks: Uint8Array[] = [];
+            const chunks: Uint8Array[] = [];
 
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              chunks.push(value);
+            try {
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+              }
+
+              const fullBuffer = new Uint8Array(
+                chunks.reduce((acc, chunk) => acc + chunk.length, 0)
+              );
+              let offset = 0;
+              for (const chunk of chunks) {
+                fullBuffer.set(chunk, offset);
+                offset += chunk.length;
+              }
+
+              playAudioBuffer(fullBuffer);
+              resolve(fullBuffer);
+            } catch (error) {
+              reject(error);
             }
-
-            const fullBuffer = new Uint8Array(chunks.reduce((acc, chunk) => acc + chunk.length, 0));
-            let offset = 0;
-            for (const chunk of chunks) {
-              fullBuffer.set(chunk, offset);
-              offset += chunk.length;
-            }
-
-            playAudioBuffer(fullBuffer);
-            resolve(fullBuffer);
           });
         }
 
@@ -215,6 +254,10 @@ export const useAudioPlay = (
             resolve({});
           }
         } catch (error) {
+          if (isAbortError(error)) {
+            return resolve({});
+          }
+
           toast({
             status: 'error',
             title: getErrText(error, t('common:core.chat.Audio Speech Error'))
@@ -223,7 +266,7 @@ export const useAudioPlay = (
         }
       });
     },
-    [cancelAudio, getAudioStream, playWebAudio, t, toast, ttsConfig?.type]
+    [cancelAudio, getAudioStream, playWebAudio, t, toast, ttsConfig]
   );
 
   // segmented params
@@ -248,7 +291,9 @@ export const useAudioPlay = (
     /* reset all source */
     const buffer = segmentedSourceBuffer.current;
     if (buffer) {
-      buffer.updating && (await new Promise((resolve) => (buffer.onupdateend = resolve)));
+      if (buffer.updating) {
+        await new Promise((resolve) => (buffer.onupdateend = resolve));
+      }
       segmentedSourceBuffer.current = undefined;
     }
     if (segmentedMediaSource.current) {
@@ -305,7 +350,9 @@ export const useAudioPlay = (
             const { done, value } = await reader.read();
 
             if (done || !audioRef.current?.played) {
-              buffer.updating && (await new Promise((resolve) => (buffer.onupdateend = resolve)));
+              if (buffer.updating) {
+                await new Promise((resolve) => (buffer.onupdateend = resolve));
+              }
               return resolve(u8Arr);
             }
 
@@ -333,7 +380,7 @@ export const useAudioPlay = (
             try {
               const stream = await getAudioStream(text);
               const reader = stream.getReader();
-              let chunks: Uint8Array[] = [];
+              const chunks: Uint8Array[] = [];
 
               while (true) {
                 const { done, value } = await reader.read();
@@ -428,14 +475,13 @@ export const useAudioPlay = (
   });
 
   return {
-    audio: audioRef.current,
     audioLoading,
     audioPlaying,
     setAudioPlaying,
     getAudioStream,
     cancelAudio,
     audioController,
-    hasAudio: useMemo(() => hasAudio, [hasAudio]),
+    hasAudio,
     playAudioByText,
     startSegmentedAudio,
     finishSegmentedAudio,

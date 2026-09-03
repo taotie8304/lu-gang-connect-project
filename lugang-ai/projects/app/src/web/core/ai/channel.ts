@@ -1,13 +1,15 @@
 import axios, { type Method, type AxiosResponse } from 'axios';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
-import type {
-  DashboardDataItemType,
-  ChannelInfoType,
-  ChannelListResponseType,
-  ChannelLogListItemType,
-  CreateChannelProps
+import {
+  type DashboardDataItemType,
+  type ChannelInfoType,
+  type ChannelListResponseType,
+  type ChannelLogListItemType,
+  type CreateChannelProps,
+  DashboardDataItemSchema
 } from '@/global/aiproxy/type';
 import type { ChannelStatusEnum } from '@/global/aiproxy/constants';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 interface ResponseDataType {
   success: boolean;
@@ -27,7 +29,7 @@ function responseSuccess(response: AxiosResponse<ResponseDataType>) {
 function checkRes(data: ResponseDataType) {
   if (data === undefined) {
     console.log('error->', data, 'data is empty');
-    return Promise.reject('服务器异常');
+    return Promise.reject(i18nT('common:server_error'));
   } else if (!data.success) {
     return Promise.reject(data);
   }
@@ -38,11 +40,11 @@ function checkRes(data: ResponseDataType) {
  * 响应错误
  */
 function responseError(err: any) {
-  console.log('error->', '请求错误', err);
+  console.log('error->', 'Request failed', err);
   const data = err?.response?.data || err;
 
   if (!err) {
-    return Promise.reject({ message: '未知错误' });
+    return Promise.reject({ message: i18nT('common:error.unKnow') });
   }
   if (typeof err === 'string') {
     return Promise.reject({ message: err });
@@ -168,7 +170,8 @@ export const getChannelLog = (params: {
   code_type?: 'all' | 'success' | 'error';
   start_timestamp: number;
   end_timestamp: number;
-  offset: number;
+  offset?: number;
+  pageNum?: number;
   pageSize: number;
 }) =>
   GET<{
@@ -182,7 +185,7 @@ export const getChannelLog = (params: {
     code_type: params.code_type,
     start_timestamp: params.start_timestamp,
     end_timestamp: params.end_timestamp,
-    p: Math.floor(params.offset / params.pageSize) + 1,
+    p: params.pageNum ?? Math.floor((params.offset ?? 0) / params.pageSize) + 1,
     per_page: params.pageSize
   }).then((res) => {
     return {
@@ -210,6 +213,11 @@ export const getDashboardV2 = (params: {
       timestamp: number;
       summary: DashboardDataItemType[];
     }[]
-  >('/dashboardv2/', params);
+  >('/dashboardv2/', params).then((res) =>
+    res.map((item) => ({
+      ...item,
+      summary: item.summary.map((item) => DashboardDataItemSchema.parse(item))
+    }))
+  );
 
 export { responseSuccess, checkRes, responseError, instance, request };

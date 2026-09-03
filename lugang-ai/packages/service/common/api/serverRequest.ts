@@ -1,5 +1,10 @@
 import { SERVICE_LOCAL_HOST } from '../system/tools';
-import axios, { type Method, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios';
+import { type Method, type InternalAxiosRequestConfig, type AxiosResponse } from 'axios';
+import { createProxyAxios } from './axios';
+import { getLogger, LogCategories } from '../logger';
+import { assertRelativePath } from '../security/network';
+
+const logger = getLogger(LogCategories.HTTP.ERROR);
 
 interface ConfigType {
   headers?: { [key: string]: string };
@@ -30,7 +35,7 @@ function responseSuccess(response: AxiosResponse<ResponseDataType>) {
  */
 function checkRes(data: ResponseDataType) {
   if (data === undefined) {
-    console.log('error->', data, 'data is empty');
+    logger.error('Server request response is empty', { data });
     return Promise.reject('服务器异常');
   } else if (data?.code && (data.code < 200 || data.code >= 400)) {
     return Promise.reject(data);
@@ -56,13 +61,16 @@ function responseError(err: any) {
 }
 
 /* 创建请求实例 */
-const instance = axios.create({
-  timeout: 60000, // 超时时间
-  headers: {
-    'content-type': 'application/json',
-    'Cache-Control': 'no-cache'
-  }
-});
+const instance = createProxyAxios(
+  {
+    timeout: 60000, // 超时时间
+    headers: {
+      'content-type': 'application/json',
+      'Cache-Control': 'no-cache'
+    }
+  },
+  false
+);
 export const serverRequestBaseUrl = `http://${SERVICE_LOCAL_HOST}`;
 
 /* 请求拦截 */
@@ -71,6 +79,14 @@ instance.interceptors.request.use(requestStart, (err) => Promise.reject(err));
 instance.interceptors.response.use(responseSuccess, (err) => Promise.reject(err));
 
 export function request(url: string, data: any, config: ConfigType, method: Method): any {
+  // serverRequest 仅用于访问本机 NextJS API,SSRF 拦截已被显式关闭。
+  // 强制要求相对路径,防止调用方传入绝对 URL 覆盖 baseURL 形成 SSRF。
+  try {
+    assertRelativePath(url, 'serverRequest');
+  } catch (err) {
+    return Promise.reject(err);
+  }
+
   /* 去空 */
   for (const key in data) {
     if (data[key] === null || data[key] === undefined) {

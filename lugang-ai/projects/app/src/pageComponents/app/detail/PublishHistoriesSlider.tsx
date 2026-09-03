@@ -5,75 +5,88 @@ import {
   updateAppVersion
 } from '@/web/core/app/api/version';
 import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
-import CustomRightDrawer from '@fastgpt/web/components/common/MyDrawer/CustomRightDrawer';
 import { useSafeTranslation } from '@fastgpt/web/hooks/useSafeTranslation';
-import { Box, type BoxProps, Button, Flex, Input } from '@chakra-ui/react';
+import { Box, Button, CloseButton, Flex, Input } from '@chakra-ui/react';
 import { useContextSelector } from 'use-context-selector';
 import { AppContext } from './context';
 import LightRowTabs from '@fastgpt/web/components/common/Tabs/LightRowTabs';
 import type { WorkflowSnapshotsType } from './WorkflowComponents/context/workflowSnapshotContext';
 import { formatTime2YMDHMS } from '@fastgpt/global/common/string/time';
-import Avatar from '@fastgpt/web/components/common/Avatar';
 import Tag from '@fastgpt/web/components/common/Tag';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import VersionPublisherPopover from '@fastgpt/web/components/common/VersionPublisherPopover';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useToast } from '@fastgpt/web/hooks/useToast';
-import type { AppVersionSchemaType, VersionListItemType } from '@fastgpt/global/core/app/version';
-import type { SimpleAppSnapshotType } from './SimpleApp/useSnapshots';
+import type {
+  AppVersionSchemaType,
+  VersionListItemType
+} from '@fastgpt/global/core/app/version/type';
+import type { SimpleAppSnapshotType } from './Edit/FormComponent/useSnapshots';
+import AppDetailPanelModal, {
+  APP_DETAIL_PANEL_WIDTH_PX,
+  type AppDetailPanelModalProps
+} from './components/AppDetailPanelModal';
 
 const PublishHistoriesSlider = <T extends SimpleAppSnapshotType | WorkflowSnapshotsType>({
+  isOpen,
   onClose,
   past,
   onSwitchTmpVersion,
   onSwitchCloudVersion,
-  positionStyles
+  topOffset,
+  panelHeight
 }: {
+  isOpen: boolean;
   onClose: () => void;
   past: T[];
   onSwitchTmpVersion: (params: T, customTitle: string) => void;
   onSwitchCloudVersion: (appVersion: AppVersionSchemaType) => void;
-  positionStyles?: BoxProps;
+  topOffset?: AppDetailPanelModalProps['top'];
+  panelHeight?: AppDetailPanelModalProps['height'];
 }) => {
   const { t } = useSafeTranslation();
   const [currentTab, setCurrentTab] = useState<'myEdit' | 'teamCloud'>('myEdit');
 
   return (
-    <>
-      <CustomRightDrawer
-        onClose={() => onClose()}
-        title={
-          (
-            <>
-              <LightRowTabs
-                list={[
-                  { label: t('workflow:workflow.My edit'), value: 'myEdit' },
-                  { label: t('workflow:workflow.Team cloud'), value: 'teamCloud' }
-                ]}
-                value={currentTab}
-                onChange={setCurrentTab}
-                inlineStyles={{ px: 0.5, pb: 2 }}
-                gap={5}
-                py={0}
-                fontSize={'sm'}
-              />
-            </>
-          ) as any
-        }
-        maxW={'340px'}
-        px={0}
-        showMask={false}
-        overflow={'unset'}
-        {...positionStyles}
-      >
-        {currentTab === 'myEdit' ? (
-          <MyEdit past={past} onSwitchTmpVersion={onSwitchTmpVersion} />
-        ) : (
-          <TeamCloud onSwitchCloudVersion={onSwitchCloudVersion} />
-        )}
-      </CustomRightDrawer>
-    </>
+    <AppDetailPanelModal
+      isOpen={isOpen}
+      onClose={onClose}
+      width={['100%', `${APP_DETAIL_PANEL_WIDTH_PX}px`]}
+      height={panelHeight ?? ['100vh', 'calc(100vh - 67px)']}
+      top={topOffset ?? [0, '67px']}
+      position={'fixed'}
+      showMask={false}
+      contentProps={{ border: 'base' }}
+      header={
+        <Flex w={'100%'} alignItems={'center'} justifyContent={'space-between'}>
+          <Box flex={1} minW={0}>
+            <LightRowTabs
+              list={[
+                { label: t('workflow:workflow.My edit'), value: 'myEdit' },
+                { label: t('workflow:workflow.Team cloud'), value: 'teamCloud' }
+              ]}
+              value={currentTab}
+              onChange={setCurrentTab}
+              inlineStyles={{ px: 0.5, pb: 2 }}
+              gap={5}
+              py={0}
+              fontSize={'sm'}
+            />
+          </Box>
+          <CloseButton flexShrink={0} size={'sm'} onClick={onClose} />
+        </Flex>
+      }
+    >
+      <Box display={'flex'} flex={'1 0 0'} minH={0} flexDirection={'column'}>
+        {isOpen &&
+          (currentTab === 'myEdit' ? (
+            <MyEdit past={past} onSwitchTmpVersion={onSwitchTmpVersion} />
+          ) : (
+            <TeamCloud onSwitchCloudVersion={onSwitchCloudVersion} />
+          ))}
+      </Box>
+    </AppDetailPanelModal>
   );
 };
 
@@ -90,7 +103,7 @@ const MyEdit = <T extends SimpleAppSnapshotType | WorkflowSnapshotsType>({
   const { toast } = useToast();
 
   return (
-    <Flex px={5} flex={'1 0 0'} flexDirection={'column'}>
+    <Flex px={6} flex={'1 0 0'} flexDirection={'column'}>
       {past.length > 0 && (
         <Box py={2} px={3}>
           <Button
@@ -100,7 +113,7 @@ const MyEdit = <T extends SimpleAppSnapshotType | WorkflowSnapshotsType>({
             onClick={async () => {
               const initialSnapshot = past[past.length - 1];
 
-              onSwitchTmpVersion(initialSnapshot, t(`app:version_initial_copy`));
+              onSwitchTmpVersion(initialSnapshot, t('app:version_initial_copy'));
               toast({
                 title: t('workflow:workflow.Switch_success'),
                 status: 'success'
@@ -198,7 +211,7 @@ const TeamCloud = ({
 
   const { toast } = useToast();
 
-  const { runAsync: onChangeVersion, loading: isLoadingVersion } = useRequest2(
+  const { runAsync: onChangeVersion, loading: isLoadingVersion } = useRequest(
     async (versionItem: VersionListItemType) => {
       const versionDetail = await getAppVersionDetail(versionItem._id, versionItem.appId);
 
@@ -212,24 +225,28 @@ const TeamCloud = ({
     }
   );
 
-  const { runAsync: onUpdateVersion, loading: isEditing } = useRequest2(
+  const { runAsync: onUpdateVersion, loading: isEditing } = useRequest(
     async (item: VersionListItemType, name: string) => {
+      const versionName = name.trim();
+      if (!versionName) {
+        setEditIndex(undefined);
+        return;
+      }
+
       await updateAppVersion({
         appId: item.appId,
-        versionName: name,
+        versionName,
         versionId: item._id
       });
       setData((state) =>
-        state.map((version) =>
-          version._id === item._id ? { ...version, versionName: name } : version
-        )
+        state.map((version) => (version._id === item._id ? { ...version, versionName } : version))
       );
       setEditIndex(undefined);
     }
   );
 
   return (
-    <ScrollData flex={'1 0 0'} px={5} isLoading={isLoadingVersion}>
+    <ScrollData flex={'1 0 0'} px={6} pb={6} isLoading={isLoadingVersion}>
       {scrollDataList.map((item, index) => {
         const firstPublishedIndex = scrollDataList.findIndex((data) => data.isPublish);
 
@@ -249,46 +266,7 @@ const TeamCloud = ({
             }}
             onClick={() => editIndex === undefined && onChangeVersion(item)}
           >
-            <MyPopover
-              trigger="hover"
-              placement={'bottom-end'}
-              w={'208px'}
-              h={'72px'}
-              Trigger={
-                <Box>
-                  <Avatar
-                    src={item.sourceMember.avatar}
-                    borderRadius={'50%'}
-                    w={'24px'}
-                    h={'24px'}
-                  />
-                </Box>
-              }
-            >
-              {() => (
-                <Flex alignItems={'center'} h={'full'} pl={5} gap={2}>
-                  <Box>
-                    <Avatar
-                      src={item.sourceMember.avatar}
-                      borderRadius={'50%'}
-                      w={'36px'}
-                      h={'36px'}
-                    />
-                  </Box>
-                  <Box>
-                    <Flex gap={1} fontSize={'sm'} color={'myGray.900'}>
-                      <Box>{item.sourceMember.name}</Box>
-                      {item.sourceMember.status === 'leave' && (
-                        <Tag color="gray">{t('common:user_leaved')}</Tag>
-                      )}
-                    </Flex>
-                    <Box fontSize={'xs'} mt={2} color={'myGray.500'}>
-                      {formatTime2YMDHMS(item.time)}
-                    </Box>
-                  </Box>
-                </Flex>
-              )}
-            </MyPopover>
+            <VersionPublisherPopover sourceMember={item.sourceMember} time={item.time} />
             {editIndex !== index ? (
               <>
                 <Box

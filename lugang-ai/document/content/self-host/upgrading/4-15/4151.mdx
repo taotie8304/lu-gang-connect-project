@@ -1,0 +1,83 @@
+---
+title: 'V4.15.1'
+description: 'FastGPT V4.15.1 更新说明'
+releaseTime: '2026-07-03'
+upgradeTags:
+  - 配置变更
+  - 升级脚本
+---
+
+## 📦 升级指南
+
+### 1. fastgpt-pro 环境变量更新
+
+社区版跳过。
+
+v4.15.1 起，FastGPT 主应用访问 Pro/Admin 内部接口不再使用 `rootkey`，改为使用独立的服务间凭证 `PRO_TOKEN`。同时要求 `FE_DOMAIN` 变量必填，如果你部署了 Pro 版本，需要同时在 FastGPT 主应用和 Pro/Admin 服务中配置相同的 `PRO_TOKEN`：
+
+```bash
+PRO_TOKEN=your_pro_token_at_least_32_chars
+FE_DOMAIN=fastgpt_domain
+```
+
+注意事项：
+
+1. `PRO_TOKEN` 长度必须不少于 32 位，并且主应用与 Pro/Admin 必须保持一致。
+2. 如果 FastGPT 主应用配置了 `PRO_URL`，则必须同时配置 `PRO_TOKEN`，否则服务会启动失败。
+3. Pro/Admin 服务必须配置 `PRO_TOKEN`，否则内部接口鉴权会失败。
+4. `rootkey` 不再作为 FastGPT 主应用访问 Pro/Admin 内部接口的凭证，仅作为当前系统的管理员密钥，用于调用 `/api/admin/**` 接口，例如下方初始化脚本。
+5. 开源版部署配置文件不会内置 `PRO_TOKEN`。Pro 部署请在私有部署环境变量中手动增加该配置。
+
+### 2. WECOM_LOGIN_AUTO_REDIRECT 环境变量更新
+
+旧版本在企微终端会固定自动跳转登录，行为等同于 `WECOM_LOGIN_AUTO_REDIRECT=true`。v4.15.1 起，该行为默认关闭。如果需要保持旧版本的自动跳转行为，请在 FastGPT 主应用的环境变量中增加：
+
+```bash
+WECOM_LOGIN_AUTO_REDIRECT=true
+```
+
+如果不需要自动跳转，可以不配置该变量，或将其设置为 `false`。修改环境变量后请重启 FastGPT 主应用使配置生效。
+
+### 3. 镜像变更
+
+- 更新 fastgpt-app(fastgpt 主服务) 镜像 tag: v4.15.1
+- 更新 fastgpt-pro(fastgpt 商业版) 镜像 tag: v4.15.1
+- 更新 fastgpt-plugin 镜像 tag: v1.0.1
+
+### 4. API Key 应用名初始化
+
+为了兼容旧版 API 密钥，便于找到以前应用关联的密钥，v4.15.1 增加了全局 API Key 标签管理，并为历史应用级 API Key 增加 `appName` 展示快照。升级后建议执行一次初始化脚本，为已有 `appId` 的历史 API Key 自动回填应用名。
+
+从任意终端，发起 1 个 HTTP 请求。其中 `{{rootkey}}` 替换成环境变量里的 `rootkey`；`{{host}}` 替换成 FastGPT 域名。
+
+```bash
+curl -X POST "{{host}}/api/admin/initv4151" \
+  -H "rootkey: {{rootkey}}"
+```
+
+脚本只会回填缺失的 `appName`，不会覆盖已有值，不会修改 `appId`，也不会创建或绑定标签。脚本可重复执行。
+
+## 🚀 新增内容
+
+1. 增加全局 API Key 标签管理，并为历史应用级 API Key 增加 `appName` 展示快照，便于兼容旧版 API 密钥并查找以前应用关联的密钥。
+2. 发布技能时，预提取技能名称和描述，便于辅助生成。
+3. 新增 `WECOM_LOGIN_AUTO_REDIRECT` 环境变量，可控制企微终端是否自动跳转登录，默认关闭。
+4. 插件市场支持官方/社区来源筛选，系统工具列表的状态列和标签列支持筛选。
+
+## ⚙️ 优化
+
+1. AgentV2 调用嵌套工作流时候，去除系统字段参数。
+2. 系统工具支持卸载和重新安装。卸载会将工具状态改为“已卸载”，需要输入工具名称确认；已卸载工具只展示基础信息，并可重新安装恢复。
+
+## 🐛 修复
+
+1. 工作流工具调试时，运行详情看不到。
+2. 对话页，凭证到期不会自动跳出登录组件。
+3. 修复工作流工具运行子工作流时未按工具应用的全局变量配置初始化变量，导致默认变量、系统变量等运行态变量读取异常的问题。
+4. 修复循环节点和并行执行节点中通过【变量更新】修改全局变量或容器外节点输出时，主流程未按轮次/任务结束同步更新的问题。成功轮次或成功任务会回写本轮变更，失败轮次或失败任务不提交本轮变更。
+5. 重试全部知识库集合时，未立即刷新组件。
+6. 修复 FastGPT 内嵌插件市场在筛选条件没有变化时重复更新浅路由，导致顶部进度条持续 loading 的问题。
+
+## 🛠️ 代码优化
+
+1. 修复冒号的文件路径，避免 window 系统不兼容。

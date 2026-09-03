@@ -2,7 +2,7 @@ import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
-import { connectionMongo, getMongoModel } from '../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../common/mongo';
 import type { ResourcePermissionType } from '@fastgpt/global/support/permission/type';
 import { PerResourceTypeEnum } from '@fastgpt/global/support/permission/constant';
 import { MemberGroupCollectionName } from './memberGroup/memberGroupSchema';
@@ -42,10 +42,7 @@ export const ResourcePermissionSchema = new Schema({
     required: true
   },
 
-  /**
-   * Optional. Only be set when the resource is *inherited* from the parent resource.
-   * For recording the self permission. When cancel the inheritance, it will overwrite the permission property and set to `unset`.
-   */
+  /** The resource that owns this ACL row. Every resource stores its effective ACL here. */
   resourceId: {
     type: Schema.Types.ObjectId
   },
@@ -77,168 +74,281 @@ ResourcePermissionSchema.virtual('org', {
   justOne: true
 });
 
-try {
-  ResourcePermissionSchema.index({
+defineIndex(ResourcePermissionSchema, {
+  key: {
     resourceType: 1,
     teamId: 1
-  });
+  }
+});
 
-  // Indexes for resourceId-based resources
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceId: 1,
-      groupId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        groupId: {
-          $exists: true
-        },
-        resourceId: {
-          $exists: true
-        }
+// Indexes for resourceId-based resources
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceId: 1,
+    groupId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      groupId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceId: 1,
-      orgId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        orgId: {
-          $exists: true
-        },
-        resourceId: {
-          $exists: true
-        }
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceId: 1,
+    orgId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      orgId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceId: 1,
-      tmbId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        tmbId: {
-          $exists: true
-        },
-        resourceId: {
-          $exists: true
-        }
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceId: 1,
+    tmbId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      tmbId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  // General index for resourceId-based resources
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceId: 1
-    },
-    {
-      partialFilterExpression: {
-        resourceId: {
-          $exists: true
-        }
+// General index for resourceId-based resources
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceId: 1
+  },
+  options: {
+    partialFilterExpression: {
+      resourceId: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  // Indexes for resourceName-based resources
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceName: 1,
-      groupId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        groupId: {
-          $exists: true
-        },
-        resourceName: {
-          $exists: true
-        }
+// Indexes for resourceName-based resources
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceName: 1,
+    groupId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      groupId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceName: 1,
-      orgId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        orgId: {
-          $exists: true
-        },
-        resourceName: {
-          $exists: true
-        }
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceName: 1,
+    orgId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      orgId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceName: 1,
-      tmbId: 1
-    },
-    {
-      unique: true,
-      partialFilterExpression: {
-        tmbId: {
-          $exists: true
-        },
-        resourceName: {
-          $exists: true
-        }
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceName: 1,
+    tmbId: 1
+  },
+  options: {
+    unique: true,
+    partialFilterExpression: {
+      tmbId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
       }
     }
-  );
+  }
+});
 
-  // General index for resourceName-based resources
-  ResourcePermissionSchema.index(
-    {
-      resourceType: 1,
-      teamId: 1,
-      resourceName: 1
-    },
-    {
-      partialFilterExpression: {
-        resourceName: {
-          $exists: true
-        }
+// General index for resourceName-based resources
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    resourceName: 1
+  },
+  options: {
+    partialFilterExpression: {
+      resourceName: {
+        $exists: true
       }
     }
-  );
-} catch (error) {
-  console.log(error);
-}
+  }
+});
+
+// Collaborator-first indexes for resource list queries
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    tmbId: 1,
+    resourceId: 1
+  },
+  options: {
+    partialFilterExpression: {
+      tmbId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
+      }
+    }
+  }
+});
+
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    groupId: 1,
+    resourceId: 1
+  },
+  options: {
+    partialFilterExpression: {
+      groupId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
+      }
+    }
+  }
+});
+
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    orgId: 1,
+    resourceId: 1
+  },
+  options: {
+    partialFilterExpression: {
+      orgId: {
+        $exists: true
+      },
+      resourceId: {
+        $exists: true
+      }
+    }
+  }
+});
+
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    tmbId: 1,
+    resourceName: 1
+  },
+  options: {
+    partialFilterExpression: {
+      tmbId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
+      }
+    }
+  }
+});
+
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    groupId: 1,
+    resourceName: 1
+  },
+  options: {
+    partialFilterExpression: {
+      groupId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
+      }
+    }
+  }
+});
+
+defineIndex(ResourcePermissionSchema, {
+  key: {
+    resourceType: 1,
+    teamId: 1,
+    orgId: 1,
+    resourceName: 1
+  },
+  options: {
+    partialFilterExpression: {
+      orgId: {
+        $exists: true
+      },
+      resourceName: {
+        $exists: true
+      }
+    }
+  }
+});
 
 ResourcePermissionSchema.pre('save', function (next) {
   if (!this.tmbId && !this.groupId && !this.orgId) {

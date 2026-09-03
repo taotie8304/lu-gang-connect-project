@@ -9,7 +9,11 @@ import {
   DataChunkSplitModeEnum
 } from '@fastgpt/global/core/dataset/constants';
 import {
-  OwnerRoleVal,
+  CreateDatasetWithFilesBodySchema,
+  CreateDatasetWithFilesResponseSchema,
+  type CreateDatasetWithFilesResponse
+} from '@fastgpt/global/openapi/core/dataset/api';
+import {
   PerResourceTypeEnum,
   WritePermissionVal
 } from '@fastgpt/global/support/permission/constant';
@@ -26,43 +30,22 @@ import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { authDataset } from '@fastgpt/service/support/permission/dataset/auth';
 import { checkTeamDatasetLimit } from '@fastgpt/service/support/permission/teamLimit';
 import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { addAuditLog } from '@fastgpt/service/support/user/audit/util';
 import { AuditEventEnum } from '@fastgpt/global/support/user/audit/constants';
 import { getI18nDatasetType } from '@fastgpt/service/support/user/audit/util';
-import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
+import { createResourceDefaultCollaborators } from '@fastgpt/service/support/permission/controller';
 import { getS3AvatarSource } from '@fastgpt/service/common/s3/sources/avatar';
 import { createCollectionAndInsertData } from '@fastgpt/service/core/dataset/collection/controller';
-import type { EmbeddingModelItemType } from '@fastgpt/global/core/ai/model.d';
 import { S3PrivateBucket } from '@fastgpt/service/common/s3/buckets/private';
 import { getFileS3Key } from '@fastgpt/service/common/s3/utils';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
-export type DatasetCreateWithFilesQuery = {};
-export type DatasetCreateWithFilesBody = {
-  datasetParams: {
-    name: string;
-    avatar: string;
-    parentId?: string;
-    vectorModel?: string;
-    agentModel?: string;
-    vlmModel?: string;
-  };
-  files: {
-    fileId: string;
-    name: string;
-  }[];
-};
-export type DatasetCreateWithFilesResponse = {
-  datasetId: string;
-  name: string;
-  avatar: string;
-  vectorModel: EmbeddingModelItemType;
-};
-
-async function handler(
-  req: ApiRequestProps<DatasetCreateWithFilesBody, DatasetCreateWithFilesQuery>
-): Promise<DatasetCreateWithFilesResponse> {
-  const { datasetParams, files } = req.body;
+async function handler(req: ApiRequestProps): Promise<CreateDatasetWithFilesResponse> {
+  const { datasetParams, files } = parseApiInput({
+    req,
+    bodySchema: CreateDatasetWithFilesBodySchema
+  }).body;
   const {
     parentId,
     name,
@@ -112,12 +95,11 @@ async function handler(
       );
 
       // 2. Create permission
-      await MongoResourcePermission.insertOne({
-        teamId,
+      await createResourceDefaultCollaborators({
+        resource: dataset,
+        resourceType: PerResourceTypeEnum.dataset,
         tmbId,
-        resourceId: dataset._id,
-        permission: OwnerRoleVal,
-        resourceType: PerResourceTypeEnum.dataset
+        session
       });
 
       // 3. Refresh avatar
@@ -170,7 +152,9 @@ async function handler(
         datasetId: dataset._id,
         name: dataset.name,
         avatar: dataset.avatar,
-        vectorModel: getEmbeddingModel(dataset.vectorModel)
+        vectorModel: {
+          model: getEmbeddingModel(dataset.vectorModel)?.model || dataset.vectorModel
+        }
       };
     });
 
@@ -194,7 +178,7 @@ async function handler(
       });
     })();
 
-    return result;
+    return CreateDatasetWithFilesResponseSchema.parse(result);
   } catch (error) {
     return Promise.reject(error);
   }

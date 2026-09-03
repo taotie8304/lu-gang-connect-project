@@ -5,55 +5,35 @@ import { clearToken } from '@/web/support/user/auth';
 import { useMount } from 'ahooks';
 import LoginModal from '@/pageComponents/login/LoginModal';
 import { postAcceptInvitationLink } from '@/web/support/user/team/api';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
+import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
+import { useLoginRedirectAfterLogin } from '@/web/support/user/loginRedirect';
 
-const Login = ({ defaultShareId, defaultAppId }: { defaultShareId: string; defaultAppId: string }) => {
+const Login = () => {
   const router = useRouter();
-  const { lastRoute = '' } = router.query as { lastRoute: string };
+  const { lastRoute = '', lastTmbId = '' } = router.query as {
+    lastRoute: string;
+    lastTmbId?: string;
+  };
   const { t } = useTranslation();
   const { toast } = useToast();
   const { setUserInfo } = useUserStore();
-
-  // 鲁港通：根据用户角色获取跳转路径
-  // 管理员 (username === 'root') 跳转到管理后台，普通用户跳转到聊天界面
-  const getDefaultRoute = useCallback((username: string) => {
-    // 只有 root 用户才是管理员
-    const isAdmin = username === 'root';
-    if (isAdmin) {
-      return '/dashboard/agent';
-    }
-    // 普通用户优先跳转到默认 App
-    if (defaultAppId) {
-      return `/chat?appId=${defaultAppId}`;
-    }
-    // 其次跳转到默认分享链接
-    if (defaultShareId) {
-      return `/chat/share?shareId=${defaultShareId}`;
-    }
-    // 如果都没有配置，回退到首页让首页处理
-    return '/';
-  }, [defaultShareId, defaultAppId]);
+  const resolveLoginRedirect = useLoginRedirectAfterLogin();
 
   const loginSuccess = useCallback(
-    async (res: LoginSuccessResponse) => {
-      setUserInfo(res.user);
-
+    async (res: LoginSuccessResponseType) => {
       const decodeLastRoute = validateRedirectUrl(lastRoute);
-      // 鲁港通：使用 username 判断是否为管理员
-      const isAdmin = res.user.username === 'root';
-      const defaultRoute = getDefaultRoute(res.user.username);
 
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
           if (decodeLastRoute.includes('/account/team?invitelinkid=')) {
             const id = decodeLastRoute.split('invitelinkid=')[1];
             await postAcceptInvitationLink(id);
-            return defaultRoute;
+            return '/dashboard/agent';
           } else {
             toast({
               status: 'warning',
@@ -62,28 +42,32 @@ const Login = ({ defaultShareId, defaultAppId }: { defaultShareId: string; defau
           }
         }
         if (decodeLastRoute.startsWith(`${subRoute}/config`)) {
-          return defaultRoute;
+          return '/dashboard/agent';
         }
 
-        // 鲁港通：管理员始终跳转到管理后台，忽略 lastRoute
-        if (isAdmin) {
-          return defaultRoute;
-        }
-
-        // 普通用户：直接使用默认路径（分享链接）
-        return defaultRoute;
+        return decodeLastRoute;
       })();
 
-      navigateTo && router.replace(navigateTo);
+      const targetRoute = navigateTo
+        ? await resolveLoginRedirect({
+            user: res.user,
+            fallbackRoute: navigateTo,
+            lastTmbId
+          })
+        : undefined;
+
+      setUserInfo(res.user);
+
+      if (targetRoute) {
+        router.replace(targetRoute);
+      }
     },
-    [lastRoute, router, setUserInfo, t, toast, getDefaultRoute]
+    [lastRoute, lastTmbId, resolveLoginRedirect, router, setUserInfo, t, toast]
   );
 
   useMount(() => {
     clearToken();
-    // 预加载两个可能的路由
     router.prefetch('/dashboard/agent');
-    router.prefetch('/chat');
   });
 
   return <LoginModal onSuccess={loginSuccess} />;
@@ -92,9 +76,6 @@ const Login = ({ defaultShareId, defaultAppId }: { defaultShareId: string; defau
 export async function getServerSideProps(context: any) {
   return {
     props: {
-      // 鲁港通：从服务端环境变量获取默认应用 ID 和分享链接 ID
-      defaultAppId: process.env.DEFAULT_APP_ID || '',
-      defaultShareId: process.env.DEFAULT_SHARE_ID || '',
       ...(await serviceSideProps(context, ['app', 'user', 'login']))
     }
   };

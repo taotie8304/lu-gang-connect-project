@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { ModalFooter, ModalBody, Input, Button } from '@chakra-ui/react';
-import MyModal from '@fastgpt/web/components/common/MyModal';
+import { Input, Button } from '@chakra-ui/react';
+import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import { useTranslation } from 'next-i18next';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 
@@ -30,33 +30,38 @@ const EditFolderModal = ({
     [isEdit, t]
   );
 
-  const { mutate: onSave, isLoading } = useRequest({
-    mutationFn: () => {
+  const { runAsync: onSave, loading: isLoading } = useRequest(
+    () => {
       const val = inputRef.current?.value;
       if (!val) return Promise.resolve('');
       return editCallback(val);
     },
-    onSuccess: () => {
-      onClose();
+    {
+      onSuccess: () => {
+        onClose();
+      }
     }
-  });
+  );
 
   return (
-    <MyModal isOpen onClose={onClose} iconSrc="common/folderFill" title={typeMap.title}>
-      <ModalBody>
-        <Input
-          ref={inputRef}
-          defaultValue={name}
-          placeholder={t('common:dataset.Folder Name') || ''}
-          autoFocus
-          maxLength={100}
-        />
-      </ModalBody>
-      <ModalFooter>
+    <MyModal
+      isOpen
+      onClose={onClose}
+      title={typeMap.title}
+      size="sm"
+      footer={
         <Button isLoading={isLoading} onClick={onSave}>
           {t('common:Confirm')}
         </Button>
-      </ModalFooter>
+      }
+    >
+      <Input
+        ref={inputRef}
+        defaultValue={name}
+        placeholder={t('common:dataset.Folder Name') || ''}
+        autoFocus
+        maxLength={100}
+      />
     </MyModal>
   );
 };

@@ -1,16 +1,12 @@
-import type { AppToolTemplateItemType } from '@fastgpt/global/core/app/tool/type';
-
 export enum SystemCacheKeyEnum {
-  systemTool = 'systemTool',
   modelPermission = 'modelPermission'
 }
 
 export type SystemCacheDataType = {
-  [SystemCacheKeyEnum.systemTool]: AppToolTemplateItemType[];
   [SystemCacheKeyEnum.modelPermission]: null;
 };
 
-type SystemCacheType = {
+export type SystemCacheType = {
   [K in SystemCacheKeyEnum]: {
     versionKey: string;
     data: SystemCacheDataType[K];
@@ -18,7 +14,3 @@ type SystemCacheType = {
     devRefresh?: boolean;
   };
 };
-
-declare global {
-  var systemCache: SystemCacheType;
-}

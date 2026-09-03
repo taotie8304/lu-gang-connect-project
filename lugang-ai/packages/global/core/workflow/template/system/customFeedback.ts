@@ -1,11 +1,11 @@
 import { FlowNodeInputTypeEnum, FlowNodeTypeEnum } from '../../node/constant';
-import { type FlowNodeTemplateType } from '../../type/node.d';
+import { type FlowNodeTemplateType } from '../../type/node';
 import {
   WorkflowIOValueTypeEnum,
   NodeInputKeyEnum,
   FlowNodeTemplateTypeEnum
 } from '../../constants';
-import { i18nT } from '../../../../../web/i18n/utils';
+import { i18nT } from '../../../../common/i18n/utils';
 
 export const CustomFeedbackNode: FlowNodeTemplateType = {
   id: FlowNodeTypeEnum.customFeedback,
@@ -14,16 +14,21 @@ export const CustomFeedbackNode: FlowNodeTemplateType = {
   showSourceHandle: true,
   showTargetHandle: true,
   avatar: 'core/workflow/template/customFeedback',
+  avatarLinear: 'core/workflow/template/customFeedbackLinear',
+  colorSchema: 'yellowGreen',
   name: i18nT('workflow:custom_feedback'),
   intro: i18nT('workflow:intro_custom_feedback'),
-  courseUrl: '/docs/introduction/guide/dashboard/workflow/custom_feedback/',
+  isTool: true,
+  courseUrl: '/guide/build/workflow/nodes/custom_feedback',
   inputs: [
     {
       key: NodeInputKeyEnum.textareaInput,
       renderTypeList: [FlowNodeInputTypeEnum.textarea, FlowNodeInputTypeEnum.reference],
       valueType: WorkflowIOValueTypeEnum.string,
       required: true,
-      label: i18nT('workflow:feedback_text')
+      label: i18nT('workflow:feedback_text'),
+      toolDescription: i18nT('workflow:feedback_text'),
+      defaultToAgentGenerated: false
     }
   ],
   outputs: []

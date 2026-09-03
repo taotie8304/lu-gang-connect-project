@@ -6,33 +6,93 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import ToolCard, { type ToolCardItemType } from '@fastgpt/web/components/core/plugin/tool/ToolCard';
-import ToolTagFilterBox from '@fastgpt/web/components/core/plugin/tool/TagFilterBox';
+import ToolTagFilterBox, {
+  type MarketplaceSourceFilterValue
+} from '@fastgpt/web/components/core/plugin/tool/TagFilterBox';
 import ToolDetailDrawer from '@fastgpt/web/components/core/plugin/tool/ToolDetailDrawer';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
-import type { ToolListItem } from '@/pages/api/tool/list';
 import { usePagination } from '@fastgpt/web/hooks/usePagination';
+import { useVirtualGridList } from '@fastgpt/web/hooks/useVirtualGridList';
 import { parseI18nString } from '@fastgpt/global/common/i18n/utils';
 import {
   getDownloadURL,
   getMarketplaceToolDetail,
+  getMarketplaceToolVersions,
   getMarketplaceTools,
   getToolTags
 } from '@/web/api';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import I18nLngSelector from '@/web/common/Select/I18nLngSelector';
 import Head from 'next/head';
+import {
+  buildMarketplacePageUrl,
+  getMarketplaceDetailQueryFromSearch,
+  getSingleQueryValue,
+  type MarketplaceDetailQuery
+} from '@/web/query';
+
+const getToolQuery = (tool: ToolCardItemType | null): MarketplaceDetailQuery | null =>
+  tool
+    ? {
+        pluginId: tool.id,
+        version: tool.version
+      }
+    : null;
+
+const createQuerySelectedTool = ({
+  pluginId,
+  version
+}: Required<Pick<MarketplaceDetailQuery, 'pluginId'>> &
+  Pick<MarketplaceDetailQuery, 'version'>): ToolCardItemType => ({
+  id: pluginId,
+  name: pluginId,
+  description: '',
+  version
+});
+
+const getSourceFilterValue = (value: string | string[] | undefined) => {
+  const source = getSingleQueryValue(value);
+  return source === 'official' || source === 'community'
+    ? (source as MarketplaceSourceFilterValue)
+    : undefined;
+};
+
+const isSameBrowserUrl = (nextUrl: string) => {
+  if (typeof window === 'undefined') return false;
+
+  const targetUrl = new URL(nextUrl, window.location.origin);
+  return (
+    targetUrl.pathname === window.location.pathname && targetUrl.search === window.location.search
+  );
+};
+const TOOL_GRID_TEMPLATE_COLUMNS =
+  'repeat(auto-fill, minmax(min(max(300px, calc((100% - 6.25rem) / 6)), 100%), 1fr))';
 
 const ToolkitMarketplace = () => {
   const { t, i18n } = useTranslation();
   const router = useRouter();
-  const { search, tags } = router.query;
+  const { search, tags, pluginId, version, source } = router.query;
+  const queryPluginId = getSingleQueryValue(pluginId);
+  const queryVersion = getSingleQueryValue(version);
+  const querySource = getSourceFilterValue(source);
   const [inputValue, setInputValue] = useState('');
   const [searchText, setSearchText] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedSource, setSelectedSource] = useState<MarketplaceSourceFilterValue | undefined>(
+    querySource
+  );
   const [selectedTool, setSelectedTool] = useState<ToolCardItemType | null>(null);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
   const [showCompactSearch, setShowCompactSearch] = useState(false);
   const heroSectionRef = useRef<HTMLDivElement>(null);
+  const detailQueryRef = useRef<MarketplaceDetailQuery | null>(
+    queryPluginId
+      ? {
+          pluginId: queryPluginId,
+          version: queryVersion
+        }
+      : null
+  );
 
   // 从 URL 初始化状态
   useEffect(() => {
@@ -52,10 +112,11 @@ const ToolkitMarketplace = () => {
             : [];
         setSelectedTagIds(tagArray);
       }
+      setSelectedSource(querySource);
     } catch (error) {
       console.warn('Failed to initialize URL params:', error);
     }
-  }, [search, tags]);
+  }, [querySource, search, tags]);
 
   // 使用自定义 debounce 进行实时搜索
   const [debouncedSearchText, setDebouncedSearchText] = useState(inputValue);
@@ -77,23 +138,21 @@ const ToolkitMarketplace = () => {
 
   // 更新 URL 的函数
   const updateUrlParams = useCallback(
-    (newSearch: string, newTags: string[]) => {
+    (
+      newSearch: string,
+      newTags: string[],
+      detailQuery = detailQueryRef.current,
+      newSource = selectedSource
+    ) => {
       try {
-        // 使用更安全的 URL 参数构建方式
-        const params: Record<string, string> = {};
-        if (newSearch) {
-          params.search = newSearch;
-        }
-        if (newTags.length > 0) {
-          params.tags = newTags.join(',');
-        }
-
-        // 手动构建查询字符串，避免 URLSearchParams 的安全问题
-        const queryString = Object.entries(params)
-          .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
-          .join('&');
-
-        const newUrl = queryString ? `${router.pathname}?${queryString}` : router.pathname;
+        const newUrl = buildMarketplacePageUrl({
+          pathname: router.pathname,
+          search: newSearch,
+          tags: newTags,
+          source: newSource,
+          pluginId: detailQuery?.pluginId,
+          version: detailQuery?.version
+        });
 
         // 使用原生 History API 替代 Next.js router（更安全）
         if (typeof window !== 'undefined' && window.history && window.history.replaceState) {
@@ -102,6 +161,7 @@ const ToolkitMarketplace = () => {
             window.isSecureContext ||
             (window.location.protocol === 'http:' && window.location.hostname === 'localhost')
           ) {
+            if (isSameBrowserUrl(newUrl)) return;
             try {
               window.history.replaceState({}, '', newUrl);
             } catch (historyError) {
@@ -116,8 +176,21 @@ const ToolkitMarketplace = () => {
         // 如果 URL 操作失败，跳过更新
       }
     },
-    [router.pathname]
+    [router.pathname, selectedSource]
   );
+
+  const getCurrentDetailQuery = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return queryPluginId
+        ? {
+            pluginId: queryPluginId,
+            version: queryVersion
+          }
+        : {};
+    }
+
+    return getMarketplaceDetailQueryFromSearch(window.location.search);
+  }, [queryPluginId, queryVersion]);
 
   // 处理搜索框失焦,更新 URL
   const handleSearchBlur = useCallback(() => {
@@ -126,12 +199,13 @@ const ToolkitMarketplace = () => {
     }
   }, [router.isReady, searchText, selectedTagIds, updateUrlParams]);
 
-  // 监听 selectedTagIds 变化,更新 URL
-  useEffect(() => {
-    if (router.isReady) {
-      updateUrlParams(searchText, selectedTagIds);
-    }
-  }, [router.isReady, searchText, selectedTagIds, updateUrlParams]);
+  const handleSourceSelect = useCallback(
+    (nextSource?: MarketplaceSourceFilterValue) => {
+      setSelectedSource(nextSource);
+      updateUrlParams(searchText, selectedTagIds, detailQueryRef.current, nextSource);
+    },
+    [searchText, selectedTagIds, updateUrlParams]
+  );
 
   const {
     data: tools,
@@ -143,25 +217,27 @@ const ToolkitMarketplace = () => {
         pageNum,
         pageSize,
         searchKey: searchText || undefined,
-        tags: selectedTagIds.length > 0 ? selectedTagIds : undefined
+        tags: selectedTagIds.length > 0 ? selectedTagIds : undefined,
+        source: selectedSource
       }),
     {
       type: 'scroll',
+      pageSizeCacheKey: 'marketplace-tools',
       throttleWait: 500,
-      refreshDeps: [searchText, selectedTagIds]
+      refreshDeps: [searchText, selectedTagIds, selectedSource]
     }
   );
 
-  const { data: toolTags = [] } = useRequest2(getToolTags, {
+  const { data: toolTags = [] } = useRequest(getToolTags, {
     manual: false
   });
 
   const displayTools: ToolCardItemType[] = useMemo(() => {
     if (!tools || !Array.isArray(tools) || !toolTags) return [];
 
-    return tools.map((tool: ToolListItem) => {
+    return tools.map((tool) => {
       return {
-        id: tool.toolId,
+        id: tool.toolId || tool.pluginId,
         name: parseI18nString(tool.name || '', i18n.language) || '',
         description: parseI18nString(tool.description || '', i18n.language) || '',
         icon: tool.icon,
@@ -170,14 +246,67 @@ const ToolkitMarketplace = () => {
           const currentTag = toolTags.find((item) => item.tagId === tag);
           return parseI18nString(currentTag?.tagName || '', i18n.language) || '';
         }),
+        version: tool.version,
+        source: tool.source,
         downloadCount: tool.downloadCount
       };
     });
   }, [tools, i18n.language, toolTags]);
 
-  const onDownload = useCallback(async (toolId: string) => {
+  const selectedTagKey = selectedTagIds.join(',');
+  const selectedSourceKey = selectedSource ?? 'all';
+  const { gridRef, renderVirtualGridItems } = useVirtualGridList({
+    list: displayTools,
+    listKey: `${searchText}-${selectedTagKey}-${selectedSourceKey}-${i18n.language}`,
+    estimatedRowHeight: 178,
+    estimatedRowGap: 20
+  });
+
+  useEffect(() => {
+    const currentDetailQuery = getCurrentDetailQuery();
+    if (!router.isReady || !currentDetailQuery.pluginId) return;
+
+    const queryDetail = {
+      pluginId: currentDetailQuery.pluginId,
+      version: currentDetailQuery.version
+    };
+    const matchedTool = displayTools.find((tool) => tool.id === currentDetailQuery.pluginId);
+    const queryTool = matchedTool
+      ? {
+          ...matchedTool,
+          version: currentDetailQuery.version || matchedTool.version
+        }
+      : createQuerySelectedTool(queryDetail);
+
+    detailQueryRef.current = {
+      pluginId: queryTool.id,
+      version: queryTool.version
+    };
+
+    setSelectedTool((prev) => {
+      if (
+        prev?.id === queryTool.id &&
+        prev.version === queryTool.version &&
+        prev.name === queryTool.name &&
+        prev.icon === queryTool.icon
+      ) {
+        return prev;
+      }
+
+      return queryTool;
+    });
+  }, [displayTools, getCurrentDetailQuery, router.isReady]);
+
+  // 监听 selectedTagIds 变化,更新 URL
+  useEffect(() => {
+    if (router.isReady) {
+      updateUrlParams(searchText, selectedTagIds);
+    }
+  }, [router.isReady, searchText, selectedTagIds, selectedSource, updateUrlParams]);
+
+  const onDownload = useCallback(async (toolId: string, version?: string) => {
     try {
-      const url = await getDownloadURL(toolId);
+      const url = await getDownloadURL(toolId, version);
       if (url) {
         // Create download link
         const link = document.createElement('a');
@@ -193,6 +322,54 @@ const ToolkitMarketplace = () => {
       // Can add error prompt here
     }
   }, []);
+
+  const handleSelectTool = useCallback(
+    (tool: ToolCardItemType) => {
+      const detailQuery = getToolQuery(tool);
+
+      detailQueryRef.current = detailQuery;
+      setSelectedTool(tool);
+      updateUrlParams(searchText, selectedTagIds, detailQuery);
+    },
+    [searchText, selectedTagIds, updateUrlParams]
+  );
+
+  const handleCloseToolDetail = useCallback(() => {
+    detailQueryRef.current = null;
+    setSelectedTool(null);
+    updateUrlParams(searchText, selectedTagIds, null);
+  }, [searchText, selectedTagIds, updateUrlParams]);
+
+  const handleVersionChange = useCallback(
+    (nextVersion: string) => {
+      if (!selectedTool) return;
+
+      const detailQuery = {
+        pluginId: selectedTool.id,
+        version: nextVersion
+      };
+
+      detailQueryRef.current = detailQuery;
+      setSelectedTool((prev) => (prev ? { ...prev, version: nextVersion } : prev));
+      updateUrlParams(searchText, selectedTagIds, detailQuery);
+    },
+    [searchText, selectedTagIds, selectedTool, updateUrlParams]
+  );
+
+  const renderToolCard = useCallback(
+    (tool: ToolCardItemType) => (
+      <Box key={tool.id} data-virtual-item="">
+        <ToolCard
+          item={tool}
+          mode="marketplace"
+          variant="marketplace"
+          onInstall={() => onDownload(tool.id)}
+          onClickCard={() => handleSelectTool(tool)}
+        />
+      </Box>
+    ),
+    [handleSelectTool, onDownload]
+  );
 
   // 使用 IntersectionObserver 监听英雄区域是否在视窗中
   useEffect(() => {
@@ -223,8 +400,8 @@ const ToolkitMarketplace = () => {
   return (
     <>
       <Head>
-        <title>{t('app:fastgpt_marketplace')}</title>
-        <meta name="description" content={t('app:toolkit_marketplace_title')} />
+        <title>{t('marketplace:fastgpt_marketplace')}</title>
+        <meta name="description" content={t('marketplace:toolkit_marketplace_title')} />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
       </Head>
       <MyBox
@@ -238,6 +415,21 @@ const ToolkitMarketplace = () => {
         <Box px={8} flexShrink={0} position={'relative'}>
           <Flex gap={3} position={'absolute'} right={8} top={6} alignItems={'center'}>
             <I18nLngSelector />
+            <Button
+              onClick={() => {
+                window.open('https://doc.fastgpt.cn/plugin/system-tool-development', '_blank');
+              }}
+            >
+              {t('marketplace:plugin_development')}
+            </Button>
+            <Button
+              variant={'whiteBase'}
+              onClick={() => {
+                window.open('https://github.com/labring/fastgpt-plugin/issues', '_blank');
+              }}
+            >
+              {t('marketplace:toolkit_marketplace_submit_request')}
+            </Button>
           </Flex>
 
           <Box
@@ -277,9 +469,9 @@ const ToolkitMarketplace = () => {
                       />
                       <Input
                         px={8}
-                        h={10}
-                        borderRadius={'md'}
-                        placeholder={t('app:toolkit_marketplace_search_placeholder')}
+                        h={8}
+                        borderRadius={'sm'}
+                        placeholder={t('marketplace:toolkit_marketplace_search_placeholder')}
                         value={inputValue}
                         onChange={(e) => {
                           setInputValue(e.target.value);
@@ -316,10 +508,11 @@ const ToolkitMarketplace = () => {
                       alignItems={'center'}
                       justifyContent={'center'}
                       cursor={'pointer'}
-                      borderRadius={'10px'}
+                      borderRadius={'sm'}
                       _hover={{ borderColor: 'primary.600' }}
                       onClick={() => setIsSearchExpanded(true)}
-                      p={2}
+                      px={2}
+                      h={8}
                       border={'1px solid'}
                       borderColor={'myGray.200'}
                     >
@@ -340,6 +533,9 @@ const ToolkitMarketplace = () => {
                     tags={toolTags}
                     selectedTagIds={selectedTagIds}
                     onTagSelect={setSelectedTagIds}
+                    selectedSource={selectedSource}
+                    onSourceSelect={handleSourceSelect}
+                    variant="marketplace"
                   />
                 </Box>
               </Flex>
@@ -376,10 +572,10 @@ const ToolkitMarketplace = () => {
                 WebkitTextFillColor: 'transparent'
               }}
             >
-              鲁港通工具资源
+              Assets for FastGPT
             </Box>
             <Box fontSize={'45px'} fontWeight={'semibold'} color={'black'}>
-              {t('app:toolkit_marketplace_title')}
+              {t('marketplace:toolkit_marketplace_title')}
             </Box>
             <Box>
               <InputGroup position={'relative'}>
@@ -397,10 +593,11 @@ const ToolkitMarketplace = () => {
                   fontSize="sm"
                   bg={'white'}
                   pl={8}
-                  w={'560px'}
+                  w={['calc(100vw - 64px)', '560px']}
+                  maxW={'560px'}
                   h={12}
                   borderRadius={'10px'}
-                  placeholder={t('app:toolkit_marketplace_search_placeholder')}
+                  placeholder={t('marketplace:toolkit_marketplace_search_placeholder')}
                   value={inputValue}
                   onChange={(e) => {
                     setInputValue(e.target.value);
@@ -424,26 +621,20 @@ const ToolkitMarketplace = () => {
                   tags={toolTags}
                   selectedTagIds={selectedTagIds}
                   onTagSelect={setSelectedTagIds}
+                  selectedSource={selectedSource}
+                  onSourceSelect={handleSourceSelect}
+                  variant="marketplace"
                 />
               </Box>
             </Flex>
             {displayTools.length > 0 ? (
               <Grid
-                gridTemplateColumns={['1fr', 'repeat(2,1fr)', 'repeat(3,1fr)', 'repeat(4,1fr)']}
+                ref={gridRef}
+                gridTemplateColumns={TOOL_GRID_TEMPLATE_COLUMNS}
                 gridGap={5}
                 alignItems={'stretch'}
               >
-                {displayTools.map((tool) => {
-                  return (
-                    <ToolCard
-                      key={tool.id}
-                      item={tool}
-                      mode="marketplace"
-                      onInstall={() => onDownload(tool.id)}
-                      onClickCard={() => setSelectedTool(tool)}
-                    />
-                  );
-                })}
+                {renderVirtualGridItems(renderToolCard)}
               </Grid>
             ) : (
               <EmptyTip />
@@ -454,15 +645,19 @@ const ToolkitMarketplace = () => {
 
       {!!selectedTool && (
         <ToolDetailDrawer
-          onClose={() => setSelectedTool(null)}
+          onClose={handleCloseToolDetail}
           showPoint={false}
           mode="marketplace"
           selectedTool={selectedTool}
           // @ts-ignore
-          onFetchDetail={async (toolId: string) => await getMarketplaceToolDetail({ toolId })}
-          onToggleInstall={() => {
-            onDownload(selectedTool.id);
+          onFetchDetail={async (toolId: string, version?: string) =>
+            await getMarketplaceToolDetail({ toolId, version })
+          }
+          onToggleInstall={(_, version) => {
+            onDownload(selectedTool.id, version);
           }}
+          onFetchVersions={getMarketplaceToolVersions}
+          onVersionChange={handleVersionChange}
         />
       )}
     </>
@@ -472,7 +667,7 @@ const ToolkitMarketplace = () => {
 export async function getServerSideProps(content: any) {
   return {
     props: {
-      ...(await serviceSideProps(content, ['app']))
+      ...(await serviceSideProps(content, ['app', 'marketplace']))
     }
   };
 }

@@ -1,12 +1,20 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
-
-import { request as httpsRequest } from 'https';
-import { request as httpRequest } from 'http';
+import { Readable } from 'stream';
+import { authSystemAdmin, authUserPer } from '@fastgpt/service/support/permission/user/auth';
+import { buildSameOriginUrl } from '@fastgpt/service/common/security/network';
+import { appEnv } from '@/env';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {
     const { path = [], ...query } = req.query as any;
+    const pathSegments = Array.isArray(path) ? path : [path];
+
+    if (pathSegments[0] === 'api' && pathSegments[1] === 'admin') {
+      await authSystemAdmin({ req });
+    } else {
+      await authUserPer({ req, authToken: true });
+    }
 
     const queryStr = new URLSearchParams(query).toString();
     const requestPath = queryStr
@@ -17,48 +25,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       throw new Error('url is empty');
     }
 
-    const marketplaceUrl = process.env.MARKETPLACE_URL || '';
+    const marketplaceUrl = appEnv.MARKETPLACE_URL;
 
-    // 鲁港通 - 未配置市场地址时返回空数据（优雅降级）
     if (!marketplaceUrl) {
-      return jsonRes(res, {
-        code: 200,
-        data: []
-      });
+      throw new Error('MARKETPLACE_URL is not configured');
     }
 
-    const parsedUrl = new URL(marketplaceUrl);
-    delete req.headers?.cookie;
-    delete req.headers?.host;
-    delete req.headers?.origin;
+    // 防御 protocol-relative URL 覆盖主机(如 path 含空段 → `//169.254...`)
+    const targetUrl = buildSameOriginUrl(requestPath, marketplaceUrl);
 
-    // 根据协议选择对应的 request 方法
-    const request = parsedUrl.protocol === 'https:' ? httpsRequest : httpRequest;
+    const headers: Record<string, string> = {};
+    for (const [key, value] of Object.entries(req.headers)) {
+      if (key === 'cookie' || key === 'host' || key === 'origin' || key === 'connection') continue;
+      if (value) {
+        headers[key] = Array.isArray(value) ? value.join(', ') : value;
+      }
+    }
 
-    const requestResult = request({
-      protocol: parsedUrl.protocol,
-      hostname: parsedUrl.hostname,
-      port: parsedUrl.port,
-      path: requestPath,
+    const request = new Request(targetUrl, {
+      // @ts-ignore
+      duplex: 'half',
       method: req.method,
-      headers: req.headers,
-      timeout: 60000
+      headers,
+      body: req.method === 'GET' || req.method === 'HEAD' ? null : (req as any)
     });
 
-    req.pipe(requestResult);
+    const response = await fetch(request);
 
-    requestResult.on('response', (response) => {
-      Object.keys(response.headers).forEach((key) => {
-        // @ts-ignore
-        res.setHeader(key, response.headers[key]);
-      });
-      response.statusCode && res.writeHead(response.statusCode);
-      response.pipe(res);
+    response.headers.forEach((value, key) => {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey === 'content-encoding' || lowerKey === 'transfer-encoding') return;
+      res.setHeader(key, value);
     });
-    requestResult.on('error', (e) => {
-      res.send(e);
+
+    res.status(response.status);
+
+    if (response.body) {
+      const nodeStream = Readable.fromWeb(response.body as any);
+      nodeStream.pipe(res);
+    } else {
       res.end();
-    });
+    }
   } catch (error) {
     jsonRes(res, {
       code: 500,

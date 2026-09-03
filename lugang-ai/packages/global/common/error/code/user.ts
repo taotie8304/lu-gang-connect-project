@@ -1,12 +1,18 @@
 import { type ErrType } from '../errorCode';
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../i18n/utils';
 /* team: 503000 */
 export enum UserErrEnum {
   notUser = 'notUser',
   userExist = 'userExist',
   unAuthRole = 'unAuthRole',
   account_psw_error = 'account_psw_error',
-  unAuthSso = 'unAuthSso'
+  unAuthSso = 'unAuthSso',
+  invalidVerificationCode = 'invalidVerificationCode',
+  sendVerificationCodeTooFrequently = 'sendVerificationCodeTooFrequently',
+  verifyCodeTooFrequently = 'verifyCodeTooFrequently',
+  invalidAccount = 'invalidAccount',
+  accountCancellationPending = 'accountCancellationPending',
+  registrationMethodNotSupported = 'registrationMethodNotSupported'
 }
 const errList = [
   {
@@ -24,6 +30,35 @@ const errList = [
   {
     statusText: UserErrEnum.unAuthSso,
     message: i18nT('user:sso_auth_failed')
+  },
+  {
+    statusText: UserErrEnum.invalidVerificationCode,
+    message: i18nT('common:error.code_error'),
+    httpStatus: 400
+  },
+  {
+    statusText: UserErrEnum.sendVerificationCodeTooFrequently,
+    message: i18nT('common:error.send_auth_code_too_frequently'),
+    httpStatus: 429
+  },
+  {
+    statusText: UserErrEnum.verifyCodeTooFrequently,
+    message: i18nT('common:error.verify_code_too_frequently'),
+    httpStatus: 429
+  },
+  {
+    statusText: UserErrEnum.invalidAccount,
+    message: i18nT('common:code_error.invalid_account')
+  },
+  {
+    statusText: UserErrEnum.accountCancellationPending,
+    message: i18nT('common:code_error.account_cancellation_pending'),
+    httpStatus: 403
+  },
+  {
+    statusText: UserErrEnum.registrationMethodNotSupported,
+    message: i18nT('common:error.registration_method_not_supported'),
+    httpStatus: 403
   }
 ];
 export default errList.reduce((acc, cur, index) => {
@@ -33,7 +68,8 @@ export default errList.reduce((acc, cur, index) => {
       code: 503000 + index,
       statusText: cur.statusText,
       message: cur.message,
-      data: null
+      data: null,
+      ...(cur.httpStatus !== undefined ? { httpStatus: cur.httpStatus } : {})
     }
   };
 }, {} as ErrType<`${UserErrEnum}`>);

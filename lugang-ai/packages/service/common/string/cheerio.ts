@@ -1,8 +1,11 @@
 import { type UrlFetchParams, type UrlFetchResponse } from '@fastgpt/global/common/file/api';
 import * as cheerio from 'cheerio';
-import axios from 'axios';
+import { axios } from '../api/axios';
 import { htmlToMarkdown } from './utils';
 import { isInternalAddress } from '../system/utils';
+import { getLogger, LogCategories } from '../logger';
+
+const logger = getLogger(LogCategories.HTTP.ERROR);
 
 export const cheerioToHtml = ({
   fetchUrl,
@@ -68,84 +71,57 @@ export const cheerioToHtml = ({
     usedSelector
   };
 };
-// 鲁港通 - 并发限制工具，避免同时请求过多被目标网站限流
-async function concurrentRun<T>(
-  tasks: (() => Promise<T>)[],
-  concurrency: number,
-  delayMs: number = 500
-): Promise<T[]> {
-  const results: T[] = new Array(tasks.length);
-  let index = 0;
-
-  const run = async () => {
-    while (index < tasks.length) {
-      const i = index++;
-      results[i] = await tasks[i]();
-      if (delayMs > 0 && index < tasks.length) {
-        await new Promise((r) => setTimeout(r, delayMs));
-      }
-    }
-  };
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, () => run()));
-  return results;
-}
-
 export const urlsFetch = async ({
   urlList,
   selector
 }: UrlFetchParams): Promise<UrlFetchResponse> => {
   urlList = urlList.filter((url) => /^(http|https):\/\/[^ "]+$/.test(url));
 
-  // 鲁港通 - 每个 URL 封装为任务，限制并发数为 3，每次请求间隔 500ms
-  const tasks = urlList.map((url) => async () => {
-    const isInternal = isInternalAddress(url);
-    if (isInternal) {
-      return {
-        url,
-        title: '',
-        content: 'Cannot fetch internal url',
-        selector: ''
-      };
-    }
+  const response = await Promise.all(
+    urlList.map(async (url) => {
+      const isInternal = await isInternalAddress(url);
+      if (isInternal) {
+        return {
+          url,
+          title: '',
+          content: 'Cannot fetch internal url',
+          selector: ''
+        };
+      }
 
-    try {
-      const fetchRes = await axios.get(url, {
-        timeout: 30000,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
-        }
-      });
+      try {
+        const fetchRes = await axios.get(url, {
+          timeout: 30000
+        });
 
-      const $ = cheerio.load(fetchRes.data);
-      const { title, html, usedSelector } = cheerioToHtml({
-        fetchUrl: url,
-        $,
-        selector
-      });
+        const $ = cheerio.load(fetchRes.data);
+        const { title, html, usedSelector } = cheerioToHtml({
+          fetchUrl: url,
+          $,
+          selector
+        });
 
-      const md = await htmlToMarkdown(html);
+        const md = await htmlToMarkdown(html);
 
-      return {
-        url,
-        title,
-        content: md,
-        selector: usedSelector
-      };
-    } catch (error) {
-      console.log(error, 'fetch error');
+        return {
+          url,
+          title,
+          content: md,
+          selector: usedSelector
+        };
+      } catch (error) {
+        logger.warn('Failed to fetch url content', { url, error });
 
-      return {
-        url,
-        title: '',
-        content: '',
-        selector: ''
-      };
-    }
-  });
+        return {
+          url,
+          title: '',
+          content: '',
+          selector: ''
+        };
+      }
+    })
+  );
 
-  const response = await concurrentRun(tasks, 3, 500);
   return response;
 };
 

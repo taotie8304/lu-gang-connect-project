@@ -1,10 +1,10 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/router';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes.d';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
 import { oauthLogin } from '@/web/support/user/api';
+import { submitAccountCancellation } from '@/web/support/user/account/cancellation/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import Loading from '@fastgpt/web/components/common/MyLoading';
 import { serviceSideProps } from '@/web/common/i18n/utils';
@@ -14,58 +14,47 @@ import { OAuthEnum } from '@fastgpt/global/support/user/constant';
 import {
   getBdVId,
   getFastGPTSem,
-  getInviterId,
   getMsclkid,
-  getSourceDomain,
-  removeFastGPTSem
+  onFastGPTLoginSuccess
 } from '@/web/support/marketing/utils';
 import { postAcceptInvitationLink } from '@/web/support/user/team/api';
 import { retryFn } from '@fastgpt/global/common/system/utils';
-import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
+import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
+import { useLoginRedirectAfterLogin } from '@/web/support/user/loginRedirect';
+import type { LangEnum } from '@fastgpt/global/common/i18n/type';
 
-let isOauthLogging = false;
-
-const provider = ({ defaultShareId }: { defaultShareId: string }) => {
+const provider = () => {
   const { t, i18n } = useTranslation();
   const { initd, loginStore, setLoginStore } = useSystemStore();
   const { setUserInfo } = useUserStore();
   const router = useRouter();
   const { state, error, ...props } = router.query as Record<string, string>;
   const { toast } = useToast();
+  const resolveLoginRedirect = useLoginRedirectAfterLogin();
+  const handledCallbackRef = useRef<string>();
 
   const lastRoute = loginStore?.lastRoute
     ? validateRedirectUrl(loginStore.lastRoute)
     : '/dashboard/agent';
-  const errorRedirectPage = lastRoute.startsWith('/chat') ? lastRoute : '/login';
+  const lastTmbId = loginStore?.lastTmbId || '';
+  const errorRedirectPage =
+    loginStore?.flow === 'accountCancellation'
+      ? '/account/cancel?confirmed=1'
+      : lastRoute.startsWith('/chat')
+        ? lastRoute
+        : '/login';
 
   const loginSuccess = useCallback(
-    async (res: LoginSuccessResponse) => {
+    async (res: LoginSuccessResponseType) => {
       const decodeLastRoute = validateRedirectUrl(lastRoute);
-      setUserInfo(res.user);
-
-      // 鲁港通：根据用户角色获取默认跳转路径
-      const getDefaultRoute = () => {
-        const isAdmin = res.user.username === 'root';
-        if (isAdmin) {
-          return '/dashboard/agent';
-        }
-        // 普通用户跳转到默认分享链接
-        if (defaultShareId) {
-          return `/chat/share?shareId=${defaultShareId}`;
-        }
-        return '/';
-      };
-
-      const defaultRoute = getDefaultRoute();
-      const isAdmin = res.user.username === 'root';
 
       const navigateTo = await (async () => {
         if (res.user.team.status !== 'active') {
           if (decodeLastRoute.includes('/account/team?invitelinkid=')) {
             const id = decodeLastRoute.split('invitelinkid=')[1];
             await postAcceptInvitationLink(id);
-            return defaultRoute;
+            return '/dashboard/agent';
           } else {
             toast({
               status: 'warning',
@@ -74,32 +63,62 @@ const provider = ({ defaultShareId }: { defaultShareId: string }) => {
           }
         }
 
-        // 鲁港通：管理员始终跳转到管理后台
-        if (isAdmin) {
-          return defaultRoute;
-        }
-
-        // 普通用户：使用默认路径（分享链接）
-        return defaultRoute;
+        return decodeLastRoute;
       })();
 
-      navigateTo && router.replace(navigateTo);
+      const targetRoute = navigateTo
+        ? await resolveLoginRedirect({
+            user: res.user,
+            fallbackRoute: navigateTo,
+            lastTmbId
+          })
+        : undefined;
+
+      setUserInfo(res.user);
+
+      if (targetRoute) {
+        router.replace(targetRoute);
+      }
     },
-    [setUserInfo, router, lastRoute, t, toast]
+    [lastRoute, lastTmbId, resolveLoginRedirect, router, setUserInfo, t, toast]
   );
 
   const authProps = useCallback(
     async (props: Record<string, string>) => {
       try {
+        if (loginStore?.flow === 'accountCancellation') {
+          if (!props.code) {
+            throw new Error('OAuth cancellation callback is incomplete');
+          }
+          const result = await submitAccountCancellation({
+            method: `oauth/${loginStore.provider}` as any,
+            payload: {
+              callbackUrl: `${window.location.origin}/login/provider`,
+              code: props.code,
+              ...(state ? { state } : {}),
+              props
+            }
+          });
+          if (result.status !== 'pending') {
+            throw new Error('Account cancellation verification is still pending');
+          }
+          toast({
+            status: 'success',
+            title: t('account_info:account_cancellation_submit_success', '注销提交成功')
+          });
+          setUserInfo(null);
+          setLoginStore(undefined);
+          await router.replace('/login?lastRoute=/account/cancel');
+          return;
+        }
+
         const res = await oauthLogin({
           type: loginStore?.provider || OAuthEnum.sso,
           props,
           callbackUrl: `${location.origin}/login/provider`,
-          inviterId: getInviterId(),
           bd_vid: getBdVId(),
           msclkid: getMsclkid(),
           fastgpt_sem: getFastGPTSem(),
-          sourceDomain: getSourceDomain(),
           language: i18n.language as LangEnum
         });
 
@@ -113,12 +132,14 @@ const provider = ({ defaultShareId }: { defaultShareId: string }) => {
           }, 1000);
         }
 
-        removeFastGPTSem();
-        loginSuccess(res);
+        await onFastGPTLoginSuccess(loginSuccess, res);
       } catch (error) {
         toast({
-          status: 'warning',
-          title: getErrText(error, t('common:support.user.login.error'))
+          status: loginStore?.flow === 'accountCancellation' ? 'error' : 'warning',
+          title:
+            loginStore?.flow === 'accountCancellation'
+              ? t('account_info:account_cancellation_verification_failed', '身份验证失败，请重试')
+              : getErrText(error, t('common:support.user.login.error'))
         });
         setTimeout(() => {
           router.replace(errorRedirectPage);
@@ -126,14 +147,28 @@ const provider = ({ defaultShareId }: { defaultShareId: string }) => {
       }
       setLoginStore(undefined);
     },
-    [errorRedirectPage, loginStore?.provider, loginSuccess, router, setLoginStore, t, toast]
+    [
+      errorRedirectPage,
+      i18n.language,
+      loginStore,
+      loginSuccess,
+      router,
+      setLoginStore,
+      setUserInfo,
+      state,
+      t,
+      toast
+    ]
   );
 
   useEffect(() => {
     if (error) {
       toast({
-        status: 'warning',
-        title: t('common:support.user.login.Provider error')
+        status: loginStore?.flow === 'accountCancellation' ? 'error' : 'warning',
+        title:
+          loginStore?.flow === 'accountCancellation'
+            ? t('account_info:account_cancellation_verification_failed', '身份验证失败，请重试')
+            : t('common:support.user.login.Provider error')
       });
       router.replace(errorRedirectPage);
       return;
@@ -141,18 +176,22 @@ const provider = ({ defaultShareId }: { defaultShareId: string }) => {
 
     if (!props || !initd) return;
 
-    if (isOauthLogging) return;
-
-    isOauthLogging = true;
+    const callbackKey = router.asPath;
+    if (handledCallbackRef.current === callbackKey) return;
+    handledCallbackRef.current = callbackKey;
 
     (async () => {
-      await retryFn(async () => clearToken());
+      if (loginStore?.flow !== 'accountCancellation') {
+        await retryFn(async () => clearToken());
+      }
       router.prefetch('/dashboard/agent');
-
       if (loginStore && loginStore.provider !== 'sso' && state !== loginStore.state) {
         toast({
-          status: 'warning',
-          title: t('common:support.user.login.security_failed')
+          status: loginStore?.flow === 'accountCancellation' ? 'error' : 'warning',
+          title:
+            loginStore?.flow === 'accountCancellation'
+              ? t('account_info:account_cancellation_verification_failed', '身份验证失败，请重试')
+              : t('common:support.user.login.security_failed')
         });
         setTimeout(() => {
           router.replace(errorRedirectPage);
@@ -172,9 +211,7 @@ export default provider;
 export async function getServerSideProps(context: any) {
   return {
     props: {
-      // 鲁港通：从服务端环境变量获取默认分享链接 ID
-      defaultShareId: process.env.DEFAULT_SHARE_ID || '',
-      ...(await serviceSideProps(context))
+      ...(await serviceSideProps(context, ['login', 'account_info']))
     }
   };
 }

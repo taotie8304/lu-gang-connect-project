@@ -1,37 +1,45 @@
-import type { NextApiResponse } from 'next';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { NextAPI } from '@/service/middleware/entry';
 import { getAppTemplatesAndLoadThem } from '@fastgpt/service/core/app/templates/register';
-import { type AppTemplateSchemaType } from '@fastgpt/global/core/app/type';
 import { ToolTypeList, type AppTypeEnum } from '@fastgpt/global/core/app/constants';
-import { type ApiRequestProps } from '@fastgpt/service/type/next';
-
-export type ListParams = {
-  isQuickTemplate?: boolean;
-  randomNumber?: number;
-  type?: AppTypeEnum | 'all';
-  excludeIds?: string;
-};
-
-export type ListResponse = {
-  list: AppTemplateSchemaType[];
-  total: number;
-};
+import { type ApiRequestProps } from '@fastgpt/next/type';
+import { getUserDetail } from '@fastgpt/service/support/user/controller';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
+import {
+  ListAppTemplateQuerySchema,
+  ListAppTemplateResponseSchema,
+  type AppTemplateListItemType,
+  type ListAppTemplateQueryType,
+  type ListAppTemplateResponseType
+} from '@fastgpt/global/openapi/core/app/template/api';
+const logger = getLogger(LogCategories.MODULE.APP.TEMPLATE);
 
 async function handler(
-  req: ApiRequestProps<ListParams>,
-  res: NextApiResponse<any>
-): Promise<ListResponse> {
-  await authCert({ req, authToken: true });
+  req: ApiRequestProps<unknown, ListAppTemplateQueryType>
+): Promise<ListAppTemplateResponseType> {
+  const { tmbId } = await authCert({ req, authToken: true });
 
-  const { isQuickTemplate = false, randomNumber = 0, type = 'all', excludeIds } = req.query;
+  // Get user tags for filtering
+  const userDetail = await getUserDetail({ tmbId });
+  const userTags = userDetail.tags || [];
+
+  const {
+    isQuickTemplate = false,
+    randomNumber = 0,
+    type = 'all',
+    excludeIds
+  } = parseApiInput({
+    req,
+    querySchema: ListAppTemplateQuerySchema
+  }).query;
 
   const parsedExcludeIds: string[] = (() => {
     if (!excludeIds) return [];
     try {
       return JSON.parse(excludeIds);
     } catch (error) {
-      console.error('Failed to parse excludeIds:', error);
+      logger.error('Failed to parse excludeIds:', { error });
       return [];
     }
   })();
@@ -44,6 +52,20 @@ async function handler(
     if (item.type === type) return true;
     return false;
   });
+
+  // Filter based on hideTags and promoteTags
+  filteredItems = filteredItems.filter((item) => {
+    // Priority 1: hideTags - hide templates with matching tags
+    if (item.hideTags && item.hideTags.length > 0 && userTags.length > 0) {
+      const hasHideTag = item.hideTags.some((hideTag) => userTags.includes(hideTag));
+      if (hasHideTag) {
+        return false; // Hide this template from user
+      }
+    }
+
+    return true;
+  });
+
   const total = filteredItems.length;
 
   if (parsedExcludeIds && parsedExcludeIds.length > 0) {
@@ -68,15 +90,29 @@ async function handler(
     filteredItems = shuffled.slice(0, randomNumber);
   }
 
-  const list = filteredItems.map((item) => {
+  const list = filteredItems.map<AppTemplateListItemType>((item) => {
+    // Check if this template should be promoted for current user
+    const isPromotedForUser =
+      item.promoteTags &&
+      item.promoteTags.length > 0 &&
+      userTags.length > 0 &&
+      item.promoteTags.some((promoteTag) => userTags.includes(promoteTag));
+
+    // If user tags match promoteTags, add 'recommendation' to tags array
+    const tags = item.tags || [];
+    const finalTags =
+      isPromotedForUser && !tags.includes('recommendation')
+        ? [...tags, 'recommendation']
+        : [...tags.filter((tag) => tag !== 'recommendation')];
+
     return {
       templateId: item.templateId,
       name: item.name,
       intro: item.intro,
       recommendText: item.recommendText,
-      isPromoted: item.isPromoted,
+      isPromoted: item.isPromoted, // Keep global promotion, don't depend on promoteTags
       avatar: item.avatar,
-      tags: item.tags,
+      tags: finalTags, // Use modified tags
       type: item.type,
       author: item.author,
       userGuide: item.userGuide,
@@ -84,10 +120,10 @@ async function handler(
     };
   });
 
-  return {
+  return ListAppTemplateResponseSchema.parse({
     list,
     total
-  };
+  });
 }
 
 export default NextAPI(handler);

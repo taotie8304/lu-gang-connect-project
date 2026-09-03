@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Controller, useFieldArray } from 'react-hook-form';
+import { Controller } from 'react-hook-form';
 import { Box, Button, Flex, FormControl, FormErrorMessage } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useContextSelector } from 'use-context-selector';
@@ -7,9 +7,6 @@ import { PluginRunContext } from '../context';
 import Markdown from '@/components/Markdown';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
-import { useFileUpload } from '../../ChatBox/hooks/useFileUpload';
-import FilePreview from '../../components/FilePreview';
 import { type UserChatItemValueItemType } from '@fastgpt/global/core/chat/type';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
 import { type ChatBoxInputFormType } from '../../ChatBox/type';
@@ -37,52 +34,19 @@ const RenderInput = () => {
   const onNewChat = useContextSelector(PluginRunContext, (v) => v.onNewChat);
   const onSubmit = useContextSelector(PluginRunContext, (v) => v.onSubmit);
   const isChatting = useContextSelector(PluginRunContext, (v) => v.isChatting);
-  const fileSelectConfig = useContextSelector(PluginRunContext, (v) => v.fileSelectConfig);
   const instruction = useContextSelector(PluginRunContext, (v) => v.instruction);
-  const appId = useContextSelector(WorkflowRuntimeContext, (v) => v.appId);
-  const chatId = useContextSelector(WorkflowRuntimeContext, (v) => v.chatId);
   const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
 
   const { llmModelList } = useSystemStore();
 
   const { control, handleSubmit, reset } = variablesForm;
 
-  /* ===> Global files(abandon) */
-  const fileCtrl = useFieldArray({
-    control,
-    name: 'files'
-  });
-  const {
-    File,
-    onOpenSelectFile,
-    fileList,
-    onSelectFile,
-    uploadFiles,
-    selectFileIcon,
-    showSelectFile,
-    showSelectImg,
-    removeFiles,
-    hasFileUploading
-  } = useFileUpload({
-    fileSelectConfig,
-    fileCtrl,
-    outLinkAuthData,
-    appId,
-    chatId
-  });
-  useRequest2(uploadFiles, {
-    manual: false,
-    errorToast: t('common:upload_file_error'),
-    refreshDeps: [fileList, outLinkAuthData]
-  });
-  /* Global files(abandon) <=== */
-
   // Get plugin input components
   const formatPluginInputs = useMemoEnhance(() => {
     if (histories.length === 0) return pluginInputs;
     try {
       const historyValue = histories[0]?.value as UserChatItemValueItemType[];
-      const inputValueString = historyValue.find((item) => item.type === 'text')?.text?.content;
+      const inputValueString = historyValue.find((item) => item.text?.content)?.text?.content;
 
       if (!inputValueString) return pluginInputs;
       return JSON.parse(inputValueString) as FlowNodeInputItemType[];
@@ -103,7 +67,6 @@ const RenderInput = () => {
 
   const onResetDefault = useCallback(() => {
     reset({
-      files: [],
       variables: formatPluginInputs.reduce(
         (acc, input) => {
           acc[input.key] = input.defaultValue;
@@ -134,7 +97,7 @@ const RenderInput = () => {
       if (!historyValue) return undefined;
 
       try {
-        const inputValueString = historyValue.find((item) => item.type === 'text')?.text?.content;
+        const inputValueString = historyValue.find((item) => item.text?.content)?.text?.content;
         return (
           inputValueString &&
           JSON.parse(inputValueString).reduce(
@@ -156,26 +119,19 @@ const RenderInput = () => {
         return undefined;
       }
     })();
-    // Parse history file
-    const historyFileList = (() => {
-      const historyValue = histories[0]?.value as UserChatItemValueItemType[];
-      return historyValue?.filter((item) => item.type === 'file').map((item) => item.file);
-    })();
-
     reset({
-      variables: historyVariables,
-      files: historyFileList
+      variables: historyVariables
     });
   }, [histories, formatPluginInputs]);
 
   const formFileUploading = useContextSelector(WorkflowRuntimeContext, (v) => v.fileUploading);
 
-  const fileUploading = formFileUploading || hasFileUploading;
+  const fileUploading = formFileUploading;
   const hasHistory = histories.length > 0;
   const isDisabledInput = !!hasHistory;
 
   return (
-    <Box>
+    <>
       {/* instruction */}
       {instruction && (
         <Box
@@ -188,35 +144,6 @@ const RenderInput = () => {
           mb={4}
         >
           <Markdown source={instruction} />
-        </Box>
-      )}
-      {/* file select(Abandoned) */}
-      {(showSelectFile || showSelectImg) && (
-        <Box mb={5}>
-          <Flex alignItems={'center'}>
-            <FormLabel fontSize={'md'} fontWeight={'medium'}>
-              {t('chat:file_input')}
-            </FormLabel>
-            <QuestionTip ml={1} label={t('chat:file_input_tip')} />
-            <Box flex={1} />
-            {histories.length === 0 && (
-              <Button
-                leftIcon={<MyIcon name={selectFileIcon as any} w={'16px'} />}
-                variant={'whiteBase'}
-                isDisabled={isChatting || fileUploading}
-                onClick={() => {
-                  onOpenSelectFile();
-                }}
-              >
-                {t('chat:select')}
-              </Button>
-            )}
-            <File onSelect={(files) => onSelectFile({ files })} />
-          </Flex>
-          <FilePreview
-            fileList={fileList}
-            removeFiles={isDisabledInput ? undefined : removeFiles}
-          />
         </Box>
       )}
       {/* Filed */}
@@ -335,7 +262,6 @@ const RenderInput = () => {
             onClick={() => {
               handleSubmit((e) => {
                 if (hasHistory) {
-                  console.log(e);
                   onClickNewChat(e);
                 } else {
                   onSubmit(e);
@@ -347,7 +273,7 @@ const RenderInput = () => {
           </Button>
         </Flex>
       )}
-    </Box>
+    </>
   );
 };
 

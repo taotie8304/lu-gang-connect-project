@@ -8,7 +8,7 @@ import Avatar from '@fastgpt/web/components/common/Avatar';
 import PermissionIconText from '@/components/support/permission/IconText';
 import { useTranslation } from 'next-i18next';
 import MyBox from '@fastgpt/web/components/common/MyBox';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useContextSelector } from 'use-context-selector';
 import { AppListContext } from './context';
 import {
@@ -22,18 +22,13 @@ import dynamic from 'next/dynamic';
 import type { EditResourceInfoFormType } from '@/components/common/Modal/EditResourceModal';
 import MyMenu, { type MenuItemType } from '@fastgpt/web/components/common/MyMenu';
 import { AppRoleList } from '@fastgpt/global/support/permission/app/constant';
-import {
-  deleteAppCollaborators,
-  getCollaboratorList,
-  postUpdateAppCollaborators
-} from '@/web/core/app/api/collaborator';
+import { getCollaboratorList, postUpdateAppCollaborators } from '@/web/core/app/api/collaborator';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import AppTypeTag from './TypeTag';
 import { postCopyApp } from '@/web/core/app/api/app';
 import { formatTimeToChatTime } from '@fastgpt/global/common/string/time';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
-import { type RequireOnlyOne } from '@fastgpt/global/common/type/utils';
 import UserBox from '@fastgpt/web/components/common/UserBox';
 import { ChatSidebarPaneEnum } from '@/pageComponents/chat/constants';
 import { ReadRoleVal } from '@fastgpt/global/support/permission/constant';
@@ -42,6 +37,8 @@ import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
 import { createAppTypeMap } from '@/pageComponents/app/constants';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
+import ListCreateCard from '@/pageComponents/dashboard/ListCreateCard';
+import { useVirtualGridList } from '@fastgpt/web/hooks/useVirtualGridList';
 
 const EditResourceModal = dynamic(() => import('@/components/common/Modal/EditResourceModal'));
 const ConfigPerModal = dynamic(() => import('@/components/support/permission/ConfigPerModal'));
@@ -78,6 +75,13 @@ const List = () => {
 
   const [editedApp, setEditedApp] = useState<EditResourceInfoFormType>();
   const [editPerAppId, setEditPerAppId] = useState<string>();
+  const { gridRef, renderVirtualGridItems } = useVirtualGridList({
+    list: myApps,
+    listKey: `${router.pathname}-${appType}-${parentId || ''}-${searchKey}`,
+    reservedSlotCount: 1,
+    estimatedRowHeight: 160,
+    estimatedRowGap: 20
+  });
 
   const editPerApp = useMemo(
     () =>
@@ -89,7 +93,7 @@ const List = () => {
 
   const parentApp = useMemo(() => myApps.find((item) => item._id === parentId), [parentId, myApps]);
 
-  const { runAsync: onPutAppById } = useRequest2(putAppById, {
+  const { runAsync: onPutAppById } = useRequest(putAppById, {
     onSuccess() {
       loadMyApps();
     }
@@ -104,12 +108,8 @@ const List = () => {
     }
   });
 
-  const { openConfirm: openConfirmDel, ConfirmModal: DelConfirmModal } = useConfirm({
-    type: 'delete'
-  });
-
   const { lastChatAppId, setLastChatAppId } = useChatStore();
-  const { runAsync: onclickDelApp } = useRequest2(
+  const { runAsync: onclickDelApp } = useRequest(
     (id: string) => {
       if (id === lastChatAppId) {
         setLastChatAppId('');
@@ -131,7 +131,11 @@ const List = () => {
   const { openConfirm: openConfirmCopy, ConfirmModal: ConfirmCopyModal } = useConfirm({
     content: t('app:confirm_copy_app_tip')
   });
-  const { runAsync: onclickCopy } = useRequest2(postCopyApp, {
+  const { openConfirm: openConfirmDelete, ConfirmModal: DeleteConfirmModal } = useConfirm({
+    type: 'delete',
+    title: t('common:delete_warning')
+  });
+  const { runAsync: onclickCopy } = useRequest(postCopyApp, {
     onSuccess({ appId }) {
       router.push(`/app/detail?appId=${appId}`);
       loadMyApps();
@@ -139,7 +143,7 @@ const List = () => {
     successToast: t('app:create_copy_success')
   });
 
-  const { runAsync: onResumeInheritPermission } = useRequest2(
+  const { runAsync: onResumeInheritPermission } = useRequest(
     () => {
       return resumeInheritPer(editPerApp!._id);
     },
@@ -151,6 +155,261 @@ const List = () => {
       }
     }
   );
+  const renderAppCard = (app: (typeof myApps)[number]) => {
+    const isAgent = AppTypeList.includes(app.type);
+    const isTool = ToolTypeList.includes(app.type);
+    const isFolder = AppFolderTypeList.includes(app.type);
+    return (
+      <MyBox
+        key={app._id}
+        data-virtual-item=""
+        py={4}
+        px={5}
+        cursor={'pointer'}
+        border={'base'}
+        bg={'white'}
+        borderRadius={'10px'}
+        position={'relative'}
+        display={'flex'}
+        flexDirection={'column'}
+        _hover={{
+          borderColor: 'primary.300',
+          boxShadow: '1.5',
+          '& .more': {
+            display: 'flex'
+          },
+          '& .time': {
+            display: ['flex', 'none']
+          }
+        }}
+        onClick={() => {
+          if (AppFolderTypeList.includes(app.type)) {
+            setSearchKey('');
+            router.push({
+              query: {
+                ...router.query,
+                parentId: app._id
+              }
+            });
+          } else if (app.permission.hasWritePer || app.permission.hasReadChatLogPer) {
+            router.push(`/app/detail?appId=${app._id}`);
+          } else {
+            window.open(
+              `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
+              '_blank'
+            );
+          }
+        }}
+        {...getBoxProps({
+          dataId: app._id,
+          isFolder: app.type === AppTypeEnum.folder || app.type === AppTypeEnum.toolFolder
+        })}
+      >
+        <Grid templateColumns="auto 1fr auto" alignItems="center" width="100%" gap={2}>
+          <Avatar src={app.avatar} borderRadius={'sm'} w={'1.5rem'} />
+          <Box color={'myGray.900'} fontWeight={'medium'} minWidth={0} overflow="hidden">
+            <MyTooltip label={app.name} showOnlyWhenOverflow>
+              <Box className={'textEllipsis'}>{app.name}</Box>
+            </MyTooltip>
+          </Box>
+          <Box justifySelf="end" mr={-5}>
+            <AppTypeTag type={app.type} />
+          </Box>
+        </Grid>
+        <Box
+          flex={'1 0 56px'}
+          mt={3}
+          textAlign={'justify'}
+          wordBreak={'break-all'}
+          fontSize={'xs'}
+          color={'myGray.500'}
+        >
+          <Box className={'textEllipsis2'} whiteSpace={'pre-wrap'} lineHeight={1.3}>
+            {app.intro || t('common:no_intro')}
+          </Box>
+        </Box>
+        <HStack h={'24px'} fontSize={'mini'} color={'myGray.500'} w="full">
+          <HStack flex={'1 0 0'}>
+            <UserBox
+              sourceMember={app.sourceMember}
+              fontSize="xs"
+              avatarSize="1rem"
+              spacing={0.5}
+            />
+            <PermissionIconText
+              private={app.private}
+              color={'myGray.500'}
+              iconColor={'myGray.400'}
+              w={'0.875rem'}
+            />
+          </HStack>
+          <HStack>
+            {isPc && (
+              <HStack spacing={0.5} className="time">
+                <MyIcon name={'history'} w={'0.85rem'} color={'myGray.400'} />
+                <Box color={'myGray.500'}>
+                  {t(formatTimeToChatTime(app.updateTime) as any).replace('#', ':')}
+                </Box>
+              </HStack>
+            )}
+            {(AppFolderTypeList.includes(app.type)
+              ? app.permission.hasManagePer
+              : app.permission.hasWritePer || app.permission.hasReadChatLogPer) && (
+              <Box className="more" display={['', 'none']}>
+                <MyMenu
+                  Button={
+                    <IconButton
+                      size={'xsSquare'}
+                      variant={'transparentBase'}
+                      icon={<MyIcon name={'more'} w={'0.875rem'} color={'myGray.500'} />}
+                      aria-label={''}
+                    />
+                  }
+                  menuList={[
+                    ...([AppTypeEnum.simple, AppTypeEnum.workflow, AppTypeEnum.chatAgent].includes(
+                      app.type
+                    )
+                      ? [
+                          {
+                            children: [
+                              {
+                                icon: 'core/chat/chatLight',
+                                type: 'grayBg' as MenuItemType,
+                                label: t('app:go_to_chat'),
+                                onClick: () => {
+                                  window.open(
+                                    `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
+                                    '_blank'
+                                  );
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      : []),
+                    ...([AppTypeEnum.workflowTool].includes(app.type)
+                      ? [
+                          {
+                            children: [
+                              {
+                                icon: 'core/chat/chatLight',
+                                type: 'grayBg' as MenuItemType,
+                                label: t('app:go_to_run'),
+                                onClick: () => {
+                                  window.open(
+                                    `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
+                                    '_blank'
+                                  );
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      : []),
+                    ...(app.permission.hasManagePer
+                      ? [
+                          {
+                            children: [
+                              {
+                                icon: 'edit',
+                                type: 'grayBg' as MenuItemType,
+                                label: t('common:dataset.Edit Info'),
+                                onClick: () => {
+                                  if (app.type === AppTypeEnum.httpPlugin) {
+                                    toast({
+                                      title: t('app:type.Http plugin_deprecated'),
+                                      status: 'warning'
+                                    });
+                                  }
+                                  setEditedApp({
+                                    id: app._id,
+                                    avatar: app.avatar,
+                                    name: app.name,
+                                    intro: app.intro
+                                  });
+                                }
+                              },
+                              ...(folderDetail?.type === AppTypeEnum.httpPlugin &&
+                              !(parentApp ? parentApp.permission : app.permission).hasManagePer
+                                ? []
+                                : [
+                                    {
+                                      icon: 'common/file/move',
+                                      type: 'grayBg' as MenuItemType,
+                                      label: t('common:move_to'),
+                                      onClick: () => setMoveAppId(app._id)
+                                    }
+                                  ]),
+                              ...(app.permission.hasManagePer
+                                ? [
+                                    {
+                                      icon: 'key',
+                                      type: 'grayBg' as MenuItemType,
+                                      label: t('common:permission.Permission'),
+                                      onClick: () => setEditPerAppId(app._id)
+                                    }
+                                  ]
+                                : [])
+                            ]
+                          }
+                        ]
+                      : []),
+                    ...(!app.permission?.hasWritePer ||
+                    app.type === AppTypeEnum.mcpToolSet ||
+                    app.type === AppTypeEnum.folder ||
+                    app.type === AppTypeEnum.httpToolSet ||
+                    app.type === AppTypeEnum.httpPlugin
+                      ? []
+                      : [
+                          {
+                            children: [
+                              {
+                                icon: 'copy',
+                                type: 'grayBg' as MenuItemType,
+                                label: t('app:copy_one_app'),
+                                onClick: () =>
+                                  openConfirmCopy({
+                                    onConfirm: () => onclickCopy({ appId: app._id })
+                                  })()
+                              }
+                            ]
+                          }
+                        ]),
+                    ...(app.permission.isOwner
+                      ? [
+                          {
+                            children: [
+                              {
+                                type: 'danger' as const,
+                                icon: 'delete',
+                                label: t('common:Delete'),
+                                onClick: () =>
+                                  openConfirmDelete({
+                                    customContent: (() => {
+                                      if (isFolder) return t('app:confirm_delete_folder_tip');
+                                      if (isAgent) return t('app:confirm_del_app_tip');
+                                      if (isTool) return t('app:confirm_del_tool_tip');
+                                      return t('app:confirm_del_app_tip');
+                                    })(),
+                                    onConfirm: () => onclickDelApp(app._id),
+                                    confirmButtonVariant: 'dangerFill',
+                                    inputConfirmText: app.name
+                                  })()
+                              }
+                            ]
+                          }
+                        ]
+                      : [])
+                  ]}
+                />
+              </Box>
+            )}
+          </HStack>
+        </HStack>
+      </MyBox>
+    );
+  };
+
   if (myApps.length === 0 && isFetchingApps) return null;
 
   return (
@@ -175,280 +434,24 @@ const List = () => {
           </Grid>
         )
       ) : (
-        <Grid
-          py={4}
-          gridTemplateColumns={
-            folderDetail
-              ? ['1fr', 'repeat(2,1fr)', 'repeat(2,1fr)', 'repeat(3,1fr)']
-              : ['1fr', 'repeat(2,1fr)', 'repeat(2,1fr)', 'repeat(3,1fr)', 'repeat(4,1fr)']
-          }
-          gridGap={5}
-          alignItems={'stretch'}
-        >
-          {hasCreatePer ? <ListCreateButton appType={appType} /> : <ForbiddenCreateButton />}
-          {myApps.map((app, index) => {
-            const isAgent = AppTypeList.includes(app.type);
-            const isTool = ToolTypeList.includes(app.type);
-            const isFolder = AppFolderTypeList.includes(app.type);
-            return (
-              <MyTooltip
-                key={app._id}
-                label={
-                  app.type === AppTypeEnum.folder
-                    ? t('common:open_folder')
-                    : app.permission.hasWritePer || app.permission.hasReadChatLogPer
-                      ? t('app:edit_app')
-                      : t('app:go_to_chat')
-                }
-              >
-                <MyBox
-                  py={4}
-                  px={5}
-                  cursor={'pointer'}
-                  border={'base'}
-                  bg={'white'}
-                  borderRadius={'10px'}
-                  position={'relative'}
-                  display={'flex'}
-                  flexDirection={'column'}
-                  _hover={{
-                    borderColor: 'primary.300',
-                    boxShadow: '1.5',
-                    '& .more': {
-                      display: 'flex'
-                    },
-                    '& .time': {
-                      display: ['flex', 'none']
-                    }
-                  }}
-                  onClick={() => {
-                    if (AppFolderTypeList.includes(app.type)) {
-                      setSearchKey('');
-                      router.push({
-                        query: {
-                          ...router.query,
-                          parentId: app._id
-                        }
-                      });
-                    } else if (app.permission.hasWritePer || app.permission.hasReadChatLogPer) {
-                      router.push(`/app/detail?appId=${app._id}`);
-                    } else {
-                      window.open(
-                        `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
-                        '_blank'
-                      );
-                    }
-                  }}
-                  {...getBoxProps({
-                    dataId: app._id,
-                    isFolder: app.type === AppTypeEnum.folder || app.type === AppTypeEnum.toolFolder
-                  })}
-                >
-                  <Grid templateColumns="auto 1fr auto" alignItems="center" width="100%" gap={2}>
-                    <Avatar src={app.avatar} borderRadius={'sm'} w={'1.5rem'} />
-                    <Box color={'myGray.900'} fontWeight={'medium'} minWidth={0} overflow="hidden">
-                      <Box className={'textEllipsis'}>{app.name}</Box>
-                    </Box>
-                    <Box justifySelf="end" mr={-5}>
-                      <AppTypeTag type={app.type} />
-                    </Box>
-                  </Grid>
-                  <Box
-                    flex={'1 0 56px'}
-                    mt={3}
-                    textAlign={'justify'}
-                    wordBreak={'break-all'}
-                    fontSize={'xs'}
-                    color={'myGray.500'}
-                  >
-                    <Box className={'textEllipsis2'} whiteSpace={'pre-wrap'} lineHeight={1.3}>
-                      {app.intro || t('common:no_intro')}
-                    </Box>
-                  </Box>
-                  <HStack h={'24px'} fontSize={'mini'} color={'myGray.500'} w="full">
-                    <HStack flex={'1 0 0'}>
-                      <UserBox
-                        sourceMember={app.sourceMember}
-                        fontSize="xs"
-                        avatarSize="1rem"
-                        spacing={0.5}
-                      />
-                      <PermissionIconText
-                        private={app.private}
-                        color={'myGray.500'}
-                        iconColor={'myGray.400'}
-                        w={'0.875rem'}
-                      />
-                    </HStack>
-                    <HStack>
-                      {isPc && (
-                        <HStack spacing={0.5} className="time">
-                          <MyIcon name={'history'} w={'0.85rem'} color={'myGray.400'} />
-                          <Box color={'myGray.500'}>
-                            {t(formatTimeToChatTime(app.updateTime) as any).replace('#', ':')}
-                          </Box>
-                        </HStack>
-                      )}
-                      {(AppFolderTypeList.includes(app.type)
-                        ? app.permission.hasManagePer
-                        : app.permission.hasWritePer || app.permission.hasReadChatLogPer) && (
-                        <Box className="more" display={['', 'none']}>
-                          <MyMenu
-                            Button={
-                              <IconButton
-                                size={'xsSquare'}
-                                variant={'transparentBase'}
-                                icon={<MyIcon name={'more'} w={'0.875rem'} color={'myGray.500'} />}
-                                aria-label={''}
-                              />
-                            }
-                            menuList={[
-                              ...([AppTypeEnum.simple, AppTypeEnum.workflow].includes(app.type)
-                                ? [
-                                    {
-                                      children: [
-                                        {
-                                          icon: 'core/chat/chatLight',
-                                          type: 'grayBg' as MenuItemType,
-                                          label: t('app:go_to_chat'),
-                                          onClick: () => {
-                                            window.open(
-                                              `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
-                                              '_blank'
-                                            );
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                : []),
-                              ...([AppTypeEnum.workflowTool].includes(app.type)
-                                ? [
-                                    {
-                                      children: [
-                                        {
-                                          icon: 'core/chat/chatLight',
-                                          type: 'grayBg' as MenuItemType,
-                                          label: t('app:go_to_run'),
-                                          onClick: () => {
-                                            window.open(
-                                              `/chat?appId=${app._id}&pane=${ChatSidebarPaneEnum.RECENTLY_USED_APPS}`,
-                                              '_blank'
-                                            );
-                                          }
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                : []),
-                              ...(app.permission.hasManagePer
-                                ? [
-                                    {
-                                      children: [
-                                        {
-                                          icon: 'edit',
-                                          type: 'grayBg' as MenuItemType,
-                                          label: t('common:dataset.Edit Info'),
-                                          onClick: () => {
-                                            if (app.type === AppTypeEnum.httpPlugin) {
-                                              toast({
-                                                title: t('app:type.Http plugin_deprecated'),
-                                                status: 'warning'
-                                              });
-                                            }
-                                            setEditedApp({
-                                              id: app._id,
-                                              avatar: app.avatar,
-                                              name: app.name,
-                                              intro: app.intro
-                                            });
-                                          }
-                                        },
-                                        ...(folderDetail?.type === AppTypeEnum.httpPlugin &&
-                                        !(parentApp ? parentApp.permission : app.permission)
-                                          .hasManagePer
-                                          ? []
-                                          : [
-                                              {
-                                                icon: 'common/file/move',
-                                                type: 'grayBg' as MenuItemType,
-                                                label: t('common:move_to'),
-                                                onClick: () => setMoveAppId(app._id)
-                                              }
-                                            ]),
-                                        ...(app.permission.hasManagePer
-                                          ? [
-                                              {
-                                                icon: 'key',
-                                                type: 'grayBg' as MenuItemType,
-                                                label: t('common:permission.Permission'),
-                                                onClick: () => setEditPerAppId(app._id)
-                                              }
-                                            ]
-                                          : [])
-                                      ]
-                                    }
-                                  ]
-                                : []),
-                              ...(!app.permission?.hasWritePer ||
-                              app.type === AppTypeEnum.mcpToolSet ||
-                              app.type === AppTypeEnum.folder ||
-                              app.type === AppTypeEnum.httpToolSet ||
-                              app.type === AppTypeEnum.httpPlugin
-                                ? []
-                                : [
-                                    {
-                                      children: [
-                                        {
-                                          icon: 'copy',
-                                          type: 'grayBg' as MenuItemType,
-                                          label: t('app:copy_one_app'),
-                                          onClick: () =>
-                                            openConfirmCopy({
-                                              onConfirm: () => onclickCopy({ appId: app._id })
-                                            })()
-                                        }
-                                      ]
-                                    }
-                                  ]),
-                              ...(app.permission.isOwner
-                                ? [
-                                    {
-                                      children: [
-                                        {
-                                          type: 'danger' as 'danger',
-                                          icon: 'delete',
-                                          label: t('common:Delete'),
-                                          onClick: () =>
-                                            openConfirmDel({
-                                              onConfirm: () => onclickDelApp(app._id),
-                                              inputConfirmText: app.name,
-                                              customContent: (() => {
-                                                if (isFolder)
-                                                  return t('app:confirm_delete_folder_tip');
-                                                if (isAgent) return t('app:confirm_del_app_tip');
-                                                if (isTool) return t('app:confirm_del_tool_tip');
-                                                return t('app:confirm_del_app_tip');
-                                              })()
-                                            })()
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                : [])
-                            ]}
-                          />
-                        </Box>
-                      )}
-                    </HStack>
-                  </HStack>
-                </MyBox>
-              </MyTooltip>
-            );
-          })}
-        </Grid>
+        <>
+          <Grid
+            ref={gridRef}
+            py={4}
+            gridTemplateColumns={
+              folderDetail
+                ? ['1fr', 'repeat(2,1fr)', 'repeat(2,1fr)', 'repeat(3,1fr)']
+                : ['1fr', 'repeat(2,1fr)', 'repeat(2,1fr)', 'repeat(3,1fr)', 'repeat(4,1fr)']
+            }
+            gridGap={5}
+            alignItems={'stretch'}
+          >
+            {hasCreatePer ? <ListCreateButton appType={appType} /> : <ForbiddenCreateButton />}
+            {renderVirtualGridItems(renderAppCard)}
+          </Grid>
+        </>
       )}
-      <DelConfirmModal />
+      <DeleteConfirmModal />
       <ConfirmCopyModal />
       {!!editedApp && (
         <EditResourceModal
@@ -482,17 +485,6 @@ const List = () => {
             roleList: AppRoleList,
             onUpdateCollaborators: (props) =>
               postUpdateAppCollaborators({
-                ...props,
-                appId: editPerApp._id
-              }),
-            onDelOneCollaborator: async (
-              props: RequireOnlyOne<{
-                tmbId?: string;
-                groupId?: string;
-                orgId?: string;
-              }>
-            ) =>
-              deleteAppCollaborators({
                 ...props,
                 appId: editPerApp._id
               }),
@@ -583,7 +575,6 @@ const CreateButton = ({ appType }: { appType: AppTypeEnum | 'all' }) => {
   );
 };
 const ListCreateButton = ({ appType }: { appType: AppTypeEnum | 'all' }) => {
-  const { t } = useTranslation();
   const router = useRouter();
   const parentId = router.query.parentId;
   const createAppType =
@@ -594,67 +585,13 @@ const ListCreateButton = ({ appType }: { appType: AppTypeEnum | 'all' }) => {
         : AppTypeEnum.workflowTool;
 
   return (
-    <MyBox
-      py={4}
-      px={5}
-      cursor={'pointer'}
-      border={'base'}
-      bg={'white'}
-      borderRadius={'10px'}
-      position={'relative'}
-      display={'flex'}
-      flexDirection={'column'}
-      _hover={{
-        '& .create-box': {
-          display: 'flex'
-        }
-      }}
+    <ListCreateCard
       onClick={() => {
         router.push(
           `/dashboard/create?appType=${createAppType}${parentId ? `&parentId=${parentId}` : ''}`
         );
       }}
-    >
-      <Box color={'myGray.900'} fontWeight={'medium'}>
-        {t('common:new_create')}
-      </Box>
-      <Box
-        mt={4}
-        mb={2}
-        h={'100%'}
-        w={'100%'}
-        display={'flex'}
-        alignItems={'center'}
-        justifyContent={'center'}
-        position={'relative'}
-        flex={'1 0 56px'}
-      >
-        <Box
-          className="create-box"
-          display={'none'}
-          position={'absolute'}
-          top={'1px'}
-          left={'1px'}
-          right={'1px'}
-          bottom={'1px'}
-          bg={'primary.50'}
-          borderRadius={'14px'}
-        />
-        <Box
-          w={'100%'}
-          h={'100%'}
-          display={'flex'}
-          alignItems={'center'}
-          justifyContent={'center'}
-          sx={{
-            background: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 330 56' preserveAspectRatio='none'%3E%3Crect x='0.5' y='0.5' width='329' height='55' rx='12' fill='none' stroke='%237895FE' stroke-width='1' stroke-dasharray='6 6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center`,
-            backgroundSize: '100% 100%'
-          }}
-        >
-          <MyIcon name={'common/addLight'} w={8} color={'#7895FE'} zIndex={1} />
-        </Box>
-      </Box>
-    </MyBox>
+    />
   );
 };
 const ForbiddenCreateButton = () => {
@@ -706,7 +643,7 @@ const ForbiddenCreateButton = () => {
             backgroundSize: '100% 100%'
           }}
         >
-          <MyIcon name={'common/disable'} w={'34px'} color={'#DFE2EA'} zIndex={1} />
+          <MyIcon name={'common/disable'} w={'26px'} color={'#DFE2EA'} zIndex={1} />
           <Box color={'myGray.500'} fontSize={'11px'} fontWeight={'medium'} zIndex={1}>
             {t('app:has_no_create_per')}
           </Box>

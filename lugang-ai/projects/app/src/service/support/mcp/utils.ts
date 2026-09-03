@@ -1,18 +1,19 @@
 import { MongoMcpKey } from '@fastgpt/service/support/mcp/schema';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
-import { authAppByTmbId } from '@fastgpt/service/support/permission/app/auth';
-import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { getAppLatestVersion } from '@fastgpt/service/core/app/version/controller';
-import { type Tool } from '@modelcontextprotocol/sdk/types';
+import { type Tool } from '@modelcontextprotocol/sdk/types.js';
 import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { toolValueTypeList, valueTypeJsonSchemaMap } from '@fastgpt/global/core/workflow/constants';
 import { type AppChatConfigType } from '@fastgpt/global/core/app/type';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { type FlowNodeInputItemType } from '@fastgpt/global/core/workflow/type/io';
 import { type toolCallProps } from './type';
-import { type AppSchema } from '@fastgpt/global/core/app/type';
-import { getRunningUserInfoByTmbId } from '@fastgpt/service/support/user/team/utils';
+import { type AppSchemaType } from '@fastgpt/global/core/app/type';
+import {
+  getRunningUserInfoByTmbId,
+  getUserIdByTmbId
+} from '@fastgpt/service/support/user/team/utils';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { type AIChatItemType, type UserChatItemType } from '@fastgpt/global/core/chat/type';
 import {
@@ -21,9 +22,10 @@ import {
 } from '@fastgpt/service/core/app/tool/workflowTool/utils';
 import { getWorkflowToolInputsFromStoreNodes } from '@fastgpt/global/core/app/tool/workflowTool/utils';
 import {
-  ChatItemValueTypeEnum,
+  ChatFileTypeEnum,
   ChatRoleEnum,
-  ChatSourceEnum
+  ChatSourceEnum,
+  ChatSourceTypeEnum
 } from '@fastgpt/global/core/chat/constants';
 import {
   getWorkflowEntryNodeIds,
@@ -32,11 +34,37 @@ import {
 } from '@fastgpt/global/core/workflow/runtime/utils';
 import { WORKFLOW_MAX_RUN_TIMES } from '@fastgpt/service/core/workflow/constants';
 import { dispatchWorkFlow } from '@fastgpt/service/core/workflow/dispatch';
-import { getChatTitleFromChatMessage, removeEmptyUserInput } from '@fastgpt/global/core/chat/utils';
-import { saveChat } from '@fastgpt/service/core/chat/saveChat';
-import { DispatchNodeResponseKeyEnum } from '@fastgpt/global/core/workflow/runtime/constants';
+import { prepareWorkflowFileQuery } from '@fastgpt/service/core/workflow/utils/fileLimits';
+import { removeEmptyUserInput } from '@fastgpt/global/core/chat/utils';
+import {
+  failChatRound,
+  finalizeChatRound,
+  type Props as SaveChatProps
+} from '@fastgpt/service/core/chat/saveChat';
+import { preChatRound } from '@fastgpt/service/core/chat/utils/prepare';
 import { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
 import { removeDatasetCiteText } from '@fastgpt/global/core/ai/llm/utils';
+import { getRuntimeNodeResponseSummary } from '@fastgpt/service/core/workflow/dispatch/utils';
+import { authAppByTmbId } from '@fastgpt/service/support/permission/app/auth';
+import { ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
+import { resolveMcpEffectiveTmbId } from './auth';
+import { assertCancellation } from '@fastgpt/service/support/user/account/cancellation/guard';
+
+const assertMcpTeamUsable = async (mcp: { teamId?: string; tmbId?: string }) => {
+  if (!mcp.teamId || !mcp.tmbId) return;
+  await assertCancellation({
+    teamId: mcp.teamId,
+    userId: await getUserIdByTmbId(mcp.tmbId)
+  });
+};
+
+const stringifyMcpPluginOutput = (pluginOutput: unknown) => {
+  if (pluginOutput === undefined || pluginOutput === null) {
+    return 'Can not get response from plugin';
+  }
+
+  return JSON.stringify(pluginOutput);
+};
 
 export const pluginNodes2InputSchema = (
   nodes: { flowNodeType: FlowNodeTypeEnum; inputs: FlowNodeInputItemType[] }[]
@@ -113,11 +141,18 @@ export const workflow2InputSchema = (chatConfig?: {
 
   return schema;
 };
+/**
+ * 获取 MCP key 当前绑定的工具列表。
+ *
+ * MCP key 在创建或更新绑定应用时已经完成权限校验；运行时按 key 中保存的应用快照提供工具，
+ * 不再因为创建人的应用权限后续变化而隐藏工具，避免已发布集成被普通权限调整意外中断。
+ */
 export const getMcpServerTools = async (key: string): Promise<Tool[]> => {
-  const mcp = await MongoMcpKey.findOne({ key }, { apps: 1 }).lean();
+  const mcp = await MongoMcpKey.findOne({ key }, { apps: 1, teamId: 1, tmbId: 1 }).lean();
   if (!mcp) {
     return Promise.reject(CommonErrEnum.invalidResource);
   }
+  await assertMcpTeamUsable(mcp);
 
   // Get app list
   const appList = await MongoApp.find(
@@ -130,26 +165,12 @@ export const getMcpServerTools = async (key: string): Promise<Tool[]> => {
     { name: 1, intro: 1 }
   ).lean();
 
-  // Filter not permission app
-  const permissionAppList = await Promise.all(
-    appList.filter(async (app) => {
-      try {
-        await authAppByTmbId({ tmbId: mcp.tmbId, appId: app._id, per: ReadPermissionVal });
-        return true;
-      } catch (error) {
-        return false;
-      }
-    })
-  );
-
   // Get latest version
-  const versionList = await Promise.all(
-    permissionAppList.map((app) => getAppLatestVersion(app._id, app))
-  );
+  const versionList = await Promise.all(appList.map((app) => getAppLatestVersion(app._id, app)));
 
   // Compute mcp tools
   const tools = versionList.map<Tool>((version, index) => {
-    const app = permissionAppList[index];
+    const app = appList[index];
     const mcpApp = mcp.apps.find((mcpApp) => String(mcpApp.appId) === String(app._id))!;
 
     const isPlugin = !!version.nodes.find(
@@ -168,10 +189,20 @@ export const getMcpServerTools = async (key: string): Promise<Tool[]> => {
   return tools;
 };
 
-// Call tool
-export const callMcpServerTool = async ({ key, toolName, inputs }: toolCallProps) => {
-  const dispatchApp = async (app: AppSchema, variables: Record<string, any>) => {
+/**
+ * 调用 MCP key 已绑定的工具。
+ *
+ * 发布 key 用于定位绑定关系；每次执行都按发布者或 authProxy 代理成员重新校验应用读权限，
+ * 并将对话与运行用户上下文归属到该有效成员。
+ */
+export const callMcpServerTool = async ({ key, toolName, inputs, authProxy }: toolCallProps) => {
+  const dispatchApp = async (
+    app: AppSchemaType,
+    variables: Record<string, any>,
+    effectiveTmbId: string
+  ) => {
     const isPlugin = app.type === AppTypeEnum.workflowTool;
+    const pluginFixedTitle = isPlugin ? 'Mcp call' : undefined;
 
     // Get app latest version
     const { versionId, nodes, edges, chatConfig } = await getAppLatestVersion(app._id, app);
@@ -183,12 +214,17 @@ export const callMcpServerTool = async ({ key, toolName, inputs }: toolCallProps
           variables
         });
       }
-
       return {
         obj: ChatRoleEnum.Human,
         value: [
+          ...(variables.fileUrlList || []).map((url: string) => ({
+            file: {
+              type: ChatFileTypeEnum.file,
+              name: url,
+              url: url
+            }
+          })),
           {
-            type: ChatItemValueTypeEnum.text,
             text: {
               content: variables.question
             }
@@ -205,96 +241,144 @@ export const callMcpServerTool = async ({ key, toolName, inputs }: toolCallProps
       variables = {};
     } else {
       delete variables.question;
-      variables.system_fileUrlList = variables.fileUrlList;
       delete variables.fileUrlList;
     }
 
     const chatId = getNanoid();
-
-    const {
-      flowUsages,
-      assistantResponses,
-      newVariables,
-      flowResponses,
-      durationSeconds,
-      system_memories
-    } = await dispatchWorkFlow({
-      chatId,
-      mode: 'chat',
-      usageSource: UsageSourceEnum.mcp,
-      runningAppInfo: {
-        id: String(app._id),
-        name: app.name,
-        teamId: String(app.teamId),
-        tmbId: String(app.tmbId)
-      },
-      runningUserInfo: await getRunningUserInfoByTmbId(app.tmbId),
-      uid: String(app.tmbId),
-      runtimeNodes,
-      runtimeEdges: storeEdges2RuntimeEdges(edges),
-      variables,
-      query: removeEmptyUserInput(userQuestion.value),
-      chatConfig,
-      histories: [],
-      stream: false,
-      maxRunTimes: WORKFLOW_MAX_RUN_TIMES
-    });
-
-    // Save chat
-    const aiResponse: AIChatItemType & { dataId?: string } = {
-      obj: ChatRoleEnum.AI,
-      value: assistantResponses,
-      [DispatchNodeResponseKeyEnum.nodeResponse]: flowResponses,
-      memories: system_memories
+    const responseChatItemId = getNanoid(24);
+    const chatSource = {
+      sourceType: ChatSourceTypeEnum.app,
+      sourceId: String(app._id)
     };
-    const newTitle = isPlugin ? 'Mcp call' : getChatTitleFromChatMessage(userQuestion);
-    await saveChat({
-      chatId,
-      appId: app._id,
-      versionId,
-      teamId: app.teamId,
-      tmbId: app.tmbId,
-      nodes,
-      appChatConfig: chatConfig,
-      variables: newVariables,
-      isUpdateUseTime: false, // owner update use time
-      newTitle,
-      source: ChatSourceEnum.mcp,
-      userContent: userQuestion,
-      aiContent: aiResponse,
-      durationSeconds
+    const {
+      query: workflowQuery,
+      maxFileAmount,
+      maxBytesPerFile
+    } = await prepareWorkflowFileQuery({
+      teamId: String(app.teamId),
+      chatConfig,
+      query: userQuestion.value
     });
+    const workflowUserQuestion: UserChatItemType = {
+      ...userQuestion,
+      value: workflowQuery
+    };
+    const preparedRound = await preChatRound({
+      ...chatSource,
+      chatId,
+      teamId: String(app.teamId),
+      tmbId: effectiveTmbId,
+      source: ChatSourceEnum.mcp,
+      userContent: workflowUserQuestion,
+      responseChatItemId,
+      fixedTitle: pluginFixedTitle
+    });
+    let chatRoundFinalized = false;
 
-    // Get MCP response type
-    let responseContent = (() => {
-      if (isPlugin) {
-        const output = flowResponses.find(
-          (item) => item.moduleType === FlowNodeTypeEnum.pluginOutput
-        );
-        if (output) {
-          return JSON.stringify(output.pluginOutput);
-        } else {
-          return 'Can not get response from plugin';
+    try {
+      const {
+        assistantResponses,
+        newVariables,
+        durationSeconds,
+        system_memories,
+        nodeResponseSummary,
+        runtimeNodeResponseSummary
+      } = await dispatchWorkFlow({
+        chatId: preparedRound.chatId,
+        mode: 'chat',
+        usageSource: UsageSourceEnum.mcp,
+        runningAppInfo: {
+          sourceType: ChatSourceTypeEnum.app,
+          sourceId: String(app._id),
+          name: app.name,
+          teamId: String(app.teamId),
+          tmbId: String(app.tmbId)
+        },
+        runningUserInfo: await getRunningUserInfoByTmbId(effectiveTmbId),
+        uid: effectiveTmbId,
+        runtimeNodes,
+        runtimeEdges: storeEdges2RuntimeEdges(edges),
+        variables,
+        responseChatItemId: preparedRound.responseChatItemId,
+        query: removeEmptyUserInput(workflowQuery),
+        maxFileAmount,
+        maxBytesPerFile,
+        chatConfig,
+        histories: [],
+        stream: false,
+        maxRunTimes: WORKFLOW_MAX_RUN_TIMES,
+        nodeResponseWriteConfig: {
+          persistToDb: true,
+          retainInMemory: false
         }
+      });
+
+      // Save chat
+      const aiResponse: AIChatItemType & { dataId?: string } = {
+        dataId: preparedRound.responseChatItemId,
+        obj: ChatRoleEnum.AI,
+        value: assistantResponses,
+        memories: system_memories
+      };
+      const saveParams: SaveChatProps = {
+        ...chatSource,
+        chatId: preparedRound.chatId,
+        versionId,
+        teamId: String(app.teamId),
+        tmbId: effectiveTmbId,
+        nodes,
+        appChatConfig: chatConfig,
+        variables: newVariables,
+        source: ChatSourceEnum.mcp,
+        userContent: workflowUserQuestion,
+        aiContent: aiResponse,
+        durationSeconds,
+        nodeResponseSummary
+      };
+      await finalizeChatRound(saveParams);
+      chatRoundFinalized = true;
+
+      // Get MCP response type
+      let responseContent = (() => {
+        if (isPlugin) {
+          const { pluginOutput } = getRuntimeNodeResponseSummary({
+            runtimeNodeResponseSummary
+          });
+          return stringifyMcpPluginOutput(pluginOutput);
+        }
+
+        return assistantResponses
+          .map((item) => item?.text?.content)
+          .filter(Boolean)
+          .join('\n');
+      })();
+
+      // Format response content
+      responseContent = removeDatasetCiteText(responseContent.trim(), false);
+
+      return responseContent;
+    } catch (error) {
+      if (!chatRoundFinalized && preparedRound.shouldPersistChatRound) {
+        await failChatRound({
+          ...chatSource,
+          chatId: preparedRound.chatId,
+          responseChatItemId: preparedRound.responseChatItemId,
+          error
+        });
       }
-
-      return assistantResponses
-        .map((item) => item?.text?.content)
-        .filter(Boolean)
-        .join('\n');
-    })();
-
-    // Format response content
-    responseContent = removeDatasetCiteText(responseContent.trim(), false);
-
-    return responseContent;
+      throw error;
+    }
   };
 
-  const mcp = await MongoMcpKey.findOne({ key }, { apps: 1 }).lean();
+  const mcp = await MongoMcpKey.findOne(
+    { key },
+    { apps: 1, teamId: 1, tmbId: 1, authProxy: 1 }
+  ).lean();
 
   if (!mcp) {
     return Promise.reject(CommonErrEnum.invalidResource);
   }
+  await assertMcpTeamUsable(mcp);
 
   // Get app list
   const appList = await MongoApp.find({
@@ -314,5 +398,12 @@ export const callMcpServerTool = async ({ key, toolName, inputs }: toolCallProps
     return Promise.reject(CommonErrEnum.missingParams);
   }
 
-  return await dispatchApp(app, inputs);
+  const effectiveTmbId = await resolveMcpEffectiveTmbId({ mcp, authProxy });
+  await authAppByTmbId({
+    tmbId: effectiveTmbId,
+    appId: String(app._id),
+    per: ReadPermissionVal
+  });
+
+  return await dispatchApp(app, inputs, effectiveTmbId);
 };

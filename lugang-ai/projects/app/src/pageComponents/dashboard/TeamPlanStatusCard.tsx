@@ -5,7 +5,7 @@ import {
   standardSubLevelMap
 } from '@fastgpt/global/support/wallet/sub/constants';
 import { useLocalStorageState } from 'ahooks';
-import { useCallback, useMemo, useEffect, useRef } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { Box, Button, Flex } from '@chakra-ui/react';
@@ -14,44 +14,52 @@ import { webPushTrack } from '@/web/common/middle/tracks/utils';
 
 const TeamPlanStatusCard = () => {
   const { t } = useTranslation();
-  const { teamPlanStatus } = useUserStore();
+  const { teamPlanStatus, userInfo } = useUserStore();
   const { operationalAd, loadOperationalAd, feConfigs, subPlans } = useSystemStore();
   const router = useRouter();
 
-  // 鲁港通 - 启用运营广告加载
+  // Load data
   useEffect(() => {
-    if (!operationalAd) {
+    if (!operationalAd && feConfigs?.isPlus) {
       loadOperationalAd();
     }
     if (operationalAd?.id) {
-      const currentKey = `hidden-until-${operationalAd.id}`;
+      const currentKey = `logout-operational-${operationalAd.id}`;
       Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith('hidden-until-') && key !== currentKey) {
+        if (key.startsWith('logout-operational-') && key !== currentKey) {
           localStorage.removeItem(key);
         }
       });
     }
-  }, [operationalAd, loadOperationalAd]);
+  }, [operationalAd, loadOperationalAd, feConfigs?.isPlus]);
 
   const [hiddenUntil, setHiddenUntil] = useLocalStorageState<number | undefined>(
-    `hidden-until-${operationalAd?.id}`,
+    `logout-operational-${operationalAd?.id}`,
     {
       defaultValue: undefined
     }
   );
 
+  const isWecomTeam = userInfo?.team.isWecomTeam;
+
   const planName = useMemo(() => {
     if (!teamPlanStatus?.standard?.currentSubLevel) return '';
+    if (isWecomTeam && teamPlanStatus.standard.currentSubLevel === StandardSubLevelEnum.free)
+      return t('common:support.wallet.subscription.standardSubLevel.trial');
     return (
       subPlans?.standard?.[teamPlanStatus.standard.currentSubLevel]?.name ||
       standardSubLevelMap[teamPlanStatus.standard.currentSubLevel]?.label
     );
-  }, [teamPlanStatus?.standard?.currentSubLevel, subPlans]);
+  }, [teamPlanStatus?.standard?.currentSubLevel, isWecomTeam, t, subPlans?.standard]);
 
   const aiPointsUsageMap = useMemo(() => {
-    if (!teamPlanStatus) {
+    if (
+      !teamPlanStatus ||
+      teamPlanStatus.usedPoints === null ||
+      teamPlanStatus.totalPoints === null
+    ) {
       return {
-        value: 0,
+        value: t('account_info:unlimited'),
         max: t('account_info:unlimited'),
         rate: 0
       };
@@ -70,10 +78,25 @@ const TeamPlanStatusCard = () => {
     return 'red';
   }, []);
 
-  const shouldHide = useMemo(() => {
-    if (!hiddenUntil) return false;
-    return Date.now() < hiddenUntil;
+  const [currentTime, setCurrentTime] = useState<number>();
+  useEffect(() => {
+    if (!hiddenUntil) return;
+
+    const updateCurrentTime = () => setCurrentTime(Date.now());
+    const initialTimer = window.setTimeout(updateCurrentTime, 0);
+    const expirationTimer = window.setTimeout(
+      updateCurrentTime,
+      Math.max(0, hiddenUntil - Date.now())
+    );
+
+    return () => {
+      window.clearTimeout(initialTimer);
+      window.clearTimeout(expirationTimer);
+    };
   }, [hiddenUntil]);
+  const shouldHide = Boolean(
+    hiddenUntil && (currentTime === undefined || currentTime < hiddenUntil)
+  );
 
   const handleClose = useCallback(() => {
     if (operationalAd?.id) {
@@ -86,7 +109,7 @@ const TeamPlanStatusCard = () => {
     setHiddenUntil(hideUntilTime);
   }, [setHiddenUntil, operationalAd]);
 
-  if (!teamPlanStatus?.standardConstants) return null;
+  if (!teamPlanStatus?.standard) return null;
 
   return (
     <Box

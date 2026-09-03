@@ -6,7 +6,7 @@ import type { DingtalkAppType, OutLinkEditType } from '@fastgpt/global/support/o
 import { useTranslation } from 'next-i18next';
 import { useForm } from 'react-hook-form';
 import { createShareChat, updateShareChat } from '@/web/support/outLink/api';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import BasicInfo from '../components/BasicInfo';
 import { getDocPath } from '@/web/common/system/doc';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -37,15 +37,15 @@ const DingTalkEditModal = ({
     defaultValues: defaultData
   });
 
-  const { runAsync: onclickCreate, loading: creating } = useRequest2(
+  const { runAsync: onclickCreate, loading: creating } = useRequest(
     (e: Omit<OutLinkEditType<DingtalkAppType>, 'appId' | 'type'>) =>
       createShareChat({
         ...e,
         appId,
         type: PublishChannelEnum.dingtalk,
         app: {
-          clientId: e?.app?.clientId?.trim(),
-          clientSecret: e.app?.clientSecret?.trim()
+          clientId: e?.app?.clientId?.trim() ?? '',
+          clientSecret: e.app?.clientSecret?.trim() ?? ''
         }
       }),
     {
@@ -55,13 +55,13 @@ const DingTalkEditModal = ({
     }
   );
 
-  const { runAsync: onclickUpdate, loading: updating } = useRequest2(
+  const { runAsync: onclickUpdate, loading: updating } = useRequest(
     (e) =>
       updateShareChat({
         ...e,
         app: {
-          clientId: e?.app?.clientId?.trim(),
-          clientSecret: e.app?.clientSecret?.trim()
+          clientId: e?.app?.clientId?.trim() ?? '',
+          clientSecret: e.app?.clientSecret?.trim() ?? ''
         }
       }),
     {
@@ -90,7 +90,7 @@ const DingTalkEditModal = ({
             <Box color="myGray.600">{t('publish:dingtalk.api')}</Box>
             {feConfigs?.docUrl && (
               <Link
-                href={getDocPath('/docs/use-cases/external-integration/dingtalk/')}
+                href={getDocPath('/guide/build/publish/dingtalk')}
                 target={'_blank'}
                 ml={2}
                 color={'primary.500'}

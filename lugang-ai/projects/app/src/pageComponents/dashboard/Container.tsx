@@ -1,7 +1,7 @@
 import { Box, Divider, Flex, useDisclosure } from '@chakra-ui/react';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { useTranslation } from 'next-i18next';
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AppTemplateTypeEnum, AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRouter } from 'next/router';
@@ -9,13 +9,16 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { navbarWidth } from '@/components/Layout';
 import Avatar from '@fastgpt/web/components/common/Avatar';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getTemplateMarketItemList, getTemplateTagList } from '@/web/core/app/api/template';
-import type { AppTemplateSchemaType, TemplateTypeSchemaType } from '@fastgpt/global/core/app/type';
+import type { TemplateTypeSchemaType } from '@fastgpt/global/core/app/type';
 import TeamPlanStatusCard from './TeamPlanStatusCard';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import type { AppTemplateListItemType } from '@fastgpt/global/openapi/core/app/template/api';
 
 export enum TabEnum {
   agent = 'agent',
+  skill = 'skill',
   tool = 'tool',
   system_tool = 'systemTool',
   app_templates = 'templateMarket',
@@ -29,15 +32,17 @@ const DashboardContainer = ({
 }: {
   children: (e: {
     templateTags: TemplateTypeSchemaType[];
-    templateList: AppTemplateSchemaType[];
+    templateList: AppTemplateListItemType[];
     MenuIcon: JSX.Element;
   }) => React.ReactNode;
 }) => {
   const router = useRouter();
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const { isPc } = useSystem();
   const { feConfigs } = useSystemStore();
   const { isOpen: isOpenSidebar, onOpen: onOpenSidebar, onClose: onCloseSidebar } = useDisclosure();
+  const { userInfo } = useUserStore();
+  const hasAppCreatePer = !!userInfo?.team.permission.hasAppCreatePer;
 
   // First tab
   const currentTab = useMemo(() => {
@@ -53,14 +58,22 @@ const DashboardContainer = ({
     appType?: AppTypeEnum | 'all';
   };
 
+  useEffect(() => {
+    if (userInfo && currentTab === TabEnum.app_templates && !hasAppCreatePer) {
+      router.replace('/dashboard/agent');
+    }
+  }, [currentTab, hasAppCreatePer, router, userInfo]);
+
   // Template market
-  const { data: templateTags = [], loading: isLoadingTemplatesTags } = useRequest2(
+  const { data: templateTags = [], loading: isLoadingTemplatesTags } = useRequest(
     () =>
-      currentTab === TabEnum.app_templates
+      currentTab === TabEnum.app_templates && hasAppCreatePer
         ? getTemplateTagList().then((res) => [
             {
               typeId: AppTemplateTypeEnum.recommendation,
-              typeName: t('app:templateMarket.templateTags.Recommendation'),
+              typeName: userInfo?.team.isWecomTeam
+                ? t('app:templateMarket.templateTags.WecomZone')
+                : t('app:templateMarket.templateTags.Recommendation'),
               typeOrder: 0
             },
             ...res
@@ -68,20 +81,20 @@ const DashboardContainer = ({
         : Promise.resolve([]),
     {
       manual: false,
-      refreshDeps: [currentTab]
+      refreshDeps: [currentTab, hasAppCreatePer, userInfo?.team.isWecomTeam]
     }
   );
-  const { data: templateData, loading: isLoadingTemplates } = useRequest2(
+  const { data: templateData, loading: isLoadingTemplates } = useRequest(
     () =>
-      currentTab === TabEnum.app_templates
-        ? getTemplateMarketItemList({ type: appType })
+      currentTab === TabEnum.app_templates && hasAppCreatePer
+        ? getTemplateMarketItemList({ type: appType || 'all' })
         : Promise.resolve({ list: [], total: 0 }),
     {
       manual: false,
-      refreshDeps: [currentTab, appType]
+      refreshDeps: [currentTab, appType, hasAppCreatePer]
     }
   );
-  const templateList = templateData?.list || [];
+  const templateList = useMemo(() => templateData?.list ?? [], [templateData?.list]);
 
   const groupList = useMemo<
     {
@@ -100,7 +113,7 @@ const DashboardContainer = ({
       {
         groupId: TabEnum.agent,
         groupAvatar: 'core/chat/sidebar/star',
-        groupName: 'Agent',
+        groupName: 'Agents',
         children: [
           {
             isActive: !currentType,
@@ -108,14 +121,25 @@ const DashboardContainer = ({
             typeName: t('app:type.All')
           },
           {
+            typeId: AppTypeEnum.workflow,
+            typeName: t('app:type.Workflow bot')
+          },
+
+          {
             typeId: AppTypeEnum.simple,
             typeName: t('app:type.Chat_Agent')
           },
           {
-            typeId: AppTypeEnum.workflow,
-            typeName: t('app:type.Workflow bot')
+            typeId: AppTypeEnum.chatAgent,
+            typeName: t('app:type.Chat_Agent_v2')
           }
         ]
+      },
+      {
+        groupId: TabEnum.skill,
+        groupAvatar: 'common/skill',
+        groupName: t('common:navbar.Skill'),
+        children: []
       },
       {
         groupId: TabEnum.tool,
@@ -144,10 +168,10 @@ const DashboardContainer = ({
       {
         groupId: TabEnum.system_tool,
         groupAvatar: 'common/app',
-        groupName: t('app:core.module.template.System Tools'),
+        groupName: t('common:system_tools'),
         children: []
       },
-      ...(feConfigs?.show_templateMarket !== false
+      ...(hasAppCreatePer
         ? [
             {
               groupId: TabEnum.app_templates,
@@ -191,15 +215,26 @@ const DashboardContainer = ({
         groupName: t('common:mcp_server'),
         children: []
       },
-      // 鲁港通 - 启用应用评估功能
-      {
-        groupId: TabEnum.evaluation,
-        groupAvatar: 'kbTest',
-        groupName: t('common:app_evaluation'),
-        children: []
-      }
+      ...(feConfigs?.isPlus
+        ? [
+            {
+              groupId: TabEnum.evaluation,
+              groupAvatar: 'kbTest',
+              groupName: t('common:app_evaluation'),
+              children: []
+            }
+          ]
+        : [])
     ];
-  }, [currentType, feConfigs.appTemplateCourse, t, templateList, templateTags]);
+  }, [
+    currentType,
+    feConfigs.appTemplateCourse,
+    feConfigs.isPlus,
+    hasAppCreatePer,
+    t,
+    templateList,
+    templateTags
+  ]);
 
   const MenuIcon = useMemo(
     () => (

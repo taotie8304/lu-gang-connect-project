@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { type ImportSourceItemType } from '@/web/core/dataset/type.d';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { type ImportSourceItemType } from '@/web/core/dataset/type';
 import { Box, Button } from '@chakra-ui/react';
 import FileSelector, { type SelectFileItemType } from '../components/FileSelector';
 import { useTranslation } from 'next-i18next';
@@ -8,20 +8,18 @@ import dynamic from 'next/dynamic';
 import { RenderUploadFiles } from '../components/RenderFiles';
 import { useContextSelector } from 'use-context-selector';
 import { DatasetImportContext } from '../Context';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import { getFileIcon } from '@fastgpt/global/common/file/icon';
 import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContext';
-import { getUploadDatasetFilePresignedUrl } from '@/web/common/file/api';
-import { POST } from '@/web/common/api/request';
-import { parseS3UploadError } from '@fastgpt/global/common/error/s3';
+import { getUploadDatasetFilePresignedUrl } from '@/web/core/dataset/api/file';
+import { S3FileUploader } from '@fastgpt/web/common/file/uploader';
+import { documentFileType } from '@fastgpt/global/common/file/constants';
 
 const DataProcess = dynamic(() => import('../commonProgress/DataProcess'));
 const PreviewData = dynamic(() => import('../commonProgress/PreviewData'));
 const Upload = dynamic(() => import('../commonProgress/Upload'));
-
-const fileType = '.txt, .docx, .csv, .xlsx, .pdf, .md, .html, .pptx';
 
 const FileLocal = () => {
   const activeStep = useContextSelector(DatasetImportContext, (v) => v.activeStep);
@@ -50,7 +48,15 @@ const SelectFile = React.memo(function SelectFile() {
       ...source
     }))
   );
+  const uploadControllers = useRef(new Map<string, AbortController>());
   const successFiles = useMemo(() => selectFiles.filter((item) => !item.errorMsg), [selectFiles]);
+
+  useEffect(() => {
+    return () => {
+      uploadControllers.current.forEach((controller) => controller.abort());
+      uploadControllers.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     setSources(successFiles);
@@ -62,56 +68,69 @@ const SelectFile = React.memo(function SelectFile() {
     goToNext();
   }, [goToNext]);
 
-  const { runAsync: onSelectFiles, loading: uploading } = useRequest2(
+  const { runAsync: onSelectFiles, loading: uploading } = useRequest(
     async (files: SelectFileItemType[]) => {
       {
         await Promise.all(
           files.map(async ({ fileId, file }) => {
-            try {
-              const { url, fields, maxSize } = await getUploadDatasetFilePresignedUrl({
-                filename: file.name,
-                datasetId
-              });
+            const controller = new AbortController();
+            uploadControllers.current.set(fileId, controller);
 
-              // Upload File to S3
-              const formData = new FormData();
-              Object.entries(fields).forEach(([k, v]) => formData.set(k, v));
-              formData.set('file', file);
-              await POST(url, formData, {
-                onUploadProgress: (e) => {
-                  if (!e.total) return;
-                  const percent = Math.round((e.loaded / e.total) * 100);
-                  setSelectFiles((state) =>
-                    state.map((item) =>
-                      item.id === fileId
-                        ? {
-                            ...item,
-                            uploadedFileRate: item.uploadedFileRate
-                              ? Math.max(percent, item.uploadedFileRate)
-                              : percent
-                          }
-                        : item
-                    )
-                  );
+            try {
+              const uploadResult = await getUploadDatasetFilePresignedUrl(
+                {
+                  filename: file.name,
+                  datasetId,
+                  size: file.size
                 },
-                timeout: 5 * 60 * 1000 // 5 minutes
-              })
-                .then(() => {
-                  setSelectFiles((state) =>
-                    state.map((item) =>
-                      item.id === fileId
-                        ? {
-                            ...item,
-                            dbFileId: fields.key,
-                            isUploading: false,
-                            uploadedFileRate: 100
-                          }
-                        : item
-                    )
-                  );
-                })
-                .catch((error) => Promise.reject(parseS3UploadError({ t, error, maxSize })));
+                {
+                  cancelToken: controller
+                }
+              );
+
+              const updateProgress = (loaded: number, total: number) => {
+                if (!total) return;
+                const percent = Math.min(100, Math.round((loaded / total) * 100));
+                setSelectFiles((state) =>
+                  state.map((item) =>
+                    item.id === fileId
+                      ? {
+                          ...item,
+                          uploadedFileRate: Math.max(item.uploadedFileRate ?? 0, percent)
+                        }
+                      : item
+                  )
+                );
+              };
+
+              const uploader = new S3FileUploader({
+                ...uploadResult,
+                file,
+                signal: controller.signal,
+                onProgress: updateProgress,
+                t
+              });
+              if (controller.signal.aborted) {
+                await uploader.abort();
+                return;
+              }
+              await uploader.upload();
+
+              setSelectFiles((state) =>
+                state.map((item) =>
+                  item.id === fileId
+                    ? {
+                        ...item,
+                        dbFileId: uploadResult.key,
+                        isUploading: false,
+                        uploadedFileRate: 100
+                      }
+                    : item
+                )
+              );
             } catch (error) {
+              if (controller.signal.aborted) return;
+
               setSelectFiles((state) =>
                 state.map((item) =>
                   item.id === fileId
@@ -123,6 +142,8 @@ const SelectFile = React.memo(function SelectFile() {
                     : item
                 )
               );
+            } finally {
+              uploadControllers.current.delete(fileId);
             }
           })
         );
@@ -153,12 +174,25 @@ const SelectFile = React.memo(function SelectFile() {
     }
   );
 
+  const cancelUpload = useCallback((fileId: string) => {
+    uploadControllers.current.get(fileId)?.abort();
+    setSelectFiles((state) => state.filter((file) => file.id !== fileId));
+  }, []);
+
   return (
     <Box>
-      <FileSelector fileType={fileType} selectFiles={selectFiles} onSelectFiles={onSelectFiles} />
+      <FileSelector
+        fileType={documentFileType}
+        selectFiles={selectFiles}
+        onSelectFiles={onSelectFiles}
+      />
 
       {/* render files */}
-      <RenderUploadFiles files={selectFiles} setFiles={setSelectFiles} />
+      <RenderUploadFiles
+        files={selectFiles}
+        setFiles={setSelectFiles}
+        onCancelUpload={cancelUpload}
+      />
 
       <Box textAlign={'right'} mt={5}>
         <Button isDisabled={successFiles.length === 0 || uploading} onClick={onclickNext}>

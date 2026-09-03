@@ -1,82 +1,48 @@
-'use client';
-import { serviceSideProps } from '@/web/common/i18n/utils';
-import React, { useMemo, useState } from 'react';
-import AccountContainer from '@/pageComponents/account/AccountContainer';
 import { Box, Flex } from '@chakra-ui/react';
+import AccountContainer from '@/pageComponents/account/AccountContainer';
 import ModelTable from '@/components/core/ai/ModelTable';
-import { useUserStore } from '@/web/support/user/useUserStore';
-import FillRowTabs from '@fastgpt/web/components/common/Tabs/FillRowTabs';
-import { useTranslation } from 'next-i18next';
-import dynamic from 'next/dynamic';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { accountPageRootStyles, accountTitleTextStyles } from '@/pageComponents/account/styles';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-
-const ModelConfigTable = dynamic(() => import('@/pageComponents/account/model/ModelConfigTable'));
-const ChannelTable = dynamic(() => import('@/pageComponents/account/model/Channel'));
-const ChannelLog = dynamic(() => import('@/pageComponents/account/model/Log'));
-const ModelDashboard = dynamic(() => import('@/pageComponents/account/model/ModelDashboard'));
-
-type TabType = 'model' | 'config' | 'channel' | 'channel_log' | 'account_model';
+import { useRouter } from 'next/router';
+import { useEffect } from 'react';
 
 const ModelProvider = () => {
-  const { t } = useTranslation();
-  const { feConfigs } = useSystemStore();
+  const { t } = useClientTranslation();
+  const { feConfigs, initd } = useSystemStore();
+  const router = useRouter();
 
-  const [tab, setTab] = useState<TabType>('model');
+  useEffect(() => {
+    if (!router.isReady || !initd || feConfigs.isPlus) return;
+    void router.replace('/account/info');
+  }, [feConfigs.isPlus, initd, router]);
 
-  const Tab = useMemo(() => {
-    return (
-      <FillRowTabs<TabType>
-        list={[
-          { label: t('account:active_model'), value: 'model' },
-          { label: t('account:config_model'), value: 'config' },
-          // @ts-ignore
-          ...(feConfigs?.show_aiproxy
-            ? [
-                { label: t('account:channel'), value: 'channel' },
-                { label: t('account_model:log'), value: 'channel_log' },
-                { label: t('account_model:monitoring'), value: 'account_model' }
-              ]
-            : [])
-        ]}
-        value={tab}
-        py={1}
-        onChange={setTab}
-      />
-    );
-  }, [feConfigs.show_aiproxy, t, tab]);
+  if (!initd || !feConfigs.isPlus) {
+    return <AccountContainer isLoading>{null}</AccountContainer>;
+  }
 
   return (
     <AccountContainer>
-      <Flex h={'100%'} flexDirection={'column'} gap={4} py={4} px={6}>
-        {tab === 'model' && <ValidModelTable Tab={Tab} />}
-        {tab === 'config' && <ModelConfigTable Tab={Tab} />}
-        {tab === 'channel' && <ChannelTable Tab={Tab} />}
-        {tab === 'channel_log' && <ChannelLog Tab={Tab} />}
-        {tab === 'account_model' && <ModelDashboard Tab={Tab} />}
+      <Flex {...accountPageRootStyles} flexDirection={'column'}>
+        <Flex
+          display={['none', 'flex']}
+          h={'64px'}
+          flexShrink={0}
+          px={6}
+          alignItems={'center'}
+          borderBottom={'1px solid'}
+          borderColor={'myGray.200'}
+        >
+          <Box as={'h1'} {...accountTitleTextStyles}>
+            {t('common:model.provider_title')}
+          </Box>
+        </Flex>
+        <Box flex={['0 0 auto', '1 0 0']} minH={0} py={6}>
+          <ModelTable permissionConfig contentPx={6} />
+        </Box>
       </Flex>
     </AccountContainer>
   );
 };
 
-export async function getServerSideProps(content: any) {
-  return {
-    props: {
-      ...(await serviceSideProps(content, ['account', 'account_model', 'user']))
-    }
-  };
-}
-
 export default ModelProvider;
-
-const ValidModelTable = ({ Tab }: { Tab: React.ReactNode }) => {
-  const { userInfo } = useUserStore();
-  const isRoot = userInfo?.username === 'root';
-  return (
-    <>
-      {isRoot && <Flex justifyContent={'space-between'}>{Tab}</Flex>}
-      <Box flex={'1 0 0'}>
-        <ModelTable permissionConfig={true} />
-      </Box>
-    </>
-  );
-};

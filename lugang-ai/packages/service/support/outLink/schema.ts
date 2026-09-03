@@ -1,11 +1,12 @@
-import { connectionMongo, getMongoModel } from '../../common/mongo';
+import { defineIndex, connectionMongo, getMongoModel } from '../../common/mongo';
 const { Schema } = connectionMongo;
-import { type OutLinkSchema as SchemaType } from '@fastgpt/global/support/outLink/type';
+import { type OutLinkSchemaType } from '@fastgpt/global/support/outLink/type';
 import {
   TeamCollectionName,
   TeamMemberCollectionName
 } from '@fastgpt/global/support/user/team/constant';
 import { AppCollectionName } from '../../core/app/schema';
+import { getLogger, LogCategories } from '../../common/logger';
 
 const OutLinkSchema = new Schema({
   shareId: {
@@ -43,19 +44,29 @@ const OutLinkSchema = new Schema({
     type: Date
   },
 
-  responseDetail: {
+  showRunningStatus: {
     type: Boolean,
     default: false
   },
-  showNodeStatus: {
+  showSkillReferences: {
+    type: Boolean,
+    default: false
+  },
+  showCite: {
+    type: Boolean,
+    default: false
+  },
+  showFullText: {
+    type: Boolean,
+    default: false
+  },
+  canDownloadSource: {
+    type: Boolean,
+    default: false
+  },
+  showWholeResponse: {
     type: Boolean,
     default: true
-  },
-  // showFullText: {
-  //   type: Boolean
-  // },
-  showRawSource: {
-    type: Boolean
   },
   limit: {
     maxUsagePoints: {
@@ -83,7 +94,12 @@ const OutLinkSchema = new Schema({
   },
   defaultResponse: {
     type: String
-  }
+  },
+
+  //@deprecated
+  responseDetail: Boolean,
+  showNodeStatus: Boolean,
+  showRawSource: Boolean
 });
 
 OutLinkSchema.virtual('associatedApp', {
@@ -93,11 +109,15 @@ OutLinkSchema.virtual('associatedApp', {
   justOne: true
 });
 
-try {
-  OutLinkSchema.index({ shareId: -1 });
-  OutLinkSchema.index({ teamId: 1, tmbId: 1, appId: 1 });
-} catch (error) {
-  console.log(error);
-}
+const logger = getLogger(LogCategories.INFRA.MONGO);
 
-export const MongoOutLink = getMongoModel<SchemaType>('outlinks', OutLinkSchema);
+defineIndex(OutLinkSchema, { key: { shareId: -1 } });
+defineIndex(OutLinkSchema, { key: { teamId: 1, tmbId: 1, appId: 1 } });
+defineIndex(OutLinkSchema, { key: { teamId: 1, appId: 1, type: 1 } });
+// Wechat polling recovery: find online channels on startup
+defineIndex(OutLinkSchema, {
+  key: { type: 1, 'app.status': 1 },
+  options: { partialFilterExpression: { type: 'wechat', 'app.status': 'online' } }
+});
+
+export const MongoOutLink = getMongoModel<OutLinkSchemaType>('outlinks', OutLinkSchema);

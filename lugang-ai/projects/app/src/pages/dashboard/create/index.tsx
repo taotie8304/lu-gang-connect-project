@@ -21,8 +21,8 @@ import { postCreateApp } from '@/web/core/app/api';
 import { useUploadAvatar } from '@fastgpt/web/common/file/hooks/useUploadAvatar';
 import { getUploadAvatarPresignedUrl } from '@/web/common/file/api';
 import { useRouter } from 'next/router';
-import { emptyTemplates } from '@/web/core/app/templates';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { getEmptyAppsTemplate } from '@/web/core/app/templates';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { useTranslation } from 'next-i18next';
@@ -37,19 +37,25 @@ import { serviceSideProps } from '@/web/common/i18n/utils';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import LeftRadio from '@fastgpt/web/components/common/Radio/LeftRadio';
 import HeaderAuthForm from '@/components/common/secret/HeaderAuthForm';
-import { getMCPTools, postCreateHttpTools, postCreateMCPTools } from '@/web/core/app/api/tool';
+import { postCreateHttpTools } from '@/web/core/app/api/httpTools';
+import { getMCPTools, postCreateMCPTools } from '@/web/core/app/api/mcpTools';
 import { headerValue2StoreHeader } from '@/components/common/secret/HeaderAuthConfig';
 import type { McpToolConfigType } from '@fastgpt/global/core/app/tool/mcpTool/type';
 import AppTypeCard from '@/pageComponents/app/create/AppTypeCard';
 import type { StoreSecretValueType } from '@fastgpt/global/common/secret/type';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import MyBox from '@fastgpt/web/components/common/MyBox';
+import {
+  type HttpToolType,
+  HttpToolTypeEnum
+} from '@fastgpt/global/core/app/tool/httpTool/constants';
+import { getAppDetailRoute, isWorkflowAppType } from '@/web/core/app/utils';
 
 type FormType = {
   avatar: string;
   name: string;
   // http
-  createType?: 'batch' | 'manual';
+  createType?: HttpToolType;
   // mcp
   mcpUrl?: string;
   mcpHeaderSecret?: any;
@@ -57,6 +63,7 @@ type FormType = {
 };
 
 export type CreateAppType =
+  | AppTypeEnum.chatAgent
   | AppTypeEnum.simple
   | AppTypeEnum.workflow
   | AppTypeEnum.workflowTool
@@ -71,12 +78,12 @@ const CreateAppsPage = () => {
   const { parentId, appType } = query;
 
   const [selectedAppType, setSelectedAppType] = useState<CreateAppType>(
-    (appType as CreateAppType) || AppTypeEnum.workflow
+    (appType as CreateAppType) || AppTypeEnum.chatAgent
   );
   const [creatingTemplateId, setCreatingTemplateId] = useState<string | null>(null);
   const isToolType = ToolTypeList.includes(selectedAppType);
 
-  const { data: templateData, loading: isLoadingTemplates } = useRequest2(
+  const { data: templateData, loading: isLoadingTemplates } = useRequest(
     () => getTemplateMarketItemList({ isQuickTemplate: true, type: selectedAppType }),
     {
       manual: false,
@@ -88,7 +95,7 @@ const CreateAppsPage = () => {
     defaultValues: {
       avatar: createAppTypeMap[selectedAppType]?.icon || '',
       name: '',
-      createType: 'batch',
+      createType: HttpToolTypeEnum.batch,
       mcpUrl: '',
       mcpHeaderSecret: {},
       mcpToolList: []
@@ -107,7 +114,7 @@ const CreateAppsPage = () => {
       }
     });
 
-  const { runAsync: runGetMCPTools, loading: isGettingMCPTools } = useRequest2(
+  const { runAsync: runGetMCPTools, loading: isGettingMCPTools } = useRequest(
     (data: { url: string; headerSecret: StoreSecretValueType }) => getMCPTools(data),
     {
       onSuccess: (res: McpToolConfigType[]) => {
@@ -117,11 +124,11 @@ const CreateAppsPage = () => {
     }
   );
 
-  const { runAsync: onClickCreate, loading: isCreating } = useRequest2(
+  const { runAsync: onClickCreate, loading: isCreating } = useRequest(
     async (
       { avatar, name, createType, mcpUrl, mcpHeaderSecret, mcpToolList }: FormType,
       templateId?: string
-    ): Promise<string> => {
+    ): Promise<{ appId: string; appType: CreateAppType }> => {
       if (templateId) {
         setCreatingTemplateId(templateId);
       }
@@ -133,47 +140,58 @@ const CreateAppsPage = () => {
         name: name?.trim() || t('app:unnamed_app')
       };
 
-      if (appType === AppTypeEnum.mcpToolSet) {
-        const headerSecret = headerValue2StoreHeader(mcpHeaderSecret || {});
-        return postCreateMCPTools({
-          ...baseParams,
-          url: mcpUrl || '',
-          headerSecret,
-          toolList: (mcpToolList || []) as McpToolConfigType[]
-        });
-      }
+      const appId = await (async () => {
+        if (appType === AppTypeEnum.mcpToolSet) {
+          const headerSecret = headerValue2StoreHeader(mcpHeaderSecret || {});
+          return postCreateMCPTools({
+            ...baseParams,
+            url: mcpUrl || '',
+            headerSecret,
+            toolList: (mcpToolList || []) as McpToolConfigType[]
+          });
+        }
 
-      if (appType === AppTypeEnum.httpToolSet) {
-        return postCreateHttpTools({
-          ...baseParams,
-          createType: createType || 'batch'
-        });
-      }
+        if (appType === AppTypeEnum.httpToolSet) {
+          return postCreateHttpTools({
+            ...baseParams,
+            createType: createType || HttpToolTypeEnum.batch
+          });
+        }
 
-      if (templateId) {
-        const templateDetail = await getTemplateMarketItemDetail(templateId);
+        if (templateId) {
+          const templateDetail = await getTemplateMarketItemDetail(templateId);
+          return postCreateApp({
+            ...baseParams,
+            avatar: templateDetail.avatar,
+            name: templateDetail.name,
+            type: appType,
+            modules: templateDetail.workflow.nodes || [],
+            edges: templateDetail.workflow.edges || [],
+            chatConfig: templateDetail.workflow.chatConfig || {},
+            templateId: templateDetail.templateId
+          });
+        }
+
+        const emptyTemplate = getEmptyAppsTemplate(t);
         return postCreateApp({
           ...baseParams,
-          avatar: templateDetail.avatar,
-          name: templateDetail.name,
           type: appType,
-          modules: templateDetail.workflow.nodes || [],
-          edges: templateDetail.workflow.edges || [],
-          chatConfig: templateDetail.workflow.chatConfig || {},
-          templateId: templateDetail.templateId
+          modules: emptyTemplate[appType].nodes,
+          edges: emptyTemplate[appType].edges,
+          chatConfig: emptyTemplate[appType].chatConfig
         });
-      }
-      return postCreateApp({
-        ...baseParams,
-        type: appType,
-        modules: emptyTemplates[appType].nodes,
-        edges: emptyTemplates[appType].edges,
-        chatConfig: emptyTemplates[appType].chatConfig
-      });
+      })();
+
+      return { appId, appType };
     },
     {
-      onSuccess(id) {
-        router.push(`/app/detail?appId=${id}`);
+      onSuccess({ appId, appType }) {
+        router.push(
+          getAppDetailRoute({
+            appId,
+            openSystemConfig: isWorkflowAppType(appType)
+          })
+        );
       },
       successToast: t('common:create_success'),
       errorToast: t('common:create_failed')
@@ -536,18 +554,18 @@ const CreateAppsPage = () => {
                   list={[
                     {
                       title: t('app:type.Http batch'),
-                      value: 'batch',
+                      value: HttpToolTypeEnum.batch,
                       desc: t('app:type.Http batch tip')
                     },
                     {
                       title: t('app:type.Http manual'),
-                      value: 'manual',
+                      value: HttpToolTypeEnum.manual,
                       desc: t('app:type.Http manual tip')
                     }
                   ]}
-                  value={createType || 'batch'}
+                  value={createType || HttpToolTypeEnum.batch}
                   fontSize={'xs'}
-                  onChange={(e) => setValue('createType', e as 'batch' | 'manual')}
+                  onChange={(e) => setValue('createType', e as HttpToolType)}
                   defaultBg={'white'}
                   activeBg={'white'}
                   py={2}
@@ -561,7 +579,7 @@ const CreateAppsPage = () => {
         {isPc && (
           <Box flex={1} position={'relative'}>
             <Box
-              position={'absolute'}
+              position={'relative'}
               zIndex={10}
               top={'60px'}
               left={'50%'}
@@ -588,7 +606,7 @@ const CreateAppsPage = () => {
             <MyImage
               src={createAppTypeMap[selectedAppType].imgUrl}
               w={'full'}
-              position={'absolute'}
+              position={'relative'}
               top={0}
               left={0}
               right={0}
@@ -608,7 +626,7 @@ export default CreateAppsPage;
 export async function getServerSideProps(content: any) {
   return {
     props: {
-      ...(await serviceSideProps(content, ['app', 'user']))
+      ...(await serviceSideProps(content, ['app', 'user', 'workflow']))
     }
   };
 }

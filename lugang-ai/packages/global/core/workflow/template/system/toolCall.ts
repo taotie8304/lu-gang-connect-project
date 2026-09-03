@@ -1,0 +1,169 @@
+import {
+  FlowNodeInputTypeEnum,
+  FlowNodeOutputTypeEnum,
+  FlowNodeTypeEnum
+} from '../../node/constant';
+import { type FlowNodeTemplateType } from '../../type/node';
+import {
+  WorkflowIOValueTypeEnum,
+  NodeOutputKeyEnum,
+  FlowNodeTemplateTypeEnum,
+  NodeInputKeyEnum
+} from '../../constants';
+import {
+  Input_Template_SettingAiModel,
+  Input_Template_History,
+  Input_Template_System_Prompt,
+  Input_Template_UserChatInput
+} from '../input';
+import { chatNodeSystemPromptTip, systemPromptTip } from '../tip';
+import { i18nT } from '../../../../common/i18n/utils';
+import { Input_Template_File_Link } from '../input';
+import { Output_Template_Error_Message } from '../output';
+
+export const ToolCallNode: FlowNodeTemplateType = {
+  id: FlowNodeTypeEnum.toolCall,
+  flowNodeType: FlowNodeTypeEnum.toolCall,
+  templateType: FlowNodeTemplateTypeEnum.ai,
+  showSourceHandle: true,
+  showTargetHandle: true,
+  avatar: 'core/workflow/template/toolCall',
+  avatarLinear: 'core/workflow/template/toolCallLinear',
+  colorSchema: 'indigo',
+  name: i18nT('workflow:template.agent'),
+  intro: i18nT('workflow:template.agent_intro'),
+  showStatus: true,
+  isTool: true,
+  catchError: false,
+  courseUrl: '/guide/build/workflow/nodes/tool',
+  version: '4.9.2',
+  inputs: [
+    Input_Template_SettingAiModel,
+    {
+      key: NodeInputKeyEnum.aiChatTemperature,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden], // Set in the pop-up window
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.number
+    },
+    {
+      key: NodeInputKeyEnum.aiChatMaxToken,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden], // Set in the pop-up window
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.number
+    },
+    {
+      key: NodeInputKeyEnum.aiChatIsResponseText,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      value: true,
+      valueType: WorkflowIOValueTypeEnum.boolean
+    },
+    {
+      key: NodeInputKeyEnum.aiChatVision,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: true
+    },
+    {
+      key: NodeInputKeyEnum.aiChatAudio,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: false
+    },
+    {
+      key: NodeInputKeyEnum.aiChatVideo,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: false
+    },
+    {
+      key: NodeInputKeyEnum.aiChatExtractFiles,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: true
+    },
+    {
+      key: NodeInputKeyEnum.aiChatReasoning,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: true
+    },
+    {
+      key: NodeInputKeyEnum.aiChatReasoningEffort,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
+    },
+    {
+      key: NodeInputKeyEnum.aiChatTopP,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.number
+    },
+    {
+      key: NodeInputKeyEnum.aiChatStopSign,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
+    },
+    {
+      key: NodeInputKeyEnum.aiChatResponseFormat,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
+    },
+    {
+      key: NodeInputKeyEnum.aiChatJsonSchema,
+      renderTypeList: [FlowNodeInputTypeEnum.hidden],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
+    },
+
+    {
+      key: NodeInputKeyEnum.useAgentSandbox,
+      renderTypeList: [FlowNodeInputTypeEnum.switch],
+      label: i18nT('app:use_agent_sandbox'),
+      description: i18nT('app:use_computer_desc'),
+      valueType: WorkflowIOValueTypeEnum.boolean,
+      value: false
+    },
+    {
+      key: NodeInputKeyEnum.sandboxEntrypoint,
+      renderTypeList: [FlowNodeInputTypeEnum.custom],
+      label: '',
+      valueType: WorkflowIOValueTypeEnum.string
+    },
+    {
+      ...Input_Template_System_Prompt,
+      label: i18nT('common:core.ai.Prompt'),
+      description: systemPromptTip,
+      placeholder: chatNodeSystemPromptTip,
+      toolDescription: i18nT('common:core.ai.Prompt')
+    },
+    {
+      ...Input_Template_History,
+      toolDescription: i18nT('common:core.module.input.label.chat history')
+    },
+    {
+      ...Input_Template_File_Link,
+      toolDescription: i18nT('app:workflow.user_file_input')
+    },
+    Input_Template_UserChatInput
+  ],
+  outputs: [
+    {
+      id: NodeOutputKeyEnum.answerText,
+      key: NodeOutputKeyEnum.answerText,
+      label: i18nT('common:core.module.output.label.Ai response content'),
+      description: i18nT('common:core.module.output.description.Ai response content'),
+      valueType: WorkflowIOValueTypeEnum.string,
+      type: FlowNodeOutputTypeEnum.static
+    },
+    Output_Template_Error_Message
+  ]
+};

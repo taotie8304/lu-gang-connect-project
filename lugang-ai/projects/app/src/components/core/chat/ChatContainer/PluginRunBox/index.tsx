@@ -14,9 +14,11 @@ const PluginRunBox = (props: PluginRunBoxProps) => {
 
   return (
     <PluginRunContextProvider {...props}>
-      {formatTab === PluginRunBoxTabEnum.input && <RenderInput />}
-      {formatTab === PluginRunBoxTabEnum.output && <RenderOutput />}
-      {formatTab === PluginRunBoxTabEnum.detail && <RenderResponseDetail />}
+      <>
+        {formatTab === PluginRunBoxTabEnum.input && <RenderInput />}
+        {formatTab === PluginRunBoxTabEnum.output && <RenderOutput />}
+        {formatTab === PluginRunBoxTabEnum.detail && <RenderResponseDetail />}
+      </>
     </PluginRunContextProvider>
   );
 };

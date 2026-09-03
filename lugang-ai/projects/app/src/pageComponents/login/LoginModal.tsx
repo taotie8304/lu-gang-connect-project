@@ -1,13 +1,12 @@
 import React from 'react';
-import { Box, Flex, Image } from '@chakra-ui/react';
+import { Box, Flex } from '@chakra-ui/react';
 import { LoginContainer } from '@/pageComponents/login';
 import I18nLngSelector from '@/components/Select/I18nLngSelector';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
-import type { LoginSuccessResponse } from '@/global/support/api/userRes';
+import { type LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 
 type LoginModalProps = {
-  onSuccess: (e: LoginSuccessResponse) => any;
+  onSuccess: (e: LoginSuccessResponseType) => any;
 };
 
 const LoginModal = ({ onSuccess }: LoginModalProps) => {
@@ -17,109 +16,64 @@ const LoginModal = ({ onSuccess }: LoginModalProps) => {
     <Flex
       alignItems={'center'}
       justifyContent={'center'}
-      // 鲁港通：淡蓝色渐变背景（替代原有粉红色）
-      bg={[
-        'linear-gradient(135deg, #EBF4FF 0%, #DBEAFE 50%, #BFDBFE 100%)',
-        'linear-gradient(135deg, #EBF4FF 0%, #DBEAFE 50%, #BFDBFE 100%)'
-      ]}
+      bg={'white'}
       userSelect={'none'}
-      h={'100%'}
-      position="relative"
-      overflow="hidden"
+      minH={'100vh'}
+      px={0}
+      pt={0}
+      pb={0}
     >
-      {/* 鲁港通：淡蓝色光晕装饰效果 */}
-      <Box
-        position="absolute"
-        top="-20%"
-        right="-10%"
-        w="500px"
-        h="500px"
-        borderRadius="50%"
-        background="radial-gradient(ellipse at center, rgba(59, 130, 246, 0.15) 0%, transparent 70%)"
-        filter="blur(60px)"
-        pointerEvents="none"
-      />
-      <Box
-        position="absolute"
-        bottom="-15%"
-        left="-5%"
-        w="400px"
-        h="400px"
-        borderRadius="50%"
-        background="radial-gradient(ellipse at center, rgba(96, 165, 250, 0.12) 0%, transparent 70%)"
-        filter="blur(50px)"
-        pointerEvents="none"
-      />
-
       {/* Language selector - login page */}
-      <Box 
-        position="absolute" 
-        top={['16px', '24px']} 
-        right={['16px', '24px']} 
-        zIndex={10}
-        display={['block', 'block']} // 在移动端也显示语言选择器
-      >
-        <I18nLngSelector />
-      </Box>
+      {isPc && (
+        <Box position="absolute" top="24px" right="24px" zIndex={10}>
+          <I18nLngSelector />
+        </Box>
+      )}
 
       <Flex
-        flexDirection={'column'}
-        w={['100%', '480px']}
-        h={['100%', 'auto']}
-        minH={['100%', '580px']}
-        bg={'white'}
-        px={['6', '48px']}
-        py={['32px', '48px']}
-        borderRadius={[0, '24px']}
-        // 鲁港通：淡蓝色阴影效果
-        boxShadow={[
-          '',
-          '0px 25px 50px -12px rgba(59, 130, 246, 0.25), 0px 0px 1px 0px rgba(59, 130, 246, 0.10)'
-        ]}
         position="relative"
-        zIndex={1}
+        alignItems={'center'}
+        justifyContent={'center'}
+        w={'100%'}
+        maxW={['100%', '1328px']}
+        h={'100vh'}
+        minH={['100vh', '720px']}
+        bg={['transparent', 'white']}
+        borderRadius={[0, '24px']}
+        overflow={'hidden'}
       >
-        <LoginContainer onSuccess={onSuccess} />
-      </Flex>
+        <Box
+          position={'absolute'}
+          top={['-190px', '-100px']}
+          left={'50%'}
+          w={['900px', '1230px']}
+          h={['590px', '510px']}
+          transform={'translateX(-50%)'}
+          pointerEvents={'none'}
+          bgImage={'url(/icon/login-gradient-bg.svg)'}
+          bgRepeat={'no-repeat'}
+          bgPosition={'center top'}
+          bgSize={'100% 100%'}
+        />
 
-      {/* 鲁港通：PC端右侧品牌展示区域 */}
-      {isPc && (
         <Flex
-          flexDirection="column"
-          alignItems="center"
-          justifyContent="center"
-          ml={16}
-          maxW="400px"
-          display={['none', 'none', 'flex']}
+          flexDirection={'column'}
+          w={['100%', '560px']}
+          h={['100%', 'auto']}
+          bg={['transparent', 'white']}
+          px={['8', '90px']}
+          py={['38px', '90px']}
+          borderRadius={[0, '16px']}
+          boxShadow={[
+            '',
+            '0px 16px 40px rgba(30, 64, 175, 0.10), 0px 1px 3px rgba(15, 23, 42, 0.06)'
+          ]}
+          position="relative"
+          zIndex={1}
         >
-          <Image
-            src={getWebReqUrl('/imgs/chat/lugang_banner.svg')}
-            alt="鲁港通"
-            maxW="280px"
-            mb={6}
-          />
-          <Box
-            fontSize="xl"
-            fontWeight="600"
-            color="#1E40AF"
-            textAlign="center"
-            mb={3}
-          >
-            鲁港通跨境AI智能平台
-          </Box>
-          <Box
-            fontSize="md"
-            color="#3B82F6"
-            textAlign="center"
-            maxW="320px"
-            lineHeight="1.6"
-          >
-            连接鲁港，智慧跨境
-            <br />
-            为您提供专业的跨境AI服务
-          </Box>
+          <LoginContainer onSuccess={onSuccess} />
         </Flex>
-      )}
+      </Flex>
     </Flex>
   );
 };

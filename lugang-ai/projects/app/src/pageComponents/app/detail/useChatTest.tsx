@@ -10,15 +10,17 @@ import { type StoreEdgeItemType } from '@fastgpt/global/core/workflow/type/edge'
 import { FlowNodeTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import dynamic from 'next/dynamic';
-import { Box } from '@chakra-ui/react';
 import { type AppChatConfigType } from '@fastgpt/global/core/app/type';
 import ChatBox from '@/components/core/chat/ChatContainer/ChatBox';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getInitChatInfo } from '@/web/core/chat/api';
 import { useTranslation } from 'next-i18next';
 import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
+import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+import { getAppChatSourceKey } from '@/web/core/chat/utils';
+import { Box, type BoxProps } from '@chakra-ui/react';
 
 const PluginRunBox = dynamic(() => import('@/components/core/chat/ChatContainer/PluginRunBox'));
 
@@ -26,12 +28,14 @@ export const useChatTest = ({
   nodes,
   edges,
   chatConfig = {},
-  isReady
+  isReady,
+  boxBodyProps
 }: {
   nodes: StoreNodeItemType[];
   edges: StoreEdgeItemType[];
   chatConfig: AppChatConfigType;
   isReady: boolean;
+  boxBodyProps?: BoxProps;
 }) => {
   const { t } = useTranslation();
   const { userInfo } = useUserStore();
@@ -77,29 +81,44 @@ export const useChatTest = ({
   const clearChatRecords = useContextSelector(ChatItemContext, (v) => v.clearChatRecords);
 
   const variableList = useMemo(() => chatConfig.variables, [chatConfig.variables]);
+  const appSourceKey = useMemo(() => getAppChatSourceKey(appId), [appId]);
 
   const pluginInputs = useMemo(() => {
     return nodes.find((node) => node.flowNodeType === FlowNodeTypeEnum.pluginInput)?.inputs || [];
   }, [nodes]);
 
-  // Set chat box data
+  /**
+   * 同步测试对话的基础上下文。
+   * ChatBox 的刷新恢复依赖 chatBoxData.sourceKey/chatId 与当前 props 完全一致，否则不会触发 enableAutoResume。
+   */
   useEffect(() => {
-    setChatBoxData({
-      userAvatar: userInfo?.avatar,
-      appId: appId,
-      app: {
-        chatConfig,
-        name: appDetail.name,
-        avatar: appDetail.avatar,
-        type: appDetail.type,
-        pluginInputs
-      }
+    setChatBoxData((prev) => {
+      const isSameChat = prev.sourceKey === appSourceKey && prev.chatId === chatId;
+
+      return {
+        ...prev,
+        userAvatar: userInfo?.avatar ?? undefined,
+        sourceKey: appSourceKey,
+        appId,
+        chatId,
+        chatGenerateStatus: isSameChat ? prev.chatGenerateStatus : undefined,
+        hasBeenRead: isSameChat ? prev.hasBeenRead : undefined,
+        app: {
+          chatConfig,
+          name: appDetail.name,
+          avatar: appDetail.avatar,
+          type: appDetail.type,
+          pluginInputs
+        }
+      };
     });
   }, [
     appDetail.avatar,
     appDetail.name,
     appDetail.type,
     appId,
+    appSourceKey,
+    chatId,
     chatConfig,
     pluginInputs,
     setChatBoxData,
@@ -107,7 +126,7 @@ export const useChatTest = ({
   ]);
 
   // init chat data
-  const { loading } = useRequest2(
+  const { loading } = useRequest(
     async () => {
       if (!appId || !chatId) return;
       const res = await getInitChatInfo({ appId, chatId });
@@ -115,6 +134,19 @@ export const useChatTest = ({
         variables: res.variables,
         variableList: variableList ?? res.app?.chatConfig?.variables
       });
+      /**
+       * 与线上一致：同步会话生成状态。
+       * 这里也写回 appId/chatId，避免 init 返回后覆盖链路缺字段导致刷新恢复条件不成立。
+       */
+      setChatBoxData((prev) => ({
+        ...prev,
+        appId,
+        sourceKey: getAppChatSourceKey(appId),
+        chatId: res.chatId || chatId,
+        title: res.title,
+        chatGenerateStatus: res.chatGenerateStatus,
+        hasBeenRead: res.hasBeenRead
+      }));
     },
     {
       manual: false,
@@ -140,28 +172,44 @@ export const useChatTest = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [variableList]);
 
-  const CustomChatContainer = useCallback(
-    () =>
-      appDetail.type === AppTypeEnum.workflowTool ? (
-        <Box p={5} pb={16}>
-          <PluginRunBox
-            appId={appId}
-            chatId={chatId}
-            onNewChat={restartChat}
-            onStartChat={startChat}
-          />
-        </Box>
-      ) : (
-        <ChatBox
-          isReady={isReady}
+  const CustomChatContainer = useMemoizedFn(() =>
+    appDetail.type === AppTypeEnum.workflowTool ? (
+      <Box
+        p={5}
+        h={'100%'}
+        minH={0}
+        minW={0}
+        overflowY={'auto'}
+        display={'flex'}
+        flexDirection={'column'}
+      >
+        <PluginRunBox
           appId={appId}
           chatId={chatId}
-          showMarkIcon
-          chatType={ChatTypeEnum.test}
+          fileUploadMode="draft"
+          onNewChat={restartChat}
           onStartChat={startChat}
         />
-      ),
-    [appDetail.type, appId, chatId, isReady, restartChat, startChat]
+      </Box>
+    ) : (
+      <ChatBox
+        isReady={isReady}
+        sourceTarget={{ sourceType: ChatSourceTypeEnum.app, sourceId: appId }}
+        chatId={chatId}
+        boxBodyProps={boxBodyProps}
+        features={{
+          mark: true,
+          autoResume: true,
+          quickReplies: true,
+          inputGuide: true,
+          voice: true,
+          tts: true,
+          sandbox: true
+        }}
+        chatType={ChatTypeEnum.test}
+        onStartChat={startChat}
+      />
+    )
   );
 
   return {

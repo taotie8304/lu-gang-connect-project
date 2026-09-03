@@ -1,9 +1,9 @@
-import type { NextApiRequest, NextApiResponse } from 'next';
+import type { NextApiResponse } from 'next';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { NextAPI } from '@/service/middleware/entry';
 import { MongoAppRegistration } from '@fastgpt/service/support/appRegistration/schema';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
-import type { ApiRequestProps } from '@fastgpt/service/type/next';
+import type { ApiRequestProps } from '@fastgpt/next/type';
 import { getTeamPlanStatus } from '@fastgpt/service/support/wallet/sub/utils';
 
 type CreateAppRegistrationBody = {
@@ -29,7 +29,7 @@ type CreateAppRegistrationBody = {
  */
 async function handler(
   req: ApiRequestProps<CreateAppRegistrationBody>,
-  res: NextApiResponse<any>
+  _res: NextApiResponse<any>
 ): Promise<{ success: boolean }> {
   const { appId } = req.body;
 
@@ -60,7 +60,7 @@ async function handler(
 
   // 获取团队套餐信息
   const teamPlanStatus = await getTeamPlanStatus({ teamId: String(app.teamId) });
-  const appRegistrationLimit = teamPlanStatus?.standardConstants?.appRegistrationCount;
+  const appRegistrationLimit = teamPlanStatus?.standard?.appRegistrationCount;
 
   // 检查是否有配额限制
   if (appRegistrationLimit && appRegistrationLimit > 0) {

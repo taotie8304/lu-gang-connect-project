@@ -1,10 +1,11 @@
-import { i18nT } from '../../../../web/i18n/utils';
+import { i18nT } from '../../../common/i18n/utils';
 
 export enum BillTypeEnum {
   balance = 'balance',
   standSubPlan = 'standSubPlan',
   extraDatasetSub = 'extraDatasetSub',
-  extraPoints = 'extraPoints'
+  extraPoints = 'extraPoints',
+  activityGift = 'activityGift'
 }
 export const billTypeMap = {
   [BillTypeEnum.balance]: {
@@ -18,6 +19,9 @@ export const billTypeMap = {
   },
   [BillTypeEnum.extraPoints]: {
     label: i18nT('common:support.wallet.subscription.type.extraPoints')
+  },
+  [BillTypeEnum.activityGift]: {
+    label: i18nT('common:support.wallet.bill.type.activityGift')
   }
 };
 
@@ -47,7 +51,9 @@ export enum BillPayWayEnum {
   wx = 'wx',
   alipay = 'alipay',
   bank = 'bank',
-  coupon = 'coupon'
+  coupon = 'coupon',
+  enterpriseAuth = 'enterpriseAuth',
+  wecom = 'wecom'
 }
 
 export const billPayWayMap = {
@@ -65,6 +71,12 @@ export const billPayWayMap = {
   },
   [BillPayWayEnum.coupon]: {
     label: i18nT('account_bill:payway_coupon')
+  },
+  [BillPayWayEnum.enterpriseAuth]: {
+    label: i18nT('common:support.wallet.bill.payWay.enterpriseAuth')
+  },
+  [BillPayWayEnum.wecom]: {
+    label: i18nT('common:support.wallet.bill.payWay.wecom')
   }
 };
 

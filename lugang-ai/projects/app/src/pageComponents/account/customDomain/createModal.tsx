@@ -20,7 +20,8 @@ import {
   Link
 } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
-import { useTranslation, Trans } from 'next-i18next';
+import { Trans } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import Icon from '@fastgpt/web/components/common/Icon';
 import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
 import { useEffect, useMemo, useState } from 'react';
@@ -29,13 +30,14 @@ import type { ProviderEnum } from '@fastgpt/global/support/customDomain/type';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { generateCNAMEDomain } from '@fastgpt/global/support/customDomain/utils';
 import { useCopyData } from '@fastgpt/web/hooks/useCopyData';
-import { useRequest2 } from '@fastgpt/web/hooks/useRequest';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import {
   activeCustomDomain,
   checkCustomDomainDNSResolve,
   createCustomDomain
 } from '@/web/support/customDomain/api';
 import { getDocPath } from '@/web/common/system/doc';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 
 const ProviderItem = ({
   icon,
@@ -88,20 +90,25 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
       }
     : undefined;
 }) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation('account_custom_domain');
   const { feConfigs } = useSystemStore();
   const { copyData } = useCopyData();
 
-  const [provider, setProvider] = useState<ProviderEnum>('tencent');
-  const [domain, setDomain] = useState<string>('');
+  const [provider, setProvider] = useState<ProviderEnum>(() =>
+    type === 'refresh' ? data?.provider || 'tencent' : 'tencent'
+  );
+  const [domain, setDomain] = useState<string>(() =>
+    type === 'refresh' ? data?.domain || '' : ''
+  );
   const [editDomain, setEditDomain] = useState<boolean>(true);
-
-  useEffect(() => {
-    if (type === 'refresh') {
-      setProvider(data?.provider || 'tencent');
-      setDomain(data?.domain || '');
-    }
-  }, [data, type]);
+  const updateProvider = (provider: ProviderEnum) => {
+    setProvider(provider);
+    setDnsResolved(false);
+  };
+  const updateDomain = (domain: string) => {
+    setDomain(domain);
+    setDnsResolved(false);
+  };
 
   const cnameDomain = useMemo(() => {
     if (type === 'refresh') {
@@ -117,7 +124,7 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
   const [DnsResolved, setDnsResolved] = useState<boolean>(false);
   const [startDnsResolve, setStartDnsResolve] = useState<boolean>(type === 'create');
 
-  const { runAsync: checkDNSResolve } = useRequest2(
+  const { runAsync: checkDNSResolve } = useRequest(
     () => checkCustomDomainDNSResolve({ cnameDomain, domain }),
     {
       manual: true,
@@ -128,13 +135,13 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
     }
   );
 
-  const { runAsync: activeDomain } = useRequest2(activeCustomDomain, {
+  const { runAsync: activeDomain } = useRequest(activeCustomDomain, {
     manual: true,
     onSuccess: () => onClose(),
     successToast: t('common:Success')
   });
 
-  const { runAsync: createDomain, loading: loadingCreatingDomain } = useRequest2(
+  const { runAsync: createDomain, loading: loadingCreatingDomain } = useRequest(
     createCustomDomain,
     {
       manual: true,
@@ -151,12 +158,6 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
     return () => clearInterval(intervalId);
   }, [DnsResolved, checkDNSResolve, cnameDomain, domain, editDomain, startDnsResolve]);
 
-  useEffect(() => {
-    if (domain && provider) {
-      setDnsResolved(false);
-    }
-  }, [domain, provider]);
-
   const loading = loadingCreatingDomain;
 
   return (
@@ -164,36 +165,36 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
       isOpen
       onClose={onClose}
       iconSrc="common/globalLine"
-      title={t('account:custom_domain')}
+      title={t('account_custom_domain:custom_domain')}
       minW="800px"
     >
       <ModalBody>
         <Box fontWeight="500" color="gray.900">
-          {t('account:custom_domain.provider')}
+          {t('account_custom_domain:provider')}
         </Box>
         <Flex flexDirection="row" gap="16px" w="100%" marginTop={'10px'}>
           <ProviderItem
             icon="support/account/customDomain/provider/tencent"
             selected={provider === 'tencent'}
-            onClick={() => setProvider('tencent')}
+            onClick={() => updateProvider('tencent')}
             isDisabled={!editDomain || type === 'refresh'}
           />
           <ProviderItem
             icon="support/account/customDomain/provider/aliyun"
             selected={provider === 'aliyun'}
-            onClick={() => setProvider('aliyun')}
+            onClick={() => updateProvider('aliyun')}
             isDisabled={!editDomain || type === 'refresh'}
           />
           <ProviderItem
             icon="support/account/customDomain/provider/volcengine"
             selected={provider === 'volcengine'}
-            onClick={() => setProvider('volcengine')}
+            onClick={() => updateProvider('volcengine')}
             isDisabled={!editDomain || type === 'refresh'}
           />
         </Flex>
         <Box marginTop={'16px'} fontSize={'sm'} color={'gray.600'}>
           <Trans
-            i18nKey="account:custom_domain.registration_hint"
+            i18nKey={i18nT('account_custom_domain:registration_hint')}
             values={{ provider: t(providerMap[provider]) }}
             components={{ bold: <Text as="span" fontWeight="bold" color="gray.900" /> }}
           />
@@ -204,18 +205,18 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
               h="40px"
               placeholder="www.example.com"
               value={domain}
-              onChange={(e) => setDomain(e.target.value)}
+              onChange={(e) => updateDomain(e.target.value)}
               isDisabled={!editDomain || type === 'refresh'}
             />
             <InputRightElement width="auto" paddingRight={'8px'}>
               {!editDomain && domain && startDnsResolve ? (
                 DnsResolved ? (
                   <Tag colorScheme="green" size="sm">
-                    {t('account:custom_domain.dns_resolved')}
+                    {t('account_custom_domain:dns_resolved')}
                   </Tag>
                 ) : (
                   <Tag colorScheme="red" size="sm">
-                    {t('account:custom_domain.dns_resolving')}
+                    {t('account_custom_domain:dns_resolving')}
                   </Tag>
                 )
               ) : (
@@ -254,11 +255,11 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
           flexDir="column"
         >
           <Box fontWeight="500" color="gray.900">
-            {t('account:custom_domain.DNS_record')}
+            {t('account_custom_domain:DNS_record')}
           </Box>
           <Box marginTop={'16px'} fontSize={'sm'} color={'gray.600'}>
             <Trans
-              i18nKey="account:custom_domain.DNS_resolve_hint"
+              i18nKey={i18nT('account_custom_domain:DNS_resolve_hint')}
               values={{ domain: cnameDomain }}
               components={{ bold: <Text as="span" fontWeight="bold" color="gray.900" /> }}
             />
@@ -266,7 +267,7 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
           <Table size="sm" marginTop={'16px'} w="full">
             <Thead>
               <Tr>
-                <Th>{t('account:custom_domain.DNS_record.type')}</Th>
+                <Th>{t('account_custom_domain:DNS_record.type')}</Th>
                 <Th>TTL</Th>
                 <Th>{t('common:value')}</Th>
               </Tr>
@@ -291,22 +292,21 @@ function CreateCustomDomainModal<T extends 'create' | 'refresh'>({
             </Tbody>
           </Table>
 
-          <Link
-            href={
-              feConfigs.openAPIDocUrl ||
-              getDocPath('/docs/introduction/guide/team_permissions/customDomain')
-            }
-            target={'_blank'}
-            mt="2"
-            ml="2"
-            color={'primary.500'}
-            fontSize={'sm'}
-          >
-            <Flex alignItems={'center'}>
+          <Flex>
+            <Link
+              href={feConfigs.openAPIDocUrl || getDocPath('/guide/workspace/customDomain')}
+              target={'_blank'}
+              mt="2"
+              ml="2"
+              color={'primary.500'}
+              fontSize={'sm'}
+              display={'inline-flex'}
+              alignItems={'center'}
+            >
               <Icon w={'17px'} h={'17px'} name="book" mr="1" />
               {t('common:read_doc')}
-            </Flex>
-          </Link>
+            </Link>
+          </Flex>
         </Flex>
       </ModalBody>
       <ModalFooter>

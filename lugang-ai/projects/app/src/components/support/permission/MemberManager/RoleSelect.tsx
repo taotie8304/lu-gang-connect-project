@@ -16,7 +16,7 @@ import type { RoleValueType } from '@fastgpt/global/support/permission/type';
 import { useContextSelector } from 'use-context-selector';
 import { Permission } from '@fastgpt/global/support/permission/controller';
 import { CollaboratorContext } from './context';
-import { useTranslation } from 'next-i18next';
+import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import MyDivider from '@fastgpt/web/components/common/MyDivider';
 import { ManageRoleVal } from '@fastgpt/global/support/permission/constant';
 
@@ -41,6 +41,26 @@ const MenuStyle = {
   fontSize: 'sm'
 };
 
+/**
+ * Replace the base permission role while preserving additional permission roles.
+ * The base role occupies the common low bits; application-specific roles use the
+ * remaining bits and must survive a read/write/manage role change.
+ */
+export const replaceSingleRole = ({
+  role,
+  selectedSingleRole,
+  newSingleRole
+}: {
+  role?: RoleValueType;
+  selectedSingleRole: RoleValueType;
+  newSingleRole: RoleValueType;
+}) => {
+  const permission = new Permission({ role });
+  permission.removeRole(selectedSingleRole);
+  permission.addRole(newSingleRole);
+  return permission.role;
+};
+
 function RoleSelect({
   value: role,
   onChange,
@@ -51,7 +71,7 @@ function RoleSelect({
   onDelete,
   disabled
 }: PermissionSelectProps) {
-  const { t } = useTranslation();
+  const { t } = useClientTranslation(['user']);
   const ref = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<NodeJS.Timeout>();
 
@@ -63,7 +83,7 @@ function RoleSelect({
   const roleOptions = useMemo(() => {
     if (!permissionList) return { singleOptions: [], checkboxList: [] };
 
-    const list = Object.entries(permissionList).map(([_, value]) => {
+    const list = Object.values(permissionList).map((value) => {
       return {
         name: value.name,
         value: value.value,
@@ -104,6 +124,8 @@ function RoleSelect({
       .map((item) => item.value);
   }, [role, roleOptions.checkboxList]);
 
+  const menuMinWidth = typeof width === 'number' ? `${width}px !important` : width;
+
   const onSelectRole = (newRole: RoleValueType) => {
     if (newRole === role) return;
     onChange(newRole);
@@ -121,7 +143,7 @@ function RoleSelect({
     <Menu offset={offset} isOpen={isOpen} autoSelect={false} direction={'ltr'}>
       <Box
         ref={ref}
-        w="fit-content"
+        w={width}
         onMouseEnter={() => {
           if (disabled) return;
           if (trigger === 'hover') {
@@ -139,6 +161,7 @@ function RoleSelect({
       >
         <MenuButton
           position={'relative'}
+          w="full"
           cursor={disabled ? 'not-allowed' : 'pointer'}
           onClickCapture={() => {
             if (trigger === 'click') {
@@ -150,7 +173,7 @@ function RoleSelect({
           {Button}
         </MenuButton>
         <MenuList
-          minW={isOpen ? `${width}px !important` : 0}
+          minW={isOpen ? menuMinWidth : 0}
           p="3"
           border={'1px solid #fff'}
           boxShadow={
@@ -167,7 +190,13 @@ function RoleSelect({
               if (disabled) {
                 return;
               }
-              onSelectRole(item.value);
+              onSelectRole(
+                replaceSingleRole({
+                  role,
+                  selectedSingleRole: selectedSingleValue,
+                  newSingleRole: item.value
+                })
+              );
             };
 
             return (

@@ -12,7 +12,7 @@ import {
   Flex
 } from '@chakra-ui/react';
 import { type NodeProps } from 'reactflow';
-import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node.d';
+import { type FlowNodeItemType } from '@fastgpt/global/core/workflow/type/node';
 import { useTranslation } from 'next-i18next';
 import NodeCard from '../render/NodeCard';
 import Container from '../../components/Container';
@@ -25,11 +25,11 @@ import ExtractFieldModal, { defaultField } from './ExtractFieldModal';
 import { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import { FlowNodeOutputTypeEnum } from '@fastgpt/global/core/workflow/node/constant';
 import { WorkflowIOValueTypeEnum } from '@fastgpt/global/core/workflow/constants';
-import RenderToolInput from '../render/RenderToolInput';
+import RenderToolInput, { hasDynamicToolInput } from '../render/RenderToolInput';
 import {
   type FlowNodeInputItemType,
   type FlowNodeOutputItemType
-} from '@fastgpt/global/core/workflow/type/io.d';
+} from '@fastgpt/global/core/workflow/type/io';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import IOTitle from '../../components/IOTitle';
 import { useContextSelector } from 'use-context-selector';
@@ -160,7 +160,7 @@ const NodeExtract = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
 
   return (
     <NodeCard minW={'400px'} selected={selected} {...data}>
-      {isTool && (
+      {isTool && hasDynamicToolInput(data) && (
         <>
           <Container>
             <RenderToolInput nodeId={nodeId} inputs={inputs} />
@@ -173,6 +173,7 @@ const NodeExtract = ({ data, selected }: NodeProps<FlowNodeItemType>) => {
           nodeId={nodeId}
           flowInputList={commonInputs}
           CustomComponent={CustomComponent}
+          isTool={isTool}
         />
       </Container>
       <Container>

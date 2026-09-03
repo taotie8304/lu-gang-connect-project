@@ -1,18 +1,44 @@
 import { type PushTrackCommonType } from '@fastgpt/global/common/middle/tracks/type';
 import { TrackModel } from './schema';
 import { TrackEnum } from '@fastgpt/global/common/middle/tracks/constants';
-import { addLog } from '../../system/log';
 import type { OAuthEnum } from '@fastgpt/global/support/user/constant';
 import type { AppTypeEnum } from '@fastgpt/global/core/app/constants';
 import type { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
 import { getAppLatestVersion } from '../../../core/app/version/controller';
 import { type ShortUrlParams } from '@fastgpt/global/support/marketing/type';
-import { getRedisCache, setRedisCache } from '../../redis/cache';
 import { differenceInDays } from 'date-fns';
+import { getLogger, LogCategories } from '../../logger';
+import { DailyActiveDedupeCache } from '@fastgpt/dal/redis/caches';
+import type {
+  TeamEnterpriseAuthStatusEnum,
+  TeamEnterpriseAuthTaskStatusEnum
+} from '@fastgpt/global/support/user/team/enterpriseAuth/constant';
+import type { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constants';
 
-// 鲁港通 - 启用数据追踪功能
+const logger = getLogger(LogCategories.EVENT.TRACK);
+const dailyActiveDedupeCache = new DailyActiveDedupeCache({ logger });
+
+type AccountCancellationTrackData = {
+  uid?: string;
+  teamId?: string;
+  tmbId?: string;
+  userId: string;
+  operatorUserId: string;
+  operatorType: 'self' | 'system' | 'admin';
+  requestSource: 'self' | 'admin';
+  requestedAt: Date;
+  scheduledCancelAt: Date;
+  finalizedAt?: Date;
+  verificationMethod?: string;
+  verificationProvider?: string;
+  affectedTeamIds?: string[];
+  requestId?: string;
+  cronExecutionId?: string;
+};
+
 const createTrack = ({ event, data }: { event: TrackEnum; data: Record<string, any> }) => {
-  addLog.debug('Push tracks', {
+  if (!global.feConfigs?.isPlus) return;
+  logger.debug('Enqueue track event', {
     event,
     ...data
   });
@@ -28,7 +54,7 @@ const createTrack = ({ event, data }: { event: TrackEnum; data: Record<string, a
   });
 };
 
-// 鲁港通 - 启用计数追踪功能
+// Run times
 const pushCountTrack = ({
   event,
   key,
@@ -38,7 +64,8 @@ const pushCountTrack = ({
   key: string;
   data: Record<string, any>;
 }) => {
-  addLog.debug('Push tracks', {
+  if (!global.feConfigs?.isPlus) return;
+  logger.debug('Enqueue track counter event', {
     event,
     key
   });
@@ -78,18 +105,18 @@ export const pushTrack = {
   dailyUserActive: async (data: PushTrackCommonType) => {
     try {
       const today = new Date().toISOString().split('T')[0];
-      const key = `dailyUserActive:${data.uid}_${today}`;
-      const cache = await getRedisCache(key);
-      if (cache) return;
-
-      await setRedisCache(key, '1', 24 * 60 * 60);
+      const shouldRecord = await dailyActiveDedupeCache.shouldRecord({
+        uid: data.uid,
+        date: today
+      });
+      if (!shouldRecord) return;
 
       return createTrack({
         event: TrackEnum.dailyUserActive,
         data
       });
     } catch (error) {
-      addLog.error('Failed to track daily user active:', error);
+      logger.error('Failed to record daily active user', { error });
     }
   },
   createApp: (
@@ -124,7 +151,7 @@ export const pushTrack = {
           nodeTypeList
         }
       });
-    } catch (error) {}
+    } catch {}
   },
   runSystemTool: (
     data: PushTrackCommonType & { toolId: string; result: 1 | 0; usagePoint?: number; msg?: string }
@@ -157,6 +184,72 @@ export const pushTrack = {
       }
     });
   },
+  enterpriseAuthStart: (
+    data: PushTrackCommonType & {
+      result: 'success' | 'failed';
+      status?: `${TeamEnterpriseAuthStatusEnum}`;
+      taskStatus?: `${TeamEnterpriseAuthTaskStatusEnum}`;
+      errorCode?: string;
+      hasCurrentTask?: boolean;
+    }
+  ) => {
+    return createTrack({
+      event: TrackEnum.enterpriseAuthStart,
+      data
+    });
+  },
+  enterpriseAuthBenefitGrant: (
+    data: PushTrackCommonType & {
+      status?: `${TeamEnterpriseAuthStatusEnum}`;
+      taskId?: string;
+      billId?: string;
+      standSubLevel: `${StandardSubLevelEnum}`;
+      durationDay: number;
+      totalPoints: number;
+      grantedPlanCount: number;
+    }
+  ) => {
+    return createTrack({
+      event: TrackEnum.enterpriseAuthBenefitGrant,
+      data
+    });
+  },
+  accountCancellationSubmitSuccess: (
+    data: AccountCancellationTrackData & {
+      operatorType: 'self';
+      requestSource: 'self';
+      verificationMethod: string;
+      affectedTeamIds: string[];
+    }
+  ) => {
+    return createTrack({
+      event: TrackEnum.accountCancellationSubmitSuccess,
+      data
+    });
+  },
+  accountCancellationCancelSuccess: (
+    data: AccountCancellationTrackData & {
+      operatorType: 'self';
+      requestSource: 'self';
+    }
+  ) => {
+    return createTrack({
+      event: TrackEnum.accountCancellationCancelSuccess,
+      data
+    });
+  },
+  accountCancellationFinalizeSuccess: (
+    data: AccountCancellationTrackData & {
+      finalizedAt: Date;
+    }
+  ) => {
+    return createTrack({
+      event: TrackEnum.accountCancellationFinalizeSuccess,
+      data
+    });
+  },
+
+  // Admin cron job tracks
   subscriptionDeleted: (data: {
     teamId: string;
     subscriptionType: string;
@@ -183,6 +276,75 @@ export const pushTrack = {
         teamId: data.teamId,
         expiredTime: data.expiredTime
       }
+    });
+  },
+  auditLogCleanup: (data: { teamId: string; retentionDays: number }) => {
+    return createTrack({
+      event: TrackEnum.auditLogCleanup,
+      data: {
+        teamId: data.teamId,
+        retentionDays: data.retentionDays
+      }
+    });
+  },
+  chatHistoryCleanup: (data: { teamId: string; retentionDays: number }) => {
+    return createTrack({
+      event: TrackEnum.chatHistoryCleanup,
+      data: {
+        teamId: data.teamId,
+        retentionDays: data.retentionDays
+      }
+    });
+  },
+  /** @deprecated Legacy Sandbox archive event. Use userSandboxMigration instead. */
+  sandboxArchive: (data: {
+    provider: string;
+    sandboxId: string;
+    reason: string;
+    source?: string;
+  }) => {
+    return createTrack({
+      event: TrackEnum.sandboxArchive,
+      data
+    });
+  },
+  userSandboxMigration: (
+    data: {
+      runId: string;
+      dryRun: boolean;
+    } & (
+      | { phase: 'started' }
+      | {
+          phase: 'failure';
+          sandboxId: string;
+          step:
+            | 'prepare_app_target'
+            | 'archive_legacy'
+            | 'archive_workspace'
+            | 'mark_archive_deleting'
+            | 'migrate_skill'
+            | 'migrate_app'
+            | 'delete_sandbox'
+            | 'delete_volume'
+            | 'verify_archive'
+            | 'complete_legacy_record'
+            | 'complete_legacy_archive'
+            | 'delete_archive'
+            | 'delete_legacy_record'
+            | 'stop_failed_legacy';
+          error: string;
+        }
+      | {
+          phase: 'completed';
+          successCount: number;
+          failureCount: number;
+          durationMs: number;
+        }
+    )
+  ) => {
+    return createTrack({
+      event: TrackEnum.userSandboxMigration,
+      data
     });
   }
 };

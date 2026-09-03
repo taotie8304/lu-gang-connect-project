@@ -1,9 +1,8 @@
-import { type ApiRequestProps } from '../../type/next';
-import requestIp from 'request-ip';
-import { authFrequencyLimit } from '../system/frequencyLimit/utils';
-import { addSeconds } from 'date-fns';
-import { type NextApiResponse } from 'next';
 import { jsonRes } from '../response';
+import { serviceEnv } from '../../env';
+import { getClientIpFromRequest } from '../security/clientIp';
+import type { NodeApiResponse, NodeHttpRequest } from '../../types/http';
+import { checkIPRateLimit } from '../rateLimit/interface/ip';
 
 // unit: times/s
 // how to use?
@@ -19,19 +18,21 @@ export function useIPFrequencyLimit({
   limit: number;
   force?: boolean;
 }) {
-  return async (req: ApiRequestProps, res: NextApiResponse) => {
-    const ip = requestIp.getClientIp(req);
-    if (!ip || (process.env.USE_IP_LIMIT !== 'true' && !force)) {
+  return async (req: NodeHttpRequest, res: NodeApiResponse) => {
+    if (!serviceEnv.USE_IP_LIMIT && !force) {
       return;
     }
-    try {
-      await authFrequencyLimit({
-        eventId: `ip-qps-limit-${id}-` + ip,
-        maxAmount: limit,
-        expiredTime: addSeconds(new Date(), seconds)
-      });
-    } catch (_) {
-      jsonRes(res, {
+
+    const ip = getClientIpFromRequest(req) ?? 'unknown';
+    const allowed = await checkIPRateLimit({
+      id,
+      ip,
+      limit,
+      seconds
+    });
+
+    if (!allowed) {
+      return jsonRes(res, {
         code: 429,
         error: `Too many request, request ${limit} times every ${seconds} seconds`
       });

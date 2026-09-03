@@ -6,7 +6,7 @@ import { useContextSelector } from 'use-context-selector';
 import { DatasetPageContext } from '@/web/core/dataset/context/datasetPageContext';
 import { useTranslation } from 'next-i18next';
 import { CollectionPageContext } from './Context';
-import { isEqual } from 'lodash';
+import { isEqual } from 'lodash-es';
 import TagManageModal from './TagManageModal';
 import { type DatasetTagType } from '@fastgpt/global/core/dataset/type';
 
@@ -103,10 +103,9 @@ const HeaderTagPopOver = () => {
               />
             </Box>
 
-            {/* 鲁港通 - 防御性检查，避免标签数据未加载时报错 */}
             <Box my={1} px={1.5} maxH={'240px'} overflow={'auto'}>
               {searchTagKey &&
-                !(searchDatasetTagsResult ?? []).map((item) => item.tag).includes(searchTagKey) && (
+                !searchDatasetTagsResult.map((item) => item.tag).includes(searchTagKey) && (
                   <Flex
                     alignItems={'center'}
                     fontSize={'sm'}
@@ -125,7 +124,7 @@ const HeaderTagPopOver = () => {
 
               {[
                 ...new Map(
-                  [...(checkedDatasetTag ?? []), ...(searchDatasetTagsResult ?? [])].map((item) => [item._id, item])
+                  [...checkedDatasetTag, ...searchDatasetTagsResult].map((item) => [item._id, item])
                 ).values()
               ].map((item) => {
                 const checked = checkedTags.includes(item._id);

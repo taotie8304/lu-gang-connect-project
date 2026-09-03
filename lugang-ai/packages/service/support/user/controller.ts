@@ -1,7 +1,10 @@
 import { type UserType } from '@fastgpt/global/support/user/type';
 import { MongoUser } from './schema';
-import { getTmbInfoByTmbId, getUserDefaultTeam } from './team/controller';
+import { getTmbInfoByTmbId } from './team/controller';
 import { ERROR_ENUM } from '@fastgpt/global/common/error/errorCode';
+import { TeamPermission } from '@fastgpt/global/support/permission/user/controller';
+import type { ClientSession } from '../../common/mongo';
+import { getUserFallbackTeam } from './team/fallback';
 
 export async function authUserExist({ userId, username }: { userId?: string; username?: string }) {
   if (userId) {
@@ -13,40 +16,59 @@ export async function authUserExist({ userId, username }: { userId?: string; use
   return null;
 }
 
+/**
+ * 加载用户及团队详情；tmb 失效时回退到用户可用团队。
+ */
 export async function getUserDetail({
   tmbId,
-  userId
+  userId,
+  isRoot = false,
+  session
 }: {
   tmbId?: string;
   userId?: string;
+  isRoot?: boolean;
+  session?: ClientSession;
 }): Promise<UserType> {
   const tmb = await (async () => {
     if (tmbId) {
       try {
-        const result = await getTmbInfoByTmbId({ tmbId });
+        const result = await getTmbInfoByTmbId({ tmbId, session });
         return result;
-      } catch (error) {}
+      } catch {}
     }
     if (userId) {
-      return getUserDefaultTeam({ userId });
+      const fallback = await getUserFallbackTeam({
+        userId,
+        session
+      });
+      if (fallback) return getTmbInfoByTmbId({ tmbId: fallback.tmbId, session });
     }
     return Promise.reject(ERROR_ENUM.unAuthorization);
   })();
-  const user = await MongoUser.findById(tmb.userId);
+  const query = MongoUser.findById(tmb.userId);
+  if (session) query.session(session);
+  const user = await query;
 
   if (!user) {
     return Promise.reject(ERROR_ENUM.unAuthorization);
   }
 
+  const permission = isRoot ? new TeamPermission({ isOwner: true }) : tmb.permission;
+  const team = {
+    ...tmb,
+    permission
+  };
+
   return {
-    _id: user._id,
+    _id: String(user._id),
     username: user.username,
     avatar: tmb.avatar,
     timezone: user.timezone,
-    promotionRate: user.promotionRate,
-    team: tmb,
-    permission: tmb.permission,
+    team,
+    permission,
     contact: user.contact,
-    language: user.language
+    language: user.language,
+    tags: user.tags
   };
 }

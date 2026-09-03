@@ -1,21 +1,47 @@
 import { parentPort } from 'worker_threads';
 import { html2md } from './utils';
-import { workerResponse } from '../controller';
+import {
+  createWorkerUploadFileHandler,
+  handleWorkerUploadFileResponse,
+  isWorkerUploadFileResponse
+} from '../utils/uploadFile';
 
-parentPort?.on('message', (params: { html: string }) => {
+type IncomingMessage = {
+  id: string;
+  html: string;
+  uploadImages?: boolean;
+  type?: 'uploadFileResult' | 'uploadFileError';
+  requestId?: string;
+  data?: any;
+};
+
+parentPort?.on('message', async (params: IncomingMessage) => {
+  const { id, html, requestId, data, type } = params;
+
+  if (isWorkerUploadFileResponse(type)) {
+    handleWorkerUploadFileResponse({
+      taskId: id,
+      type,
+      requestId,
+      data
+    });
+    return;
+  }
+
+  const uploadFileHandler = createWorkerUploadFileHandler({
+    taskId: id,
+    parentPort
+  });
+
   try {
-    const md = html2md(params?.html || '');
+    const md = await html2md(html || '', {
+      uploadFile: params.uploadImages ? uploadFileHandler.uploadFile : undefined
+    });
 
-    workerResponse({
-      parentPort,
-      status: 'success',
-      data: md
-    });
+    parentPort?.postMessage({ id, type: 'success', data: md });
   } catch (error) {
-    workerResponse({
-      parentPort,
-      status: 'error',
-      data: error
-    });
+    parentPort?.postMessage({ id, type: 'error', data: error });
+  } finally {
+    uploadFileHandler.cleanup();
   }
 });
