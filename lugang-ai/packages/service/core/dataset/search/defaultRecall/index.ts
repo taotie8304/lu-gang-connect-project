@@ -15,6 +15,11 @@ import {
   removeDuplicateSearchResults
 } from './result';
 import { countRecallLimit, filterDatasetDataByMaxTokens } from './utils';
+// 鲁港通 - 简繁搜索规范化
+import {
+  simplifiedToTraditional,
+  traditionalToSimplified
+} from '../../../../common/string/cjkNormalizer';
 
 /**
  * 执行默认知识库召回主流程。
@@ -36,8 +41,8 @@ export async function searchDatasetData(
 ): Promise<SearchDatasetDataResponse> {
   const {
     teamId,
-    reRankQuery,
-    textQueries,
+    reRankQuery: inputReRankQuery,
+    textQueries: inputTextQueries,
     imageQueries = [],
     userKey,
     model,
@@ -52,6 +57,20 @@ export async function searchDatasetData(
     datasetIds = [],
     collectionFilterMatch
   } = props;
+
+  // 鲁港通 - CJK 简繁搜索规范化：启用时将文本 query 扩展为「原文 + 繁体 + 简体」去重集合，
+  // 使简体库与繁体库都能被检索到；reRankQuery 统一转繁体以匹配繁体化后的候选。默认关闭。
+  let textQueries = inputTextQueries;
+  let reRankQuery = inputReRankQuery;
+  if (global.feConfigs?.enableCjkNormalization) {
+    const expandedQueries = inputTextQueries.flatMap((q) => [
+      q,
+      simplifiedToTraditional(q),
+      traditionalToSimplified(q)
+    ]);
+    textQueries = [...new Set(expandedQueries)];
+    reRankQuery = simplifiedToTraditional(inputReRankQuery);
+  }
 
   const searchMode = DatasetSearchModeMap[inputSearchMode]
     ? inputSearchMode

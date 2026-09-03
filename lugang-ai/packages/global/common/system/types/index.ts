@@ -68,6 +68,8 @@ export type FastGPTFeConfigsType = {
   show_git?: boolean;
   // 鲁港通 - 纯聊天模式：为 true 时普通用户（非团队所有者）隐藏工作室/知识库等管理功能，仅保留聊天与账号
   enableUserChatOnly?: boolean;
+  // 鲁港通 - 知识库搜索简繁兼容开关，默认关闭；启用后检索期将 query 扩展为「原文+繁体+简体」去重集合
+  enableCjkNormalization?: boolean;
   show_pay?: boolean;
   show_openai_account?: boolean;
   show_compliance_copywriting?: boolean;
