@@ -44,14 +44,22 @@ const Navbar = ({ unread }: { unread: number }) => {
   const { gitStar, feConfigs } = useSystemStore();
   const { lastChatAppId, lastPane } = useChatStore();
 
-  const navbarList = useMemo(
-    () => [
+  // 鲁港通 - 判断是否为管理员（团队所有者）
+  const isOwner = userInfo?.team?.permission?.isOwner ?? false;
+  // 鲁港通 - 是否启用纯聊天模式
+  const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
+  // 鲁港通 - 普通用户在纯聊天模式下隐藏管理功能
+  const showAdminFeatures = isOwner || !enableUserChatOnly;
+
+  const navbarList = useMemo(() => {
+    const baseList = [
       {
         label: t('common:navbar.Chat'),
         icon: 'navbar/chatLight',
         activeIcon: 'navbar/chatFill',
         link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
-        activeLink: ['/chat']
+        activeLink: ['/chat'],
+        showForUser: true // 鲁港通 - 普通用户可见
       },
       {
         label: t('common:navbar.Studio'),
@@ -71,14 +79,16 @@ const Navbar = ({ unread }: { unread: number }) => {
           '/dashboard/mcpServer',
           '/dashboard/evaluation',
           '/dashboard/evaluation/create'
-        ]
+        ],
+        showForUser: false // 鲁港通 - 仅管理员可见
       },
       {
         label: t('common:navbar.Datasets'),
         icon: 'navbar/datasetLight',
         activeIcon: 'navbar/datasetFill',
         link: `/dataset/list`,
-        activeLink: ['/dataset/list', '/dataset/detail']
+        activeLink: ['/dataset/list', '/dataset/detail'],
+        showForUser: false // 鲁港通 - 仅管理员可见
       },
       {
         label: t('common:navbar.Account'),
@@ -96,22 +106,39 @@ const Navbar = ({ unread }: { unread: number }) => {
           '/account/setting',
           '/account/inform',
           '/account/model'
-        ]
-      },
-      ...(userInfo?.username === 'root'
-        ? [
-            {
-              label: t('common:navbar.Config'),
-              icon: 'support/config/configLight',
-              activeIcon: 'support/config/configFill',
-              link: '/config/plugin/tool',
-              activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model']
-            }
-          ]
-        : [])
-    ],
-    [lastChatAppId, lastPane, t, userInfo?.username]
-  );
+        ],
+        showForUser: true // 鲁港通 - 普通用户可见
+      }
+    ];
+
+    // 鲁港通 - 根据用户角色过滤导航项
+    let filteredList = showAdminFeatures ? baseList : baseList.filter((item) => item.showForUser);
+
+    // 鲁港通 - root 用户添加用户管理入口和配置入口
+    if (userInfo?.username === 'root') {
+      filteredList = [
+        ...filteredList,
+        {
+          label: '用户管理',
+          icon: 'support/team/memberLight',
+          activeIcon: 'support/team/memberFill',
+          link: '/admin/users',
+          activeLink: ['/admin/users'],
+          showForUser: false
+        },
+        {
+          label: t('common:navbar.Config'),
+          icon: 'support/config/configLight',
+          activeIcon: 'support/config/configFill',
+          link: '/config/plugin/tool',
+          activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model'],
+          showForUser: false
+        }
+      ];
+    }
+
+    return filteredList;
+  }, [lastChatAppId, lastPane, t, userInfo?.username, showAdminFeatures]);
 
   const isDashboardPage = useMemo(() => {
     return router.pathname.startsWith('/dashboard');

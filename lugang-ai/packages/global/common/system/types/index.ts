@@ -66,6 +66,8 @@ export type FastGPTFeConfigsType = {
 
   show_appStore?: boolean;
   show_git?: boolean;
+  // 鲁港通 - 纯聊天模式：为 true 时普通用户（非团队所有者）隐藏工作室/知识库等管理功能，仅保留聊天与账号
+  enableUserChatOnly?: boolean;
   show_pay?: boolean;
   show_openai_account?: boolean;
   show_compliance_copywriting?: boolean;
