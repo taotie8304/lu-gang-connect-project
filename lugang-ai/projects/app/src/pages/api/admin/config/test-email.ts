@@ -6,7 +6,8 @@
  * 使用后台填写的 SMTP 配置发送一封测试邮件，验证配置是否正确。
  */
 
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+// 鲁港通 - 4.16.2 ApiRequestProps/ApiResponseType 迁移至 @fastgpt/next/type（旧 @fastgpt/service/type/next 在 4.16.2 已不存在）
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 // 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog

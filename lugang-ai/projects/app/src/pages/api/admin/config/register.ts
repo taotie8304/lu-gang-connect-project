@@ -9,7 +9,8 @@
  * 与 4.14.4 二开版本行为保持一致。
  */
 
-import type { ApiRequestProps, ApiResponseType } from '@fastgpt/service/type/next';
+// 鲁港通 - 4.16.2 ApiRequestProps/ApiResponseType 迁移至 @fastgpt/next/type（旧 @fastgpt/service/type/next 在 4.16.2 已不存在，会导致 next build 类型检查失败）
+import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoSystemConfigs } from '@fastgpt/service/common/system/config/schema';

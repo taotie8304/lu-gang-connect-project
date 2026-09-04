@@ -119,7 +119,7 @@ const Navbar = ({ unread }: { unread: number }) => {
       filteredList = [
         ...filteredList,
         {
-          label: '用户管理',
+          label: t('common:navbar.UserManagement'),
           icon: 'support/team/memberLight',
           activeIcon: 'support/team/memberFill',
           link: '/admin/users',
