@@ -19,6 +19,8 @@ import { clearToken } from '@/web/support/user/auth';
 import { LUGANG_SUPPORT_EMAIL } from '@/web/common/system/constants';
 import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
+import SystemContentModal from '@/components/SystemContentModal';
+import { SystemContentKeyEnum } from '@fastgpt/global/support/systemContent/constant';
 import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMenuItems';
 import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
 
@@ -46,6 +48,13 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   const [isAccessibilityModalOpen, setIsAccessibilityModalOpen] = useState(false);
   const [isLanguageExpanded, setIsLanguageExpanded] = useState(false);
 
+  // 鲁港通 - D11 系统内容弹窗状态（使用条款/隐私政策/资料收集声明）
+  const [systemContentModal, setSystemContentModal] = useState<{
+    isOpen: boolean;
+    contentKey: `${SystemContentKeyEnum}` | null;
+    title: string;
+  }>({ isOpen: false, contentKey: null, title: '' });
+
   const handleLogout = useCallback(() => {
     setUserInfo(null);
     clearToken();
@@ -59,11 +68,9 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     onClose();
   }, [t, onClose]);
 
-  // 鲁港通 - C7a 已实现的 5 个零依赖入口。
+  // 鲁港通 - 设置菜单入口。D11 已补入使用条款/隐私政策/资料收集声明（走 SystemContentModal + /api/system/content/[key]，正文按 getLocale 多语言）。
   // TODO(D10 商业化)：在此数组补充「活动中心 activityCenter」「账户信息 accountInfo」——
   //   依赖 /api/user/profile、One API 额度/活动接口与 AccountInfoModal、ActivityListModal 组件（4.16.2 尚缺，须新建）。
-  // TODO(D11 系统内容多语言)：在此数组补充「使用条款 termsOfUse」「隐私政策 privacyPolicy」「数据收集 dataCollection」——
-  //   依赖 systemContent MongoDB 集合、/api/system/content/[key]（须用官方 getLocale(req) 取语言）与 SystemContentModal 组件。
   const menuItems: SettingsMenuItem[] = [
     {
       key: 'language',
@@ -88,6 +95,40 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       icon: 'common/info',
       label: t('common:user_settings.accessibility'),
       onClick: () => setIsAccessibilityModalOpen(true)
+    },
+    // 鲁港通 - D11 系统内容（法律条款）三项，点击打开 SystemContentModal
+    {
+      key: 'termsOfUse',
+      icon: 'book',
+      label: t('common:system_content.terms_of_use'),
+      onClick: () =>
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.termsOfUse,
+          title: t('common:system_content.terms_of_use')
+        })
+    },
+    {
+      key: 'privacyPolicy',
+      icon: 'book',
+      label: t('common:system_content.privacy_policy'),
+      onClick: () =>
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.privacyPolicy,
+          title: t('common:system_content.privacy_policy')
+        })
+    },
+    {
+      key: 'dataCollection',
+      icon: 'book',
+      label: t('common:system_content.data_collection'),
+      onClick: () =>
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.dataCollection,
+          title: t('common:system_content.data_collection')
+        })
     },
     {
       key: 'logout',
@@ -155,6 +196,16 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
         isOpen={isAccessibilityModalOpen}
         onClose={() => setIsAccessibilityModalOpen(false)}
       />
+
+      {/* 鲁港通 - D11 系统内容弹窗（使用条款/隐私政策/资料收集声明） */}
+      {systemContentModal.isOpen && systemContentModal.contentKey && (
+        <SystemContentModal
+          isOpen={systemContentModal.isOpen}
+          onClose={() => setSystemContentModal({ isOpen: false, contentKey: null, title: '' })}
+          contentKey={systemContentModal.contentKey}
+          title={systemContentModal.title}
+        />
+      )}
     </>
   );
 };
