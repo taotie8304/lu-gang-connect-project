@@ -25,6 +25,7 @@ const CollectionCard = dynamic(
   () => import('@/pageComponents/dataset/detail/CollectionCard/index')
 );
 const DataCard = dynamic(() => import('@/pageComponents/dataset/detail/DataCard'));
+const AutoUpdate = dynamic(() => import('@/pageComponents/dataset/detail/AutoUpdate'));
 const Test = dynamic(() => import('@/pageComponents/dataset/detail/Test'));
 const Info = dynamic(() => import('@/pageComponents/dataset/detail/Info/index'));
 const Import = dynamic(() => import('@/pageComponents/dataset/detail/Import'));
@@ -32,6 +33,7 @@ const Import = dynamic(() => import('@/pageComponents/dataset/detail/Import'));
 export enum TabEnum {
   dataCard = 'dataCard',
   collectionCard = 'collectionCard',
+  autoUpdate = 'autoUpdate', // 鲁港通 - 知识库自动更新配置页
   test = 'test',
   info = 'info',
   import = 'import'
@@ -80,6 +82,7 @@ const Detail = ({ datasetId, currentTab }: Props) => {
               )}
               {currentTab === TabEnum.test && <Test datasetId={datasetId} />}
               {currentTab === TabEnum.dataCard && <DataCard />}
+              {currentTab === TabEnum.autoUpdate && <AutoUpdate />}
               {currentTab === TabEnum.import && <Import />}
             </Box>
           </Flex>
@@ -111,6 +114,7 @@ const Detail = ({ datasetId, currentTab }: Props) => {
                   </CollectionPageContextProvider>
                 )}
                 {currentTab === TabEnum.dataCard && <DataCard />}
+                {currentTab === TabEnum.autoUpdate && <AutoUpdate />}
                 {currentTab === TabEnum.test && <Test datasetId={datasetId} />}
                 {currentTab === TabEnum.info && <Info datasetId={datasetId} />}
                 {currentTab === TabEnum.import && <Import />}

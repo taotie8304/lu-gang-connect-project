@@ -39,9 +39,10 @@ export function decodeByBom(buffer: Buffer): { buffer: Buffer; encoding: 'utf16l
     return { buffer: buffer.subarray(2), encoding: 'utf16le' };
   }
   if (buffer.length >= 2 && buffer[0] === 0xfe && buffer[1] === 0xff) {
-    // UTF-16BE：剥离 BOM 后按 16 位字节交换，再以 utf16le 解码
+    // 鲁港通 - UTF-16BE：剥离 BOM 后整体做一次 16 位字节交换，再以 utf16le 解码。
+    //   swap16() 单次即交换整个缓冲区，切勿循环调用（会来回交换，长度可被 4 整除时净效果为未交换）。
     const swapped = Buffer.from(buffer.subarray(2));
-    for (let i = 0; i + 1 < swapped.length; i += 2) swapped.swap16();
+    if (swapped.length % 2 === 0) swapped.swap16();
     return { buffer: swapped, encoding: 'utf16le' };
   }
   if (buffer.length >= 3 && buffer[0] === 0xef && buffer[1] === 0xbb && buffer[2] === 0xbf) {
