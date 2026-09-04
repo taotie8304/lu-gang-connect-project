@@ -4,6 +4,7 @@ import Loading from '@fastgpt/web/components/common/MyLoading';
 import { useRouter } from 'next/router';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { Box, Text, Button, VStack } from '@chakra-ui/react';
+import { LUGANG_SUPPORT_EMAIL } from '@/web/common/system/constants';
 
 /**
  * 鲁港通 - 首页路由组件
@@ -79,7 +80,7 @@ const Index = ({
             {error}
           </Text>
           <Text fontSize="sm" color="gray.400">
-            联系邮箱：service@airscend.com
+            联系邮箱：{LUGANG_SUPPORT_EMAIL}
           </Text>
           <Button
             colorScheme="blue"

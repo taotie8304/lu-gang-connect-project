@@ -5,6 +5,7 @@ import type { UseFormReturn } from 'react-hook-form';
 import type { ChatBoxInputFormType } from '../type';
 import { ChatBoxContentMaxWidth, type ChatTypeEnum } from '../constants';
 import WelcomeBox from './WelcomeBox';
+import LugangWelcomeSlogan from './LugangWelcomeSlogan';
 import VariableInputForm from './VariableInputForm';
 import ChatRecordsList, { type ChatRecordsListProps } from './ChatRecordsList';
 import QuickQuestionButton from '@/components/core/chat/QuickQuestionButton';
@@ -88,6 +89,8 @@ const AppChatMain = ({
           maxW={['calc(100% - 25px)', ChatBoxContentMaxWidth]}
           mx={'auto'}
         >
+          {/* 鲁港通 - 空会话时展示品牌三语欢迎语（普→粤→英轮播 + 浅色光晕背景） */}
+          {recordsListProps.records.length === 0 && <LugangWelcomeSlogan />}
           {!!welcomeText && <WelcomeBox welcomeText={welcomeText} />}
           {visibleWelcomeQuestions.length > 0 && (
             <Flex w={'100%'} flexDirection={'column'} alignItems={'flex-start'} gap={2}>

@@ -32,8 +32,8 @@ import { pluginClient } from '@fastgpt/service/thirdProvider/fastgptPlugin';
 
 const logger = getLogger(LogCategories.SYSTEM);
 const pluginFeaturesProbeTimeoutMs = 3000;
-const defaultOpenSourceLoginGuideDocUrl =
-  'https://doc.fastgpt.io/zh-CN/guide/version/cloud/faq#%E8%B4%A6%E5%8F%B7%E7%99%BB%E5%BD%95%E9%97%AE%E9%A2%98';
+// 鲁港通 - 品牌化：移除官方开源版登录引导文档常量（原指 doc.fastgpt.io 账号登录 FAQ），
+// 该链接会渲染在登录页并可点击跳转，使普通用户看到 FastGPT 品牌与外链。
 
 /* Init global variables */
 export function initGlobalVariables() {
@@ -92,15 +92,21 @@ export async function getInitConfig() {
 
 const defaultFeConfigs: FastGPTFeConfigsType = {
   show_emptyChat: true,
-  show_git: true,
-  docUrl: 'https://doc.fastgpt.io',
-  openAPIDocUrl: 'https://doc.fastgpt.io/openapi/intro',
+  // 鲁港通 - 品牌化：隐藏导航栏 FastGPT GitHub 图标，并清空官方文档/模板教程外链，
+  // 避免普通用户在前台看到 FastGPT 品牌标识与开源地址。
+  show_git: false,
+  docUrl: '',
+  openAPIDocUrl: '',
   enable_team_plugin_upload: false,
-  appTemplateCourse:
-    'https://fael3z0zfze.feishu.cn/wiki/CX9wwMGyEi5TL6koiLYcg7U0nWb?fromScene=spaceOverview',
-  systemTitle: 'FastGPT',
-  concatMd:
-    '项目开源地址: [FastGPT GitHub](https://github.com/labring/FastGPT)\n交流群: ![](https://oss.laf.run/otnvvf-imgs/fastgpt-feishu1.png)',
+  appTemplateCourse: '',
+  // 鲁港通 - 全站文字品牌：该值被浏览器标签标题（NextHead）、登录页系统名、
+  // 注册页「注册 {{account}} 账号」、找回密码页「找回 {{account}} 账号」、团队邀请文案、MCP 配置名等 15+ 处引用。
+  systemTitle: '鲁港通',
+  concatMd: '技术支持：鲁港通科技',
+  // 鲁港通 - 纯聊天模式：普通用户（非团队所有者）隐藏工作室/知识库/应用市场等后台导航，仅保留聊天与账号。
+  // navbar.tsx 门控为 showAdminFeatures = isOwner || !enableUserChatOnly；不显式赋值时默认 undefined
+  // 会使 !undefined === true，导致普通用户仍能看到后台入口。
+  enableUserChatOnly: true,
   limit: {
     exportDatasetLimitMinutes: 0,
     websiteSyncLimitMinuted: 0,
@@ -183,9 +189,8 @@ export async function initSystemConfig() {
     subPlans: fastgptConfig.subPlans
   };
 
-  if (!licenseData) {
-    config.feConfigs.loginGuideDocUrl = defaultOpenSourceLoginGuideDocUrl;
-  }
+  // 鲁港通 - 品牌化：不再为开源版强制注入 loginGuideDocUrl（原指向 doc.fastgpt.io 登录 FAQ），
+  // 留空后 login/index.tsx 的条件渲染不会输出该引导链接；如需仍可通过数据库 feConfigs 配置。
 
   // set config
   initFastGPTConfig(config);

@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box, Flex, Text, useDisclosure } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useUserStore } from '@/web/support/user/useUserStore';
@@ -11,6 +11,9 @@ import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMe
 import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import PhoneDrawer from '@fastgpt/web/components/common/PhoneDrawer';
+// 鲁港通 - 复用 D6 共享的 root 判定口径（username === 'root'），与引用权限/深度思考保持一致。
+import { isAdminUser } from '@fastgpt/global/support/permission/citation';
+import UserSettingsPanel from '@/components/UserSettingsPanel';
 
 type UserAvatarPopoverProps = {
   isCollapsed: boolean;
@@ -32,6 +35,11 @@ const UserAvatarPopover = ({
 
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
 
+  // 鲁港通 - 管理员（root）分流：root 保留官方头像菜单（语言切换 + 登出）；
+  // 非 root 普通用户点击头像改为打开「用户设置面板」，集中提供语言/改密/反馈/无障碍/登出（及 D10/D11 预留入口）。
+  const isRoot = isAdminUser(userInfo?.username);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const handleLogout = useCallback(() => {
     setUserInfo(null);
     clearToken();
@@ -51,6 +59,18 @@ const UserAvatarPopover = ({
       <Text fontSize="14px">{t('common:logout')}</Text>
     </>
   );
+
+  // 鲁港通 - 非 root 普通用户：头像点击打开用户设置面板（PC/移动端一致，MyModal 自适应）。
+  if (!isRoot) {
+    return (
+      <>
+        <Box cursor="pointer" w="full" onClick={() => setIsSettingsOpen(true)}>
+          {children}
+        </Box>
+        <UserSettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      </>
+    );
+  }
 
   // 移动端没有 hover，头像点击后复用通用底部抽屉，并额外挂载登出操作。
   if (!isPc) {
