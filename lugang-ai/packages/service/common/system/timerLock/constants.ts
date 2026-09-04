@@ -14,6 +14,7 @@ export enum TimerIdEnum {
   auditLogCleanup = 'auditLogCleanup',
   chatHistoryCleanup = 'chatHistoryCleanup',
   datasetSyncSchedulerReconcile = 'datasetSyncSchedulerReconcile',
+  datasetAutoUpdate = 'datasetAutoUpdate',
   stopInactiveSandboxes = 'stopInactiveSandboxes',
   archiveInactiveSandboxes = 'archiveInactiveSandboxes',
   recoverStaleSandboxOperations = 'recoverStaleSandboxOperations',

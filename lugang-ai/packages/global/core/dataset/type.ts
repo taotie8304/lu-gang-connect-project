@@ -120,6 +120,63 @@ export const DatasetSchema = z
 export type DatasetSchemaType = z.infer<typeof DatasetSchema>;
 
 /* ===== Collection ===== */
+// 鲁港通 - 知识库自动更新配置（针对 data.gov.hk 等政府官方数据集的定期更新）。
+// 修复要点：data.gov.hk 资源 last_modified 实测全 null，故改用包级 metadata_modified + 内容 MD5 哈希作为可靠更新信号。
+export const DatasetAutoUpdateConfigSchema = z
+  .object({
+    enabled: z.boolean().optional().meta({ description: '是否启用自动更新' }),
+    source: z.enum(['hk-gov-data', 'custom']).optional().meta({ description: '数据源类型' }),
+    datasetUrl: z.string().optional().meta({ description: '数据集页面 URL' }),
+    fileFormat: z
+      .enum(['csv', 'xlsx', 'xml', 'json', 'api'])
+      .optional()
+      .meta({ description: '文件格式' }),
+    api: z
+      .object({
+        endpoint: z.string().optional().meta({ description: 'API 端点' }),
+        method: z.string().optional().meta({ description: 'HTTP 方法' }),
+        headers: z.record(z.string(), z.string()).optional().meta({ description: '请求头' }),
+        cacheKey: z.string().optional().meta({ description: 'MD5 内容哈希缓存键' })
+      })
+      .optional()
+      .meta({ description: 'API 配置' }),
+    detection: z
+      .object({
+        yearPattern: z.array(z.string()).optional().meta({ description: '年份匹配模式' }),
+        checkUpdateTime: z.boolean().optional().meta({ description: '是否检查更新时间' }),
+        detailPageCheck: z.boolean().optional().meta({ description: '是否需要详情页检查' })
+      })
+      .optional()
+      .meta({ description: '检测配置' }),
+    resolvedResourceId: z.string().optional().meta({ description: 'CKAN 选定资源 ID' }),
+    resolvedResourceUrl: z.string().optional().meta({ description: 'CKAN 选定资源直链 URL' }),
+    lastMetadataModified: z.string().optional().meta({ description: '包级 metadata_modified（可靠更新信号）' }),
+    history: z
+      .array(
+        z.object({
+          timestamp: z.coerce.date().optional().meta({ description: '时间戳' }),
+          status: z.string().optional().meta({ description: 'success/failed' }),
+          message: z.string().optional().meta({ description: '信息' }),
+          fileUrl: z.string().optional().meta({ description: '文件 URL' }),
+          fileName: z.string().optional().meta({ description: '文件名' }),
+          fileSize: z.number().optional().meta({ description: '文件大小' })
+        })
+      )
+      .optional()
+      .meta({ description: '更新历史' }),
+    lastCheckTime: z.coerce.date().optional().meta({ description: '最后检查时间' }),
+    lastUpdateTime: z.coerce.date().optional().meta({ description: '最后更新时间' }),
+    notification: z
+      .object({
+        enabled: z.boolean().optional().meta({ description: '是否启用通知' }),
+        email: z.string().optional().meta({ description: '通知邮箱' })
+      })
+      .optional()
+      .meta({ description: '通知设置' })
+  })
+  .optional()
+  .meta({ description: '鲁港通 - 自动更新配置' });
+
 export const DatasetCollectionSchema = ChunkSettingsSchema.omit({
   trainingType: true
 }).extend({
@@ -153,7 +210,10 @@ export const DatasetCollectionSchema = ChunkSettingsSchema.omit({
   trainingType: z
     .enum(DatasetCollectionDataProcessModeEnum)
     .optional()
-    .meta({ description: '训练类型' })
+    .meta({ description: '训练类型' }),
+
+  // 鲁港通 - 自动更新配置（可选，仅启用自动更新的集合才有值）
+  autoUpdateConfig: DatasetAutoUpdateConfigSchema
 });
 export type DatasetCollectionSchemaType = z.infer<typeof DatasetCollectionSchema>;
 
