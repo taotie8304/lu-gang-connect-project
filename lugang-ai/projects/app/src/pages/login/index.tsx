@@ -3,7 +3,8 @@ import { useRouter } from 'next/router';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { clearToken } from '@/web/support/user/auth';
 import { useMount } from 'ahooks';
-import LoginModal from '@/pageComponents/login/LoginModal';
+// 鲁港通 - N1：登录页改用带水墨画背景+宣传文字的官网首页版本（官方 LoginModal 保留给 chat 页登录门）
+import LoginHeroModal from '@/pageComponents/login/LoginHeroModal';
 import { postAcceptInvitationLink } from '@/web/support/user/team/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useTranslation } from 'next-i18next';
@@ -70,7 +71,7 @@ const Login = () => {
     router.prefetch('/dashboard/agent');
   });
 
-  return <LoginModal onSuccess={loginSuccess} />;
+  return <LoginHeroModal onSuccess={loginSuccess} />;
 };
 
 export async function getServerSideProps(context: any) {
