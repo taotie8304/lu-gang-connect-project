@@ -1,10 +1,11 @@
 version: '3.8'
 
 # ===== 鲁港通跨境AI智能平台 - 生产环境部署配置 =====
-# 
-# 包含两个核心服务：
-# - 鲁港通前端（鲁港通跨境AI智能服务助手）- 基于 FastGPT 4.14.4 定制
-# - 鲁港通后端（鲁港通跨境AI智能服务后端）- 基于 One API 定制
+#
+# 包含核心服务：
+# - 鲁港通前端（鲁港通跨境AI智能服务助手）- 基于 FastGPT 4.16.2 定制
+#
+#（N3 已移除 One API 后端：大模型改为在 FastGPT 内直接配置模型提供商，如阿里百炼）
 #
 # 使用 GitHub Container Registry 镜像
 
@@ -139,33 +140,6 @@ services:
     networks:
       - lugang-ai-network
 
-  # ===== 鲁港通后端（鲁港通跨境AI智能服务后端）=====
-  # 域名: api.airscend.com
-  # 端口: 8080
-  lugang-enterprise:
-    image: ${LUGANG_ENTERPRISE_IMAGE:-ghcr.io/your-username/lugang-enterprise:latest}
-    container_name: lugang-enterprise
-    restart: always
-    ports:
-      - "8080:3000"
-    depends_on:
-      - pg
-      - redis
-    environment:
-      - SQL_DSN=postgres://${PG_USER:-postgres}:${PG_PASSWORD:-password}@pg:5432/oneapi?sslmode=disable
-      - REDIS_CONN_STRING=redis://redis:6379
-      - SESSION_SECRET=${SESSION_SECRET:-lugang-session-secret-2025}
-      - TZ=Asia/Shanghai
-    volumes:
-      - ./data/oneapi:/data
-    networks:
-      - lugang-ai-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/status"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 networks:
   lugang-ai-network:
     driver: bridge
@@ -174,4 +148,3 @@ volumes:
   mongo-data:
   pg-data:
   redis-data:
-  oneapi-data:

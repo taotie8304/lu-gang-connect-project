@@ -3,8 +3,9 @@
  *
  * POST /api/admin/users/status
  *
- * 禁用/启用用户，同步到鲁港通后端。
- * 适配 4.16.2：ApiRequestProps 来自 @fastgpt/next/type；addLog 改用 OpenTelemetry logger。
+ * 禁用/启用用户
+ *（N3 已摘除 One API 联动：状态同步已移除）
+ * 适配 4.16.2：ApiRequestProps 来自 @fastgpt/next/type
  */
 
 import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
@@ -12,11 +13,6 @@ import { NextAPI } from '@/service/middleware/entry';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { UserStatusEnum } from '@fastgpt/global/support/user/constant';
-import { updateOneApiUserStatus, getOneApiUserByUsername } from '@/service/integration/oneapi';
-// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
-import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
-
-const addLog = getLogger(LogCategories.MODULE.USER.ACCOUNT);
 
 export type AdminUserStatusQuery = {};
 
@@ -68,19 +64,6 @@ async function handler(
     { _id: userId },
     { status: fastgptStatus }
   );
-
-  // 同步到鲁港通后端
-  try {
-    const oneApiUser = await getOneApiUserByUsername(user.username);
-    if (oneApiUser.success && oneApiUser.data) {
-      const oneApiStatus = status === 'active' ? 1 : 2; // 鲁港通后端: 1=启用, 2=禁用
-      await updateOneApiUserStatus(oneApiUser.data.id, oneApiStatus);
-      addLog.info('鲁港通后端用户状态同步成功', { userId, username: user.username, status });
-    }
-  } catch (error) {
-    // 鲁港通后端同步失败不影响主流程，仅记录日志
-    addLog.warn('鲁港通后端用户状态同步失败', { userId, error });
-  }
 
   return {
     success: true,

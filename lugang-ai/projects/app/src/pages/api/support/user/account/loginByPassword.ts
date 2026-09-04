@@ -21,7 +21,7 @@ import {
   resolveCRMVisitorId
 } from '@fastgpt/service/support/marketing/attribution';
 import { assertUserCanLogin } from '@fastgpt/service/support/user/account/cancellation/guard';
-// 鲁港通 - 登录自愈团队成员归属 + 同步鲁港通后端所需依赖
+// 鲁港通 - 登录自愈团队成员归属所需依赖（N3 已摘除 One API 同步，仅保留团队自愈）
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
 import {
@@ -32,7 +32,6 @@ import { MongoResourcePermission } from '@fastgpt/service/support/permission/sch
 import { PerResourceTypeEnum, ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { TeamDefaultRoleVal } from '@fastgpt/global/support/permission/user/constant';
 import { Types } from 'mongoose';
-import { syncUserToOneApi } from '@/service/integration/oneapi';
 import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 
 // 鲁港通 - 适配 4.16.2 OpenTelemetry logger：保留 addLog 名称（方法签名 (msg, data) 与原一致）
@@ -160,13 +159,6 @@ async function handler(
           user.fastgpt_sem = visitorIdentity.fastgptSem;
         }
         await user.save({ session });
-
-        // 鲁港通 - 同步用户到鲁港通后端（首次登录时自动创建；失败不阻塞登录）
-        try {
-          await syncUserToOneApi(user.username, userDetail.team.memberName || user.username);
-        } catch (error) {
-          addLog.error('鲁港通后端用户同步失败', error);
-        }
 
         return { user, userDetail, visitorIdentity };
       }

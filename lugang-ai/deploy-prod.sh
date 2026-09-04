@@ -69,16 +69,16 @@ fi
 # 设置镜像名称
 IMAGE_TAG=${IMAGE_TAG:-$DEFAULT_IMAGE_TAG}
 LUGANG_AI_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-ai:${IMAGE_TAG}"
-LUGANG_ENTERPRISE_IMAGE="${DEFAULT_REGISTRY}/${GITHUB_USERNAME}/lugang-enterprise:${IMAGE_TAG}"
+
+# 鲁港通 - N3 已移除 One API 后端：仅部署 FastGPT 二开前端
 
 echo -e "${BLUE}配置信息:${NC}"
 echo "  GitHub 用户名: $GITHUB_USERNAME"
 echo "  鲁港通前端镜像: $LUGANG_AI_IMAGE"
-echo "  鲁港通后端镜像: $LUGANG_ENTERPRISE_IMAGE"
 echo ""
 
 # 步骤 1: 登录到 GitHub Container Registry
-echo -e "${YELLOW}[1/6] 登录到 GitHub Container Registry${NC}"
+echo -e "${YELLOW}[1/5] 登录到 GitHub Container Registry${NC}"
 if [ -n "$GHCR_TOKEN" ]; then
     echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_USERNAME" --password-stdin
     echo -e "${GREEN}✓ 登录成功${NC}"
@@ -88,42 +88,38 @@ fi
 
 # 步骤 2: 拉取鲁港通前端镜像
 echo ""
-echo -e "${YELLOW}[2/6] 拉取鲁港通前端镜像${NC}"
+echo -e "${YELLOW}[2/5] 拉取鲁港通前端镜像${NC}"
 docker pull $LUGANG_AI_IMAGE
 echo -e "${GREEN}✓ 鲁港通前端镜像拉取成功${NC}"
 
-# 步骤 3: 拉取鲁港通后端镜像
+# 步骤 3: 记录当前版本（用于回滚）并停止旧容器
 echo ""
-echo -e "${YELLOW}[3/6] 拉取鲁港通后端镜像${NC}"
-docker pull $LUGANG_ENTERPRISE_IMAGE || echo -e "${YELLOW}⚠ 鲁港通后端镜像拉取失败，可能尚未构建${NC}"
-echo -e "${GREEN}✓ 鲁港通后端镜像拉取完成${NC}"
-
-# 步骤 4: 记录当前版本（用于回滚）并停止旧容器
-echo ""
-echo -e "${YELLOW}[4/6] 记录当前版本并停止旧容器${NC}"
+echo -e "${YELLOW}[3/5] 记录当前版本并停止旧容器${NC}"
 CURRENT_AI_IMAGE=$(docker inspect --format='{{.Config.Image}}' lugang-ai-app 2>/dev/null || echo "无")
 echo "${CURRENT_AI_IMAGE}" > /tmp/lugang-ai-rollback-previous-tag
 echo -e "${GREEN}✓ 当前版本已记录: ${CURRENT_AI_IMAGE}（可用 ./rollback.sh 回滚）${NC}"
 export LUGANG_AI_IMAGE
-export LUGANG_ENTERPRISE_IMAGE
 export MONGO_PASSWORD
 export PG_PASSWORD
 export SESSION_SECRET
-docker-compose -f docker-compose.prod.yml stop lugang-ai lugang-enterprise 2>/dev/null || true
-docker-compose -f docker-compose.prod.yml rm -f lugang-ai lugang-enterprise 2>/dev/null || true
+# 鲁港通 - N3：旧后端容器已从编排移除，stop/rm 只处理前端
+docker-compose -f docker-compose.prod.yml stop lugang-ai 2>/dev/null || true
+docker-compose -f docker-compose.prod.yml rm -f lugang-ai 2>/dev/null || true
+# 清理历史遗留的旧后端容器（若存在）
+docker rm -f lugang-enterprise 2>/dev/null || true
 echo -e "${GREEN}✓ 旧容器已停止${NC}"
 
-# 步骤 5: 启动新容器
+# 步骤 4: 启动新容器
 echo ""
-echo -e "${YELLOW}[5/6] 启动服务${NC}"
+echo -e "${YELLOW}[4/5] 启动服务${NC}"
 # --remove-orphans：避免历史残留容器与当前编排不一致；minio/plugin 随本仓库 compose 一并拉起
 docker-compose -f docker-compose.prod.yml up -d --remove-orphans
 echo -e "${GREEN}✓ 服务已启动${NC}"
 echo -e "${YELLOW}若曾手动改过 plugin/minio，建议首次验证：docker compose -f docker-compose.prod.yml up -d --force-recreate plugin minio lugang-ai${NC}"
 
-# 步骤 6: 检查服务状态
+# 步骤 5: 检查服务状态
 echo ""
-echo -e "${YELLOW}[6/6] 检查服务状态${NC}"
+echo -e "${YELLOW}[5/5] 检查服务状态${NC}"
 sleep 5
 
 # 显示容器状态
@@ -145,38 +141,17 @@ for i in {1..30}; do
     sleep 2
 done
 
-# 等待鲁港通后端启动
-echo ""
-echo -e "${YELLOW}等待鲁港通后端启动...${NC}"
-for i in {1..30}; do
-    if curl -s -f http://localhost:8080/api/status > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ 鲁港通后端启动成功!${NC}"
-        break
-    fi
-    if [ $i -eq 30 ]; then
-        echo -e "${YELLOW}⚠ 鲁港通后端启动超时或未部署${NC}"
-    fi
-    echo "  等待中... ($i/30)"
-    sleep 2
-done
-
 # 显示最近日志
 echo ""
 echo -e "${BLUE}鲁港通前端最近日志:${NC}"
 docker logs lugang-ai-app --tail 5 2>/dev/null || echo "无日志"
 
 echo ""
-echo -e "${BLUE}鲁港通后端最近日志:${NC}"
-docker logs lugang-enterprise --tail 5 2>/dev/null || echo "无日志"
-
-echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║                    部署完成!                          ║${NC}"
 echo -e "${GREEN}╚═══════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "鲁港通前端: ${BLUE}https://www.airscend.com${NC} (端口 3210)"
-echo -e "鲁港通后端: ${BLUE}https://api.airscend.com${NC} (端口 8080)"
+echo -e "鲁港通平台: ${BLUE}https://www.airscend.com${NC} (端口 3210)"
 echo ""
 echo -e "查看日志:"
-echo -e "  鲁港通前端: ${BLUE}docker logs -f lugang-ai-app${NC}"
-echo -e "  鲁港通后端: ${BLUE}docker logs -f lugang-enterprise${NC}"
+echo -e "  鲁港通平台: ${BLUE}docker logs -f lugang-ai-app${NC}"

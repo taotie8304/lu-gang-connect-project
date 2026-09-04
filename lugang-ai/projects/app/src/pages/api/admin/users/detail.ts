@@ -1,8 +1,9 @@
 /**
  * 鲁港通 - 管理员用户详情接口
- * GET: 获取指定用户的完整信息（含额度）
+ * GET: 获取指定用户的完整信息
  * PUT: 更新指定用户信息（含密码重置）
- * Requirements: 4.1, 4.2, 4.3, 4.4, 5.1, 5.2, 5.3, 5.4, 5.5, 5.7
+ * Requirements: 4.1, 4.2, 5.1, 5.3, 5.5, 5.7
+ *（N3 已摘除 One API 联动：额度查询与后端同步已移除）
  *
  * 适配 4.16.2：
  * - 由裸 NextApiRequest handler + jsonRes 改造为 NextAPI + req.method 切换（与 admin/config/register.ts 一致）；
@@ -18,14 +19,8 @@ import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
 import { mongoSessionRun } from '@fastgpt/service/common/mongo/sessionRun';
 import { connectionMongo } from '@fastgpt/service/common/mongo';
-import { updateUserInBackend } from '@fastgpt/service/support/user/integration/userSync';
-import { getOneApiUserByUsername } from '@/service/integration/oneapi';
 import { validateUserProfile } from '@fastgpt/global/support/user/validation';
 import { hashStr } from '@fastgpt/global/common/string/tools';
-// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
-import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
-
-const addLog = getLogger(LogCategories.MODULE.USER.ACCOUNT);
 
 /** 密码长度校验：至少 8 位 */
 export function validatePassword(password: string): boolean {
@@ -43,7 +38,6 @@ export type AdminUserDetail = {
   status: string;
   createTime: Date;
   isRoot: boolean;
-  quota?: { quota: number; usedQuota: number; remainingQuota: number } | null;
 };
 
 export type AdminUserDetailQuery = {
@@ -60,7 +54,7 @@ export type AdminUpdateUserBody = {
   newPassword?: string;
 };
 
-/** GET：获取用户完整信息（含鲁港通后端额度，失败返回 null） */
+/** GET：获取用户完整信息 */
 async function handleGet(
   req: ApiRequestProps<AdminUpdateUserBody, AdminUserDetailQuery>
 ): Promise<AdminUserDetail> {
@@ -76,21 +70,6 @@ async function handleGet(
 
   const tmb = await MongoTeamMember.findOne({ userId: user._id });
 
-  // Requirement 4.3: 获取鲁港通后端额度（失败返回 null）
-  let quota: AdminUserDetail['quota'] = null;
-  try {
-    const oneApiUser = await getOneApiUserByUsername(user.username);
-    if (oneApiUser.success && oneApiUser.data) {
-      quota = {
-        quota: oneApiUser.data.quota,
-        usedQuota: oneApiUser.data.used_quota,
-        remainingQuota: Math.max(0, oneApiUser.data.quota - oneApiUser.data.used_quota)
-      };
-    }
-  } catch {
-    // Requirement 4.4: 失败返回 null
-  }
-
   return {
     _id: user._id.toString(),
     username: user.username,
@@ -101,12 +80,11 @@ async function handleGet(
     address: user.address || '',
     status: user.status || 'active',
     createTime: user.createTime,
-    isRoot: user.username === 'root',
-    quota
+    isRoot: user.username === 'root'
   };
 }
 
-/** PUT：更新用户信息（含密码重置），同步到鲁港通后端 */
+/** PUT：更新用户信息（含密码重置） */
 async function handlePut(
   req: ApiRequestProps<AdminUpdateUserBody, AdminUserDetailQuery>
 ): Promise<{ success: boolean }> {
@@ -177,19 +155,6 @@ async function handlePut(
         }
       );
   }
-
-  // Requirement 5.2: 同步到鲁港通后端（失败仅记录日志）
-  updateUserInBackend(user.username, {
-    username: user.username,
-    display_name: name || nickname,
-    email,
-    phone
-  }).catch((err) => {
-    addLog.error('鲁港通后端用户信息同步失败（管理员操作）', {
-      username: user.username,
-      error: err
-    });
-  });
 
   return { success: true };
 }

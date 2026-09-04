@@ -1,8 +1,8 @@
 /**
  * 鲁港通 - 用户注册 API
- * 用户注册后自动在鲁港通后端创建对应账户
  * 新用户自动加入 root 管理员的团队，而不是创建独立团队
  * 支持邮箱注册和手机号注册（手机号注册需要绑定邮箱接收验证码）
+ * （N3 已摘除 One API 同步：注册不再向旧后端创建账户）
  */
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { jsonRes } from '@fastgpt/service/common/response';
@@ -18,7 +18,6 @@ import { createUserSession } from '@fastgpt/service/support/user/session';
 import { setCookie } from '@fastgpt/service/support/permission/auth/common';
 import { getUserDetail } from '@fastgpt/service/support/user/controller';
 import { getClientIpFromRequest } from '@fastgpt/service/common/security/clientIp';
-import { createUserInBackend } from '@fastgpt/service/support/user/integration/userSync';
 import { isEmail, isPhone, validateUserRegistration } from '@fastgpt/global/support/user/validation';
 import { MongoResourcePermission } from '@fastgpt/service/support/permission/schema';
 import { PerResourceTypeEnum, ReadPermissionVal } from '@fastgpt/global/support/permission/constant';
@@ -224,18 +223,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (!userData?.tmbId) {
       return jsonRes(res, { code: 500, error: '用户创建失败' });
     }
-
-    // 在鲁港通后端创建对应用户（异步，不阻塞注册流程）
-    // Requirement 5.1, 5.2, 5.4: 注册成功后同步到后端，同步失败不阻塞注册
-    createUserInBackend({
-      username,
-      password,
-      display_name: displayName,
-      email: userEmail,
-      phone: userPhone
-    }).catch((err) => {
-      addLog.error('鲁港通后端用户创建异步失败', err);
-    });
 
     // 获取用户详情
     const userDetail = await getUserDetail({

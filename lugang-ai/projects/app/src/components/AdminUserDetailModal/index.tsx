@@ -1,7 +1,8 @@
 /**
  * 鲁港通 - 管理员用户详情弹窗
  * 展示并编辑用户完整信息，支持密码重置
- * Requirements: 4.1, 4.2, 4.3, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7
+ * Requirements: 4.1, 4.2, 5.1, 5.2, 5.3, 5.5, 5.6, 5.7
+ *（N3 已摘除 One API 额度展示，原 4.3/4.4 随之作废）
  *
  * 适配 4.16.2：全部用户可见文字走 i18n（common:admin_user.*）；
  *   邮箱/手机号校验复用 @fastgpt/global/support/user/validation，与后端 detail.ts 保持一致。
@@ -296,40 +297,7 @@ const AdminUserDetailModal: React.FC<AdminUserDetailModalProps> = ({
 
               <Divider />
 
-              {/* 额度展示（只读） */}
-              <Text fontSize="14px" fontWeight="600">
-                {t('common:admin_user.quota')}
-              </Text>
-              {detail.quota ? (
-                <VStack spacing={2} align="stretch">
-                  <HStack justify="space-between">
-                    <Text fontSize="13px" color="myGray.600">
-                      {t('common:admin_user.quota_total')}
-                    </Text>
-                    <Text fontSize="13px">{detail.quota.quota}</Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontSize="13px" color="myGray.600">
-                      {t('common:admin_user.quota_used')}
-                    </Text>
-                    <Text fontSize="13px">{detail.quota.usedQuota}</Text>
-                  </HStack>
-                  <HStack justify="space-between">
-                    <Text fontSize="13px" color="myGray.600">
-                      {t('common:admin_user.quota_remaining')}
-                    </Text>
-                    <Text fontSize="13px" color="green.600">
-                      {detail.quota.remainingQuota}
-                    </Text>
-                  </HStack>
-                </VStack>
-              ) : (
-                <Text fontSize="13px" color="myGray.500">
-                  {t('common:admin_user.quota_none')}
-                </Text>
-              )}
-
-              {/* 保存按钮 */}
+              {/* 保存按钮（N3 已摘除 One API 额度展示区） */}
               {!isRootUser && (
                 <Button colorScheme="blue" onClick={handleSave} isLoading={saving} mt={2}>
                   {t('common:admin_user.save')}
