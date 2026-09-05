@@ -58,6 +58,7 @@
     "ahooks": "catalog:",
     "archiver": "^7.0.1",
     "axios": "catalog:",
+    "alipay-sdk": "^4.14.0",
     "date-fns": "catalog:",
     "dayjs": "catalog:",
     "echarts": "5.4.1",
