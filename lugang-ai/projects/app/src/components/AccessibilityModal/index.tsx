@@ -14,7 +14,7 @@ type AccessibilityModalProps = {
 };
 
 const AccessibilityModal = ({ isOpen, onClose }: AccessibilityModalProps) => {
-  const { t } = useClientTranslation('common');
+  const { t } = useClientTranslation();
 
   return (
     <MyModal

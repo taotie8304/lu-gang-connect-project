@@ -2,12 +2,16 @@
 // 与开放平台「应用网关」配置的回调地址一致：https://www.airscend.com/api/pay/alipay/callback
 // 注意：支付宝要求响应纯文本 "success"，不能走统一的 jsonRes 结构
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { addLog } from '@fastgpt/service/common/system/log';
+// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import { MongoBill } from '@fastgpt/service/support/wallet/bill/schema';
 import { BillStatusEnum } from '@fastgpt/global/support/wallet/bill/constants';
 import { PRICE_SCALE } from '@fastgpt/global/support/wallet/constants';
 import { alipayVerifyNotify } from '@/service/payment/alipay';
 import { settleBill } from '@/service/payment/bill';
+
+// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
+const addLog = getLogger(LogCategories.MODULE.WALLET);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   try {

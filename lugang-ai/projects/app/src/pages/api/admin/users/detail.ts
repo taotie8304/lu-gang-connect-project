@@ -79,7 +79,8 @@ async function handleGet(
     email: user.email || '',
     address: user.address || '',
     status: user.status || 'active',
-    createTime: user.createTime,
+    // 鲁港通 - UserModelSchema.createTime 声明为 number（运行时实为 Date），显式转 Date 对齐响应类型
+    createTime: new Date(user.createTime),
     isRoot: user.username === 'root'
   };
 }
@@ -146,7 +147,8 @@ async function handlePut(
     await connectionMongo.connection.db!
       .collection('users')
       .updateOne(
-        { _id: user._id },
+        // 鲁港通 - 裸驱动集合要求 ObjectId，UserModelSchema._id 声明为 string（运行时实为 ObjectId）
+        { _id: new connectionMongo.Types.ObjectId(user._id) },
         {
           $set: {
             password: hashedPassword,

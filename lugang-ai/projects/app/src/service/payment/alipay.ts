@@ -1,7 +1,11 @@
 // 鲁港通 - 支付宝当面付客户端（N4 在线支付）
 // 普通公钥模式：应用私钥 + 支付宝公钥，凭证全部走环境变量
-import AlipaySdk from 'alipay-sdk';
-import { addLog } from '@fastgpt/service/common/system/log';
+// 鲁港通 - 4.16.2 适配：alipay-sdk v4 无默认导出（命名导入）；addLog 迁 OpenTelemetry logger
+import { AlipaySdk } from 'alipay-sdk';
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
+
+// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
+const addLog = getLogger(LogCategories.MODULE.WALLET);
 
 const ALIPAY_DEFAULT_GATEWAY = 'https://openapi.alipay.com/gateway.do';
 

@@ -23,9 +23,17 @@ const CaptchaSchema = new Schema({
   timestamps: true
 });
 
+// 鲁港通 - 验证码文档类型（4.16.2 getMongoModel 需显式泛型，findOne 结果才能访问 .code 等字段）
+type CaptchaDocType = {
+  username: string;
+  code: string;
+  type: string;
+  expireAt: Date;
+};
+
 // 获取 Model
 const getCaptchaModel = () => {
-  return getMongoModel('captcha', CaptchaSchema);
+  return getMongoModel<CaptchaDocType>('captcha', CaptchaSchema);
 };
 
 // 生成随机验证码
@@ -129,7 +137,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     });
   } catch (error) {
-    addLog.error('鲁港通验证码生成失败', error);
+    addLog.error('鲁港通验证码生成失败', { error });
     return jsonRes(res, {
       code: 500,
       error: '验证码生成失败'
@@ -161,7 +169,7 @@ export const verifyCaptcha = async (username: string, code: string): Promise<boo
     
     return isValid;
   } catch (error) {
-    addLog.error('鲁港通验证码验证失败', error);
+    addLog.error('鲁港通验证码验证失败', { error });
     return false;
   }
 };

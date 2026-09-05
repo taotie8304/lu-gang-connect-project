@@ -1,6 +1,7 @@
 // 鲁港通 - 订单服务（N4 在线支付，支付宝当面付）
 // 生命周期：创建(NOTPAY) -> 支付宝预下单出码 -> 轮询查单/异步通知双通道核销 -> 发放套餐/积分
-import { addLog } from '@fastgpt/service/common/system/log';
+// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
+import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import { MongoBill, type BillSchemaType } from '@fastgpt/service/support/wallet/bill/schema';
 import { MongoTeamSub } from '@fastgpt/service/support/wallet/sub/schema';
 import { sortStandPlans, clearTeamPlanCache } from '@fastgpt/service/support/wallet/sub/utils';
@@ -27,6 +28,9 @@ import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { addMonths } from 'date-fns';
 import dayjs from 'dayjs';
 import { alipayPrecreate, alipayQueryOrder } from './alipay';
+
+// 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
+const addLog = getLogger(LogCategories.MODULE.WALLET);
 
 /** 商户订单号：日期前缀 + 随机串，仅字母数字（支付宝 out_trade_no 限制） */
 const generateOrderId = () =>

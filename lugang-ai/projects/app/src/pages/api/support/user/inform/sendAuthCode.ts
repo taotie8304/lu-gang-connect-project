@@ -30,9 +30,17 @@ const CaptchaSchema = new Schema({
   timestamps: true
 });
 
+// 鲁港通 - 验证码文档类型（4.16.2 getMongoModel 需显式泛型，findOne 结果才能访问 .code 等字段）
+type CaptchaDocType = {
+  username: string;
+  code: string;
+  type: string;
+  expireAt: Date;
+};
+
 // 获取 Model
 const getCaptchaModel = () => {
-  return getMongoModel('captcha', CaptchaSchema);
+  return getMongoModel<CaptchaDocType>('captcha', CaptchaSchema);
 };
 
 // 生成6位数字验证码
@@ -208,7 +216,7 @@ export const verifyAuthCode = async (username: string, code: string, type: strin
     
     return isValid;
   } catch (error) {
-    addLog.error('鲁港通邮箱验证码验证失败', error);
+    addLog.error('鲁港通邮箱验证码验证失败', { error });
     return false;
   }
 };

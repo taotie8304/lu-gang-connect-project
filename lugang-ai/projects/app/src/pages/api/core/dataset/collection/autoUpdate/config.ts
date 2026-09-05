@@ -7,7 +7,8 @@ import { MongoDatasetCollection } from '@fastgpt/service/core/dataset/collection
 import { authDatasetCollection } from '@fastgpt/service/support/permission/dataset/auth';
 import { NextAPI } from '@/service/middleware/entry';
 import { WritePermissionVal } from '@fastgpt/global/support/permission/constant';
-import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
+// 鲁港通 - 4.16.2 CommonErrEnum 已无 unExist；集合不存在改用 DatasetErrEnum.unExistCollection
+import { DatasetErrEnum } from '@fastgpt/global/common/error/code/dataset';
 import { type ApiRequestProps } from '@fastgpt/next/type';
 import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 
@@ -59,7 +60,7 @@ async function handler(req: ApiRequestProps) {
     });
 
     const collection = await MongoDatasetCollection.findById(collectionId).lean();
-    if (!collection) return Promise.reject(CommonErrEnum.unExist);
+    if (!collection) return Promise.reject(DatasetErrEnum.unExistCollection);
     return collection.autoUpdateConfig || DEFAULT_CONFIG;
   }
 
@@ -75,7 +76,7 @@ async function handler(req: ApiRequestProps) {
   });
 
   const collection = await MongoDatasetCollection.findById(collectionId).lean();
-  if (!collection) return Promise.reject(CommonErrEnum.unExist);
+  if (!collection) return Promise.reject(DatasetErrEnum.unExistCollection);
 
   // 以现有配置为基线合并用户编辑，保留 history/lastCheckTime/lastUpdateTime/lastMetadataModified/cacheKey 等状态
   const existing = (collection.autoUpdateConfig || {}) as Record<string, unknown>;

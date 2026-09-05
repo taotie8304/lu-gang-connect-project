@@ -36,7 +36,7 @@ const SystemContentModal: React.FC<SystemContentModalProps> = ({
   contentKey,
   title
 }) => {
-  const { t } = useClientTranslation('common');
+  const { t } = useClientTranslation();
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>('');

@@ -37,7 +37,7 @@ type SettingsMenuItem = {
 };
 
 const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
-  const { t } = useClientTranslation('common');
+  const { t } = useClientTranslation();
   const router = useRouter();
   const { setUserInfo } = useUserStore();
   const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });

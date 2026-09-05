@@ -24,6 +24,8 @@
   "exclude": [
     "**/*.test.ts",
     "**/*.test.tsx",
+    "../../packages/**/*.test.ts",
+    "../../packages/**/*.test.tsx",
     "../../packages/**/vitest*.config.ts",
     "../../packages/**/test/**",
     ".next",

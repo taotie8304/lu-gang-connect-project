@@ -105,7 +105,8 @@ async function handler(
       username: user.username,
       avatar: memberInfo?.avatar,
       status: user.status || 'active',
-      createTime: user.createTime,
+      // 鲁港通 - UserModelSchema.createTime 声明为 number（运行时实为 Date），显式转 Date 对齐响应类型
+      createTime: new Date(user.createTime),
       lastLoginTmbId: user.lastLoginTmbId?.toString(),
       teamName: memberInfo?.teamName,
       memberName: memberInfo?.memberName

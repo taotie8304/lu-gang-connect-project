@@ -66,7 +66,8 @@ db.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:
-instance/
+# 鲁港通 - 裸模式 instance/ 会误伤任意层级同名目录（如 packages/service/core/ai/sandbox/infrastructure/instance/ 源码被整体忽略，导致 CI 构建缺模块），锚定到仓库根仅忽略 Flask 约定的根级 instance/
+/instance/
 .webassets-cache
 
 # Scrapy stuff:

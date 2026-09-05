@@ -8,6 +8,17 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 
+// 鲁港通 - 导航项类型（显式标注，避免 t() 返回值被推断为 never 导致 filteredList 重新赋值报 “string 不能赋给 never”）
+type NavbarItem = {
+  label: string;
+  icon: string;
+  activeIcon: string;
+  link: string;
+  activeLink: string[];
+  unread: number;
+  showForUser: boolean;
+};
+
 const NavbarPhone = ({ unread }: { unread: number }) => {
   const router = useRouter();
   const { userInfo } = useUserStore();
@@ -24,7 +35,7 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
 
   const navbarList = useMemo(
     () => {
-      const baseList = [
+      const baseList: NavbarItem[] = [
         {
           label: t('common:navbar.Chat'),
           icon: 'core/chat/chatLight',

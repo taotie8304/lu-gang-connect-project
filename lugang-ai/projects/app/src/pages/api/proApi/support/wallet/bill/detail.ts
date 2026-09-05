@@ -3,6 +3,7 @@ import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoBill } from '@fastgpt/service/support/wallet/bill/schema';
+import { BillStatusEnum, BillTypeEnum, BillPayWayEnum } from '@fastgpt/global/support/wallet/bill/constants';
 import { BillDetailQuerySchema } from '@fastgpt/global/openapi/support/wallet/bill/api';
 import type { BillDetailResponseType } from '@fastgpt/global/openapi/support/wallet/bill/api';
 
@@ -16,16 +17,20 @@ async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<Bil
     return null;
   }
 
+  // 鲁港通 - 本地 BillSchemaType（unknown id / 模板字面量枚举 / payWay 可选）与官方 Zod 契约（string id / 原生枚举 / payWay 必填）不一致，边界处转换
   return {
-    _id: bill._id,
-    teamId: bill.teamId,
-    tmbId: bill.tmbId,
+    _id: String(bill._id),
+    teamId: String(bill.teamId),
+    tmbId: String(bill.tmbId),
     createTime: bill.createTime,
     orderId: bill.orderId,
-    status: bill.status,
-    type: bill.type,
+    status: bill.status as unknown as BillStatusEnum,
+    type: bill.type as unknown as BillTypeEnum,
     price: bill.price,
-    metadata: bill.metadata,
+    metadata: {
+      ...bill.metadata,
+      payWay: bill.metadata.payWay ?? bill.payWay
+    } as unknown as BillDetailResponseType['metadata'],
     paidAmount: bill.paidAmount
   };
 }
