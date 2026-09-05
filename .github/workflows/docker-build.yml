@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+      # 鲁港通 - 4.16.2 融合升级期间：升级分支推送也自动构建镜像，便于上线前冒烟验证
+      - upgrade/fastgpt-4.16.2
     paths:
       - 'lugang-ai/**'
       - '.github/workflows/docker-build.yml'

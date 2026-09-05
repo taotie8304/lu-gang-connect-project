@@ -20,15 +20,17 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 加载配置
+# 加载配置（set -a 自动导出，供 compose 插值 ${PLUGIN_AUTH_TOKEN} 等使用）
 if [ -f ".env.deploy" ]; then
+    set -a
     source .env.deploy
+    set +a
 fi
 
 GITHUB_USERNAME=${GITHUB_USERNAME:-""}
 REGISTRY="ghcr.io"
 AI_IMAGE_BASE="${REGISTRY}/${GITHUB_USERNAME}/lugang-ai"
-COMPOSE_FILE="docker-compose.yml"
+COMPOSE_FILE="docker-compose.prod.yml"
 CONTAINER_NAME="lugang-ai-app"
 BACKUP_TAG_FILE="/tmp/lugang-ai-rollback-previous-tag"
 
@@ -142,21 +144,10 @@ echo -e "${YELLOW}[3/4] 切换到目标版本...${NC}"
 docker stop ${CONTAINER_NAME} 2>/dev/null || true
 docker rm ${CONTAINER_NAME} 2>/dev/null || true
 
-# 使用 docker-compose 重新启动，覆盖镜像
+# 鲁港通 - 改用 compose 覆盖 LUGANG_AI_IMAGE 回滚：raw docker run 会丢失 compose 的 environment
+# 覆盖（PLUGIN_TOKEN/CODE_SANDBOX_TOKEN 等），导致前端与 plugin/sandbox 令牌不一致而鉴权失败
 export LUGANG_AI_IMAGE="${TARGET_IMAGE}"
-
-# 直接用 docker run 启动，保持与 compose 一致的配置
-docker run -d \
-    --name ${CONTAINER_NAME} \
-    --restart always \
-    -p 3210:3000 \
-    --env-file ./projects/app/.env.local \
-    --network lugang-ai_lugang-ai-network \
-    --health-cmd "curl -f http://localhost:3000/api/health || exit 1" \
-    --health-interval 30s \
-    --health-timeout 10s \
-    --health-retries 3 \
-    "${TARGET_IMAGE}"
+docker compose -f ${COMPOSE_FILE} up -d --no-deps lugang-ai
 
 echo -e "${GREEN}✓ 容器已启动${NC}"
 
@@ -178,6 +169,7 @@ for i in {1..20}; do
         echo ""
         echo -e "如需再次回滚: ${BLUE}./rollback.sh${NC} (回到上一个版本)"
         echo -e "查看日志:     ${BLUE}docker logs -f ${CONTAINER_NAME}${NC}"
+        echo -e "数据回退:     按 ${BLUE}MIGRATION-4162.md 第 7 节${NC} 用备份覆盖 ./data/* 后再回滚"
         exit 0
     fi
     echo "  等待服务启动... ($i/20)"
@@ -188,20 +180,8 @@ done
 echo -e "${RED}✗ 新版本启动失败!${NC}"
 echo -e "${YELLOW}正在自动恢复到之前的版本...${NC}"
 
-docker stop ${CONTAINER_NAME} 2>/dev/null || true
-docker rm ${CONTAINER_NAME} 2>/dev/null || true
-
-docker run -d \
-    --name ${CONTAINER_NAME} \
-    --restart always \
-    -p 3210:3000 \
-    --env-file ./projects/app/.env.local \
-    --network lugang-ai_lugang-ai-network \
-    --health-cmd "curl -f http://localhost:3000/api/health || exit 1" \
-    --health-interval 30s \
-    --health-timeout 10s \
-    --health-retries 3 \
-    "${CURRENT_IMAGE}"
+export LUGANG_AI_IMAGE="${CURRENT_IMAGE}"
+docker compose -f ${COMPOSE_FILE} up -d --no-deps lugang-ai
 
 echo -e "${GREEN}✓ 已恢复到之前的版本: ${CURRENT_IMAGE}${NC}"
 echo -e "${RED}请检查目标镜像是否有问题${NC}"
