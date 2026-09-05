@@ -1,7 +1,8 @@
 import { CUSTOM_SPLIT_SIGN } from '../../../common/string/textSplitter';
 import { type ReadRawTextByBuffer, type ReadFileResponse } from '../type';
 import Papa from 'papaparse';
-import XLSX from 'xlsx';
+// 鲁港通 - xlsx@0.18.5 的 ESM 入口(xlsx.mjs)只有命名导出、无默认导出；autoUpdate 定时任务链路会把本模块引入 Next 主构建，Turbopack 对默认导入直接报 "Export default doesn't exist"，改用命名空间导入
+import * as XLSX from 'xlsx';
 import { filterEmptyTableData, formatMarkdownTableRow } from './utils';
 import { workerEnv } from '../../env';
 import { estimateFileParseMemoryBytes } from '../../fileParseResource';
