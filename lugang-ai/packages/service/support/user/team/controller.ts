@@ -123,7 +123,7 @@ export async function getUserDefaultTeam({
 export async function createDefaultTeam({
   userId,
   teamName = 'My Team',
-  avatar = '/icon/logo.svg',
+  avatar = '/icon/logo.png', // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
   session
 }: {
   userId: string;

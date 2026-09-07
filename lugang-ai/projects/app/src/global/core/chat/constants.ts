@@ -6,7 +6,7 @@ export const defaultChatData = {
   appId: '',
   app: {
     name: 'Loading',
-    avatar: '/icon/logo.svg',
+    avatar: '/icon/logo.png', // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
     intro: '',
     canUse: false,
     type: AppTypeEnum.simple,

@@ -18,7 +18,7 @@ export const defaultDatasetDetail: DatasetItemType = {
   tmbId: '',
   updateTime: new Date(),
   type: DatasetTypeEnum.dataset,
-  avatar: '/icon/logo.svg',
+  avatar: '/icon/logo.png', // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
   name: '',
   intro: '',
   status: DatasetStatusEnum.active,
@@ -41,7 +41,7 @@ export const defaultCollectionDetail: DatasetCollectionItemType = {
     tmbId: '',
     updateTime: new Date(),
     type: DatasetTypeEnum.dataset,
-    avatar: '/icon/logo.svg',
+    avatar: '/icon/logo.png', // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
     name: '',
     intro: '',
     vectorModel: defaultVectorModels[0].model,

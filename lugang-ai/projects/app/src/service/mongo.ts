@@ -18,12 +18,10 @@ export async function initRootUser(retry = 3): Promise<any> {
     let rootId = rootUser?._id || '';
 
     await mongoSessionRun(async (session) => {
-      // init root user
-      if (rootUser) {
-        await rootUser.updateOne({
-          password: hashStr(psw)
-        });
-      } else {
+      // 鲁港通 - root 已存在时不重置密码（沿用 4.14.4 定制）：官方行为会在每次启动把 root 密码强制改回
+      // DEFAULT_ROOT_PSW，导致升级后管理员密码失效、且以后改密一重启就被重置。此处仅在 root 不存在时创建。
+      if (!rootUser) {
+        // init root user
         const [{ _id }] = await MongoUser.create(
           [
             {

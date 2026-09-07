@@ -10,7 +10,7 @@ export const defaultApp: AppDetailType = {
   _id: '',
   name: 'AI',
   type: AppTypeEnum.simple,
-  avatar: '/icon/logo.svg',
+  avatar: '/icon/logo.png', // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
   intro: '',
   updateTime: new Date(),
   modules: [],

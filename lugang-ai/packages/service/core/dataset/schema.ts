@@ -85,7 +85,7 @@ const DatasetSchema = new Schema({
   },
   avatar: {
     type: String,
-    default: '/icon/logo.svg'
+    default: '/icon/logo.png' // 鲁港通 - 品牌默认头像（升级易被官方 logo.svg 覆盖）
   },
   name: {
     type: String,
