@@ -20,9 +20,10 @@ NC='\033[0m'
 # 配置
 BACKUP_ROOT="/www/wwwroot/backups"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
-# 数据库配置 - 与服务器 docker-compose.yml 保持一致
+# 鲁港通 - 数据库配置从环境变量读取，严禁硬编码生产密码入库（真实值见服务器 .env.deploy / docker-compose）
+# 运行前请先 export MONGO_PASSWORD，或 source 服务器 .env.deploy
 MONGO_USER="${MONGO_USER:-root}"
-MONGO_PASSWORD="${MONGO_PASSWORD:-LuGang2024Secure}"
+MONGO_PASSWORD="${MONGO_PASSWORD:?错误：请先 export MONGO_PASSWORD（真实值见服务器运维配置，勿写入代码库）}"
 PG_USER="${PG_USER:-postgres}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"

@@ -270,6 +270,12 @@ services:
       # 代码沙箱服务地址
       CODE_SANDBOX_URL: http://sandbox:3000
       CODE_SANDBOX_TOKEN: ${CODE_SANDBOX_TOKEN}
+      # 鲁港通 - 密钥对齐（升级命门，见 MIGRATION-4162.md §0.5）：environment 优先级高于 env_file，
+      # 用 .env.deploy 提供的正确密钥强制覆盖 .env.local 的错误/缺失值，否则模型 API 密钥全部解不开、AI 瘫痪
+      AES256_SECRET_KEY: ${AES256_SECRET_KEY}
+      FILE_TOKEN_KEY: ${FILE_TOKEN_KEY}
+      INVOKE_TOKEN_SECRET: ${INVOKE_TOKEN_SECRET}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
     volumes:
       # 鲁港通 - 沿用生产系统配置（品牌 feConfigs / systemEnv / 旧模型表），缺失会丢失「鲁港通AI助手」标题等定制
       - ./config/config.json:/app/data/config.json

@@ -10,7 +10,14 @@ const OpenCC = require('opencc-js');
 // ========================================
 // 数据库配置
 // ========================================
-const MONGODB_URI = 'mongodb://root:LuGang2024Secure@mongo:27017/lugang_ai?authSource=admin';
+// 鲁港通 - 连接串从环境变量读取，严禁硬编码生产密码入库（真实值见服务器运维配置 .qoder/ops-deploy.md）
+const MONGODB_URI = process.env.MONGODB_URI;
+if (!MONGODB_URI) {
+  console.error(
+    '❌ 未设置 MONGODB_URI 环境变量。运行前请先 export MONGODB_URI="mongodb://<用户>:<密码>@<主机>:27017/lugang_ai?authSource=admin"（真实密码见服务器运维配置，勿写入代码库）。'
+  );
+  process.exit(1);
+}
 const DATABASE_NAME = 'lugang_ai';
 
 // 初始化繁简转换器（繁体转简体）

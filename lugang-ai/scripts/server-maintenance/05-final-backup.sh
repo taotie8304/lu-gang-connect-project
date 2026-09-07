@@ -22,12 +22,12 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 FINAL_BACKUP_DIR="${BACKUP_ROOT}/lugang-final-${TIMESTAMP}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
-# 数据库配置 - 与服务器 docker-compose.yml 保持一致
-# 服务器实际密码: MONGO_INITDB_ROOT_PASSWORD=LuGang2024Secure, POSTGRES_PASSWORD=LuGang2024Secure
+# 鲁港通 - 数据库配置从环境变量读取，严禁硬编码生产密码入库（真实值见服务器 .env.deploy / docker-compose）
+# 运行前请先 export MONGO_PASSWORD / PG_PASSWORD，或 source 服务器 .env.deploy
 MONGO_USER="${MONGO_USER:-root}"
-MONGO_PASSWORD="${MONGO_PASSWORD:-LuGang2024Secure}"
+MONGO_PASSWORD="${MONGO_PASSWORD:?错误：请先 export MONGO_PASSWORD（真实值见服务器运维配置，勿写入代码库）}"
 PG_USER="${PG_USER:-postgres}"
-PG_PASSWORD="${PG_PASSWORD:-LuGang2024Secure}"
+PG_PASSWORD="${PG_PASSWORD:?错误：请先 export PG_PASSWORD（真实值见服务器运维配置，勿写入代码库）}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        鲁港通 - 最终备份脚本 v1.1                     ║${NC}"
@@ -207,9 +207,9 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKUP_DIR="${SCRIPT_DIR}"
 PROJECT_DIR="/www/wwwroot/lugang-ai"
 
-MONGO_USER="root"
-MONGO_PASSWORD="LuGang2024Secure"
-PG_USER="postgres"
+MONGO_USER="${MONGO_USER:-root}"
+MONGO_PASSWORD="${MONGO_PASSWORD:?错误：请先 export MONGO_PASSWORD（真实值见服务器运维配置，勿写入代码库）}"
+PG_USER="${PG_USER:-postgres}"
 
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
 echo -e "${GREEN}║        鲁港通 - 恢复脚本                              ║${NC}"

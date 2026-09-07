@@ -86,7 +86,8 @@ services:
     environment:
       # 与 plugin 服务 AUTH_TOKEN 保持一致；避免仅依赖 .env.local 漏配导致上传 .pkg 失败
       PLUGIN_BASE_URL: http://plugin:8080
-      PLUGIN_TOKEN: lugangplugin2025
+      # 鲁港通 - 令牌从同目录 gitignore 的 .env 读取，严禁硬编码入 git（升级请改用 docker-compose.prod.yml + .env.deploy）
+      PLUGIN_TOKEN: "${PLUGIN_TOKEN}"
     networks:
       - lugang-ai-network
     healthcheck:
@@ -120,7 +121,7 @@ services:
       minio:
         condition: service_healthy
     environment:
-      AUTH_TOKEN: lugangplugin2025
+      AUTH_TOKEN: "${PLUGIN_TOKEN}"
       DB_MAX_LINK: 10
       SERVICE_REQUEST_MAX_CONTENT_LENGTH: 10
       MAX_API_SIZE: 10

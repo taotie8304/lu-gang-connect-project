@@ -263,7 +263,7 @@ if [ $FAIL_COUNT -eq 0 ]; then
     echo ""
     echo -e "${YELLOW}下一步: ${NC}"
     echo "  1. 在浏览器中访问 https://www.airscend.com 测试登录"
-    echo "  2. 使用 root / LuGang@2025 登录"
+    echo "  2. 使用 root / <应用登录密码，见服务器运维配置> 登录"
     echo "  3. 测试知识库、应用等功能"
     echo "  4. 如果一切正常，运行 05-final-backup.sh 创建最终备份"
 else

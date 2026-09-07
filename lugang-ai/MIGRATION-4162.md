@@ -15,13 +15,79 @@
 | 工作流 / 知识库元数据 | 保留 | MongoDB `lugang_ai`，卷 `./data/mongo` 不变 |
 | 知识库向量 | 保留 | PG `VECTOR(1536)` 全精度，`VECTOR_VQ_LEVEL=32` 与旧表一致 |
 | 知识库源文件 | 保留 | MinIO 卷 `./data/minio` + bucket 名不变 |
-| 模型 API 密钥 | 保留 | `AES256_SECRET_KEY` 不变（换了全部无法解密） |
+| 模型 API 密钥 | 保留 | `AES256_SECRET_KEY` **必须显式配为 `fastgptkey`**（生产 4.14.4 未设该变量、运行时回落代码默认值加密；详见 §0.5，`.env.local` 现值错误） |
 | **系统工具（插件）** | **需重装** | plugin v0.3.4 共享库 → v1.1.1 独立库 `fastgpt-plugin`，旧工具定义不在新库 |
 | **部分数据表字段** | **需跑脚本迁移** | 见第 5 节 |
 | 系统配置（品牌/系统参数） | 保留 | `config/config.json` 已挂回 `/app/data/config.json`（鲁港通AI助手标题等） |
 | Redis 缓存 | 重建（可接受） | 现网实际用的是**宝塔宿主 Redis**（`REDIS_URL=172.17.0.1:6379`，约 1798 keys）；Docker 内 `lugang-ai-redis` 为孤儿（无客户端连接、仅 12 残留 key）可删。升级后切到编排内部 Redis（不发布宿主端口），现有登录会话一次性失效（用户重登）属正常 |
 | 部署编排文件 | 切换 | 现网为 `docker-compose.yml`+`override`（密钥内联）；新编排统一 `-f docker-compose.prod.yml` |
-| root 登录密码 | 变为 `DEFAULT_ROOT_PSW` | 旧 compose 曾覆盖为 lugang123456；新编排不覆盖，升级后 root 密码为 .env.local 的 `LuGang@2025` |
+| root 登录密码 | **升级时主动轮换为新强密码**（见 §0.6） | 已重新移植 4.14.4 定制：`initRootUser` 在 root 已存在时**跳过密码重置**（官方 4.16.2 每次启动会把 root 密码强制改回 `DEFAULT_ROOT_PSW`，导致密码失效且改不掉）。`DEFAULT_ROOT_PSW` 仅在全新部署、root 不存在时生效 |
+
+---
+
+## 0.5 ⚠️ 密钥对齐（升级命门 · 2026-09-07 服务器实证核实）
+
+> **本节是整个升级成败的关键，务必最先确认。** 2026-09-07 通过只读核实生产容器与 4.14.4 基准代码（`_diff_base/lugang-414-staging`），发现现有 `projects/app/.env.local` 的密钥值与生产实际加密所用值**不一致**；若直接沿用，所有大模型 API 密钥将解密失败、AI 全面瘫痪。
+
+### 核实结论（指纹比对，未读取明文）
+
+| 变量 | 生产实际来源 | 升级必须配置 | `.env.local` 现状 | 处置 |
+|------|------------|------------|-----------------|------|
+| `AES256_SECRET_KEY` | 容器未设 → 回落代码默认 `fastgptkey` | **`fastgptkey`** | 18 字符错误值 | 必须改 |
+| `FILE_TOKEN_KEY` | 旧 `docker-compose.yml` 内联（22 字符） | **生产现网内联值**（服务器上 `grep FILE_TOKEN_KEY docker-compose.yml` 读取，勿写死入 git） | 14 字符错误值 | 必须改 |
+| `INVOKE_TOKEN_SECRET` | 4.14.4 无此变量 | 新生成 ≥32 位强随机 | 缺失 | 必须补 |
+| `REDIS_URL` | 旧连宝塔宿主 Redis | 内部 `redis://redis:6379` | 缺失 | 必须补 |
+| `FE_DOMAIN` | 容器未设 | `https://www.airscend.com` | 已有 | 核对 |
+
+### AES256 = `fastgptkey` 的证据链
+
+1. `_diff_base/lugang-414-staging/packages/service/common/secret/constants.ts` 第 1 行：`export const AES256_SECRET_KEY = process.env.AES256_SECRET_KEY || 'fastgptkey';`（官方 4.14.4 同款）
+2. 生产容器 `printenv AES256_SECRET_KEY` 为空、旧 `docker-compose.yml` 无该行 → 运行时回落默认值 `fastgptkey`
+3. 4.14.4 与 4.16.2 加密实现逐字节相同（`scryptSync(KEY,'salt',32)` + `aes-256-gcm` + 密文 `iv:enc:tag`）→ 密钥一致即可无缝解密
+
+### 落地方式（推荐 A）
+
+- **A（密钥集中、不入 git）**：`.env.deploy` 增设上述 4 个密钥；`docker-compose.prod.yml` 前端 `environment` 显式引用（优先级高于 `env_file`）；`deploy-prod.sh` 导出。
+- **B（最简、直接改服务器文件）**：把服务器 `projects/app/.env.local` 的 `AES256_SECRET_KEY` 改为 `fastgptkey`、`FILE_TOKEN_KEY` 改为生产旧 `docker-compose.yml` 的内联值（服务器上 grep 可得），并补 `INVOKE_TOKEN_SECRET`、`REDIS_URL` 两行。
+
+> **安全垫**：升级不改动库中密文；若密钥配错，升级后首次 AI 对话即暴露，改对密钥重启即恢复，数据零损失、可无限回滚。
+
+### 动手前预检（必跑，只打印长度+md5 指纹、不泄露明文）
+
+在服务器部署目录执行，确认生产 AES256 回落默认值、据此定 `.env.deploy`：
+
+```bash
+cd /www/wwwroot/lugang-ai
+P=$(docker exec lugang-ai-app printenv AES256_SECRET_KEY); L=$(grep -E '^AES256_SECRET_KEY=' projects/app/.env.local | cut -d= -f2-)
+echo "PROD  len=${#P} md5=$(printf '%s' "$P" | md5sum | cut -d' ' -f1)"
+echo "LOCAL len=${#L} md5=$(printf '%s' "$L" | md5sum | cut -d' ' -f1)"
+# 期望 PROD len=0（空→回落默认 fastgptkey）→ .env.deploy 定 AES256_SECRET_KEY=fastgptkey
+# FILE_TOKEN 同理比对，取生产旧 docker-compose.yml 内联值写入 .env.deploy
+```
+
+> 完整就绪核查（含 4.16.2 必需变量齐备性 + 迁移文件就位）用本地工具 `.qoder/pre-upgrade-verify.sh`，经 `.qoder/run_remote.ps1` 管道到服务器 `bash -s` 执行（脚本不落服务器）。
+
+---
+
+## 0.6 🔐 生产密码轮换（升级必做 · 消除历史泄露）
+
+> **背景**：历史上生产密码（MongoDB root、PostgreSQL、MinIO、应用 root 登录）曾被硬编码进仓库文件并推送到 GitHub 私有库。现已全部清除明文（改为运行时从服务器配置读取），但旧密码仍留在 Git 提交历史里。**唯一能让历史泄露彻底失效的办法，是趁本次升级把密码全部换成新的强值。**
+
+### 轮换清单（升级改配置时一并完成）
+
+| 凭据 | 现网旧值状态 | 轮换要求 |
+|------|------------|---------|
+| MongoDB root 密码 | 曾泄露 | 换全新强随机值 |
+| PostgreSQL 密码 | 曾泄露、且历史上与 Mongo **共用同一密码** | 换全新强随机值，**与 Mongo 不同** |
+| MinIO root 密码 | 曾泄露 | 换全新强随机值 |
+| 应用 root 登录密码 | 曾泄露 | 升级后在 Web「账号设置」改密（已移植「root 存在不重置」定制，改后不会被启动覆盖） |
+
+### 铁律
+
+- **四个密码互不相同**，各自独立强随机（≥16 位，含大小写/数字/符号），杜绝一泄俱泄。
+- 新值**只写**服务器 `.env.deploy` / `projects/app/.env.local` / `docker-compose` 与本地运维手册 `.qoder/ops-deploy.md`（均 gitignore 或服务器本地），**绝不写进任何入 git 的文件**。
+- 数据库/MinIO 密码轮换需同步更新对应容器的环境变量并重建容器；在停机窗口内按本 Runbook 第 3 节部署时一并执行。
+- ⚠ **不可轮换**：`AES256_SECRET_KEY`（`fastgptkey`）与 `FILE_TOKEN_KEY` 是加密/签名历史数据的密钥，换了老数据全废（见 §0.5 踩坑）；本节轮换**仅限**数据库/对象存储/应用登录密码。
 
 ---
 
@@ -54,10 +120,10 @@ cp .env.deploy              backup-env-deploy-$(date +%F) 2>/dev/null || true
 
 **2026-09-05 服务器扫描已确认：现网已是单节点副本集 `_id=rs0`，成员 host 为 `lugang-ai-mongo:27017`（=容器名），keyFile 鉴权。** 新编排 replSet 名同为 `rs0`、container_name 同为 `lugang-ai-mongo`，且 entrypoint 带 `rs.status().ok===1` 幂等判断（已初始化则跳过 initiate），**不会**破坏现有副本集配置。
 
-复核命令（真实 root 密码为 `LuGang2024Secure`；运维手册所记 `password` 已过期）：
+复核命令（真实 root 密码见服务器运维配置 `.qoder/ops-deploy.md` 或 `.env.local`，本文件入 git 严禁写明文；先 `export MONGO_PASSWORD='<真实值>'` 再执行）：
 
 ```bash
-docker exec -it lugang-ai-mongo mongo -u root -p 'LuGang2024Secure' --authenticationDatabase admin --eval "rs.status().ok"
+docker exec -it lugang-ai-mongo mongo -u root -p "$MONGO_PASSWORD" --authenticationDatabase admin --eval "rs.status().ok"
 ```
 
 - 返回 `1` → 已是副本集（预期路径）。新编排 `MONGODB_URI` 带 `directConnection=true`，不依赖成员 host 发现，服务名/容器名均可连。
@@ -76,6 +142,12 @@ bash deploy-prod.sh
 ```
 
 > 现网当前由 `docker-compose.yml` + `docker-compose.override.yml` 运行（密钥内联在 environment）。新编排统一改用 `docker-compose.prod.yml`（密钥改由 `.env.local` + `.env.deploy` 提供）；`up -d` 会以新编排重建同名容器（container_name 不变），旧 yml/override 不再使用。
+
+> **过渡安全（动手前必核，已并入 `.qoder/pre-upgrade-verify.sh` 第 7 节）**：
+> - 新旧栈 6 个同名容器（mongo/pg/redis/minio/plugin/app）**原地重建、不并存**，不会内存翻倍；新栈**净增 2 容器** `lugang-ai-sandbox`（旧栈曾注释）+ `lugang-ai-mcp-server`（全新）。
+> - **compose 项目名必须一致**：旧栈容器 `com.docker.compose.project` 标签应为 `lugang-ai`（目录名）；若不同，同名容器会跨项目冲突导致 `up` 报 `name already in use`——需先 `docker compose -f docker-compose.yml down` 停旧栈再部。
+> - **内存余量**：`free -m` 确认 available 能吃下 2 新容器（现网清理后约 2.7G 空闲）；不足先加 swap 再升级。
+> - **mcp-server 镜像来自阿里云 registry**（`registry.cn-hangzhou.aliyuncs.com/fastgpt/fastgpt-mcp_server:v4.14.23`，非 ghcr，GHCR_TOKEN 不覆盖），需服务器能出网拉取；它发布宿主端口 **3003**，需空闲。
 
 等待全部容器 healthy：`docker compose -f docker-compose.prod.yml ps`。前端健康检查：`curl -f http://localhost:3210/api/health`。
 

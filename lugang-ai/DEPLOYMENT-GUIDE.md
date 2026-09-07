@@ -137,9 +137,9 @@ IMAGE_TAG=latest
 # GitHub Container Registry Token（私有仓库需要）
 GHCR_TOKEN=ghp_xxxxxxxxxxxx
 
-# 数据库密码（请修改为强密码）
-MONGO_PASSWORD=LuGang@Mongo2025
-PG_PASSWORD=LuGang@PG2025
+# 数据库密码（请修改为强密码，勿用示例值、勿提交真实值入 git）
+MONGO_PASSWORD=<你的MongoDB强密码>
+PG_PASSWORD=<你的PostgreSQL强密码>
 EOF
 ```
 
@@ -157,8 +157,8 @@ nano projects/app/.env.local
 DEFAULT_ROOT_PSW=YourStrongPassword2025
 
 # 数据库密码（与 .env.deploy 保持一致）
-MONGODB_URI=mongodb://root:LuGang@Mongo2025@mongo:27017/lugang_ai?authSource=admin
-PG_URL=postgresql://postgres:LuGang@PG2025@pg:5432/postgres
+MONGODB_URI=mongodb://root:<你的MongoDB强密码>@mongo:27017/lugang_ai?authSource=admin
+PG_URL=postgresql://postgres:<你的PostgreSQL强密码>@pg:5432/postgres
 
 # 安全密钥（使用随机字符串）
 TOKEN_KEY=<随机32位字符串>
@@ -185,7 +185,7 @@ ONE_API_TOKEN=sk-your-token
 # docker-compose / docker-compose.prod.yml 已为 lugang-ai 容器注入 PLUGIN_BASE_URL / PLUGIN_TOKEN；
 # 仍建议在 .env.local 保留下列两项，便于本地与非 Compose 启动一致；TOKEN 须与 plugin 的 AUTH_TOKEN 相同
 PLUGIN_BASE_URL=http://plugin:8080
-PLUGIN_TOKEN=lugangplugin2025
+PLUGIN_TOKEN=<随机32位字符串，与 plugin 的 AUTH_TOKEN 一致>
 
 # MinIO 公网基址（可选；plugin 容器内连 S3 使用 compose 中的 S3_ENDPOINT=minio）
 # 有公网域名访问文件时，可设为 https://你的域名:9000 或独立 MinIO 对外地址
@@ -464,7 +464,7 @@ docker-compose -f docker-compose.prod.yml down -v
 # 备份 MongoDB
 docker exec lugang-ai-mongo mongodump \
   --username root \
-  --password LuGang@Mongo2025 \
+  --password <你的MongoDB强密码> \
   --authenticationDatabase admin \
   --out /data/backup/$(date +%Y%m%d)
 
@@ -518,7 +518,7 @@ docker-compose -f docker-compose.prod.yml ps mongo pg
 # 测试 MongoDB 连接
 docker exec -it lugang-ai-mongo mongosh \
   --username root \
-  --password LuGang@Mongo2025 \
+  --password <你的MongoDB强密码> \
   --authenticationDatabase admin
 
 # 测试 PostgreSQL 连接

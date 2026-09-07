@@ -135,12 +135,12 @@ chmod +x *.sh
 ## 配置信息
 
 ### 数据库密码
-- MongoDB: `LuGang2024Secure`
-- PostgreSQL: `LuGang2024Secure`
+- 鲁港通 - 真实密码见服务器运维配置（本地 `.qoder/ops-deploy.md` 或服务器 `.env.deploy` / `docker-compose`，均不入 git）；本文件入 git，严禁写真实值
+- MongoDB / PostgreSQL 升级后须使用各自独立的强密码，不再共用同一值
 
 ### 登录信息
 - 用户名: `root`
-- 密码: `LuGang@2025`
+- 密码: 见服务器运维配置（本文件入 git，严禁写真实值）
 
 ### 域名
 - 鲁港通前端: https://www.airscend.com

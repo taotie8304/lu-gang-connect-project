@@ -55,9 +55,9 @@ PG_USER=postgres
 PG_PASSWORD=
 
 # ===== MinIO 对象存储 =====
-# ⚠升级场景：MINIO_ROOT_PASSWORD 必须等于现有值 LuGang2024Minio，否则读不到已上传的知识库源文件
+# ⚠升级场景：MINIO_ROOT_PASSWORD 必须等于服务器现网值（服务器上 grep MINIO_ROOT_PASSWORD 旧 docker-compose.yml 读取），否则读不到已上传的知识库源文件；本文件入 git，严禁写真实值
 MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=LuGang2024Minio
+MINIO_ROOT_PASSWORD=
 S3_PUBLIC_BUCKET=lugang-public
 S3_PRIVATE_BUCKET=lugang-private
 
@@ -66,6 +66,17 @@ S3_PRIVATE_BUCKET=lugang-private
 PLUGIN_AUTH_TOKEN=
 # 代码沙箱鉴权（前端 CODE_SANDBOX_TOKEN 与 sandbox SANDBOX_TOKEN 必须一致）
 CODE_SANDBOX_TOKEN=
+
+# ===== 应用加密密钥（升级命门，必须与生产 4.14.4 实际值一致，见 MIGRATION-4162.md §0.5）=====
+# AES256_SECRET_KEY：生产 4.14.4 未设此变量、回落代码默认值加密所有模型密钥，升级必须沿用同一值否则模型密钥全解不开
+# fastgptkey 是 FastGPT 公开默认值（非机密）；若生产曾自定义则填自定义值
+AES256_SECRET_KEY=fastgptkey
+# FILE_TOKEN_KEY：填生产旧 docker-compose.yml 内联的实际值（服务器 grep FILE_TOKEN_KEY docker-compose.yml 读取），错误会导致文件访问鉴权失效
+FILE_TOKEN_KEY=
+# INVOKE_TOKEN_SECRET：4.16.2 新增必需（≥32 位），留空则自动生成强随机值并回写
+INVOKE_TOKEN_SECRET=
+# REDIS_URL：新编排使用 compose 内部 Redis（不发布宿主端口）
+REDIS_URL=redis://redis:6379
 EOF
     echo -e "${YELLOW}请编辑 .env.deploy 文件后重新运行此脚本${NC}"
     echo -e "${BLUE}nano .env.deploy${NC}"
@@ -75,9 +86,15 @@ fi
 # 加载配置
 source .env.deploy
 
-# 鲁港通 - 升级场景强校验：数据库密码留空会让 compose 回落默认弱口令、连不上现有数据
-if [ -z "$MONGO_PASSWORD" ] || [ -z "$PG_PASSWORD" ]; then
-    echo -e "${RED}错误: 请在 .env.deploy 中填写 MONGO_PASSWORD / PG_PASSWORD（服务器现网真实值）${NC}"
+# 鲁港通 - 升级场景强校验：数据库/对象存储密码留空会让 compose 回落默认弱口令、连不上现有数据
+if [ -z "$MONGO_PASSWORD" ] || [ -z "$PG_PASSWORD" ] || [ -z "$MINIO_ROOT_PASSWORD" ]; then
+    echo -e "${RED}错误: 请在 .env.deploy 中填写 MONGO_PASSWORD / PG_PASSWORD / MINIO_ROOT_PASSWORD（服务器现网真实值）${NC}"
+    exit 1
+fi
+
+# 鲁港通 - 升级命门强校验：密钥留空会导致模型 API 密钥解不开、AI 瘫痪（见 MIGRATION-4162.md §0.5）
+if [ -z "$AES256_SECRET_KEY" ] || [ -z "$FILE_TOKEN_KEY" ]; then
+    echo -e "${RED}错误: 请在 .env.deploy 填写 AES256_SECRET_KEY（生产默认 fastgptkey）与 FILE_TOKEN_KEY（生产旧 compose 内联值）${NC}"
     exit 1
 fi
 
@@ -91,6 +108,12 @@ if [ -z "$CODE_SANDBOX_TOKEN" ]; then
     CODE_SANDBOX_TOKEN=$(openssl rand -base64 32 | tr -d '\n')
     sed -i "s#^CODE_SANDBOX_TOKEN=.*#CODE_SANDBOX_TOKEN=${CODE_SANDBOX_TOKEN}#" .env.deploy
     echo -e "${GREEN}✓ 已自动生成 CODE_SANDBOX_TOKEN 并回写 .env.deploy${NC}"
+fi
+# 鲁港通 - INVOKE_TOKEN_SECRET（4.16.2 新增必需，≥32 位）：留空则自动生成强随机值并回写
+if [ -z "$INVOKE_TOKEN_SECRET" ]; then
+    INVOKE_TOKEN_SECRET=$(openssl rand -base64 32 | tr -d '\n')
+    sed -i "s#^INVOKE_TOKEN_SECRET=.*#INVOKE_TOKEN_SECRET=${INVOKE_TOKEN_SECRET}#" .env.deploy
+    echo -e "${GREEN}✓ 已自动生成 INVOKE_TOKEN_SECRET 并回写 .env.deploy${NC}"
 fi
 
 # 验证必填配置
@@ -137,6 +160,8 @@ export PG_USER PG_PASSWORD
 export MINIO_ROOT_USER MINIO_ROOT_PASSWORD
 export S3_PUBLIC_BUCKET S3_PRIVATE_BUCKET
 export PLUGIN_AUTH_TOKEN CODE_SANDBOX_TOKEN
+# 鲁港通 - 升级命门密钥（见 MIGRATION-4162.md §0.5）：供 compose 前端 environment 覆盖 .env.local 错误值
+export AES256_SECRET_KEY FILE_TOKEN_KEY INVOKE_TOKEN_SECRET REDIS_URL
 # 鲁港通 - N3：旧后端容器已从编排移除，stop/rm 只处理前端
 docker compose -f docker-compose.prod.yml stop lugang-ai 2>/dev/null || true
 docker compose -f docker-compose.prod.yml rm -f lugang-ai 2>/dev/null || true
