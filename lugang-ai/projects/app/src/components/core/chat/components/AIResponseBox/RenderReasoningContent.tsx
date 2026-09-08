@@ -26,16 +26,26 @@ const RenderReasoningContent = React.memo(function RenderReasoningContent({
   isChatting,
   isLastResponseValue,
   isDisabled,
-  defaultExpanded = isLastResponseValue
+  defaultExpanded = isLastResponseValue,
+  // 鲁港通 - 紧凑模式：思考内容限高 4 行滚动展示（普通用户），root 不传此 prop 保持完整展开
+  compact = false
 }: {
   content: string;
   isChatting: boolean;
   isLastResponseValue: boolean;
   isDisabled?: boolean;
   defaultExpanded?: boolean;
+  compact?: boolean;
 }) {
   const { t } = useTranslation();
   const showAnimation = isChatting && isLastResponseValue;
+  // 鲁港通 - 紧凑模式下流式内容自动滚到底部，形成“文字向上翻动”效果
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (compact && showAnimation && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [compact, showAnimation, content]);
 
   return (
     <Accordion allowToggle defaultIndex={defaultExpanded ? 0 : undefined}>
@@ -83,9 +93,12 @@ const RenderReasoningContent = React.memo(function RenderReasoningContent({
         <AccordionPanel py={0} pr={0} pl={0} mt={2} color={'myGray.500'}>
           <Box position={'relative'} ml={3}>
             <Box
+              ref={scrollRef}
               pl={3}
               borderLeft={'1px solid'}
               borderColor={'myGray.200'}
+              maxH={compact ? '84px' : undefined}
+              overflowY={compact ? 'auto' : undefined}
               sx={{
                 '.markdown': {
                   ...reasoningTypography,

@@ -1,4 +1,4 @@
-import { authChatTargetCrud } from '@/service/support/permission/auth/chat';
+import { authChatTargetCrud, isRootChatViewer } from '@/service/support/permission/auth/chat';
 import { MongoChatItem } from '@fastgpt/service/core/chat/chatItemSchema';
 import { ChatRoleEnum } from '@fastgpt/global/core/chat/constants';
 import type { ApiRequestProps } from '@fastgpt/next/type';
@@ -53,12 +53,17 @@ export async function handler(req: ApiRequestProps): Promise<ChatHistoryItemResT
     chatItemDataId: dataId,
     fallbackResponseData: hasInlineResponseData ? chatData.responseData || [] : undefined
   });
-  return outLinkAuthData?.shareId
-    ? filterPublicNodeResponseData({
-        responseDetail: authRes.showCite,
-        nodeRespones: flowResponses
-      })
-    : flowResponses;
+
+  // 鲁港通 - 运行详情权限：仅 root 管理员可查看完整响应数据（提示词、检索内容等）；
+  // 普通用户与外链访客只返回节点耗时等公开字段，不暴露内部数据
+  const isRootViewer = await isRootChatViewer(req);
+  if (isRootViewer) {
+    return flowResponses;
+  }
+  return filterPublicNodeResponseData({
+    responseDetail: outLinkAuthData?.shareId ? authRes.showCite : false,
+    nodeRespones: flowResponses
+  });
 }
 
 export default NextAPI(handler);

@@ -1,5 +1,5 @@
 import { Box, Flex } from '@chakra-ui/react';
-import React, { useMemo } from 'react';
+import React from 'react';
 import type {
   AIChatItemValueItemType,
   ChatHistoryItemResType
@@ -10,8 +10,6 @@ import RenderProcessingCollapse from '../../../../components/AIResponseBox/Rende
 import RenderProcessingPreview, {
   getProcessingPreviewLabelKey
 } from '../../../../components/AIResponseBox/RenderProcessingPreview';
-// 鲁港通 - 普通用户隐藏深度思考
-import { useUserStore } from '@/web/support/user/useUserStore';
 import {
   hasAiAnswerContent,
   hasAiFoldableProcessingContent,
@@ -39,18 +37,9 @@ const AIChatBubbleContent = ({
   allowedCitationIds,
   onOpenCiteModal
 }: AIChatBubbleContentProps) => {
-  // 鲁港通 - 普通用户隐藏深度思考：对非 root 用户将带 reasoning 的消息标记 hideReason，
-  // 复用官方 hideReason 机制统一屏蔽分组/预览/标签/正文渲染（模型仍强制开启思考生成答案）。
-  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
-  const chatValue = useMemo(
-    () =>
-      isRoot
-        ? rawChatValue
-        : rawChatValue.map((item) =>
-            item.reasoning?.content ? { ...item, hideReason: true } : item
-          ),
-    [isRoot, rawChatValue]
-  );
+  // 鲁港通 - 深度思考展示：普通用户以紧凑模式（4 行滚动窗口）可见思考过程，root 完整展示；
+  // 渲染差异由 AIResponseBox 内的 isRoot 门控，此处不再屏蔽 reasoning 数据
+  const chatValue = rawChatValue;
 
   const renderValue = ({
     value,

@@ -60,7 +60,7 @@ const AIResponseBox = ({
 }) => {
   const showRunningStatus = useContextSelector(ChatItemContext, (v) => v.showRunningStatus);
   const showSkillReferences = useContextSelector(ChatItemContext, (v) => v.showSkillReferences);
-  // 鲁港通 - 深度思考仅对 root 展示：普通用户看不到思考过程（模型仍强制开启思考生成答案）
+  // 鲁港通 - 深度思考：普通用户以紧凑模式（4 行滚动窗口）展示，root 完整展示
   const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
   const tools = value.tools || (value.tool ? [value.tool] : undefined);
   const disableStreamingInteraction = isChatting && isLastChild;
@@ -77,7 +77,7 @@ const AIResponseBox = ({
   const showFoldableProcessing = showProcessing && showFoldableProcessingProp;
   const showStandaloneProcessing = showProcessing && showStandaloneProcessingProp;
 
-  if (showFoldableProcessing && reasoningContent && !value.hideReason && isRoot) {
+  if (showFoldableProcessing && reasoningContent && !value.hideReason) {
     foldableProcessingBlocks.push(
       <RenderReasoningContent
         key="reasoning"
@@ -86,6 +86,8 @@ const AIResponseBox = ({
         content={reasoningContent}
         isDisabled={disableStreamingInteraction}
         defaultExpanded={defaultExpandProcessing && isLastResponseValue && !textContent && !tools}
+        // 鲁港通 - 普通用户紧凑模式：思考内容限高 4 行滚动展示；root 保持完整展开体验
+        compact={!isRoot}
       />
     );
   }

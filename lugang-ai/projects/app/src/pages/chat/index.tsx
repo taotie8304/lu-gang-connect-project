@@ -219,7 +219,8 @@ const ChatContent = (props: ChatPageProps) => {
         canDownloadSource={isRoot ? props.canDownloadSource : false}
         isShowCite={props.showCite}
         isShowFullText={isRoot ? props.showFullText : false}
-        showWholeResponse={props.showWholeResponse}
+        // 鲁港通 - 运行详情权限：仅 root 管理员可见“运行详情/完整响应”入口，普通用户隐藏
+        showWholeResponse={isRoot ? props.showWholeResponse : false}
       >
         <ChatRecordContextProvider params={chatRecordProviderParams}>
           <Chat />
