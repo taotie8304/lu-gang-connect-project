@@ -174,7 +174,8 @@ export const DatasetAutoUpdateConfigSchema = z
       .optional()
       .meta({ description: '通知设置' })
   })
-  .optional()
+  // 鲁港通 - 修复：旧集合该字段存 null，zod optional 只容 undefined 不容 null，读集合详情即校验失败；nullish 同时容忍两者
+  .nullish()
   .meta({ description: '鲁港通 - 自动更新配置' });
 
 export const DatasetCollectionSchema = ChunkSettingsSchema.omit({
