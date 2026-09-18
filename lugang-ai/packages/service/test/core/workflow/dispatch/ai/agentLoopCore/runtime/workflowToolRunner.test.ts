@@ -236,22 +236,45 @@ describe('createAgentLoopCoreWorkflowToolRunner', () => {
 
     const result = await runTool({ call });
 
+    // 鲁港通 - 父流程 runtime 保持基线，不再被就地修改
     expect(runtimeNodes[0]).toEqual({
       nodeId: 'search',
-      isEntry: true,
       inputs: [
         {
           key: 'q',
+          value: 'old',
           renderTypeList: ['input', 'agentGenerated'],
-          selectedType: 'agentGenerated',
-          value: 'FastGPT'
+          selectedType: 'agentGenerated'
         }
       ]
     });
     expect(runtimeEdges[0]).toEqual({
-      target: 'search',
-      status: 'active'
+      target: 'search'
     });
+    // 鲁港通 - 参数与入口标记只写入隔离副本
+    const [firstRunArgs] = runWorkflowTool.mock.calls[0];
+    expect(firstRunArgs.runtimeNodes).toEqual([
+      {
+        nodeId: 'search',
+        isEntry: true,
+        inputs: [
+          {
+            key: 'q',
+            renderTypeList: ['input', 'agentGenerated'],
+            selectedType: 'agentGenerated',
+            value: 'FastGPT'
+          }
+        ]
+      }
+    ]);
+    expect(firstRunArgs.runtimeEdges).toEqual([
+      {
+        target: 'search',
+        status: 'active'
+      }
+    ]);
+    expect(firstRunArgs.runtimeNodes).not.toBe(runtimeNodes);
+    expect(firstRunArgs.runtimeEdges).not.toBe(runtimeEdges);
     expect(result.response).toBe(JSON.stringify({ answer: 'workflow ok' }, null, 2));
     expect(result.usages).toEqual([usage]);
     expect(result.interactive).toEqual({
@@ -316,5 +339,125 @@ describe('createAgentLoopCoreWorkflowToolRunner', () => {
       interactive: undefined,
       stop: false
     });
+  });
+
+  it('does not leak agent params between consecutive tool calls', async () => {
+    // 鲁港通 - 回归：同一消息内连续调用工具时，上一次的参数不得残留到下一次
+    const runtimeNodes = [
+      {
+        nodeId: 'search',
+        inputs: [
+          {
+            key: 'query',
+            value: '',
+            renderTypeList: ['input', 'agentGenerated'],
+            selectedType: 'agentGenerated'
+          },
+          {
+            key: 'district',
+            value: '',
+            renderTypeList: ['input', 'agentGenerated'],
+            selectedType: 'agentGenerated'
+          }
+        ]
+      }
+    ];
+    const runtimeEdges = [{ target: 'search' }];
+    const runWorkflowTool = vi.fn().mockResolvedValue({
+      toolResponses: 'ok',
+      assistantResponses: [],
+      flowUsages: [],
+      flowResponses: []
+    });
+    const { runTool } = createRunner({
+      runtimeNodes,
+      runtimeEdges,
+      runWorkflowTool,
+      getToolInfo: () => ({
+        type: 'user',
+        name: 'Search',
+        avatar: 'tool-avatar',
+        rawData: {
+          nodeId: 'search'
+        }
+      })
+    });
+
+    await runTool({
+      call: createCall({ id: 'call_1', args: '{"query":"沙田区小学","district":"沙田区"}' })
+    });
+    await runTool({
+      call: createCall({ id: 'call_2', args: '{"query":"全港国际学校数量统计"}' })
+    });
+
+    const secondCallNodes = runWorkflowTool.mock.calls[1][0].runtimeNodes;
+    expect(secondCallNodes[0].inputs).toEqual([
+      expect.objectContaining({ key: 'query', value: '全港国际学校数量统计' }),
+      expect.objectContaining({ key: 'district', value: '' })
+    ]);
+    // 父流程基线保持干净
+    expect(runtimeNodes[0].inputs[1].value).toBe('');
+  });
+
+  it('rebuilds isolated runtime state from the interactive snapshot on resume', async () => {
+    // 鲁港通 - 回归：交互恢复必须用中断快照重建（节点输出 + 边状态），不依赖父流程残留
+    const runtimeNodes = [
+      {
+        nodeId: 'search',
+        inputs: [
+          {
+            key: 'query',
+            value: '',
+            renderTypeList: ['input', 'agentGenerated'],
+            selectedType: 'agentGenerated'
+          }
+        ],
+        outputs: [
+          {
+            id: 'out1',
+            key: 'nodeOutput',
+            type: 'static',
+            value: 'initial'
+          }
+        ]
+      }
+    ];
+    const runtimeEdges = [{ source: 'start', target: 'search', status: 'waiting' }];
+    const runWorkflowTool = vi.fn().mockResolvedValue({
+      toolResponses: 'ok',
+      assistantResponses: [],
+      flowUsages: [],
+      flowResponses: []
+    });
+    const { runInteractiveTool } = createRunner({
+      runtimeNodes,
+      runtimeEdges,
+      runWorkflowTool,
+      getToolInfo: () => undefined
+    });
+
+    const childrenResponse = {
+      entryNodeIds: ['search'],
+      nodeOutputs: [{ nodeId: 'search', key: 'nodeOutput', value: 'snapshot value' }],
+      memoryEdges: [{ source: 'start', target: 'search', status: 'active' }]
+    };
+
+    await runInteractiveTool({
+      childrenResponse,
+      toolParams: {
+        toolCallId: 'call_resume'
+      }
+    } as any);
+
+    const [resumeArgs] = runWorkflowTool.mock.calls[0];
+    // 快照回填节点输出
+    expect(resumeArgs.runtimeNodes[0].outputs[0].value).toBe('snapshot value');
+    // 快照重建边状态
+    expect(resumeArgs.runtimeEdges[0].status).toBe('active');
+    // lastInteractive 继续传递
+    expect(resumeArgs.lastInteractive).toBe(childrenResponse);
+    // 父流程 runtime 保持基线
+    expect(runtimeNodes[0].outputs[0].value).toBe('initial');
+    expect(runtimeEdges[0].status).toBe('waiting');
   });
 });
