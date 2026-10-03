@@ -131,7 +131,7 @@ export async function downloadApiData(
   }
 }
 
-/** 将 JSON 数组转为 Markdown 风格表格文本，便于知识库检索 */
+/** 将 JSON 数组转为 Markdown 风格表格文本，便于资料检索 */
 function convertJsonArrayToText(jsonArray: Record<string, unknown>[]): string {
   if (jsonArray.length === 0) return '数据为空';
   const fields = Object.keys(jsonArray[0]);

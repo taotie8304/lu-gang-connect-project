@@ -74,7 +74,7 @@ export const getSelectedInputRenderTypeIndex = (input: {
 /**
  * 判断输入值是否应按工作流引用解析。
  * settingDatasetQuotePrompt 内部渲染 Reference 选择器，虽然 renderType 不是 reference，
- * 但它的值仍是 [nodeId, outputId]，运行时必须解析成知识库检索结果。
+ * 但它的值仍是 [nodeId, outputId]，运行时必须解析成资料检索结果。
  */
 export const nodeInputIsReference = (input: FlowNodeInputItemType) => {
   const renderType = getSelectedInputRenderType(input);

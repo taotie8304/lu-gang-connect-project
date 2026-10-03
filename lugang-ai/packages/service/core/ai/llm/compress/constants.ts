@@ -127,7 +127,7 @@ export const FILE_READ_RESPONSE_MAX_RATIO = 0.5;
 export const CHUNK_SIZE_RATIO = 0.5;
 
 /**
- * 知识库检索结果相关性筛选触发比例。
+ * 资料检索结果相关性筛选触发比例。
  *
  * 检索片段总 token 超过模型上下文 20% 时，调用 LLM 选择最相关片段。
  * 用于 dispatchAgentDatasetSearch 的 chunk selection 触发阈值。
@@ -172,7 +172,7 @@ export const calculateCompressionThresholds = (maxContext: number) => {
     // 分块压缩中每个分块的分割大小，用来划分原始大块的内容。
     chunkSize: Math.floor(maxContext * CHUNK_SIZE_RATIO),
 
-    // 知识库检索工具阈值，到达阈值会触发选择最相关的一半分块内容（筛选）
+    // 资料检索工具阈值，到达阈值会触发选择最相关的一半分块内容（筛选）
     datasetSearchSelection: Math.floor(maxContext * DATASET_SEARCH_SELECTION_RATIO)
   };
 };
