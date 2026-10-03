@@ -107,6 +107,10 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   // navbar.tsx 门控为 showAdminFeatures = isOwner || !enableUserChatOnly；不显式赋值时默认 undefined
   // 会使 !undefined === true，导致普通用户仍能看到后台入口。
   enableUserChatOnly: true,
+  // 鲁港通 - 邮箱注册与邮箱找回密码：4.16.2 在未接入商业版链接时 feConfigs 实际取自本对象
+  // （config.json / 数据库 systemConfigs 均不生效），缺省会导致登录页不显示「注册」与「找回密码」入口。
+  register_method: ['email'],
+  find_password_method: ['email'],
   limit: {
     exportDatasetLimitMinutes: 0,
     websiteSyncLimitMinuted: 0,
