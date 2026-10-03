@@ -5,6 +5,7 @@ import type {
   ChatHistoryItemResType
 } from '@fastgpt/global/core/chat/type';
 import type { OnOpenCiteModalProps } from '@/web/core/chat/context/chatItemContext';
+import { useUserStore } from '@/web/support/user/useUserStore';
 import AIResponseBox from '../../../../components/AIResponseBox';
 import RenderProcessingCollapse from '../../../../components/AIResponseBox/RenderProcessingCollapse';
 import RenderProcessingPreview, {
@@ -38,8 +39,24 @@ const AIChatBubbleContent = ({
   onOpenCiteModal
 }: AIChatBubbleContentProps) => {
   // 鲁港通 - 深度思考展示：普通用户以紧凑模式（4 行滚动窗口）可见思考过程，root 完整展示；
-  // 渲染差异由 AIResponseBox 内的 isRoot 门控，此处不再屏蔽 reasoning 数据
-  const chatValue = rawChatValue;
+  // 渲染差异由 AIResponseBox 内的 isRoot 门控；普通用户视角的思考文本额外过滤内部术语"知识库"
+  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
+  const chatValue = React.useMemo(() => {
+    if (isRoot) return rawChatValue;
+
+    return rawChatValue.map((value) => {
+      const reasoningContent = value.reasoning?.content;
+      if (!reasoningContent) return value;
+
+      return {
+        ...value,
+        reasoning: {
+          ...value.reasoning,
+          content: reasoningContent.replace(/知识库/g, '资料').replace(/知識庫/g, '資料')
+        }
+      };
+    });
+  }, [rawChatValue, isRoot]);
 
   const renderValue = ({
     value,
