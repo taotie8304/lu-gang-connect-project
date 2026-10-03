@@ -62,7 +62,8 @@ const Index = ({
 
     // 普通用户：优先跳转到默认 App，其次是分享链接
     if (defaultAppId) {
-      router.replace(`/chat?appId=${defaultAppId}`);
+      // 鲁港通 - pane=ra 表示应用对话面板，避免首屏落入团队应用列表
+      router.replace(`/chat?appId=${defaultAppId}&pane=ra`);
     } else if (defaultShareId) {
       router.replace(`/chat/share?shareId=${defaultShareId}`);
     } else {

@@ -85,6 +85,8 @@ const AppChatWindow = () => {
   const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
   const pane = useContextSelector(ChatPageContext, (v) => v.pane);
   const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
+  // 鲁港通 - 普通用户禁止进入团队应用列表时的回退目标
+  const defaultAppId = useContextSelector(ChatPageContext, (v) => v.defaultAppId);
   const refreshRecentlyUsed = useContextSelector(ChatPageContext, (v) => v.refreshRecentlyUsed);
   const upsertRecentlyUsedAppPlaceholder = useContextSelector(
     ChatPageContext,
@@ -130,7 +132,12 @@ const AppChatWindow = () => {
           if (e?.statusText === AppErrEnum.unAuthApp) {
             refreshRecentlyUsed();
           }
-          handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+          if (userInfo?.username !== 'root' && defaultAppId) {
+            // 鲁港通 - 普通用户不允许进入团队应用列表，异常时回退到默认 AI 助手
+            handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, defaultAppId);
+          } else {
+            handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+          }
         }
       },
       onFinally() {

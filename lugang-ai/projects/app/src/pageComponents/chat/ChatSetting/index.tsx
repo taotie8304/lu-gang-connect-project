@@ -45,6 +45,8 @@ const ChatSetting = () => {
 
   const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
   const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
+  // 鲁港通 - 普通用户禁止进入团队应用列表时的回退目标
+  const defaultAppId = useContextSelector(ChatPageContext, (v) => v.defaultAppId);
 
   const handleTabChange = useCallback(
     (tab: ChatSettingTabOptionEnum) => {
@@ -64,7 +66,12 @@ const ChatSetting = () => {
 
   useMount(() => {
     if (!feConfigs?.isPlus || !userInfo?.team.permission.hasManagePer) {
-      handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+      if (userInfo?.username !== 'root' && defaultAppId) {
+        // 鲁港通 - 普通用户不允许进入团队应用列表，回退到默认 AI 助手
+        handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, defaultAppId);
+      } else {
+        handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+      }
     }
   });
 

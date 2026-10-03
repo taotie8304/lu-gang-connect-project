@@ -257,6 +257,9 @@ const ActionButton: React.FC<{
 const NavigationSection = () => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
+  const { userInfo } = useUserStore();
+  // 鲁港通 - 团队应用（全部应用）入口仅 root 管理员可见
+  const isRoot = userInfo?.username === 'root';
 
   const isEnableHome = useContextSelector(
     ChatPageContext,
@@ -294,12 +297,14 @@ const NavigationSection = () => {
                 />
               )}
 
-              <ActionButton
-                icon="common/app"
-                isCollapsed={true}
-                isActive={isAllAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
-              />
+              {isRoot && (
+                <ActionButton
+                  icon="common/app"
+                  isCollapsed={true}
+                  isActive={isAllAppsActive}
+                  onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
+                />
+              )}
             </Flex>
           </AnimatedSection>
         ) : (
@@ -315,13 +320,15 @@ const NavigationSection = () => {
                 />
               )}
 
-              <ActionButton
-                icon="common/app"
-                text={t('chat:sidebar.all_apps')}
-                isCollapsed={false}
-                isActive={isAllAppsActive}
-                onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
-              />
+              {isRoot && (
+                <ActionButton
+                  icon="common/app"
+                  text={t('chat:sidebar.all_apps')}
+                  isCollapsed={false}
+                  isActive={isAllAppsActive}
+                  onClick={() => handlePaneChange(ChatSidebarPaneEnum.ALL_APPS)}
+                />
+              )}
             </Flex>
           </AnimatedSection>
         )}

@@ -33,6 +33,8 @@ const logger = getLogger(LogCategories.MODULE.CHAT.ITEM);
 
 const Chat = () => {
   const { isPc } = useSystem();
+  // 鲁港通 - 团队应用列表仅 root 管理员可见
+  const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
 
   const { appId, chatId } = useChatStore();
 
@@ -89,7 +91,8 @@ const Chat = () => {
           {pane === ChatSidebarPaneEnum.HOME && <HomeChatWindow />}
 
           {/* all apps */}
-          {pane === ChatSidebarPaneEnum.ALL_APPS && <ChatAllApp />}
+          {/* 鲁港通 - 团队应用列表仅 root 管理员可见，普通用户由上下文守卫回到默认应用 */}
+          {pane === ChatSidebarPaneEnum.ALL_APPS && isRoot && <ChatAllApp />}
 
           {/* recently used apps chat window */}
           {pane === ChatSidebarPaneEnum.RECENTLY_USED_APPS && <AppChatWindow />}
@@ -126,6 +129,7 @@ const Chat = () => {
 
 type ChatPageProps = {
   appId: string;
+  defaultAppId: string;
   shouldInitUserInfo: boolean;
   isStandalone?: string;
   showRunningStatus: boolean;
@@ -290,7 +294,7 @@ const Render = (props: ChatPageProps) => {
   }
 
   return (
-    <ChatPageContextProvider appId={props.appId}>
+    <ChatPageContextProvider appId={props.appId} defaultAppId={props.defaultAppId}>
       <ChatContent {...props} />
     </ChatPageContextProvider>
   );
@@ -324,6 +328,7 @@ export async function getServerSideProps(context: any) {
   return {
     props: {
       appId,
+      defaultAppId: process.env.DEFAULT_APP_ID || '',
       shouldInitUserInfo,
       showRunningStatus: chatQuoteReaderConfig?.showRunningStatus ?? true,
       showSkillReferences: chatQuoteReaderConfig?.showSkillReferences ?? false,

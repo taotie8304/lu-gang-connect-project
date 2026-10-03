@@ -100,6 +100,8 @@ const HomeChatWindow = () => {
   const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
   const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
   const homeAppId = useContextSelector(ChatPageContext, (v) => v.chatSettings?.appId || '');
+  // 鲁港通 - 普通用户禁止进入团队应用列表时的回退目标
+  const defaultAppId = useContextSelector(ChatPageContext, (v) => v.defaultAppId);
   const refreshRecentlyUsed = useContextSelector(ChatPageContext, (v) => v.refreshRecentlyUsed);
 
   const chatRecords = useContextSelector(ChatRecordContext, (v) => v.chatRecords);
@@ -231,6 +233,9 @@ const HomeChatWindow = () => {
       onError() {
         if (feConfigs.isPlus) {
           handlePaneChange(ChatSidebarPaneEnum.HOME);
+        } else if (userInfo?.username !== 'root' && defaultAppId) {
+          // 鲁港通 - 普通用户不允许进入团队应用列表，回退到默认 AI 助手
+          handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, defaultAppId);
         } else {
           handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
         }
@@ -244,7 +249,12 @@ const HomeChatWindow = () => {
 
   useMount(() => {
     if (!feConfigs?.isPlus) {
-      handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+      if (userInfo?.username !== 'root' && defaultAppId) {
+        // 鲁港通 - 普通用户不允许进入团队应用列表，回退到默认 AI 助手
+        handlePaneChange(ChatSidebarPaneEnum.RECENTLY_USED_APPS, defaultAppId);
+      } else {
+        handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+      }
     }
   });
 

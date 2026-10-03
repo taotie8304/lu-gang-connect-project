@@ -35,6 +35,8 @@ export type ChatPageContextValue = {
   chatSettings: ChatSettingType | undefined;
   refreshChatSetting: () => Promise<ChatSettingType | undefined>;
   logos: { wideLogoUrl?: string; squareLogoUrl?: string };
+  /** 鲁港通 - 默认 AI 助手应用 ID（服务端注入），普通用户禁止进入团队应用列表时的回退目标 */
+  defaultAppId: string;
 
   // User & apps
   isInitedUser: boolean;
@@ -51,6 +53,7 @@ export const ChatPageContext = createContext<ChatPageContextValue>({
   onTriggerCollapse: () => {},
   chatSettings: undefined,
   logos: { wideLogoUrl: '', squareLogoUrl: '' },
+  defaultAppId: '',
   refreshChatSetting: function (): Promise<ChatSettingType | undefined> {
     throw new Error('Function not implemented.');
   },
@@ -63,9 +66,12 @@ export const ChatPageContext = createContext<ChatPageContextValue>({
 
 export const ChatPageContextProvider = ({
   appId: routeAppId,
+  defaultAppId = '',
   children
 }: {
   appId: string;
+  /** 鲁港通 - 默认 AI 助手应用 ID，由 /chat 页从服务端环境变量注入 */
+  defaultAppId?: string;
   children: React.ReactNode;
 }) => {
   const router = useRouter();
@@ -231,19 +237,41 @@ export const ChatPageContextProvider = ({
     [lastestPane, router, setAppId, setLastPane, setLastChatAppId, chatSettings?.appId]
   );
 
+  // 鲁港通 - 普通用户（非 root）不允许进入团队应用列表：统一回退到默认 AI 助手的应用对话面板
+  const isRoot = userInfo?.username === 'root';
+  const normalUserDefaultAppId = !feConfigs.isPlus && !isRoot ? defaultAppId : '';
+
   useEffect(() => {
     if (Object.values(ChatSidebarPaneEnum).includes(pane)) return;
 
+    if (normalUserDefaultAppId) {
+      handlePaneChange(
+        ChatSidebarPaneEnum.RECENTLY_USED_APPS,
+        routeAppId || normalUserDefaultAppId
+      );
+      return;
+    }
+
     handlePaneChange(feConfigs.isPlus ? ChatSidebarPaneEnum.HOME : ChatSidebarPaneEnum.ALL_APPS);
-  }, [feConfigs.isPlus, handlePaneChange, pane]);
+  }, [feConfigs.isPlus, handlePaneChange, pane, normalUserDefaultAppId, routeAppId]);
 
   useEffect(() => {
     if (feConfigs.isPlus) return;
 
+    if (normalUserDefaultAppId) {
+      if (pane !== ChatSidebarPaneEnum.RECENTLY_USED_APPS || !routeAppId) {
+        handlePaneChange(
+          ChatSidebarPaneEnum.RECENTLY_USED_APPS,
+          routeAppId || normalUserDefaultAppId
+        );
+      }
+      return;
+    }
+
     if (![ChatSidebarPaneEnum.ALL_APPS, ChatSidebarPaneEnum.RECENTLY_USED_APPS].includes(pane)) {
       handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
     }
-  }, [feConfigs.isPlus, handlePaneChange, pane]);
+  }, [feConfigs.isPlus, handlePaneChange, pane, normalUserDefaultAppId, routeAppId]);
 
   const logos: Pick<ChatSettingType, 'wideLogoUrl' | 'squareLogoUrl'> = useMemo(
     () => ({
@@ -266,6 +294,7 @@ export const ChatPageContextProvider = ({
       chatSettings,
       refreshChatSetting,
       logos,
+      defaultAppId,
       isInitedUser: true,
       userInfo,
       myApps: mergedMyApps,
@@ -280,6 +309,7 @@ export const ChatPageContextProvider = ({
       chatSettings,
       refreshChatSetting,
       logos,
+      defaultAppId,
       userInfo,
       mergedMyApps,
       upsertRecentlyUsedAppPlaceholder,

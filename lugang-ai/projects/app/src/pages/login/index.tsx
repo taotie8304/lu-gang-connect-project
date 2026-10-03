@@ -14,7 +14,8 @@ import { validateRedirectUrl } from '@/web/common/utils/uri';
 import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 import { useLoginRedirectAfterLogin } from '@/web/support/user/loginRedirect';
 
-const Login = () => {
+// 鲁港通 - 默认 AI 助手应用 ID：普通用户登录后直达该应用对话，不再经过工作台
+const Login = ({ defaultAppId }: { defaultAppId: string }) => {
   const router = useRouter();
   const { lastRoute = '', lastTmbId = '' } = router.query as {
     lastRoute: string;
@@ -49,13 +50,21 @@ const Login = () => {
         return decodeLastRoute;
       })();
 
-      const targetRoute = navigateTo
-        ? await resolveLoginRedirect({
-            user: res.user,
-            fallbackRoute: navigateTo,
-            lastTmbId
-          })
-        : undefined;
+      // 鲁港通 - 普通用户登录后直达默认 AI 助手（团队应用仅管理员可见），管理员保持原跳转逻辑
+      const defaultAppRoute =
+        res.user.username !== 'root' && defaultAppId
+          ? `/chat?appId=${defaultAppId}&pane=ra`
+          : '';
+
+      const targetRoute = defaultAppRoute
+        ? defaultAppRoute
+        : navigateTo
+          ? await resolveLoginRedirect({
+              user: res.user,
+              fallbackRoute: navigateTo,
+              lastTmbId
+            })
+          : undefined;
 
       setUserInfo(res.user);
 
@@ -63,7 +72,7 @@ const Login = () => {
         router.replace(targetRoute);
       }
     },
-    [lastRoute, lastTmbId, resolveLoginRedirect, router, setUserInfo, t, toast]
+    [lastRoute, lastTmbId, defaultAppId, resolveLoginRedirect, router, setUserInfo, t, toast]
   );
 
   useMount(() => {
@@ -77,6 +86,8 @@ const Login = () => {
 export async function getServerSideProps(context: any) {
   return {
     props: {
+      // 鲁港通 - 注入默认 AI 助手应用 ID，供普通用户登录后直达
+      defaultAppId: process.env.DEFAULT_APP_ID || '',
       ...(await serviceSideProps(context, ['app', 'user', 'login']))
     }
   };

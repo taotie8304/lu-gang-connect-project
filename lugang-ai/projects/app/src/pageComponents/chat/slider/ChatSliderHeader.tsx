@@ -13,6 +13,7 @@ import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
 import { DEFAULT_LOGO_BANNER_URL } from '@/pageComponents/chat/constants';
 import ChatSliderRecentAppList from '@/pageComponents/chat/slider/ChatSliderQuickAppList';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 type Props = {
   title?: string;
@@ -23,6 +24,9 @@ const ChatSliderHeader = ({ title, banner }: Props) => {
   const { t } = useTranslation();
   const { isPc } = useSystem();
   const { appId: activeAppId, setChatId } = useChatStore();
+  const { userInfo } = useUserStore();
+  // 鲁港通 - 团队应用（全部应用）入口仅 root 管理员可见
+  const isRoot = userInfo?.username === 'root';
 
   const pane = useContextSelector(ChatPageContext, (v) => v.pane);
   const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
@@ -90,29 +94,31 @@ const ChatSliderHeader = ({ title, banner }: Props) => {
           </Flex>
         )}
 
-        <Flex
-          p="8px"
-          gap={2}
-          cursor={'pointer'}
-          borderRadius={'8px'}
-          alignItems={'center'}
-          bg={isAllAppsPane ? 'primary.100' : 'transparent'}
-          color={isAllAppsPane ? 'primary.600' : 'myGray.500'}
-          _hover={{
-            bg: isAllAppsPane ? 'primary.100' : 'transparent',
-            color: isAllAppsPane ? 'primary.600' : 'myGray.500'
-          }}
-          onClick={() => {
-            handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
-            onCloseSlider();
-            setChatId();
-          }}
-        >
-          <MyIcon name="common/app" w="20px" h="20px" />
-          <Box fontSize="sm" fontWeight={500} flexShrink={0} whiteSpace="nowrap">
-            {t('chat:sidebar.all_apps')}
-          </Box>
-        </Flex>
+        {isRoot && (
+          <Flex
+            p="8px"
+            gap={2}
+            cursor={'pointer'}
+            borderRadius={'8px'}
+            alignItems={'center'}
+            bg={isAllAppsPane ? 'primary.100' : 'transparent'}
+            color={isAllAppsPane ? 'primary.600' : 'myGray.500'}
+            _hover={{
+              bg: isAllAppsPane ? 'primary.100' : 'transparent',
+              color: isAllAppsPane ? 'primary.600' : 'myGray.500'
+            }}
+            onClick={() => {
+              handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
+              onCloseSlider();
+              setChatId();
+            }}
+          >
+            <MyIcon name="common/app" w="20px" h="20px" />
+            <Box fontSize="sm" fontWeight={500} flexShrink={0} whiteSpace="nowrap">
+              {t('chat:sidebar.all_apps')}
+            </Box>
+          </Flex>
+        )}
 
         <ChatSliderRecentAppList />
       </Flex>
