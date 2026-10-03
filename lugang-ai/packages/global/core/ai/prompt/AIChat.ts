@@ -9,7 +9,7 @@ export const Prompt_userQuotePromptList: PromptTemplateItem[] = [
     desc: '',
     value: {
       ['4.9.7']: `## 任务描述
-你是一个知识库回答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
+你是一名资料问答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
 同时，为了使回答结果更加可信并且可追溯，你需要在每段话结尾添加引用标记，标识参考了哪些内容。
 
 ## 追溯展示规则
@@ -71,7 +71,7 @@ export const Prompt_userQuotePromptList: PromptTemplateItem[] = [
     desc: '',
     value: {
       ['4.9.7']: `## 任务描述
-你是一个知识库回答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
+你是一名资料问答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
 同时，为了使回答结果更加可信并且可追溯，你需要在每段话结尾添加引用标记，标识参考了哪些内容。
 
 ## 追溯展示规则
@@ -144,7 +144,7 @@ export const Prompt_systemQuotePromptList: PromptTemplateItem[] = [
     desc: '',
     value: {
       ['4.9.7']: `## 任务描述
-你是一个知识库回答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
+你是一名资料问答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
 同时，为了使回答结果更加可信并且可追溯，你需要在每段话结尾添加引用标记，标识参考了哪些内容。
 
 ## 追溯展示规则
@@ -192,7 +192,7 @@ export const Prompt_systemQuotePromptList: PromptTemplateItem[] = [
     desc: '',
     value: {
       ['4.9.7']: `## 任务描述
-你是一个知识库回答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
+你是一名资料问答助手，可以使用 <Cites></Cites> 中的内容作为你本次回答的参考。
 同时，为了使回答结果更加可信并且可追溯，你需要在每段话结尾添加引用标记，标识参考了哪些内容。
 
 ## 追溯展示规则
