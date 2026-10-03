@@ -27,7 +27,8 @@ describe('user api', () => {
       lang: 'zh-CN'
     };
     await api.sendAuthCode(data);
-    expect(POST).toHaveBeenCalledWith('/proApi/support/user/inform/sendAuthCode', data);
+    // 鲁港通 - 验证码发送已改用本地接口，与 web/support/user/api.ts 保持一致
+    expect(POST).toHaveBeenCalledWith('/support/user/inform/sendAuthCode', data);
   });
 
   it('should get token login', async () => {
