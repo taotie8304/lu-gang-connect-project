@@ -50,6 +50,10 @@ export const shouldFilterAiValue = (item: AIChatItemValueItemType) => {
   );
 };
 
+// 鲁港通 - 普通用户展示层过滤内部术语：思考文本中的"知识库"统一替换为"资料"（繁体同步）
+export const replaceInternalTerms = (text: string) =>
+  text.replace(/知识库/g, '资料').replace(/知識庫/g, '資料');
+
 /**
  * 判断 AI 气泡是否需要展示“应用无输出内容”兜底提示。
  *

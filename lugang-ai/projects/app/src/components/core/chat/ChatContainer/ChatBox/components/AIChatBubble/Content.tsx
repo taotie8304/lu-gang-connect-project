@@ -16,7 +16,8 @@ import {
   hasAiFoldableProcessingContent,
   hasAiInteractiveContent,
   hasAiProcessingContent,
-  hasAiStandaloneProcessingContent
+  hasAiStandaloneProcessingContent,
+  replaceInternalTerms
 } from './utils';
 
 type AIChatBubbleContentProps = {
@@ -52,7 +53,7 @@ const AIChatBubbleContent = ({
         ...value,
         reasoning: {
           ...value.reasoning,
-          content: reasoningContent.replace(/知识库/g, '资料').replace(/知識庫/g, '資料')
+          content: replaceInternalTerms(reasoningContent)
         }
       };
     });
