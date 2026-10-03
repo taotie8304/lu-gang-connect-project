@@ -76,9 +76,9 @@ const buildAgentLoopCoreInputDatasetsPrompt = (
 ) => {
   if (selectedDataset.length === 0) return '';
 
-  return `## 知识库
+  return `## 参考资料
 
-用户当前可用的知识库：
+用户当前可用的官方资料：
 
 ${selectedDataset
   .map((item) =>

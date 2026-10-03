@@ -43,7 +43,7 @@ export const createDatasetSearchTool = (): ChatCompletionTool => ({
   function: {
     name: DATASET_SEARCH_TOOL_NAME,
     description:
-      '搜索知识库获取相关信息。当需要查询知识库中的专业知识、文档内容或历史记录时使用此工具。',
+      '检索官方参考资料。当需要查询平台收录的专业资料、官方文档或历史内容时使用此工具。',
     parameters: {
       type: 'object',
       properties: {

@@ -31,13 +31,13 @@ export const systemSubInfo: Record<
   },
   [SubAppIds.datasetSearch]: {
     name: {
-      'zh-CN': '知识库检索',
-      'zh-Hant': '知識庫檢索',
+      'zh-CN': '资料检索',
+      'zh-Hant': '資料檢索',
       en: 'DatasetSearch'
     },
     avatar: 'core/workflow/template/datasetSearch',
     toolDescription:
-      '搜索知识库获取相关信息，当有相关知识库信息的时候可以使用此工具来对知识库进行检索'
+      '检索平台收录的官方参考资料，当需要专业知识、官方文档或历史内容时可以使用此工具'
   },
   [AGENT_SANDBOX_TOOLSET_ID]: {
     name: SANDBOX_NAME,
