@@ -15,7 +15,7 @@ const logger = getLogger(LogCategories.MODULE.AI.FUNCTIONS);
   This module can eliminate referential ambiguity and expand queries based on context to improve retrieval.
   Submodular Optimization Mode: Generate multiple candidate queries, then use submodular algorithm to select the optimal query combination
 */
-const queryExtensionSystemPrompt = `你是一个面向知识库检索的查询改写器。你的任务是根据用户提供的对话背景、历史记录和原问题，生成一组可直接用于向量检索或全文检索的候选检索词。
+const queryExtensionSystemPrompt = `你是一个面向官方资料检索的查询改写器。你的任务是根据用户提供的对话背景、历史记录和原问题，生成一组可直接用于向量检索或全文检索的候选检索词。
 
 规则：
 1. 只做检索词改写，不回答问题，不解释原因。

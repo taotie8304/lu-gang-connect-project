@@ -35,7 +35,7 @@ const normalizeStringList = (value: unknown): string[] => {
 const isHttpUrl = (value: string) => /^https?:\/\//i.test(value);
 
 /**
- * 创建知识库搜索 system tool。
+ * 创建资料检索 system tool。
  * agent-loop 只暴露通用 query；workflow 节点参数兼容由 workflow adapter 负责。
  */
 export const createDatasetSearchTool = (): ChatCompletionTool => ({

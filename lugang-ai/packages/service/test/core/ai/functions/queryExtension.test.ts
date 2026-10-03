@@ -220,7 +220,7 @@ describe('queryExtension', () => {
     expect(messages[1]).toMatchObject({
       role: 'user'
     });
-    expect(messages[0].content).toContain('你是一个面向知识库检索的查询改写器');
+    expect(messages[0].content).toContain('你是一个面向官方资料检索的查询改写器');
     expect(messages[0].content).not.toContain('权限资源接入测试问题 42');
     expect(messages[0].content).not.toContain('唯一背景 42');
     expect(messages[1].content).toContain('期望数量：4');

@@ -52,7 +52,7 @@ const formatDatasetSearchResponse = (searchResults: SearchDataResponseItemType[]
       const sourceName = item.sourceName || `来源${index + 1}`;
       const content = `${item.q}\n${item.a || ''}`.trim();
 
-      return `【知识片段${index + 1}】\nid: ${item.id}\nsource: ${sourceName}\ncontent: ${content}`;
+      return `【资料片段${index + 1}】\nid: ${item.id}\nsource: ${sourceName}\ncontent: ${content}`;
     })
     .join('\n\n');
 
@@ -106,7 +106,7 @@ const selectRelevantChunksByLLM = async ({
 
   const prompt = `用户查询：${query}
 
-以下是从知识库中搜索到的 ${chunks.length} 个相关分块：
+以下是从官方资料中检索到的 ${chunks.length} 个相关分块：
 ${chunkSummaries}
 
 请根据用户查询的相关性，选择最相关的 ${Math.floor(chunks.length / 2)} 个分块。
