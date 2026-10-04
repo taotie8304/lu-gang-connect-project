@@ -33,8 +33,14 @@ const extractPemBody = (raw: string) =>
     .replace(/\s+/g, '');
 
 /** 鲁港通 - 应用私钥类型自适应：PKCS8（PRIVATE KEY）需显式告知 SDK 后按该类型解析，PKCS1（RSA PRIVATE KEY）为 SDK 默认 */
-const detectPrivateKeyType = (raw: string): 'PKCS1' | 'PKCS8' =>
-  raw.includes('-----BEGIN PRIVATE KEY-----') ? 'PKCS8' : 'PKCS1';
+const detectPrivateKeyType = (raw: string): 'PKCS1' | 'PKCS8' => {
+  if (raw.includes('-----BEGIN PRIVATE KEY-----')) return 'PKCS8';
+  if (raw.includes('-----BEGIN RSA PRIVATE KEY-----')) return 'PKCS1';
+  // 无 PEM 标记（纯 base64）：按 DER 结构判别。外层 SEQUENCE(30 82 ..) 与 version(02 01 00) 之后，
+  // 下一个元素 tag 为 SEQUENCE(0x30) 是 PKCS8 的算法标识，为 INTEGER(0x02) 则是 PKCS1 的模数
+  const der = Buffer.from(extractPemBody(raw), 'base64');
+  return der.length > 8 && der[4] === 0x02 && der[7] === 0x30 ? 'PKCS8' : 'PKCS1';
+};
 
 let alipayClient: AlipaySdk | undefined;
 
