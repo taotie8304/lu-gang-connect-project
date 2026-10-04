@@ -21,6 +21,21 @@ export const getAlipayNotifyUrl = () =>
 export const isAlipayConfigured = () =>
   Boolean(getAppId() && getAppPrivateKey() && getAlipayPublicKey());
 
+/**
+ * 鲁港通 - PEM 凭证归一化：支付宝控制台导出的密钥可能是完整 PEM、单行或换行被转义/丢失的形态，
+ * 统一提取纯 base64 主体，交由 SDK 按声明类型重新包裹为标准 PEM。
+ */
+const extractPemBody = (raw: string) =>
+  raw
+    .replace(/\\n/g, '\n')
+    .replace(/-----BEGIN [^-]+-----/g, '')
+    .replace(/-----END [^-]+-----/g, '')
+    .replace(/\s+/g, '');
+
+/** 鲁港通 - 应用私钥类型自适应：PKCS8（PRIVATE KEY）需显式告知 SDK 后按该类型解析，PKCS1（RSA PRIVATE KEY）为 SDK 默认 */
+const detectPrivateKeyType = (raw: string): 'PKCS1' | 'PKCS8' =>
+  raw.includes('-----BEGIN PRIVATE KEY-----') ? 'PKCS8' : 'PKCS1';
+
 let alipayClient: AlipaySdk | undefined;
 
 const getClient = (): AlipaySdk => {
@@ -28,10 +43,12 @@ const getClient = (): AlipaySdk => {
     throw new Error('支付功能尚未配置，请联系管理员在服务端配置支付宝凭证后重试');
   }
   if (!alipayClient) {
+    const rawPrivateKey = getAppPrivateKey()!;
     alipayClient = new AlipaySdk({
       appId: getAppId()!,
-      privateKey: getAppPrivateKey()!,
-      alipayPublicKey: getAlipayPublicKey()!,
+      privateKey: extractPemBody(rawPrivateKey),
+      keyType: detectPrivateKeyType(rawPrivateKey),
+      alipayPublicKey: extractPemBody(getAlipayPublicKey()!),
       gateway: getGatewayUrl()
     });
   }
