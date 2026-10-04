@@ -29,6 +29,8 @@ import { hasAIProxyApiEndpoint } from '@fastgpt/service/thirdProvider/aiproxy/co
 import { appEnv } from '@/env';
 import { pluginTagList } from '@fastgpt/global/sdk/fastgpt-plugin';
 import { pluginClient } from '@fastgpt/service/thirdProvider/fastgptPlugin';
+import { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constants';
+import type { SubPlanType } from '@fastgpt/global/support/wallet/sub/type';
 
 const logger = getLogger(LogCategories.SYSTEM);
 const pluginFeaturesProbeTimeoutMs = 3000;
@@ -111,6 +113,13 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   // （config.json / 数据库 systemConfigs 均不生效），缺省会导致登录页不显示「注册」与「找回密码」入口。
   register_method: ['email'],
   find_password_method: ['email'],
+  // 鲁港通 - N4 在线支付：打开支付宝当面付支付入口（价格页二维码弹窗）与账户中心「账单与发票」页签。
+  // 服务端能否真正下单取决于 .env 中的支付宝凭证（ALIPAY_APP_ID / ALIPAY_APP_PRIVATE_KEY / ALIPAY_PUBLIC_KEY），
+  // 未填写时下单会返回可操作的中文错误提示。
+  payConfig: {
+    alipay: true
+  },
+  show_pay: true,
   limit: {
     exportDatasetLimitMinutes: 0,
     websiteSyncLimitMinuted: 0,
@@ -126,6 +135,52 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   chineseRedirectUrl: appEnv.CHINESE_IP_REDIRECT_URL,
   uploadFileMaxSize: serviceEnv.UPLOAD_FILE_MAX_SIZE,
   uploadFileMaxAmount: serviceEnv.UPLOAD_FILE_MAX_AMOUNT
+};
+
+// 鲁港通 - N4 在线支付：套餐销售配置兜底（当前为联调测试价，正式价格上线前整体替换）。
+// 4.16.2 未接入商业版时数据库与 config.json 的 subPlans 均不生效，价格页展示与服务端计价统一读取本对象；
+// 容量类数值按生产实际用量留足余量（向量约 3.1 万、知识库 8、应用 2、成员 2），避免启用套餐校验后阻塞日常训练与采集导入。
+const defaultSubPlans: SubPlanType = {
+  standard: {
+    [StandardSubLevelEnum.free]: {
+      price: 0,
+      totalPoints: 100,
+      maxTeamMember: 10,
+      maxAppAmount: 50,
+      maxDatasetAmount: 100,
+      maxDatasetSize: 1000000,
+      requestsPerMinute: 5000,
+      chatHistoryStoreDuration: 365,
+      websiteSyncPerDataset: 100,
+      enableSandbox: false
+    },
+    [StandardSubLevelEnum.basic]: {
+      price: 0.01,
+      totalPoints: 2000000,
+      maxTeamMember: 50,
+      maxAppAmount: 500,
+      maxDatasetAmount: 1000,
+      maxDatasetSize: 10000000,
+      requestsPerMinute: 5000,
+      chatHistoryStoreDuration: 3650,
+      websiteSyncPerDataset: 100,
+      enableSandbox: false
+    }
+  },
+  // 额外知识库容量：展示价占位；在线购买暂未开放，下单会被服务端拒绝并提示联系客服。
+  extraDatasetSize: {
+    price: 0.01
+  },
+  // 积分包：100 积分 0.01 元（测试价）。
+  extraPoints: {
+    packages: [
+      {
+        points: 100,
+        month: 1,
+        price: 0.01
+      }
+    ]
+  }
 };
 
 async function getPluginRemoteDebugEnabled() {
@@ -190,7 +245,8 @@ export async function initSystemConfig() {
       },
       fastgptConfig.systemEnv || {} // 商业版数据存在数据库里
     ),
-    subPlans: fastgptConfig.subPlans
+    // 鲁港通 - N4 在线支付：接入商业版时以数据库套餐配置为准，未接入（当前部署）时使用代码级测试价配置兜底
+    subPlans: fastgptConfig.subPlans ?? defaultSubPlans
   };
 
   // 鲁港通 - 品牌化：不再为开源版强制注入 loginGuideDocUrl（原指向 doc.fastgpt.io 登录 FAQ），
