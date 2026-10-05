@@ -1,7 +1,7 @@
 // 鲁港通 - 支付订单计价工具（N4 在线支付，支付宝当面付）
 // 计价规则与前端价格页展示口径一致：标准套餐年付按 10 个月计价；积分包按配置包价格
 import type { SubPlanType } from '../sub/type';
-import { SubModeEnum, StandardSubLevelEnum } from '../sub/constants';
+import { SubModeEnum, StandardSubLevelEnum, subModeMap } from '../sub/constants';
 import type { PointsPackageItem } from '../sub/type';
 
 /**
@@ -27,6 +27,7 @@ export const getStandardPlanReadPrice = ({
 
 /**
  * 计算标准套餐到账应发放的积分（含年付赠送）。
+ * 月积分为月值：年付按 12 个月发放（与购买页展示口径一致），另加年度赠送积分。
  * @returns 套餐未配置时返回 null
  */
 export const getStandardPlanGrantPoints = ({
@@ -41,8 +42,9 @@ export const getStandardPlanGrantPoints = ({
   const plan = subPlans?.standard?.[level];
   if (!plan) return null;
 
+  const monthCount = subModeMap[subMode].durationMonth;
   const annualBonus = subMode === SubModeEnum.year ? plan.annualBonusPoints ?? 0 : 0;
-  return plan.totalPoints + annualBonus;
+  return plan.totalPoints * monthCount + annualBonus;
 };
 
 /**

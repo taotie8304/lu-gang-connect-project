@@ -3,7 +3,6 @@
 import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
 import { authUserPer } from '@fastgpt/service/support/permission/user/auth';
-import { OwnerPermissionVal } from '@fastgpt/global/support/permission/constant';
 import { CreateBillPropsSchema } from '@fastgpt/global/openapi/support/wallet/bill/api';
 import { createAlipayBill } from '@/service/payment/bill';
 import { isAlipayConfigured } from '@/service/payment/alipay';
@@ -14,8 +13,8 @@ async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<Cre
     throw new Error('支付功能尚未配置，请联系管理员在服务端配置支付宝凭证后重试');
   }
 
-  // 仅团队所有者可为团队购买套餐/积分
-  const { teamId, tmbId } = await authUserPer({ req, authToken: true, per: OwnerPermissionVal });
+  // 鲁港通 - 任何登录成员均可发起购买（消费者模式：下单人不限团队角色）
+  const { teamId, tmbId } = await authUserPer({ req, authToken: true });
 
   const props = CreateBillPropsSchema.parse(req.body);
 

@@ -85,14 +85,14 @@ describe('getStandardPlanGrantPoints', () => {
     ).toBe(50000);
   });
 
-  it('年付含年度赠送积分', () => {
+  it('年付按 12 个月发放积分并含年度赠送', () => {
     expect(
       getStandardPlanGrantPoints({
         subPlans,
         level: StandardSubLevelEnum.basic,
         subMode: SubModeEnum.year
       })
-    ).toBe(55000);
+    ).toBe(50000 * 12 + 5000);
   });
 });
 
