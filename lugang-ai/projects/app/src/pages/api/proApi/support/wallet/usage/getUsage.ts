@@ -15,10 +15,13 @@ async function handler(
   req: ApiRequestProps,
   _res: ApiResponseType
 ): Promise<PaginationResponse<UsageListItemType>> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
   const { dateStart, dateEnd, sources, teamMemberIds, projectName } = req.body as GetUsageProps;
   const { pageSize, offset } = parsePaginationRequest(req);
+
+  // 鲁港通 - 个人积分账户：普通用户仅能查看自己的用量明细（忽略客户端传入的成员筛选），管理员可查看团队全部
+  const memberFilter = isRoot ? teamMemberIds : [String(tmbId)];
 
   const where = {
     teamId,
@@ -31,7 +34,7 @@ async function handler(
         }
       : {}),
     ...(sources?.length ? { source: { $in: sources } } : {}),
-    ...(teamMemberIds?.length ? { tmbId: { $in: teamMemberIds } } : {}),
+    ...(memberFilter?.length ? { tmbId: { $in: memberFilter } } : {}),
     ...(projectName ? { appName: { $regex: replaceRegChars(projectName), $options: 'i' } } : {})
   };
 

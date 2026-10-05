@@ -13,10 +13,18 @@ async function handler(
   req: ApiRequestProps,
   _res: ApiResponseType
 ): Promise<GetUsageDashboardResponseItem[]> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
-  const { dateStart, dateEnd, sources, teamMemberIds, unit = 'day' } =
-    req.body as GetUsageDashboardProps;
+  const {
+    dateStart,
+    dateEnd,
+    sources,
+    teamMemberIds,
+    unit = 'day'
+  } = req.body as GetUsageDashboardProps;
+
+  // 鲁港通 - 个人积分账户：普通用户仅统计自己的用量趋势（忽略客户端传入的成员筛选），管理员可查团队全部
+  const memberFilter = isRoot ? teamMemberIds : [String(tmbId)];
 
   const match = {
     teamId: new Types.ObjectId(teamId),
@@ -29,8 +37,8 @@ async function handler(
         }
       : {}),
     ...(sources?.length ? { source: { $in: sources } } : {}),
-    ...(teamMemberIds?.length
-      ? { tmbId: { $in: teamMemberIds.map((tmbId) => new Types.ObjectId(tmbId)) } }
+    ...(memberFilter?.length
+      ? { tmbId: { $in: memberFilter.map((id) => new Types.ObjectId(id)) } }
       : {})
   };
 

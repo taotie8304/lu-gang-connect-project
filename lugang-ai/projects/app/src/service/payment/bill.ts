@@ -137,12 +137,19 @@ export const createAlipayBill = async (params: CreateBillParams) => {
  */
 export const checkBillPayResult = async ({
   teamId,
-  billId
+  billId,
+  tmbId
 }: {
   teamId: string;
   billId: string;
+  /** 鲁港通 - 个人积分账户：非管理员仅能操作自己的订单 */
+  tmbId?: string;
 }): Promise<{ status: `${BillStatusEnum}`; description?: string }> => {
-  const bill = await MongoBill.findOne({ _id: billId, teamId }).lean();
+  const bill = await MongoBill.findOne({
+    _id: billId,
+    teamId,
+    ...(tmbId ? { tmbId } : {})
+  }).lean();
   if (!bill) {
     throw new Error('订单不存在或无权查看');
   }
@@ -285,8 +292,21 @@ const grantBillRights = async (
 /**
  * 取消未支付订单。
  */
-export const cancelAlipayBill = async ({ teamId, billId }: { teamId: string; billId: string }) => {
-  const bill = await MongoBill.findOne({ _id: billId, teamId }).lean();
+export const cancelAlipayBill = async ({
+  teamId,
+  billId,
+  tmbId
+}: {
+  teamId: string;
+  billId: string;
+  /** 鲁港通 - 个人积分账户：非管理员仅能操作自己的订单 */
+  tmbId?: string;
+}) => {
+  const bill = await MongoBill.findOne({
+    _id: billId,
+    teamId,
+    ...(tmbId ? { tmbId } : {})
+  }).lean();
   if (!bill) {
     throw new Error('订单不存在或无权操作');
   }
@@ -301,19 +321,26 @@ export const cancelAlipayBill = async ({ teamId, billId }: { teamId: string; bil
 
 /**
  * 订单分页列表（账户中心订单页）。
+ * 鲁港通 - 个人积分账户：提供 tmbId 时仅返回该成员的订单（普通用户视角），不提供则返回团队全部（管理员视角）。
  */
 export const getBillList = async ({
   teamId,
+  tmbId,
   type,
   offset = 0,
   pageSize = 20
 }: {
   teamId: string;
+  tmbId?: string;
   type?: `${BillTypeEnum}`;
   offset?: number;
   pageSize?: number;
 }) => {
-  const query = type ? { teamId, type } : { teamId };
+  const query = {
+    teamId,
+    ...(tmbId ? { tmbId } : {}),
+    ...(type ? { type } : {})
+  };
   const [list, total] = await Promise.all([
     MongoBill.find(query)
       .sort({ createTime: -1 })

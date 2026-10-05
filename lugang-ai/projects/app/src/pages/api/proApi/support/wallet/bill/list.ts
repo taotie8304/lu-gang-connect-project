@@ -8,11 +8,18 @@ import type { GetBillListResponseType, BillItemType } from '@fastgpt/global/open
 import { BillStatusEnum, BillTypeEnum, BillPayWayEnum } from '@fastgpt/global/support/wallet/bill/constants';
 
 async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<GetBillListResponseType> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
   const { offset, pageSize, type } = BillListQuerySchema.parse(req.body);
 
-  const { list, total } = await getBillList({ teamId, type, offset, pageSize });
+  // 鲁港通 - 个人积分账户：普通用户仅查看自己的订单，管理员可查看团队全部订单
+  const { list, total } = await getBillList({
+    teamId,
+    tmbId: isRoot ? undefined : String(tmbId),
+    type,
+    offset,
+    pageSize
+  });
 
   // 鲁港通 - 本地 BillSchemaType（unknown id / 模板字面量枚举 / payWay 可选）与官方 Zod 契约（string id / 原生枚举 / payWay 必填）不一致，边界处转换
   return {

@@ -8,11 +8,16 @@ import { BillDetailQuerySchema } from '@fastgpt/global/openapi/support/wallet/bi
 import type { BillDetailResponseType } from '@fastgpt/global/openapi/support/wallet/bill/api';
 
 async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<BillDetailResponseType | null> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
   const { billId } = BillDetailQuerySchema.parse(req.query);
 
-  const bill = await MongoBill.findOne({ _id: billId, teamId }).lean();
+  // 鲁港通 - 个人积分账户：普通用户仅能查看自己的订单，管理员可查看团队全部订单
+  const bill = await MongoBill.findOne({
+    _id: billId,
+    teamId,
+    ...(isRoot ? {} : { tmbId })
+  }).lean();
   if (!bill) {
     return null;
   }

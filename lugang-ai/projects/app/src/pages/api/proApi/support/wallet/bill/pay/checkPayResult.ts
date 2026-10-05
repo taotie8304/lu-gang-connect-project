@@ -10,14 +10,19 @@ async function handler(
   req: ApiRequestProps,
   _res: ApiResponseType
 ): Promise<CheckPayResultResponseType> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
   const payId = String(req.query?.payId || '');
   if (!payId) {
     throw new Error('缺少订单 ID，请刷新页面后重试');
   }
 
-  const result = await checkBillPayResult({ teamId, billId: payId });
+  // 鲁港通 - 个人积分账户：普通用户仅能操作自己的订单，管理员可操作团队全部订单
+  const result = await checkBillPayResult({
+    teamId,
+    billId: payId,
+    tmbId: isRoot ? undefined : String(tmbId)
+  });
   // 鲁港通 - 本地 checkBillPayResult 返回模板字面量枚举，官方契约要求原生枚举，边界处转换
   return { ...result, status: result.status as unknown as BillStatusEnum };
 }

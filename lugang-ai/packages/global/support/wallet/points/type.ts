@@ -21,3 +21,17 @@ export type UserPointsSchemaType = {
   createTime: Date;
   updateTime: Date;
 };
+
+/** 个人积分账户面板详情（账户中心「我的积分」卡片数据源） */
+export type UserPointsDetailType = {
+  /** 当前可用积分余额（可为负，余额 <= 0 时无法发起对话） */
+  surplusPoints: number;
+  /** 累计获得积分（注册赠送 + 购买入账） */
+  totalPoints: number;
+  /** 当前套餐档位 */
+  currentSubLevel: `${StandardSubLevelEnum}`;
+  /** 最近一次购买周期 */
+  currentMode?: `${SubModeEnum}`;
+  /** 套餐到期时间（JSON 传输为 ISO 字符串，前端按本地时区展示） */
+  expiredTime?: Date;
+};

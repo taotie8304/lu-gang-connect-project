@@ -6,11 +6,12 @@ import { cancelAlipayBill } from '@/service/payment/bill';
 import { CancelBillPropsSchema } from '@fastgpt/global/openapi/support/wallet/bill/api';
 
 async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<null> {
-  const { teamId } = await authCert({ req, authToken: true });
+  const { teamId, tmbId, isRoot } = await authCert({ req, authToken: true });
 
   const { billId } = CancelBillPropsSchema.parse(req.body);
 
-  await cancelAlipayBill({ teamId, billId });
+  // 鲁港通 - 个人积分账户：普通用户仅能取消自己的订单，管理员可取消团队全部订单
+  await cancelAlipayBill({ teamId, billId, tmbId: isRoot ? undefined : String(tmbId) });
 
   return null;
 }

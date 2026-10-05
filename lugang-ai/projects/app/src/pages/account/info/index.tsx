@@ -38,6 +38,7 @@ import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
 import AccountContainer from '@/pageComponents/account/AccountContainer';
 import { useRouter } from 'next/router';
 import TeamSelector from '@/pageComponents/account/TeamSelector';
+import UserPointsCard from '@/pageComponents/account/info/UserPointsCard';
 import { getWorkorderURL } from '@/web/common/workorder/api';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyDivider from '@fastgpt/web/components/common/MyDivider';
@@ -95,17 +96,17 @@ const Info = () => {
                 <Other onOpenContact={onOpenContact} />
               </Box>
             </Box>
-            {!!standardPlan && (
-              <Box ml={'45px'} flex={'1 0 0'} minW={0}>
-                <Box maxW={'805px'}>
-                  <PlanUsage />
-                </Box>
+            <Box ml={'45px'} flex={'1 0 0'} minW={0}>
+              <Box maxW={'805px'}>
+                <UserPointsCard />
+                {!!standardPlan && <PlanUsage />}
               </Box>
-            )}
+            </Box>
           </Flex>
         ) : (
           <>
             <MyInfo onOpenContact={onOpenContact} />
+            <UserPointsCard />
             {standardPlan && <PlanUsage />}
             <Other onOpenContact={onOpenContact} />
           </>
@@ -552,7 +553,7 @@ const PlanUsage = () => {
   }, [t, teamPlanStatus]);
 
   return standardPlan ? (
-    <Box mt={[6, 0]}>
+    <Box mt={6}>
       <Flex h={['auto', '30px']} flexDirection={['column', 'row']}>
         <Flex as={'h2'} alignItems={'center'} {...accountTitleTextStyles}>
           {t('account_info:package_and_usage')}
