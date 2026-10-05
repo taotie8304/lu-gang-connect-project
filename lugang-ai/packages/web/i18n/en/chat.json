@@ -12,7 +12,7 @@
   "ai_reasoning": "Thinking process",
   "all_apps.title": "Apps",
   "back_to_text": "Text input",
-  "balance_not_enough_pause": "Workflow run paused due to insufficient AI points",
+  "balance_not_enough_pause": "Your AI points have run out. Purchase points, then click the button below to continue.",
   "chat.quote.No Data": "File not found",
   "chat.quote.deleted": "This data has been deleted",
   "chat.waiting_for_response": "Thinking hard",

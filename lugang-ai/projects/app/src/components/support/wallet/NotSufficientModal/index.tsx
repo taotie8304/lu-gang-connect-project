@@ -18,10 +18,9 @@ const NotSufficientModal = () => {
   const { t } = useClientTranslation();
   const router = useRouter();
   const { notSufficientModalType: type, setNotSufficientModalType } = useSystemStore();
-  const { isTeamAdmin, userInfo } = useUserStore();
+  const { userInfo } = useUserStore();
 
-  // Visitor view: share page is open without authentication; recharge controls
-  // belong to the team owner, not the visitor.
+  // 鲁港通 - 访客（未登录）无积分账户，仅提示联系管理员；登录成员可自助购买积分
   const isShareChat = router.pathname === `${subRoute}/chat/share`;
   const isVisitorView = isShareChat || !userInfo;
 
@@ -33,10 +32,9 @@ const NotSufficientModal = () => {
     onClose: onRechargeModalClose
   } = useDisclosure();
 
-  const aiPointsText =
-    isVisitorView || !isTeamAdmin
-      ? t('common:support.wallet.Not_sufficient_contact_admin')
-      : t('common:support.wallet.Not sufficient');
+  const aiPointsText = isVisitorView
+    ? t('common:support.wallet.Not_sufficient_contact_admin')
+    : t('common:support.wallet.Not sufficient');
 
   const textMap = {
     [TeamErrEnum.aiPointsNotEnough]: aiPointsText,
@@ -62,7 +60,7 @@ const NotSufficientModal = () => {
             <Button variant={'whiteBase'} onClick={onClose}>
               {t('common:Close')}
             </Button>
-            {!isVisitorView && isTeamAdmin && (
+            {!isVisitorView && (
               <Button
                 onClick={() => {
                   onRechargeModalOpen();

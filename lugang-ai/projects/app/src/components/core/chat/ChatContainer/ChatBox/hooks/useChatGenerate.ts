@@ -868,6 +868,11 @@ export const useChatGenerate = ({
 
             const errorMsg = t(getErrText(err, t('common:core.chat.error.Chat error') as any));
 
+            // 鲁港通 - 入口积分门槛拦截：直接弹出购买引导
+            if (err?.statusText === TeamErrEnum.aiPointsNotEnough) {
+              setNotSufficientModalType(TeamErrEnum.aiPointsNotEnough);
+            }
+
             setChatRecords((state) =>
               state.map((item, index) => {
                 if (index !== state.length - 1) return item;

@@ -243,6 +243,8 @@ function $ssefetch(params: SSEFetchParams) {
     let title: string | undefined;
     let responseQueue: AnswerQueueItem[] = [];
     let error: string | undefined;
+    // 鲁港通 - 保留业务错误标识，供上层识别积分不足等场景并弹出购买引导
+    let errorStatusText: string | undefined;
     let finished = false;
 
     const applyAnswerItem = (item: AnswerQueueItem) => {
@@ -263,7 +265,8 @@ function $ssefetch(params: SSEFetchParams) {
       finished = true;
       reject({
         message: getErrText(err, error ?? i18nT('common:response_processing_error')),
-        responseText
+        responseText,
+        ...(errorStatusText && { statusText: errorStatusText })
       });
     };
 
@@ -349,7 +352,14 @@ function $ssefetch(params: SSEFetchParams) {
             data,
             onmessage: dispatchNonAnswerMessage,
             enqueue,
-            onerror: (err) => void (error = err)
+            onerror: (err) => {
+              error = err;
+              // 鲁港通 - SSE 错误事件透传 statusText（如 aiPointsNotEnough）
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed?.statusText) errorStatusText = parsed.statusText;
+              } catch {}
+            }
           });
         },
         onclose() {
