@@ -1,0 +1,4 @@
+# 鲁港通 - OSG 测试依赖
+pytest>=8.2
+pytest-asyncio>=0.23
+fakeredis>=2.23

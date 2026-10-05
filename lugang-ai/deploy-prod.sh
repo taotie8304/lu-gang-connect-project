@@ -189,7 +189,8 @@ docker compose -f docker-compose.prod.yml ps
 echo ""
 echo -e "${YELLOW}等待鲁港通前端启动...${NC}"
 for i in {1..30}; do
-    if curl -s -f http://localhost:3210/api/health > /dev/null 2>&1; then
+    # 鲁港通 - 4.16.2 无 /api/health 路由，改用公开的 getInitData 作为启动探测端点
+    if curl -s -f http://localhost:3210/api/common/system/getInitData > /dev/null 2>&1; then
         echo -e "${GREEN}✓ 鲁港通前端启动成功!${NC}"
         break
     fi

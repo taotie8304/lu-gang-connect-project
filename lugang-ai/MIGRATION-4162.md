@@ -153,6 +153,22 @@ bash deploy-prod.sh
 
 ---
 
+## 3.5 部署前：.env.local 修正为直连百炼（必须 · 2026-09-07 调研定稿）
+
+> **背景**：4.14.4 现网模型调用走 One API 中转（前端 → lugang-enterprise → 百炼/Siliconflow），且 `.env.local` 残留僵尸配置 `AIPROXY_API_ENDPOINT=lugang-enterprise:3000`（容器内不可达）。4.16.2 会优先读取该变量，**不清除将导致所有模型调用失败**。本次升级顺势改为前端直连阿里云百炼 OpenAI 兼容模式，砍掉中转一跳。
+
+在 `deploy-prod.sh` **之前**执行 `.qoder/env_patch.sh`（经 `.qoder/run_remote.ps1` 管道到服务器执行，脚本不落服务器）：
+
+| 变更 | 内容 |
+|------|------|
+| 删除 | `AIPROXY_API_ENDPOINT`、`AIPROXY_API_TOKEN`、`ONE_API_URL`、`ONE_API_TOKEN`（僵尸中转配置） |
+| 改设 | `OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`（阿里云官方 OpenAI 兼容端点，2026-09 联网核实仍有效） |
+| 改设 | `CHAT_API_KEY=<百炼 API Key>`（key 先 `scp` 到服务器 `/tmp/lg_dashscope_key`，脚本校验 `sk-` 前缀、打印长度+md5 脱敏指纹后删除临时文件） |
+
+> 该 key 本次会话经命令行传输过，**升级后建议在百炼控制台轮换**。
+
+---
+
 ## 4. 部署后：重装系统工具（必须）
 
 plugin 换到独立库后，旧系统工具需重装，否则调用它们的工作流会报「工具不存在」：
@@ -163,6 +179,26 @@ plugin 换到独立库后，旧系统工具需重装，否则调用它们的工�
 4. 鲁港通自研插件（如 `hk_transport_assistant`）需重新上传对应 `.pkg`/zip 包。
 
 > 工作流本身（apps）在主库不会丢；此步只恢复工作流**引用的工具定义**。
+
+---
+
+## 4.5 部署后：模型清单切换为直连百炼（必须 · 2026-09-07 调研定稿）
+
+`deploy-prod.sh` 完成后、第 5 节迁移脚本前执行 `.qoder/model_switch.sh`（管道执行，mongosh upsert `system_models`）：
+
+| 用途 | 新模型 | 关键配置 |
+|------|--------|---------|
+| 鲁港综合政策咨询 | `qwen3.8-max` | `defaultConfig: {enable_search:true, search_options:{search_strategy:"max", forced_search:true}}`（联网搜索） |
+| 问题分类信息图像识别 | `qwen3.8-27b` | 视觉模型；不开联网搜索（控延迟/费用） |
+| 索引（向量） | `qwen3.7-text-embedding` | `isDefault:true`，`defaultConfig:{dimensions:1536}`（对齐 PG `VECTOR(1536)`） |
+| 重排 | `qwen3.7-text-rerank` | `isDefault:true`，`requestUrl:https://dashscope.aliyuncs.com/compatible-api/v1/reranks` |
+
+> ⚠ **重排端点例外**：兼容端点为 `compatible-api`（非 compatible-mode）+ 复数 `reranks`，与对话端点路径不同。
+
+旧模型停用：`qwen3.5-plus-internet`→改名「鲁港综合政策咨询(旧)」、`qwen-turbo`→改名「问题分类信息图像识别(旧)」（均 `isActive:false`）；`text-embedding-v4` 保留但 `isDefault:false`（备用）。
+
+> 说明：政策咨询与图像识别**不能共用同一个 `qwen3.8-max` 条目**（模型清单以 model 名唯一，同名条目互相覆盖），故图像识别用同代 `qwen3.8-27b`（实测视觉可用）。
+> 2026-09-03 本地实测：qwen3.8-max 文本/视觉/联网搜索、qwen3.7-text-embedding `dimensions:1536`、qwen3.7-text-rerank 兼容端点全部 200 通过；旧 text-embedding-v3/v4 在当前账号下报欠费（Arrearage），已无法继续使用——**务必先确认百炼账号余额/免费额度**。
 
 ---
 
@@ -208,12 +244,25 @@ curl -X POST '{{host}}/api/admin/4161/initToolJsonSchemaStorage' -H 'Content-Typ
 
 ---
 
+## 5.5 部署后：知识库索引重建（升级验证通过后执行）
+
+向量模型从 text-embedding-v3/v4 换成 `qwen3.7-text-embedding` 后，6 个知识库约 10 万条分块的**存量向量全部失效，必须重建**。第 5 节迁移脚本完成后、第 6 节验证通过后执行 `.qoder/rebuild_index.sh`（管道执行）：
+
+- 逐库调用 `POST /api/core/dataset/training/rebuildEmbedding`，body `{datasetId, vectorModel:"qwen3.7-text-embedding"}`（需 rootkey 所有者权限），走后台训练队列执行
+- 接口会同时更新该库 `vectorModel` 字段并标记全部数据 `rebuilding`，**幂等**（已是新模型的库会拒绝「vectorModel 不合法」，脚本亦按当前模型自动跳过）
+- 无参运行=逐库串行提交（每库间隔 3 秒防瞬时打爆）；`rebuild_index.sh status` 查看各库进度（`vectorModel` 变为新模型即完成）
+- 重建约 10 万分块，预计数十分钟至数小时，建议低峰期执行；**重建完成前该库检索召回可能不全**（`rebuilding` 数据不参与召回）
+- ⚠ 若某知识库开启了「图像索引」：qwen3.7-text-embedding 为纯文本向量，重建会自动关闭该能力（图片检索降级为文字检索）；如必须保留图像索引，需另行选多模态向量模型再评估
+
+---
+
 ## 6. 验证清单
 
 - [ ] 前端可登录，首页默认助手（`DEFAULT_APP_ID`）正常打开
 - [ ] 随机抽 2~3 个**工作流**：编辑页节点/连线完整，试运行通过（尤其含 HTTP 节点、工具节点、代码运行节点的）
 - [ ] 随机抽 2~3 个**知识库**：源文件可预览/下载，检索测试能召回分块
-- [ ] `管理员 → 模型配置`：工作流引用的模型名均存在（N3 直连百炼后需核对模型清单，缺失的重新配置）
+- [ ] `管理员 → 模型配置`：核对直连百炼后的模型清单——`qwen3.8-max`（政策咨询）、`qwen3.8-27b`（图像识别）、`qwen3.7-text-embedding`（索引）、`qwen3.7-text-rerank`（重排）均存在且 isDefault 正确；旧模型已停用；工作流引用的模型名均存在，缺失的重新配置
+- [ ] 随机抽 1 个知识库做检索测试：确认命中结果（新模型首次嵌入生效）；索引重建进度用 `rebuild_index.sh status` 跟踪
 - [ ] 系统工具列表齐全，调用系统工具的工作流不再报「工具不存在」
 - [ ] MongoDB `rs.status().ok === 1`
 
@@ -229,3 +278,5 @@ bash rollback.sh   # 回退到 deploy-prod.sh 记录的上一版本镜像
 ```
 
 > 逻辑备份（mongodump/pg_dump）可只回退单个集合/表；冷备 tar 包用于整目录还原。
+
+> 2026-10-02 注：第 1 节的 9-07 旧备份（backup-*.tar.gz / mongodump）已按运维决策清理（升级已稳定运行近一个月，新全量备份见 /www/backup/lugang-final-20261002/，恢复参考见 ops-deploy.md）。完整回退到升级前数据状态的能力已随旧备份退役。

@@ -1,0 +1,34 @@
+=== through-train ===
+lines: 32 (data 31)
+groups: 15 -> 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15
+district dist: {"元朗":10,"離島":6,"九龍城":3,"西貢":4,"油尖旺":2,"中西區":1,"南區":1,"灣仔":2,"大埔":2}
+group 13: ["13,新會商會學校,中西區,","13,新會商會陳白沙紀念中學,南區,"]
+
+=== dss-fee ===
+lines: 164 (data 163)
+unique schools: 69
+level dist: {"中學":136,"小學":27}
+names with trailing space: 3
+dbs rows: ["14,拔萃男書院,中學,S1-S4,固定,63330,63330,","14,拔萃男書院,中學,S5-S6,範圍,63330,145090,","14,拔萃男書院,中學,宿費,固定,78400,78400,","62,拔萃男書院,小學,P1-P6,固定,58190,58190,"]
+last col check: "1,聖保羅男女中學,中學,S1-S2,固定,84300,84300,"
+
+=== KG_SCHEME ===
+raw lines: 729
+data lines (starts with num+tab): 722
+first data: "1\t迦南幼稚園（中環堅道）\tCANNAN KINDERGARTEN (CENTRAL CAINE ROAD)\t中西區\tCentral & Western"
+last data: "722\t油麻地循道衛理楊震幼兒學校\tYAUMATEI YANG MEMORIAL METHODIST PRE-SCHOOL\t油尖旺區\tYau Tsim Mong"
+ststephen: ["17\t聖士提反堂小學暨幼稚園\tST. STEPHEN'S CHURCH PRIMARY SCHOOL & KINDERGARTEN\t中西區\tCentral & Western"]
+
+=== k1-not-joining ===
+lines: 30 (data 29)
+header: 行號,學校名稱,學校地址,網上／不設限額派表,「一人不佔多位」措施,經教育局發放K1-K3學位空缺資訊
+col4 (online) Y/N: 28/1
+col6 (share) Y/N: 7/22
+row1 raw: "1             ,安基司國際幼兒園,新界大埔紅林路1號滌濤山幼稚園校"
+
+=== ccckg ===
+utf16 bom: true, lines: 275 (data 274)
+header: 機構名稱,中心名稱,地址,電話,傳真,服務類別,兒童年齡,全日育嬰園核准月費,全日幼兒園核准月費,半日幼兒園核准月費,上午組核准月費,下午組核准月費,半日幼兒園類別,備註,全日育嬰園容額,全日幼兒園容額,半日幼兒園容額,地區
+row1: 611 靈糧堂有限公司,611小葡萄幼兒中心,新界荃灣怡樂街2-12號海濱花園D平台(部份),39568611,39565977,附設於幼稚園的非資助幼兒中心,2-3,0,0,3861,0,0,上午及下午組,,0,0,50,荃灣/葵青
+district dist: {"荃灣/葵青":24,"東/灣仔":43,"九龍城/油尖旺":44,"中西/南/離島":39,"屯門":15,"元朗":16,"大埔/北":18,"深水埗":9,"黃大仙/西貢":32,"沙田":20,"觀塘":14}
+center names sample: ["611小葡萄幼兒中心","ABC Pathways International Nursery"]

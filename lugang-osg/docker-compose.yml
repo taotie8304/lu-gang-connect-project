@@ -1,0 +1,25 @@
+# 鲁港通 - OSG Phase 1 部署编排（加入现有 lugang 网络，复用 PG/Redis 容器）
+# 生产使用：docker compose up -d --build（先建库：见 README「数据库初始化」）
+services:
+  lugang-osg:
+    build: .
+    container_name: lugang-osg
+    restart: unless-stopped
+    environment:
+      # 鲁港通 - 连接串走宿主 172.17.0.1 访问现有 PG/Redis 容器（ops-deploy.md 模式）
+      OSG_DATABASE_URL: ${OSG_DATABASE_URL}
+      OSG_REDIS_URL: ${OSG_REDIS_URL:-redis://172.17.0.1:6379/3}
+      OSG_API_KEY_FASTGPT: ${OSG_API_KEY_FASTGPT}
+      OSG_API_KEY_ADMIN: ${OSG_API_KEY_ADMIN}
+      # 鲁港通 - 导入链路（design.md §7.3）：容器经宿主 172.17.0.1 访问 FastGPT
+      OSG_FASTGPT_BASE_URL: ${OSG_FASTGPT_BASE_URL:-http://172.17.0.1:3210}
+      OSG_FASTGPT_API_KEY: ${OSG_FASTGPT_API_KEY}
+      OSG_FASTGPT_CHUNK_SIZE: ${OSG_FASTGPT_CHUNK_SIZE:-512}
+      OSG_FASTGPT_INTERVAL_S: ${OSG_FASTGPT_INTERVAL_S:-0.2}
+      OSG_DEBUG: ${OSG_DEBUG:-false}
+    ports:
+      # 鲁港通 - 仅绑定本机回环，禁止直接对公网暴露；外部经 Nginx 反代 + 鉴权
+      - "127.0.0.1:8600:8000"
+    extra_hosts:
+      # 鲁港通 - 容器内经宿主网段访问宿主上的 PG/Redis（Docker 默认 bridge 无 host.docker.internal）
+      - "host.docker.internal:host-gateway"

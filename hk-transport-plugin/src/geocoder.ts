@@ -2,7 +2,7 @@
 // 将地点标准名称转换为经纬度坐标，供 TDAS API 使用
 // 查询层次：1. 硬编码地标词典 → 2. 模糊匹配词典 → 3. transit.ts 全量站点索引（数千个站点）
 
-import { GeoLocation } from './types';
+import type { GeoLocation } from './types';
 import { geocodeByStopName } from './stop-db';
 
 // ============================================================

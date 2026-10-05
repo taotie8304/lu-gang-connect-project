@@ -1,7 +1,7 @@
 // 鲁港通 - 智能路由模块
 // 根据解析结果决定调用哪些 API，生成 API 调用计划
 
-import { ParsedQuestion, GeoLocation, APICallPlan, ETAQuery } from './types';
+import type { ParsedQuestion, GeoLocation, APICallPlan, ETAQuery } from './types';
 import { parseQuestion } from './parser';
 import { geocodeRoute } from './geocoder';
 

@@ -1,0 +1,23 @@
+total split lines: 730
+--- tail 8 ---
+[722] len=114 "716\t香港青年協會青樂幼稚園（油麻地）\tTHE HONG KONG FEDERATION OF YOUTH GROUPS CHING LOK KINDERGA"
+[723] len=84 "717\t救世軍卜凱賽琳幼兒學校\tTHE SALVATION ARMY CATHERINE BOOTH NURSERY SCHOOL\t油尖旺區\tYau Tsim "
+[724] len=79 "718\t救世軍陳昆棟幼稚園\tTHE SALVATION ARMY CHAN KWAN TUNG KINDERGARTEN\t油尖旺區\tYau Tsim Mong"
+[725] len=73 "719\t救世軍海富幼兒學校\tTHE SALVATION ARMY HOI FU NURSERY SCHOOL\t油尖旺區\tYau Tsim Mong"
+[726] len=79 "720\t救世軍荔枝角幼兒學校\tTHE SALVATION ARMY LAI CHI KOK NURSERY SCHOOL\t油尖旺區\tYau Tsim Mong"
+[727] len=77 "721\t仁愛堂陳鄭玉而幼稚園\tYAN OI TONG CHAN CHENG YUK YEE KINDERGARTEN\t油尖旺區\tYau Tsim Mong"
+[728] len=80 "722\t油麻地循道衛理楊震幼兒學校\tYAUMATEI YANG MEMORIAL METHODIST PRE-SCHOOL\t油尖旺區\tYau Tsim Mong"
+[729] len=0 ""
+--- non-matching non-empty lines ---
+[0] len=4 "\"編號 "
+[1] len=15 "No.\"\t\"學校名稱(中文) "
+[2] len=33 "School Name (Chinese)\"\t\"學校名稱(英文) "
+[3] len=31 "School Name (English)\"\t\"區域(中文) "
+[4] len=28 "District (Chinese)\"\t\"區域(英文) "
+[5] len=19 "District (English)\""
+[122] len=34 "COMMITTEE ROAD)\"\t九龍城區\tKowloon City"
+non-matching count: 7
+
+ccckg quote count: 24
+ccckg lines: 275
+ccckg width dist: {"18":262,"19":8,"20":1,"21":1,"23":2}

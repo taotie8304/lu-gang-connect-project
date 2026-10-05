@@ -1,6 +1,6 @@
 // 鲁港通 - 问题解析模块
 
-import { ParsedQuestion } from './types';
+import type { ParsedQuestion } from './types';
 import { findKnownLocationsInText } from './stop-db';
 
 // ============================================================

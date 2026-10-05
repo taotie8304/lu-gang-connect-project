@@ -4,36 +4,52 @@ import { describe, it, expect } from 'vitest';
 import { InputType, OutputType, tool } from '../src/index';
 import pluginExport from '../index';
 
-describe('FastGPT plugin export', () => {
-  it('root index.ts should export config, InputType, OutputType, cb', () => {
-    expect(pluginExport.config).toBeDefined();
-    expect(pluginExport.config.name).toBeDefined();
-    expect(pluginExport.config.name['zh-CN']).toBe('香港智能交通助手');
-    expect(pluginExport.config.name.en).toBe('HK Smart Transport Assistant');
-    expect(pluginExport.config.description).toBeDefined();
-    expect(pluginExport.InputType).toBeDefined();
-    expect(pluginExport.OutputType).toBeDefined();
-    expect(pluginExport.cb).toBeDefined();
-    expect(typeof pluginExport.cb).toBe('function');
+describe('FastGPT plugin export (新插件 SDK v1.x 格式)', () => {
+  it('根 index.ts 应导出 DefinedToolFactory（含 manifest 与 handler）', () => {
+    // manifest 元数据
+    const manifest = pluginExport.getUserToolManifest();
+    expect(manifest).toBeDefined();
+    expect(manifest.pluginId).toBe('hk_transport_assistant');
+    expect(manifest.version).toBe('1.0.0');
+    expect(manifest.name['zh-CN']).toBe('香港智能交通助手');
+    expect(manifest.name.en).toBe('HK Smart Transport Assistant');
+    expect(manifest.description['zh-CN']).toContain('必须');
+    expect(manifest.toolDescription).toBeDefined();
+    expect(manifest.tags).toContain('tools');
+
+    // handler 定义（inputSchema/outputSchema/handler）
+    const handlerDef = pluginExport.getToolHandler();
+    expect(handlerDef).toBeDefined();
+    expect(handlerDef.inputSchema).toBeDefined();
+    expect(handlerDef.outputSchema).toBeDefined();
+    expect(typeof handlerDef.handler).toBe('function');
   });
 
-  it('config should have versionList with inputs and outputs', () => {
-    const version = pluginExport.config.versionList[0];
-    expect(version).toBeDefined();
-    expect(version.value).toBe('0.1.0');
-    expect(version.inputs.length).toBeGreaterThan(0);
-    expect(version.outputs.length).toBeGreaterThan(0);
+  it('inputSchema 应声明 origin/destination/question 参数并校验样本输入', () => {
+    const { inputSchema } = pluginExport.getToolHandler();
+    // 结构化参数（origin/destination）与自然语言兜底（question）均应被接受
+    expect(inputSchema.safeParse({ origin: '尖沙咀', destination: '中环' }).success).toBe(true);
+    expect(inputSchema.safeParse({ question: '从落马洲到尖沙咀怎么走' }).success).toBe(true);
+    // 鲁港通 - zod 默认 strip 未知字段（运行时宽容，LLM 多传字段不该导致调用失败）；
+    // manifest 的 additionalProperties:false 是给 LLM 的约束提示，非运行时强制拒绝
+    const stripped = inputSchema.safeParse({ origin: '中环', foo: 'bar' });
+    expect(stripped.success).toBe(true);
+    expect((stripped.data as Record<string, unknown>).foo).toBeUndefined();
+  });
 
-    // 检查结构化参数已注册（origin/destination 替代了 question 的 required 地位）
-    const originInput = version.inputs.find((i: { key: string }) => i.key === 'origin');
-    const destInput = version.inputs.find((i: { key: string }) => i.key === 'destination');
-    expect(originInput).toBeDefined();
-    expect(destInput).toBeDefined();
-
-    const questionInput = version.inputs.find((i: { key: string }) => i.key === 'question');
-    expect(questionInput).toBeDefined();
-    // question 现在为可选（可由 origin/destination 替代）
-    expect(questionInput?.required).toBeFalsy();
+  it('outputSchema 应接受含 recommended/realTimeData 的路线输出', () => {
+    const { outputSchema } = pluginExport.getToolHandler();
+    const sample = {
+      routes: [{
+        id: 'r1', totalTime: 30, totalDistance: '5km', type: 'direct',
+        steps: [{ type: 'bus', description: '乘 1 号巴士', duration: 25 }],
+        estimatedCost: 3.7, recommended: true,
+        realTimeData: { nextBusArrival: '3分钟后', totalTravelTime: 30, dataTimestamp: new Date().toISOString() }
+      }],
+      paymentInfo: { octopus: true, cash: true, creditCard: false, mobilePayment: true, notes: [] },
+      tips: ['test'], metadata: { dataTimestamp: new Date().toISOString(), apisCalled: ['kmb'] }
+    };
+    expect(outputSchema.safeParse(sample).success).toBe(true);
   });
 });
 

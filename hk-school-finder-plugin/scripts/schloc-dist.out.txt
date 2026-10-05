@@ -1,0 +1,135 @@
+headers(36): ["ENGLISH CATEGORY","中文類別","ENGLISH NAME","中文名稱","ENGLISH ADDRESS","中文地址","LONGITUDE","經度","LATITUDE","緯度","EASTING","坐標東","NORTHING","坐標北","STUDENTS GENDER","就讀學生性別","SESSION","學校授課時間","DISTRICT","分區","FINANCE TYPE","資助種類","SCHOOL LEVEL","學校類型","TELEPHONE","聯絡電話","FAX NUMBER","傳真號碼","WEBSITE","網頁","RELIGION","宗教","","","",""]
+data lines: 3461
+
+=== ENGLISH CATEGORY 分布 ===
+1373	Kindergartens
+804	Kindergarten-cum-child Care Centres
+424	Aided Primary Schools
+366	Aided Secondary Schools
+147	Aided Special Schools
+62	Direct Subsidy Scheme Secondary Schools
+57	Private Secondary Schools (Day/Evening)
+56	Private Primary Schools
+42	International Schools (Primary)
+34	Government Primary Schools
+31	Government Secondary Schools
+23	Direct Subsidy Scheme Primary Schools
+22	International Schools (Secondary)
+11	English Schools Foundation (Primary)
+7	English Schools Foundation (Secondary)
+2	Caput Secondary Schools
+
+=== 中文類別 分布 ===
+1373	幼稚園
+804	幼稚園暨幼兒中心
+424	資助小學
+366	資助中學
+147	資助特殊學校
+62	直接資助計劃中學
+57	私立中學（日校 / 夜校）
+56	私立小學
+42	國際學校（小學）
+34	官立小學
+31	官立中學
+23	直接資助計劃小學
+22	國際學校（中學）
+11	英基學校協會（小學）
+7	英基學校協會（中學）
+2	按額津貼中學
+
+=== FINANCE TYPE 分布 ===
+2338	PRIVATE
+937	AIDED
+85	DIRECT SUBSIDY SCHEME
+65	GOVERNMENT
+18	ENGLISH SCHOOLS FOUNDATION
+16	PRIVATE INDEPENDENT SCH SCHEME
+2	CAPUT
+
+=== SCHOOL LEVEL 分布 ===
+1403	KINDERGARTEN
+774	KINDERGARTEN-CUM-CHILD CARE CENTRES
+590	PRIMARY
+547	SECONDARY
+147	
+
+=== 国际学校（category 含 INTERNATIONAL）===
+total: 64
+42	PRIMARY
+22	SECONDARY
+category 取值: [["International Schools (Primary)",42],["International Schools (Secondary)",22]]
+样本 8 条:
+  LYC'EE FRANCAIS INTL (FRENCH INTL SCH) | International Schools (Primary) | 國際學校（小學） | PRIMARY | WAN CHAI
+  KELLETT SCHOOL | International Schools (Primary) | 國際學校（小學） | PRIMARY | SOUTHERN
+  香港澳洲國際學校 | International Schools (Primary) | 國際學校（小學） | PRIMARY | KOWLOON CITY
+  KELLETT SCHOOL | International Schools (Primary) | 國際學校（小學） | PRIMARY | KWUN TONG
+  LANTAU INTERNATIONAL SCHOOL | International Schools (Primary) | 國際學校（小學） | PRIMARY | ISLANDS
+  CARMEL SCHOOL | International Schools (Primary) | 國際學校（小學） | PRIMARY | CENTRAL AND WESTERN
+  蘇浙小學校 | International Schools (Primary) | 國際學校（小學） | PRIMARY | EASTERN
+  宣道會劉平齋紀念國際學校(全日) | International Schools (Primary) | 國際學校（小學） | PRIMARY | KWAI TSING
+
+=== 直资（financeType 含 DIRECT SUBSIDY）===
+total: 85
+62	SECONDARY
+23	PRIMARY
+
+=== 油尖旺区 ===
+total: 128
+41	KINDERGARTEN
+31	KINDERGARTEN-CUM-CHILD CARE CENTRES
+25	SECONDARY
+23	PRIMARY
+8	
+油尖旺中学: 25
+油尖旺中学 financeType 分布:
+13	AIDED
+5	PRIVATE
+4	DIRECT SUBSIDY SCHEME
+2	GOVERNMENT
+1	CAPUT
+油尖旺直资中学记录:
+  九龍三育中學 | DIRECT SUBSIDY SCHEME
+  拔萃女書院 | DIRECT SUBSIDY SCHEME
+  香港管理專業協會李國寶中學 | DIRECT SUBSIDY SCHEME
+  九龍三育中學 | DIRECT SUBSIDY SCHEME
+
+=== DISTRICT 取值 ===
+314	KOWLOON CITY
+280	SHA TIN
+280	EASTERN
+274	YUEN LONG
+240	TUEN MUN
+238	KWUN TONG
+224	KWAI TSING
+206	SAI KUNG
+180	SHAM SHUI PO
+173	WONG TAI SIN
+171	NORTH
+147	SOUTHERN
+137	TAI PO
+128	YAU TSIM MONG
+127	TSUEN WAN
+122	CENTRAL AND WESTERN
+121	ISLANDS
+99	WAN CHAI
+
+=== 口径交叉验证 ===
+国际学校 financeType 分布: [["PRIVATE",64]]
+直资 category 分布: [["Direct Subsidy Scheme Secondary Schools",62],["Direct Subsidy Scheme Primary Schools",23]]
+financeType=PRIVATE 数: 2338
+category含Private 数: 113
+category含Private 分布: [["Private Secondary Schools (Day/Evening)",57],["Private Primary Schools",56]]
+financeType=GOVERNMENT 数: 65 / category含Government: 65
+financeType=AIDED 数: 937 / category含Aided: 937
+financeType=ENGLISH SCHOOLS FOUNDATION 数: 18 / category含EnglishSchoolsFoundation: 18
+蘇浙公學:
+  沙田蘇浙公學 | Aided Secondary Schools | AIDED | SECONDARY | SHA TIN
+  葵涌蘇浙公學 | Aided Secondary Schools | AIDED | SECONDARY | KWAI TSING
+  蘇浙公學 | Direct Subsidy Scheme Secondary Schools | DIRECT SUBSIDY SCHEME | SECONDARY | EASTERN
+  蘇浙公學 | International Schools (Secondary) | PRIVATE | SECONDARY | EASTERN
+国际学校(category含InternationalSchools): total=64 -> [["PRIMARY",42],["SECONDARY",22]]
+直资(financeType=DSS): total=85 -> [["SECONDARY",62],["PRIMARY",23]]
+官立(financeType=GOVERNMENT): total=65 -> [["PRIMARY",34],["SECONDARY",31]]
+资助(financeType=AIDED): total=937 -> [["PRIMARY",424],["SECONDARY",366],["other",147]]
+私立中小学(financeType=PRIVATE): total=161 -> [["PRIMARY",90],["SECONDARY",71]]
+英基(financeType=ESF): total=18 -> [["PRIMARY",11],["SECONDARY",7]]

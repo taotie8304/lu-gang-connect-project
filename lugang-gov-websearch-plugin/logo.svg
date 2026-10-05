@@ -1,0 +1,25 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 鲁港通 - 政府官网联网搜索插件图标：政府徽章 + 放大镜 -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1f5fbf"/>
+      <stop offset="1" stop-color="#0d3b80"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="26" fill="url(#bg)"/>
+  <!-- 政府徽章：圆顶建筑 -->
+  <g fill="#ffffff">
+    <path d="M64 26 L92 44 H36 Z" opacity="0.95"/>
+    <rect x="40" y="46" width="48" height="5" rx="1.5"/>
+    <rect x="44" y="53" width="5" height="18"/>
+    <rect x="54" y="53" width="5" height="18"/>
+    <rect x="64" y="53" width="5" height="18"/>
+    <rect x="74" y="53" width="5" height="18"/>
+    <rect x="40" y="73" width="48" height="5" rx="1.5"/>
+  </g>
+  <!-- 放大镜 -->
+  <g stroke="#ffd24a" stroke-width="7" stroke-linecap="round">
+    <circle cx="80" cy="86" r="20" fill="#0d3b80"/>
+    <line x1="95" y1="101" x2="110" y2="116"/>
+  </g>
+</svg>

@@ -18,7 +18,6 @@ export default defineConfig({
         'test/',
         '**/*.config.ts',
         '**/*.d.ts',
-        'config.ts',
         'index.ts'
       ]
     }

@@ -39,7 +39,7 @@ export const InputType = z.object({
 // OutputType - 插件输出参数（Zod Schema）
 // ============================================================
 
-const RouteStepSchema = z.object({
+export const RouteStepSchema = z.object({
   type: z.enum(['walk', 'bus', 'mtr', 'gmb', 'tram', 'ferry']),
   description: z.string(),
   route: z.string().optional(),
@@ -51,13 +51,20 @@ const RouteStepSchema = z.object({
   cost: z.number().optional(),
 });
 
-const RouteOptionSchema = z.object({
+export const RouteOptionSchema = z.object({
   id: z.string(),
   totalTime: z.number(),
   totalDistance: z.string(),
   type: z.enum(['direct', 'transfer']),
   steps: z.array(RouteStepSchema),
   estimatedCost: z.number(),
+  // 鲁港通 - 补齐与 types.ts RouteOption 一致的字段，避免新插件按 outputSchema 剥离推荐标记与实时数据
+  recommended: z.boolean().optional(),
+  realTimeData: z.object({
+    nextBusArrival: z.string(),
+    totalTravelTime: z.number(),
+    dataTimestamp: z.string(),
+  }).optional(),
 });
 
 const NextBusInfoSchema = z.object({
@@ -73,13 +80,13 @@ const StopETAItemSchema = z.object({
   nextBuses: z.array(NextBusInfoSchema),
 });
 
-const StopETAListSchema = z.object({
+export const StopETAListSchema = z.object({
   stopId: z.string(),
   stopName: z.string(),
   etas: z.array(StopETAItemSchema),
 });
 
-const PaymentInfoSchema = z.object({
+export const PaymentInfoSchema = z.object({
   octopus: z.boolean(),
   cash: z.boolean(),
   creditCard: z.boolean(),
@@ -87,7 +94,7 @@ const PaymentInfoSchema = z.object({
   notes: z.array(z.string()),
 });
 
-const MetadataSchema = z.object({
+export const MetadataSchema = z.object({
   dataTimestamp: z.string(),
   apisCalled: z.array(z.string()),
   apiStatus: z.record(z.string(), z.enum(['success', 'failed', 'skipped'])).optional(),

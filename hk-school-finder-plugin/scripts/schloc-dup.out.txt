@@ -1,0 +1,135 @@
+=== 九龍三育中學 全部行 ===
+[九龍三育中學] KOWLOON SAM YUK SECONDARY SCHOOL | Direct Subsidy Scheme Secondary Schools | DIRECT SUBSIDY SCHEME | SECONDARY | YAU TSIM MONG | WHOLE DAY | 九龍界限街52號地下至4樓
+[大埔三育中學] TAI PO SAM YUK SECONDARY SCHOOL | Direct Subsidy Scheme Secondary Schools | DIRECT SUBSIDY SCHEME | SECONDARY | TAI PO | WHOLE DAY | 新界大埔大埔頭徑2號
+[九龍三育中學] KOWLOON SAM YUK SECONDARY SCHOOL | Direct Subsidy Scheme Secondary Schools | DIRECT SUBSIDY SCHEME | SECONDARY | YAU TSIM MONG | WHOLE DAY | 九龍詩歌舞街14號(1樓校務處 校長室及儲物室除外)
+[元朗三育幼稚園(上午)] YUEN LONG SAM YUK KINDERGARTEN (A.M.) | Kindergartens | PRIVATE | KINDERGARTEN | YUEN LONG | A.M. | 新界元朗青山道265號
+[元朗三育幼稚園(下午)] YUEN LONG SAM YUK KINDERGARTEN(P.M.) | Kindergartens | PRIVATE | KINDERGARTEN | YUEN LONG | P.M. | 新界元朗青山道265號
+
+=== 重名（校名+区域）组合数: 106 ===
+重复行总数: 221
+涉及记录数（去重后）: 3346
+
+--- 重复明细（前 30 组）---
+【東涌天主教學校||ISLANDS】2 行
+   PRIMARY | Aided Primary Schools | WHOLE DAY | 新界大嶼山東涌逸東街8號逸東(二)邨
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 新界大嶼山東涌逸東街8號逸東(二)邨
+【合一堂學校||KOWLOON CITY】2 行
+   PRIMARY | Aided Primary Schools | WHOLE DAY | 九龍何文田巴富街6號及公主道七號
+   PRIMARY | Aided Primary Schools | WHOLE DAY | 九龍何文田巴富街6號
+【嗇色園主辦可譽中學暨可譽小學||ISLANDS】2 行
+   PRIMARY | Aided Primary Schools | WHOLE DAY | 新界東涌健東路4–6號
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 新界東涌健東路4–6號
+【香港真光中學||WAN CHAI】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 香港大坑道50號
+   PRIMARY | Private Primary Schools | WHOLE DAY | 香港大坑道50號
+【麗澤中學||YAU TSIM MONG】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 九龍童軍徑新翼大樓
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 九龍尖沙咀廣東道180號
+【明愛陳震夏郊野學園||ISLANDS】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 新界長洲長洲地段1139號龍仔村(不包括非學校部份)
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 新界長洲芝麻坑芝麻坑路
+【九龍真光中學||KOWLOON CITY】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 九龍沙福道真光里1號
+   PRIMARY | Private Primary Schools | WHOLE DAY | 九龍窩打老道115號
+【聖士提反堂中學||CENTRAL AND WESTERN】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 香港般咸道71號
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 香港薄扶林薄扶林道62號
+【玫瑰崗學校||WAN CHAI】2 行
+   SECONDARY | Aided Secondary Schools | WHOLE DAY | 香港司徒拔道41號B
+   PRIMARY | Private Primary Schools | WHOLE DAY | 香港司徒拔道41號B
+【香港紅十字會醫院學校(小學部)||TUEN MUN】2 行
+    | Aided Special Schools | WHOLE DAY | 新界屯門青松觀路15號青山醫院
+    | Aided Special Schools | WHOLE DAY | 新界屯門青松觀路23號屯門醫院
+【香港紅十字會醫院學校(中學部)||YAU TSIM MONG】3 行
+    | Aided Special Schools | WHOLE DAY | 九龍窩打老道25號廣華醫院
+    | Aided Special Schools | WHOLE DAY | 九龍油麻地炮台街143號油麻地兒童精神科中心
+    | Aided Special Schools | WHOLE DAY | 九龍加士居道30號伊利沙伯醫院
+【香港紅十字會醫院學校(小學部)||YAU TSIM MONG】3 行
+    | Aided Special Schools | WHOLE DAY | 九龍窩打老道25號廣華醫院
+    | Aided Special Schools | WHOLE DAY | 九龍油麻地炮台街143號油麻地兒童精神科中心
+    | Aided Special Schools | WHOLE DAY | 九龍加士居道30號伊利沙伯醫院
+【香港紅十字會醫院學校(小學部)||SOUTHERN】2 行
+    | Aided Special Schools | WHOLE DAY | 香港薄扶林大口環道12號大口環根德公爵夫人兒童醫院
+    | Aided Special Schools | WHOLE DAY | 香港薄扶林道102號瑪麗醫院
+【香港紅十字會醫院學校(小學部)||SHAM SHUI PO】2 行
+    | Aided Special Schools | WHOLE DAY | 新界瑪嘉烈醫院道2-10號瑪嘉烈醫院
+    | Aided Special Schools | WHOLE DAY | 九龍深水埗永康街111號明愛醫院
+【香港紅十字會醫院學校(中學部)||SOUTHERN】2 行
+    | Aided Special Schools | WHOLE DAY | 香港薄扶林大口環道12號大口環根德公爵夫人兒童醫院
+    | Aided Special Schools | WHOLE DAY | 香港薄扶林道102號瑪麗醫院
+【瑪利灣學校||SOUTHERN】2 行
+    | Aided Special Schools | WHOLE DAY | 香港香港仔南朗山道32號
+    | Aided Special Schools | WHOLE DAY | 香港香港仔南朗山道32號
+【香港紅十字會醫院學校(中學部)||TUEN MUN】2 行
+    | Aided Special Schools | WHOLE DAY | 新界屯門青松觀路15號青山醫院
+    | Aided Special Schools | WHOLE DAY | 新界屯門青松觀路23號屯門醫院
+【香港紅十字會醫院學校(中學部)||SHAM SHUI PO】2 行
+    | Aided Special Schools | WHOLE DAY | 新界瑪嘉烈醫院道2-10號瑪嘉烈醫院
+    | Aided Special Schools | WHOLE DAY | 九龍深水埗永康街111號明愛醫院
+【播道書院||SAI KUNG】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界將軍澳至善街7號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界將軍澳至善街7號
+【香港華人基督教聯會真道書院||SAI KUNG】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界將軍澳嶺光街五號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界將軍澳勤學里一號
+【培僑書院||SHA TIN】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界沙田第38A區
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界沙田第38A區
+【基督教香港信義會宏信書院||YUEN LONG】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界元朗第13區
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界元朗第13區
+【拔萃男書院||KOWLOON CITY】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 九龍旺角亞皆老街131號(包括宿舍部分)
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 九龍旺角亞皆老街131號(包括宿舍部分)
+【香港浸會大學附屬學校王錦輝中小學||SHA TIN】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界沙田石門安睦里6號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界沙田石門安睦里6號
+【聖瑪加利男女英文中小學||SHAM SHUI PO】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 九龍深水埗深旺道33號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 九龍深水埗深旺道33號
+【保良局林文燦英文小學||KOWLOON CITY】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 九龍農圃道2號(地下小食部及4樓天台操場除外)
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 九龍土瓜灣上鄉道24號部分校舍
+【漢華中學||EASTERN】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 香港小西灣富欣道3號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 香港小西灣富欣道3號
+【優才(楊殷有娣)書院||SAI KUNG】2 行
+   PRIMARY | Direct Subsidy Scheme Primary Schools | WHOLE DAY | 新界將軍澳嶺光街10號
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 新界將軍澳嶺光街10號
+【九龍三育中學||YAU TSIM MONG】2 行
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 九龍界限街52號地下至4樓
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 九龍詩歌舞街14號(1樓校務處 校長室及儲物室除外)
+【蘇浙公學||EASTERN】2 行
+   SECONDARY | Direct Subsidy Scheme Secondary Schools | WHOLE DAY | 香港寶馬山道20號
+   SECONDARY | International Schools (Secondary) | WHOLE DAY | 香港寶馬山道20號
+
+=== 油尖旺区中学 25 行 ===
+聖芳濟書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+港九潮州公會中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+嘉諾撒聖瑪利書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+麗澤中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+華仁書院(九龍) | AIDED | Aided Secondary Schools | WHOLE DAY
+保良局莊啟程預科書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+天主教新民書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+循道中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+中華基督教會銘基書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+世界龍岡學校劉皇發中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+真光女書院 | AIDED | Aided Secondary Schools | WHOLE DAY
+基督教香港信義會信義中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+麗澤中學 | AIDED | Aided Secondary Schools | WHOLE DAY
+聖公會諸聖中學 | CAPUT | Caput Secondary Schools | WHOLE DAY
+九龍三育中學 | DIRECT SUBSIDY SCHEME | Direct Subsidy Scheme Secondary Schools | WHOLE DAY
+拔萃女書院 | DIRECT SUBSIDY SCHEME | Direct Subsidy Scheme Secondary Schools | WHOLE DAY
+香港管理專業協會李國寶中學 | DIRECT SUBSIDY SCHEME | Direct Subsidy Scheme Secondary Schools | WHOLE DAY
+九龍三育中學 | DIRECT SUBSIDY SCHEME | Direct Subsidy Scheme Secondary Schools | WHOLE DAY
+官立嘉道理爵士中學(西九龍) | GOVERNMENT | Government Secondary Schools | WHOLE DAY
+伊利沙伯中學 | GOVERNMENT | Government Secondary Schools | WHOLE DAY
+保良局莊啓程預科書院(夜校部) | PRIVATE | Private Secondary Schools (Day/Evening) | EVENING
+聖迦利亞書院(九龍)(下午) | PRIVATE | Private Secondary Schools (Day/Evening) | P.M.
+聖迦利亞書院(九龍)(上午) | PRIVATE | Private Secondary Schools (Day/Evening) | A.M.
+港專成人教育中心(伊利沙伯中學) | PRIVATE | Private Secondary Schools (Day/Evening) | EVENING
+奧思書院 | PRIVATE | Private Secondary Schools (Day/Evening) | WHOLE DAY
+
+=== 直资中学（62 行）去重前后 ===
+记录数: 62 / 去重校名数: 61
+多行学校数: 1 -> [["九龍三育中學",2]]

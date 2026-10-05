@@ -276,16 +276,22 @@ services:
       FILE_TOKEN_KEY: ${FILE_TOKEN_KEY}
       INVOKE_TOKEN_SECRET: ${INVOKE_TOKEN_SECRET}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      # 鲁港通 - Next.js standalone server 绑定 process.env.HOSTNAME（Docker 默认=容器 ID），
+      # 会导致容器内 localhost:3000 健康检查被拒；覆盖为 0.0.0.0 监听全接口（4.16.2 升级踩坑）
+      HOSTNAME: 0.0.0.0
     volumes:
       # 鲁港通 - 沿用生产系统配置（品牌 feConfigs / systemEnv / 旧模型表），缺失会丢失「鲁港通AI助手」标题等定制
       - ./config/config.json:/app/data/config.json
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      # 鲁港通 - 4.16.2 无 /api/health 路由，改用公开的 getInitData（登录页同款）；
+      # 启动初始化约 60-90s，加 start_period 避免启动期间误判 unhealthy
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/common/system/getInitData"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 90s
 
   # ===== MCP Server fastgpt-mcp_server v4.14.23（对外 MCP 服务，用户选择启用）=====
   mcp-server:

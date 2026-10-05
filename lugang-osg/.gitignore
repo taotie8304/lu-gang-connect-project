@@ -1,0 +1,6 @@
+# 鲁港通 - OSG 本地忽略
+.venv/
+__pycache__/
+*.pyc
+.env
+.pytest_cache/
