@@ -144,33 +144,57 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
   uploadFileMaxAmount: serviceEnv.UPLOAD_FILE_MAX_AMOUNT
 };
 
-// 鲁港通 - N4 在线支付：套餐销售配置兜底（当前为联调测试价，正式价格上线前整体替换）。
+// 鲁港通 - N4 在线支付：正式套餐销售配置（2026-10-05 定价定稿）。
 // 4.16.2 未接入商业版时数据库与 config.json 的 subPlans 均不生效，价格页展示与服务端计价统一读取本对象；
-// 容量类数值按生产实际用量留足余量（向量约 3.1 万、知识库 8、应用 2、成员 2），避免启用套餐校验后阻塞日常训练与采集导入。
+// 1 积分 = 0.01 元，月积分 = 月费 × 100（含约 60% 毛利）；年付按付 10 个月计（subModeMap.year.payMonth=10），积分按 12 个月发放。
+// 积分消耗口径：一次深度问答平均约 40 积分（LUGANG_POINTS_PER_DEEP_QA），免费档 300 积分约可体验 7 次。
+// 全平台共享同一团队积分池，容量类数值全档位统一宽松，避免启用套餐校验后阻塞日常训练与采集导入。
 const defaultSubPlans: SubPlanType = {
   standard: {
     [StandardSubLevelEnum.free]: {
       price: 0,
-      totalPoints: 100,
-      maxTeamMember: 10,
-      maxAppAmount: 50,
-      maxDatasetAmount: 100,
-      maxDatasetSize: 1000000,
-      requestsPerMinute: 5000,
-      chatHistoryStoreDuration: 365,
-      websiteSyncPerDataset: 100,
-      enableSandbox: false
-    },
-    [StandardSubLevelEnum.basic]: {
-      price: 0.01,
-      totalPoints: 2000000,
-      maxTeamMember: 50,
+      totalPoints: 300,
+      maxTeamMember: 100000,
       maxAppAmount: 500,
       maxDatasetAmount: 1000,
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
-      chatHistoryStoreDuration: 3650,
-      websiteSyncPerDataset: 100,
+      chatHistoryStoreDuration: 90,
+      enableSandbox: false
+    },
+    [StandardSubLevelEnum.experience]: {
+      price: 10,
+      totalPoints: 1000,
+      maxTeamMember: 100000,
+      maxAppAmount: 500,
+      maxDatasetAmount: 1000,
+      maxDatasetSize: 10000000,
+      requestsPerMinute: 5000,
+      chatHistoryStoreDuration: 180,
+      enableSandbox: false
+    },
+    [StandardSubLevelEnum.basic]: {
+      price: 69,
+      totalPoints: 6900,
+      maxTeamMember: 100000,
+      maxAppAmount: 500,
+      maxDatasetAmount: 1000,
+      maxDatasetSize: 10000000,
+      requestsPerMinute: 5000,
+      chatHistoryStoreDuration: 365,
+      ticketResponseTime: 24,
+      enableSandbox: false
+    },
+    [StandardSubLevelEnum.advanced]: {
+      price: 98,
+      totalPoints: 9800,
+      maxTeamMember: 100000,
+      maxAppAmount: 500,
+      maxDatasetAmount: 1000,
+      maxDatasetSize: 10000000,
+      requestsPerMinute: 5000,
+      chatHistoryStoreDuration: 730,
+      ticketResponseTime: 12,
       enableSandbox: false
     }
   },
@@ -178,13 +202,23 @@ const defaultSubPlans: SubPlanType = {
   extraDatasetSize: {
     price: 0.01
   },
-  // 积分包：100 积分 0.01 元（测试价）。
+  // 积分包：1 积分 = 0.01 元，有效期 1 年；充值后可在个人中心查看订单与到账积分。
   extraPoints: {
     packages: [
       {
-        points: 100,
-        month: 1,
-        price: 0.01
+        points: 1000,
+        month: 12,
+        price: 10
+      },
+      {
+        points: 5000,
+        month: 12,
+        price: 50
+      },
+      {
+        points: 10000,
+        month: 12,
+        price: 100
       }
     ]
   }
@@ -252,7 +286,7 @@ export async function initSystemConfig() {
       },
       fastgptConfig.systemEnv || {} // 商业版数据存在数据库里
     ),
-    // 鲁港通 - N4 在线支付：接入商业版时以数据库套餐配置为准，未接入（当前部署）时使用代码级测试价配置兜底
+    // 鲁港通 - N4 在线支付：接入商业版时以数据库套餐配置为准，未接入（当前部署）时使用代码级正式价配置兜底
     subPlans: fastgptConfig.subPlans ?? defaultSubPlans
   };
 

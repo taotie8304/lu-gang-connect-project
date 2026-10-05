@@ -68,6 +68,19 @@ describe('savePricePurchaseIntent and consumePricePurchaseIntent', () => {
     expect(consumePricePurchaseIntent(storage, 2000)).toBeUndefined();
   });
 
+  it('支持恢复体验版购买意图', () => {
+    const storage = createStorage();
+    const intent = {
+      type: 'standard',
+      packageChange: PackageChangeStatusEnum.upgrade,
+      level: StandardSubLevelEnum.experience,
+      subMode: SubModeEnum.month
+    } as const;
+
+    savePricePurchaseIntent(intent, storage, 1000);
+    expect(consumePricePurchaseIntent(storage, 2000)).toEqual(intent);
+  });
+
   it('支持恢复两类额外套餐购买参数', () => {
     const storage = createStorage();
     const intents = [

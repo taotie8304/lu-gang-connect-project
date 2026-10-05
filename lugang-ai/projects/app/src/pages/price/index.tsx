@@ -251,6 +251,8 @@ const PriceBox = () => {
                   resumePurchaseIntent={resumePurchaseIntent}
                   onResumePurchaseIntentHandled={handleResumePurchaseIntent}
                   hideBillingToggle
+                  // 鲁港通 - 四档卡片改由响应式网格排布，避免固定 300px 在主流笔记本宽度下折行
+                  responsiveCardLayout
                 />
                 <HStack mt={8} color={'blue.700'} justifyContent={'center'} w={'100%'}>
                   <MyIcon name={'infoRounded'} w={'1rem'} />

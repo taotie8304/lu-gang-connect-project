@@ -13,6 +13,7 @@ import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import type { TeamPlanStandardType } from '@fastgpt/global/support/wallet/sub/type';
+import { LUGANG_POINTS_PER_DEEP_QA } from '@fastgpt/global/support/wallet/bill/lugangPrice';
 
 const ModelPriceModal = dynamic(() =>
   import('@/components/core/ai/ModelTable').then((mod) => mod.ModelPriceModal)
@@ -136,35 +137,15 @@ const StandardPlanContentList = ({
           </ModelPriceModal>
         </Flex>
       </Flex>
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box fontWeight={'bold'} color={'myGray.600'}>
-          {t('common:n_dataset_size', {
-            amount: planContent.maxDatasetSize
-          })}
-        </Box>
-      </Flex>
+      {/* 鲁港通 - 平台级指标行（索引量/成员/应用/知识库数/QPM）全档位统一且面向内部，销售卡片不再展示；积分换算为深度问答次数便于用户理解价值 */}
       <Flex alignItems={'center'}>
         <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
         <Box color={'myGray.600'}>
-          {t('common:n_team_members', {
-            amount: planContent.maxTeamMember
-          })}
-        </Box>
-      </Flex>
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_agent_amount', {
-            amount: planContent.maxAppAmount
-          })}
-        </Box>
-      </Flex>
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_dataset_amount', {
-            amount: planContent.maxDatasetAmount
+          {t('common:n_deep_qa_count', {
+            amount: Math.floor(
+              (planContent.totalPoints + (planContent.annualBonusPoints ?? 0)) /
+                LUGANG_POINTS_PER_DEEP_QA
+            )
           })}
         </Box>
       </Flex>
@@ -186,15 +167,6 @@ const StandardPlanContentList = ({
           </Box>
         </Flex>
       )}
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_team_qpm', {
-            amount: planContent.requestsPerMinute
-          })}
-        </Box>
-        <QuestionTip ml={1} label={t('common:qpm_desc')} />
-      </Flex>
       {!!planContent.websiteSyncPerDataset && (
         <Flex alignItems={'center'}>
           <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />

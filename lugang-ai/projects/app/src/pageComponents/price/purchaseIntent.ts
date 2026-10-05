@@ -30,6 +30,7 @@ const PRICE_PURCHASE_INTENT_KEY = 'fastgpt-price-purchase-intent';
 const PURCHASE_INTENT_TTL = 30 * 60 * 1000;
 const PURCHASABLE_STANDARD_LEVELS = [
   StandardSubLevelEnum.free,
+  StandardSubLevelEnum.experience,
   StandardSubLevelEnum.basic,
   StandardSubLevelEnum.advanced,
   StandardSubLevelEnum.custom

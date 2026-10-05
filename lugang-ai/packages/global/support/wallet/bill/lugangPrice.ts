@@ -72,3 +72,9 @@ export const getExtraPointsPackage = ({
 export const getExtraPointsGrantPoints = (pkg: PointsPackageItem): number => {
   return pkg.points + (pkg.activityBonusPoints ?? 0);
 };
+
+/**
+ * 单次深度问答的平均积分消耗估算值。
+ * 仅用于价格页「约 N 次深度问答」展示与积分余额提示口径，实际扣费按模型 token 用量折算。
+ */
+export const LUGANG_POINTS_PER_DEEP_QA = 40;

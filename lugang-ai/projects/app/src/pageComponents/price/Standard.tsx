@@ -26,8 +26,10 @@ import {
   type PricePurchaseIntent
 } from './purchaseIntent';
 
+// 鲁港通 - 价格页展示档位：免费版 / 体验版 / 进阶版 / 专业版（定制版无 customFormUrl 时不展示）
 const NEW_PLAN_LEVELS = [
   StandardSubLevelEnum.free,
+  StandardSubLevelEnum.experience,
   StandardSubLevelEnum.basic,
   StandardSubLevelEnum.advanced,
   StandardSubLevelEnum.custom
