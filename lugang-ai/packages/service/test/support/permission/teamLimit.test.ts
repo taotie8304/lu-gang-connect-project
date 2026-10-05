@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   checkTeamAIPoints,
+  checkUserAIPoints,
   checkTeamMemberLimit,
   checkTeamAppTypeLimit,
   checkTeamDatasetFolderLimit,
@@ -10,6 +11,7 @@ import {
   checkTeamSandboxPermission
 } from '@fastgpt/service/support/permission/teamLimit';
 import * as walletUtils from '@fastgpt/service/support/wallet/sub/utils';
+import * as pointsController from '@fastgpt/service/support/wallet/points/controller';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { MongoDataset } from '@fastgpt/service/core/dataset/schema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
@@ -131,6 +133,98 @@ describe('checkTeamAIPoints', () => {
     });
 
     await expect(checkTeamAIPoints(mockTeamId)).rejects.toBe(TeamErrEnum.aiPointsNotEnough);
+  });
+});
+
+describe('checkUserAIPoints（鲁港通 - 个人积分账户门槛）', () => {
+  const mockTmbId = '507f1f77bcf86cd799439022';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete (global as any).subPlans;
+  });
+
+  it('当 global.subPlans.standard 不存在时直接返回，不查账户', async () => {
+    const getSpy = vi.spyOn(pointsController, 'getOrInitUserPoints');
+
+    await expect(
+      checkUserAIPoints({ teamId: mockTeamId, tmbId: mockTmbId })
+    ).resolves.toBeUndefined();
+    expect(getSpy).not.toHaveBeenCalled();
+  });
+
+  it('当个人积分充足时返回个人账户余额', async () => {
+    (global as any).subPlans = {
+      standard: {
+        [StandardSubLevelEnum.free]: {
+          totalPoints: 300
+        }
+      }
+    };
+
+    vi.spyOn(pointsController, 'getOrInitUserPoints').mockResolvedValue({
+      totalPoints: 1000,
+      surplusPoints: 800
+    } as any);
+
+    await expect(checkUserAIPoints({ teamId: mockTeamId, tmbId: mockTmbId })).resolves.toEqual({
+      totalPoints: 1000,
+      surplusPoints: 800
+    });
+  });
+
+  it('当个人余额为 0 时抛出积分不足错误', async () => {
+    (global as any).subPlans = {
+      standard: {
+        [StandardSubLevelEnum.free]: {
+          totalPoints: 300
+        }
+      }
+    };
+
+    vi.spyOn(pointsController, 'getOrInitUserPoints').mockResolvedValue({
+      totalPoints: 300,
+      surplusPoints: 0
+    } as any);
+
+    await expect(checkUserAIPoints({ teamId: mockTeamId, tmbId: mockTmbId })).rejects.toBe(
+      TeamErrEnum.aiPointsNotEnough
+    );
+  });
+
+  it('当个人余额透支为负时抛出积分不足错误', async () => {
+    (global as any).subPlans = {
+      standard: {
+        [StandardSubLevelEnum.free]: {
+          totalPoints: 300
+        }
+      }
+    };
+
+    vi.spyOn(pointsController, 'getOrInitUserPoints').mockResolvedValue({
+      totalPoints: 300,
+      surplusPoints: -12
+    } as any);
+
+    await expect(checkUserAIPoints({ teamId: mockTeamId, tmbId: mockTmbId })).rejects.toBe(
+      TeamErrEnum.aiPointsNotEnough
+    );
+  });
+
+  it('当账户不存在时抛出积分不足错误', async () => {
+    (global as any).subPlans = {
+      standard: {
+        [StandardSubLevelEnum.free]: {
+          totalPoints: 300
+        }
+      }
+    };
+
+    vi.spyOn(pointsController, 'getOrInitUserPoints').mockResolvedValue(null as any);
+
+    await expect(checkUserAIPoints({ teamId: mockTeamId, tmbId: mockTmbId })).rejects.toBe(
+      TeamErrEnum.aiPointsNotEnough
+    );
   });
 });
 

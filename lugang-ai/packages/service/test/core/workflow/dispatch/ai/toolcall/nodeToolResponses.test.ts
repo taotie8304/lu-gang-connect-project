@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('@fastgpt/service/support/permission/teamLimit', () => ({
-  checkTeamAIPoints: vi.fn().mockResolvedValue(undefined)
+  checkTeamAIPoints: vi.fn().mockResolvedValue(undefined),
+  checkUserAIPoints: vi.fn().mockResolvedValue(undefined)
 }));
 
 const runCodeMock = vi.fn();

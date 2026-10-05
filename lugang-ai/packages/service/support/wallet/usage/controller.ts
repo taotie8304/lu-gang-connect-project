@@ -13,6 +13,7 @@ import { mongoSessionRun } from '../../../common/mongo/sessionRun';
 import { MongoUsageItem } from './usageItemSchema';
 import { getLogger, LogCategories } from '../../../common/logger';
 import { getDefaultSTTModel } from '../../../core/ai/model';
+import { deductUserPoints } from '../points/controller';
 
 const logger = getLogger(LogCategories.MODULE.WALLET.USAGE);
 
@@ -148,11 +149,14 @@ export const createChatUsageRecord = async ({
 export const pushChatItemUsage = ({
   teamId,
   usageId,
-  nodeUsages
+  nodeUsages,
+  tmbId
 }: {
   teamId: string;
   usageId: string;
   nodeUsages: ChatNodeUsageType[];
+  /** 鲁港通 - 提供时同步从该成员的个人积分账户扣除本次消耗 */
+  tmbId?: string;
 }) => {
   pushUsageItems({
     teamId,
@@ -166,6 +170,16 @@ export const pushChatItemUsage = ({
       pages: item.pages
     }))
   });
+
+  // 鲁港通 - 个人积分账户：按本轮节点用量合计扣费（余额允许透支，下次对话前由门槛拦截）
+  if (tmbId) {
+    const consumePoints = nodeUsages.reduce((sum, item) => sum + (item.totalPoints || 0), 0);
+    if (consumePoints > 0) {
+      void deductUserPoints({ tmbId, points: consumePoints }).catch((error) => {
+        logger.error('Failed to deduct user points', { error, tmbId, consumePoints, usageId });
+      });
+    }
+  }
 };
 
 /** 记录 STT 音频用量；source 由调用方显式指定，区分 API 与各 outLink 渠道。 */

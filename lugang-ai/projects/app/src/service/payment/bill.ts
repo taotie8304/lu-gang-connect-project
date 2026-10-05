@@ -27,6 +27,7 @@ import {
 import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { addMonths } from 'date-fns';
 import dayjs from 'dayjs';
+import { incrUserPoints, grantUserPlan } from '@fastgpt/service/support/wallet/points/controller';
 import { alipayPrecreate, alipayQueryOrder } from './alipay';
 
 // 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
@@ -169,7 +170,7 @@ export const checkBillPayResult = async ({
  * 翻转成功后再执行发放；发放异常记录错误日志，由管理员凭订单号排查补发。
  */
 export const settleBill = async (
-  bill: Pick<BillSchemaType, '_id' | 'orderId' | 'price' | 'type' | 'metadata' | 'teamId'>,
+  bill: Pick<BillSchemaType, '_id' | 'orderId' | 'price' | 'type' | 'metadata' | 'teamId' | 'tmbId'>,
   tradeNo?: string
 ) => {
   const updated = await MongoBill.updateOne(
@@ -200,14 +201,15 @@ export const settleBill = async (
 };
 
 /**
- * 发放权益（写团队订阅表，与系统套餐读取逻辑同源）：
- * - 标准套餐：作用于当前生效的套餐记录（续费延期/升降级换档），积分叠加；无生效记录则新建
- * - 额外积分：新建一条积分订阅，独立有效期
+ * 发放权益：
+ * - 团队订阅表（既有逻辑保留）：作用于当前生效记录（续费延期/升降级换档），兼容后台展示与容量校验
+ * - 个人积分账户（鲁港通 N4）：积分发放到付款人个人账户，作为对话扣费与面板展示依据
  */
 const grantBillRights = async (
-  bill: Pick<BillSchemaType, '_id' | 'orderId' | 'type' | 'metadata' | 'teamId'>
+  bill: Pick<BillSchemaType, '_id' | 'orderId' | 'type' | 'metadata' | 'teamId' | 'tmbId'>
 ) => {
   const teamId = bill.teamId;
+  const tmbId = String(bill.tmbId);
   const grantPoints = bill.metadata.totalPoints ?? 0;
 
   if (bill.type === BillTypeEnum.standSubPlan) {
@@ -256,6 +258,9 @@ const grantBillRights = async (
         }
       ]);
     }
+
+    // 鲁港通 - 个人积分账户：积分入账到付款人个人账户（团队订阅表保留仅为兼容既有展示与容量校验）
+    await grantUserPlan({ teamId: String(teamId), tmbId, level, subMode, grantPoints });
   } else if (bill.type === BillTypeEnum.extraPoints) {
     const monthCount = bill.metadata.month ?? 1;
     const now = new Date();
@@ -269,6 +274,9 @@ const grantBillRights = async (
         surplusPoints: grantPoints
       }
     ]);
+
+    // 鲁港通 - 个人积分账户：额外积分包发放到付款人个人账户
+    await incrUserPoints({ teamId: String(teamId), tmbId, points: grantPoints });
   }
 
   await clearTeamPlanCache(String(teamId));

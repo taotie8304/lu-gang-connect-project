@@ -46,7 +46,7 @@ import { WorkflowVariableState } from './utils/variables';
 import { getHandleId } from '@fastgpt/global/core/workflow/utils';
 import { callbackMap } from './constants';
 import { getUserChatInfo } from '../../../support/user/team/utils';
-import { checkTeamAIPoints } from '../../../support/permission/teamLimit';
+import { checkUserAIPoints } from '../../../support/permission/teamLimit';
 import type { UsageSourceEnum } from '@fastgpt/global/support/wallet/usage/constants';
 import { createChatUsageRecord, pushChatItemUsage } from '../../../support/wallet/usage/controller';
 import type { RequireOnlyOne } from '@fastgpt/global/common/type/utils';
@@ -208,8 +208,8 @@ export async function dispatchWorkFlow({
   const chatSource = getWorkflowSource(runningAppInfo);
 
   /* Init function */
-  // Check point
-  await checkTeamAIPoints(runningUserInfo.teamId);
+  // Check point（鲁港通 - 个人积分账户：按成员余额校验，替代团队共享池口径）
+  await checkUserAIPoints({ teamId: runningUserInfo.teamId, tmbId: runningUserInfo.tmbId });
 
   const {
     fileContext,
@@ -743,7 +743,9 @@ export class WorkflowQueue {
         pushChatItemUsage({
           teamId: this.data.runningUserInfo.teamId,
           usageId: this.data.usageId,
-          nodeUsages: usages
+          nodeUsages: usages,
+          // 鲁港通 - 个人积分账户：本轮节点用量同步从该成员余额扣除
+          tmbId: this.data.runningUserInfo.tmbId
         });
       }
       if (this.data.concatUsage) {
@@ -1212,7 +1214,11 @@ export class WorkflowQueue {
   }
   private async checkTeamBlance(): Promise<NodeResponseCompleteType | undefined> {
     try {
-      await checkTeamAIPoints(this.data.runningUserInfo.teamId);
+      // 鲁港通 - 个人积分账户：节点级余额校验同样按成员口径
+      await checkUserAIPoints({
+        teamId: this.data.runningUserInfo.teamId,
+        tmbId: this.data.runningUserInfo.tmbId
+      });
     } catch (error) {
       // Next time you enter the system, you will still start from the current node(Current check team blance node).
       if (error === TeamErrEnum.aiPointsNotEnough) {

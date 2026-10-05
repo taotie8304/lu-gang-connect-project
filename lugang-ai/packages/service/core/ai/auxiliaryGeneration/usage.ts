@@ -1,4 +1,4 @@
-import { checkTeamAIPoints } from '../../../support/permission/teamLimit';
+import { checkUserAIPoints } from '../../../support/permission/teamLimit';
 import { createChatUsageRecord, pushChatItemUsage } from '../../../support/wallet/usage/controller';
 import type { ChatNodeUsageType } from '@fastgpt/global/support/wallet/bill/type';
 import { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
@@ -26,7 +26,8 @@ export const createAuxiliaryGenerationUsage = async ({
   sourceId,
   usageSource
 }: CreateAuxiliaryGenerationUsageParams) => {
-  await checkTeamAIPoints(teamId);
+  // 鲁港通 - 个人积分账户：辅助生成（起标题/问题引导等）同样按成员余额校验
+  await checkUserAIPoints({ teamId, tmbId });
 
   const usageAppId = (() => {
     if ([ChatSourceTypeEnum.app, ChatSourceTypeEnum.chatAgentHelper].includes(sourceType)) {
@@ -52,7 +53,8 @@ export const createAuxiliaryGenerationUsage = async ({
       pushChatItemUsage({
         teamId,
         usageId,
-        nodeUsages: usages
+        nodeUsages: usages,
+        tmbId
       });
     }
   };

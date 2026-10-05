@@ -1,4 +1,5 @@
 import { getTeamPlanStatus, getTeamStandPlan, teamPoint } from '../../support/wallet/sub/utils';
+import { getOrInitUserPoints } from '../../support/wallet/points/controller';
 import { MongoApp } from '../../core/app/schema';
 import { MongoDataset } from '../../core/dataset/schema';
 import { DatasetTypeEnum } from '@fastgpt/global/core/dataset/constants';
@@ -22,6 +23,31 @@ export const checkTeamAIPoints = async (teamId: string) => {
   return {
     totalPoints,
     usedPoints
+  };
+};
+
+/*
+ * 鲁港通 - 个人积分账户门槛：所有普通用户在 root 团队共享一个团队池，
+ * checkTeamAIPoints 的团队口径无法反映个人余额，对话入口改查成员个人账户。
+ */
+export const checkUserAIPoints = async ({
+  teamId,
+  tmbId
+}: {
+  teamId: string;
+  tmbId: string;
+}) => {
+  if (!global.subPlans?.standard) return;
+
+  const account = await getOrInitUserPoints({ teamId, tmbId });
+
+  if (!account || (account.surplusPoints ?? 0) <= 0) {
+    return Promise.reject(TeamErrEnum.aiPointsNotEnough);
+  }
+
+  return {
+    totalPoints: account.totalPoints,
+    surplusPoints: account.surplusPoints
   };
 };
 
