@@ -17,6 +17,11 @@ import type {
   ConcatUsageProps,
   CreateUsageProps
 } from '@fastgpt/global/support/wallet/usage/api';
+import {
+  localCreateUsage,
+  localConcatUsage,
+  localPushUsageItems
+} from '@/service/support/wallet/usage/local';
 import { isProVersion } from '@fastgpt/service/common/system/constants';
 import { getLogger, LogCategories } from '@fastgpt/service/common/logger';
 import {
@@ -49,17 +54,19 @@ export function initGlobalVariables() {
       return POST<SearchDatasetDataResponse>('/core/dataset/deepRag', data);
     };
 
+    // 鲁港通 - N4 用量管线：未接入商业版时原实现直接 return（no-op），用量明细与总积分永不落库；
+    // 改为本地写 Mongo 顶替（商业版部署仍走原 POST 通道）。
     global.createUsageHandler = function createUsageHandler(data: CreateUsageProps) {
-      if (!isProVersion()) return;
-      return POST<string>('/support/wallet/usage/createUsage', data);
+      if (isProVersion()) return POST<string>('/support/wallet/usage/createUsage', data);
+      return localCreateUsage(data);
     };
     global.concatUsageHandler = function concatUsageHandler(data: ConcatUsageProps) {
-      if (!isProVersion()) return;
-      return POST('/support/wallet/usage/concatUsage', data);
+      if (isProVersion()) return POST('/support/wallet/usage/concatUsage', data);
+      return localConcatUsage(data);
     };
     global.pushUsageItemsHandler = function pushUsageItemsHandler(data: PushUsageItemsProps) {
-      if (!isProVersion()) return;
-      return POST('/support/wallet/usage/pushUsageItems', data);
+      if (isProVersion()) return POST('/support/wallet/usage/pushUsageItems', data);
+      return localPushUsageItems(data);
     };
   }
 

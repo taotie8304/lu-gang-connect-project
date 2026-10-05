@@ -90,7 +90,8 @@ const ChatInput = ({
   const autoTTSResponse = useContextSelector(ChatBoxContext, (v) => v.autoTTSResponse);
   const chatType = useContextSelector(ChatBoxContext, (v) => v.chatType);
   const appName = useContextSelector(ChatItemContext, (v) => v.chatBoxData.app.name);
-  const placeholderAppName = chatType === ChatTypeEnum.home ? 'FastGPT' : appName || 'FastGPT';
+  // 鲁港通 - 首页输入框占位名兜底为品牌名（原名 FastGPT 会泄露上游品牌）
+  const placeholderAppName = chatType === ChatTypeEnum.home ? '鲁港通' : appName || '鲁港通';
   const appNamePlaceholderParts = useMemo(() => {
     const placeholderText = String(
       t('common:core.chat.Type a message to app', {

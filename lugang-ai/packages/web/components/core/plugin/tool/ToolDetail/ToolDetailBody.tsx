@@ -34,7 +34,7 @@ const ToolDetailBody = ({
 }: ToolDetailBodyProps) => {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<'guide' | 'params'>('params');
-  const author = [parentTool?.author, systemTitle].find((value) => value?.trim()) ?? 'FastGPT';
+  const author = [parentTool?.author, systemTitle].find((value) => value?.trim()) ?? 'Lugang Connect';
   const readmeSource = [readmeContent, parentTool?.userGuide].find((value) => value?.trim()) ?? '';
 
   return (

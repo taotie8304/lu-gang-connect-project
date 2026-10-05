@@ -237,11 +237,7 @@ const BillTable = () => {
           discountCouponName={qrPayData.discountCouponName}
           {...qrPayData}
           onSuccess={() => {
-            setQRPayData(undefined);
-            toast({
-              title: t('common:pay_success'),
-              status: 'success'
-            });
+            // 鲁港通 - N4：支付成功提示由支付弹窗结果面板统一处理，这里只刷新订单列表
             getData(1);
           }}
         />

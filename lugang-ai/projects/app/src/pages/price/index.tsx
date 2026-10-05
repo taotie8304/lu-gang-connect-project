@@ -38,7 +38,11 @@ const PriceBox = () => {
   const [userSubMode, setUserSubMode] = useState<`${SubModeEnum}`>(SubModeEnum.month);
   const [resumePurchaseIntent, setResumePurchaseIntent] = useState<PricePurchaseIntent>();
 
-  const { data: initialData, loading: isLoading } = useRequest(
+  const {
+    data: initialData,
+    loading: isLoading,
+    refresh: refreshPlanStatus
+  } = useRequest(
     async () => {
       // 团队上下文由用户初始化写入，请求套餐前必须等待它完成，避免重复请求造成页面二次白屏。
       const userInfo = await initUserInfo();
@@ -136,10 +140,9 @@ const PriceBox = () => {
   }, [router]);
 
   const onPaySuccess = useCallback(() => {
-    setTimeout(() => {
-      router.reload();
-    }, 1000);
-  }, [router]);
+    // 鲁港通 - N4：支付成功后仅刷新套餐状态与用户数据，不再整页刷新（成功结果面板已在支付弹窗内就地展示）
+    void refreshPlanStatus();
+  }, [refreshPlanStatus]);
 
   const isWecomTeam = useMemo(() => !!userInfo?.team?.isWecomTeam, [userInfo?.team?.isWecomTeam]);
   const tabList = useMemo<Array<{ label: string; value: PriceTabType }>>(

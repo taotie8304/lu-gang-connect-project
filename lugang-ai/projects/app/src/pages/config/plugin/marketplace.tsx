@@ -895,7 +895,7 @@ const ToolkitMarketplace = () => {
                 WebkitTextFillColor: 'transparent'
               }}
             >
-              Assets for FastGPT
+              Assets for Lugang Connect
             </Box>
             <Box fontSize={'45px'} fontWeight={'semibold'} color={'black'}>
               {t('marketplace:toolkit_marketplace_title')}

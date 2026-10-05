@@ -69,9 +69,37 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   }, [t, onClose]);
 
   // 鲁港通 - 设置菜单入口。D11 已补入使用条款/隐私政策/资料收集声明（走 SystemContentModal + /api/system/content/[key]，正文按 getLocale 多语言）。
-  // TODO(D10 商业化)：在此数组补充「活动中心 activityCenter」「账户信息 accountInfo」——
+  // D10 商业化一期：订阅套餐 / 我的订单 / 用量明细 三个入口前置（普通用户付款与消费可见性的唯一入口）。
+  // TODO(D10 商业化二期)：在此数组补充「活动中心 activityCenter」「账户信息 accountInfo」——
   //   依赖 /api/user/profile、One API 额度/活动接口与 AccountInfoModal、ActivityListModal 组件（4.16.2 尚缺，须新建）。
   const menuItems: SettingsMenuItem[] = [
+    {
+      key: 'subscription',
+      icon: 'support/account/plans',
+      label: t('common:user_settings.my_subscription'),
+      onClick: () => {
+        onClose();
+        router.push('/price');
+      }
+    },
+    {
+      key: 'myOrders',
+      icon: 'common/billing',
+      label: t('common:user_settings.my_orders'),
+      onClick: () => {
+        onClose();
+        router.push('/account/bill');
+      }
+    },
+    {
+      key: 'usageDetail',
+      icon: 'chart',
+      label: t('common:user_settings.usage_detail'),
+      onClick: () => {
+        onClose();
+        router.push('/account/usage');
+      }
+    },
     {
       key: 'language',
       icon: 'common/language/zh',

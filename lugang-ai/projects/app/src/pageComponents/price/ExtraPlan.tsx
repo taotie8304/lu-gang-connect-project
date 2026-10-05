@@ -195,7 +195,8 @@ const ExtraPlan = ({
     flexDirection: 'column',
     alignItems: 'flex-start',
     w: ['100%', PLAN_CARD_MAX_WIDTH],
-    h: ['auto', '488px'],
+    // 鲁港通 - 固定 488px 高度在多语言/长文案下会裁掉底部提示行，改为最小高度由内容撑开
+    minH: ['auto', '488px'],
     p: ['16px', '24px 32px'],
     flexShrink: 0,
     bg: 'white',
@@ -211,9 +212,8 @@ const ExtraPlan = ({
       <Flex
         w={['100%', DUAL_CARD_CONTAINER_MAX_WIDTH]}
         maxW={['100%', DUAL_CARD_CONTAINER_MAX_WIDTH]}
-        h={['auto', '488px']}
-        justifyContent={'center'}
-        alignItems={'flex-start'}
+        // 鲁港通 - 两卡等高由 stretch 决定（较高者撑开），避免固定高裁剪内容
+        alignItems={'stretch'}
         gap={['16px', DUAL_CARD_GAP]}
         flexWrap={['wrap', 'nowrap']}
       >
@@ -449,7 +449,14 @@ const ExtraPlan = ({
                 color={'black'}
                 lineHeight={['1.2', 'normal']}
               >
-                {`￥${extraDatasetPrice}/1000${t('price:support.wallet.subscription.Extra dataset unit')}`}
+                {/* 鲁港通 - 主价与单位拆分显示，避免 32px 整串过长折行 */}
+                {`￥${extraDatasetPrice}`}
+                <Box
+                  as={'span'}
+                  fontSize={['12px', '16px']}
+                  fontWeight={'500'}
+                  color={'myGray.500'}
+                >{`/1000${t('price:support.wallet.subscription.Extra dataset unit')}`}</Box>
               </Box>
               <Box
                 mt="auto"

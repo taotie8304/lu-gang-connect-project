@@ -54,7 +54,13 @@ const AccountContainer = ({
             icon: 'support/user/usersLight',
             label: t('account:team'),
             value: TabEnum.team
-          },
+          }
+        ]
+      : []),
+    // 鲁港通 - N4：本部署未接入商业版（isPlus=false）但已开放「用量明细」，
+    // 与个人面板入口保持一致，避免从面板进入后左侧导航无当前项
+    ...(feConfigs?.isPlus || feConfigs?.show_pay
+      ? [
           {
             icon: 'support/usage/usageRecordLight',
             label: t('account:usage_records'),
@@ -62,7 +68,8 @@ const AccountContainer = ({
           }
         ]
       : []),
-    ...(feConfigs?.show_pay && userInfo?.team?.permission.hasManagePer
+    // 鲁港通 - N4：订单对所有团队成员可见（个人面板提供「我的订单」直达入口）
+    ...(feConfigs?.show_pay
       ? [
           {
             icon: 'support/bill/payRecordLight',

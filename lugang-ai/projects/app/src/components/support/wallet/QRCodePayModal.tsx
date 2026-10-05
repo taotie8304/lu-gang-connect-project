@@ -1,5 +1,6 @@
 import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/router';
 import { Trans } from 'next-i18next';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { Box, Flex, Button, Link } from '@chakra-ui/react';
@@ -46,6 +47,11 @@ const QRCodePayModal = ({
   const canvasRef = useRef<HTMLDivElement>(null);
   const toast = useToast();
   const { feConfigs } = useSystemStore();
+  const router = useRouter();
+
+  // 鲁港通 - N4：支付成功面板状态。检测到成功后不立即回调 onSuccess（否则外层弹窗被关、成功面板来不及展示），
+  // 等用户关闭面板时（完成/右上角 X/跳转按钮）再由 handleClose 统一触发
+  const [paySuccess, setPaySuccess] = useState(false);
 
   const isAlipayConfigured = feConfigs.payConfig?.alipay;
   const isWxConfigured = feConfigs.payConfig?.wx;
@@ -102,12 +108,13 @@ const QRCodePayModal = ({
     pollingInterval: 2000,
     onSuccess: ({ status, description }) => {
       if (status === BillStatusEnum.SUCCESS) {
+        if (paySuccess) return;
+        setPaySuccess(true);
         toast.toast({
           description: t('common:pay_success'),
           status: 'success',
           duration: 2000
         });
-        onSuccess?.();
       } else {
         console.log(status, description);
       }
@@ -207,113 +214,166 @@ const QRCodePayModal = ({
     return null;
   };
 
+  // 鲁港通 - N4：所有关闭路径统一收口——支付成功过才触发 onSuccess（刷新套餐状态/收起外层弹窗），再执行 onClose
+  const handleClose = () => {
+    if (paySuccess) {
+      onSuccess?.();
+    }
+    onClose?.();
+  };
+
   return (
     <MyModal
       isLoading={isUpdating}
       isOpen
       title={t('common:user.Pay')}
       w={'600px'}
-      onClose={onClose}
+      onClose={handleClose}
       closeOnOverlayClick={false}
       blockScrollOnMount
       bodyStyles={{ textAlign: 'center' }}
     >
-      {tip && <LightTip text={tip} mb={6} textAlign={'left'} />}
-      <Box>{t('common:pay_money')}</Box>
-      <Box
-        color="primary.600"
-        fontSize="32px"
-        fontWeight="600"
-        lineHeight="40px"
-        mb={discountCouponName ? 1 : 6}
-      >
-        ¥{readPrice.toFixed(2)}
-      </Box>
-      {discountCouponName && (
-        <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
-          {t('common:discount_coupon_used') + t(discountCouponName as any)}
-        </Box>
-      )}
-
-      {renderPaymentContent()}
-
-      {selectedPayment !== BillPayWayEnum.bank && (
-        <Box
-          mt={5}
-          textAlign={'center'}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          gap={1}
-        >
-          <MyIcon name={'common/info'} w={4} h={4} />
-          {t('common:pay.noclose')}
-        </Box>
-      )}
-
-      {/* WeChat Work payment: only show WeChat Work option, no switching allowed */}
-      {payment === BillPayWayEnum.wecom ? (
-        <Flex justifyContent="center" mt={6}>
-          <Button
-            flex={1}
-            h={10}
-            color={'myGray.900'}
-            leftIcon={<MyIcon name={'common/wecom'} />}
-            variant={'solid'}
-            isDisabled
-          >
-            {t('common:support.wallet.bill.payWay.wecom')}
+      {paySuccess ? (
+        // 鲁港通 - N4：支付成功结果面板（替代二维码，提供订单与用量明细直达入口）
+        <Flex flexDir={'column'} alignItems={'center'} pt={2}>
+          <MyIcon name={'checkCircle'} w={'48px'} h={'48px'} color={'primary.600'} />
+          <Box mt={4} fontSize={'20px'} fontWeight={'600'} color={'myGray.900'}>
+            {t('common:pay_success')}
+          </Box>
+          <Box mt={2} fontSize={'28px'} fontWeight={'600'} color={'primary.600'}>
+            ¥{readPrice.toFixed(2)}
+          </Box>
+          <Box mt={2} fontSize={'14px'} color={'myGray.600'}>
+            {t('common:pay_success_tip')}
+          </Box>
+          <Flex gap={3} mt={7} w={'100%'}>
+            <Button
+              flex={1}
+              h={10}
+              variant={'whiteBase'}
+              onClick={() => {
+                handleClose();
+                router.push('/account/bill');
+              }}
+            >
+              {t('common:pay_success_view_bill')}
+            </Button>
+            <Button
+              flex={1}
+              h={10}
+              variant={'whiteBase'}
+              onClick={() => {
+                handleClose();
+                router.push('/account/usage');
+              }}
+            >
+              {t('common:pay_success_view_usage')}
+            </Button>
+          </Flex>
+          <Button mt={3} w={'100%'} h={10} variant={'primary'} onClick={handleClose}>
+            {t('common:pay_success_done')}
           </Button>
         </Flex>
       ) : (
-        <Flex justifyContent="center" gap={3} mt={6}>
-          {isWxConfigured && (
-            <Button
-              flex={1}
-              h={10}
-              onClick={() => handlePaymentChange(BillPayWayEnum.wx)}
-              color={'myGray.900'}
-              leftIcon={<MyIcon name={'common/wechat'} />}
-              sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.wx).baseStyle}
-            >
-              {t('common:pay.wx_payment')}
-            </Button>
+        <>
+          {tip && <LightTip text={tip} mb={6} textAlign={'left'} />}
+          <Box>{t('common:pay_money')}</Box>
+          <Box
+            color="primary.600"
+            fontSize="32px"
+            fontWeight="600"
+            lineHeight="40px"
+            mb={discountCouponName ? 1 : 6}
+          >
+            ¥{readPrice.toFixed(2)}
+          </Box>
+          {discountCouponName && (
+            <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
+              {t('common:discount_coupon_used') + t(discountCouponName as any)}
+            </Box>
           )}
-          {isAlipayConfigured && (
-            <Button
-              flex={1}
-              h={10}
-              color={'myGray.900'}
-              onClick={() => handlePaymentChange(BillPayWayEnum.alipay)}
-              leftIcon={<MyIcon name={'common/alipay'} />}
-              sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.alipay).baseStyle}
-            >
-              {t('common:pay_alipay_payment')}
-            </Button>
-          )}
-          {isBankConfigured && (
-            <Button
-              flex={1}
-              h={10}
-              color={'myGray.900'}
-              onClick={() => handlePaymentChange(BillPayWayEnum.bank)}
-              sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.bank).baseStyle}
-            >
-              {t('common:pay_corporate_payment')}
-            </Button>
-          )}
-        </Flex>
-      )}
 
-      {feConfigs.payFormUrl && (
-        <Box mt={4} textAlign="center" fontSize="sm">
-          <Trans
-            i18nKey={i18nT('common:pay.payment_form_tip')}
-            components={{
-              payLink: <Link href={feConfigs.payFormUrl} target="_blank" color="primary.600" />
-            }}
-          />
-        </Box>
+          {renderPaymentContent()}
+
+          {selectedPayment !== BillPayWayEnum.bank && (
+            <Box
+              mt={5}
+              textAlign={'center'}
+              display="flex"
+              alignItems="center"
+              justifyContent="center"
+              gap={1}
+            >
+              <MyIcon name={'common/info'} w={4} h={4} />
+              {t('common:pay.noclose')}
+            </Box>
+          )}
+
+          {/* WeChat Work payment: only show WeChat Work option, no switching allowed */}
+          {payment === BillPayWayEnum.wecom ? (
+            <Flex justifyContent="center" mt={6}>
+              <Button
+                flex={1}
+                h={10}
+                color={'myGray.900'}
+                leftIcon={<MyIcon name={'common/wecom'} />}
+                variant={'solid'}
+                isDisabled
+              >
+                {t('common:support.wallet.bill.payWay.wecom')}
+              </Button>
+            </Flex>
+          ) : (
+            <Flex justifyContent="center" gap={3} mt={6}>
+              {isWxConfigured && (
+                <Button
+                  flex={1}
+                  h={10}
+                  onClick={() => handlePaymentChange(BillPayWayEnum.wx)}
+                  color={'myGray.900'}
+                  leftIcon={<MyIcon name={'common/wechat'} />}
+                  sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.wx).baseStyle}
+                >
+                  {t('common:pay.wx_payment')}
+                </Button>
+              )}
+              {isAlipayConfigured && (
+                <Button
+                  flex={1}
+                  h={10}
+                  color={'myGray.900'}
+                  onClick={() => handlePaymentChange(BillPayWayEnum.alipay)}
+                  leftIcon={<MyIcon name={'common/alipay'} />}
+                  sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.alipay).baseStyle}
+                >
+                  {t('common:pay_alipay_payment')}
+                </Button>
+              )}
+              {isBankConfigured && (
+                <Button
+                  flex={1}
+                  h={10}
+                  color={'myGray.900'}
+                  onClick={() => handlePaymentChange(BillPayWayEnum.bank)}
+                  sx={getPaymentButtonStyles(selectedPayment === BillPayWayEnum.bank).baseStyle}
+                >
+                  {t('common:pay_corporate_payment')}
+                </Button>
+              )}
+            </Flex>
+          )}
+
+          {feConfigs.payFormUrl && (
+            <Box mt={4} textAlign="center" fontSize="sm">
+              <Trans
+                i18nKey={i18nT('common:pay.payment_form_tip')}
+                components={{
+                  payLink: <Link href={feConfigs.payFormUrl} target="_blank" color="primary.600" />
+                }}
+              />
+            </Box>
+          )}
+        </>
       )}
     </MyModal>
   );

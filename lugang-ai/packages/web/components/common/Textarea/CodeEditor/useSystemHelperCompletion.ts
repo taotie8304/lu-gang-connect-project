@@ -48,7 +48,7 @@ const useSystemHelperCompletion = () => {
               label: 'SystemHelper',
               kind: monaco.languages.CompletionItemKind.Module,
               insertText: 'SystemHelper',
-              documentation: 'Built-in helper utilities provided by FastGPT sandbox.',
+              documentation: 'Built-in helper utilities provided by Lugang Connect sandbox.',
               range: {
                 startLineNumber: position.lineNumber,
                 endLineNumber: position.lineNumber,

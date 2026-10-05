@@ -719,7 +719,8 @@ const Standard = ({
                         mb={buttonMarginBottom}
                         h={buttonHeight}
                         w={'100%'}
-                        variant={'primaryGhost'}
+                        // 鲁港通 - 购买类 CTA 用实心主色，避免浅色 ghost 被误认为不可点击
+                        variant={'primary'}
                         isLoading={isLoading}
                         onClick={() => {
                           submitStandardPurchase({
@@ -766,7 +767,8 @@ const Standard = ({
                             _hover: { bg: 'rgba(237, 55, 44, 0.1)' }
                           }
                         : {
-                            variant: 'primaryGhost'
+                            // 鲁港通 - 购买类 CTA 用实心主色，确保「可付款按钮」一望即知
+                            variant: 'primary'
                           })}
                       isLoading={isLoading}
                       onClick={() => {

@@ -171,7 +171,7 @@ const LogoSection = () => {
           w="135px"
           h="33px"
           loading="eager"
-          alt="FastGPT slogan"
+          alt="鲁港通 slogan"
           src={wideLogoSrc || DEFAULT_LOGO_BANNER_URL}
           fallbackSrc={DEFAULT_LOGO_BANNER_URL}
         />
@@ -184,7 +184,7 @@ const LogoSection = () => {
             h="33px"
             src={squareLogoSrc || DEFAULT_LOGO_BANNER_COLLAPSED_URL}
             fallbackSrc={DEFAULT_LOGO_BANNER_COLLAPSED_URL}
-            alt="FastGPT logo"
+            alt="鲁港通 logo"
             loading="eager"
           />
         </Flex>

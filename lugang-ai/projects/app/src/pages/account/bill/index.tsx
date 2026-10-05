@@ -8,6 +8,7 @@ import ApplyInvoiceModal from '@/pageComponents/account/bill/ApplyInvoiceModal';
 import { useRouter } from 'next/router';
 import AccountContainer from '@/pageComponents/account/AccountContainer';
 import { accountPageRootStyles, accountTitleTextStyles } from '@/pageComponents/account/styles';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 export enum InvoiceTabEnum {
   bill = 'bill',
@@ -20,8 +21,13 @@ const InvoiceHeaderForm = dynamic(() => import('@/pageComponents/account/bill/In
 const InvoiceTable = dynamic(() => import('@/pageComponents/account/bill/InvoiceTable'));
 const BillAndInvoice = () => {
   const { t } = useClientTranslation(['account_bill', 'account']);
+  const { feConfigs } = useSystemStore();
   const router = useRouter();
   const { invoiceTab = InvoiceTabEnum.bill } = router.query as { invoiceTab: `${InvoiceTabEnum}` };
+
+  // 鲁港通 - N4：未接入商业版/开票服务，隐藏发票页签与申请入口，避免点击后请求报错
+  const showInvoice = !!feConfigs?.isPlus;
+  const activeTab = showInvoice ? invoiceTab : InvoiceTabEnum.bill;
 
   const [isOpenInvoiceModal, setIsOpenInvoiceModal] = useState(false);
   const [recordsRefreshKey, setRecordsRefreshKey] = useState(0);
@@ -57,16 +63,20 @@ const BillAndInvoice = () => {
                 scrollPositionKey={'account-bill-tabs'}
                 list={[
                   { label: t('account_bill:bill_record'), value: InvoiceTabEnum.bill },
-                  {
-                    label: t('account_bill:support_wallet_bill_tag_invoice'),
-                    value: InvoiceTabEnum.invoice
-                  },
-                  {
-                    label: t('account_bill:default_header'),
-                    value: InvoiceTabEnum.invoiceHeader
-                  }
+                  ...(showInvoice
+                    ? [
+                        {
+                          label: t('account_bill:support_wallet_bill_tag_invoice'),
+                          value: InvoiceTabEnum.invoice
+                        },
+                        {
+                          label: t('account_bill:default_header'),
+                          value: InvoiceTabEnum.invoiceHeader
+                        }
+                      ]
+                    : [])
                 ]}
-                value={invoiceTab}
+                value={activeTab}
                 onChange={(e) => {
                   router.replace({
                     query: {
@@ -77,7 +87,7 @@ const BillAndInvoice = () => {
                 }}
               ></FillRowTabs>
             </Box>
-            {invoiceTab !== InvoiceTabEnum.invoiceHeader && (
+            {showInvoice && activeTab !== InvoiceTabEnum.invoiceHeader && (
               <Flex mt={[3, 0]} w={['100%', 'auto']} justifyContent={'flex-end'}>
                 <Button
                   w={['100%', 'auto']}
@@ -100,9 +110,9 @@ const BillAndInvoice = () => {
             minH={0}
             overflow={['visible', 'hidden']}
           >
-            {invoiceTab === InvoiceTabEnum.bill && <BillTable key={recordsRefreshKey} />}
-            {invoiceTab === InvoiceTabEnum.invoice && <InvoiceTable key={recordsRefreshKey} />}
-            {invoiceTab === InvoiceTabEnum.invoiceHeader && <InvoiceHeaderForm />}
+            {activeTab === InvoiceTabEnum.bill && <BillTable key={recordsRefreshKey} />}
+            {activeTab === InvoiceTabEnum.invoice && <InvoiceTable key={recordsRefreshKey} />}
+            {activeTab === InvoiceTabEnum.invoiceHeader && <InvoiceHeaderForm />}
           </Box>
         </Flex>
         {isOpenInvoiceModal && (

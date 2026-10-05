@@ -379,7 +379,7 @@ const ToolCard = ({
           className="author-info"
           color={isMarketplaceVariant ? '#667085' : 'myGray.500'}
           mt={isMarketplaceVariant ? undefined : 3}
-        >{`by ${item.author || systemTitle || 'FastGPT'}`}</Box>
+        >{`by ${item.author || systemTitle || 'Lugang Connect'}`}</Box>
         {/*TODO: when statistics is ready*/}
         {/*<Flex flexDirection={'row'} gap={1} className="download-count" color={'myGray.500'} mt={3}>
           <MyIcon name="common/downloadLine" />
