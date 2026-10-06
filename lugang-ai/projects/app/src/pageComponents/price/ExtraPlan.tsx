@@ -3,15 +3,11 @@ import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import { useForm } from 'react-hook-form';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { postCreatePayBill } from '@/web/support/wallet/bill/api';
 import { BillTypeEnum } from '@fastgpt/global/support/wallet/bill/constants';
 import QRCodePayModal, { type QRPayProps } from '@/components/support/wallet/QRCodePayModal';
-import MyNumberInput from '@fastgpt/web/components/common/Input/NumberInput';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
-import MySelect from '@fastgpt/web/components/common/MySelect';
-import { calculatePrice } from '@fastgpt/global/support/wallet/bill/tools';
 import { formatNumberWithUnit } from '@fastgpt/global/common/string/tools';
 import { formatActivityExpirationTime } from './utils';
 import { useUserStore } from '@/web/support/user/useUserStore';
@@ -19,8 +15,6 @@ import { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constan
 import type { PricePurchaseIntent } from './purchaseIntent';
 
 const PLAN_CARD_MAX_WIDTH = '483px';
-const DUAL_CARD_GAP = '20px';
-const DUAL_CARD_CONTAINER_MAX_WIDTH = `calc(${PLAN_CARD_MAX_WIDTH} * 2 + ${DUAL_CARD_GAP})`;
 
 const ExtraPlan = ({
   onPaySuccess,
@@ -43,60 +37,6 @@ const ExtraPlan = ({
   const isDisabledBuy =
     userInfo?.team.isWecomTeam &&
     teamPlanStatus?.standard?.currentSubLevel === StandardSubLevelEnum.free;
-
-  // 额外的知识库索引量
-  const extraDatasetPrice = subPlans?.extraDatasetSize?.price || 0;
-  const {
-    watch: watchDatasetSize,
-    register: registerDatasetSize,
-    handleSubmit: handleSubmitDatasetSize,
-    setValue: setValueDatasetSize
-  } = useForm({
-    defaultValues: {
-      datasetSize: 1,
-      month: 1
-    }
-  });
-
-  const watchedDatasetSize = watchDatasetSize('datasetSize');
-  const watchedDatasetMonth = watchDatasetSize('month');
-
-  const { runAsync: onclickBuyDatasetSize, loading: isLoadingBuyDatasetSize } = useRequest(
-    async ({ datasetSize, month }: { datasetSize: number; month: number }) => {
-      datasetSize = Math.ceil(datasetSize);
-      month = Math.ceil(month);
-
-      const datasetSizePayAmount = datasetSize * month * extraDatasetPrice;
-      if (datasetSizePayAmount === 0) {
-        return toast({
-          status: 'warning',
-          title: t('price:support.wallet.amount_0')
-        });
-      }
-
-      const res = await postCreatePayBill({
-        type: BillTypeEnum.extraDatasetSub,
-        month,
-        extraDatasetSize: datasetSize
-      });
-      setQRPayData({
-        tip: t('price:button.extra_dataset_size_tip'),
-        billId: res.billId!,
-        ...res
-      });
-    },
-    {
-      manual: true,
-      refreshDeps: [extraDatasetPrice]
-    }
-  );
-
-  const expireSelectorOptions: { label: string; value: number }[] = [
-    { label: t('price:date_1_month'), value: 1 },
-    { label: t('price:date_3_months'), value: 3 },
-    { label: t('price:date_6_months'), value: 6 },
-    { label: t('price:date_12_months'), value: 12 }
-  ];
 
   const extraPointsPackages = subPlans?.extraPoints?.packages || [];
   const [selectedPackageIndex, setSelectedPackageIndex] = useState<number>(0);
@@ -148,42 +88,17 @@ const ExtraPlan = ({
     [isDisabledBuy, onLoginRequired, onclickBuyExtraPoints, t, toast, userInfo]
   );
 
-  const submitExtraDatasetPurchase = useCallback(
-    (intent: Extract<PricePurchaseIntent, { type: 'extraDataset' }>) => {
-      if (!userInfo && onLoginRequired) {
-        onLoginRequired(intent);
-        return;
-      }
-      if (isDisabledBuy) {
-        toast({
-          status: 'warning',
-          title: t('price:support.wallet.subscription.extra_plan_disabled_tip')
-        });
-        return;
-      }
-
-      void onclickBuyDatasetSize({ datasetSize: intent.datasetSize, month: intent.month });
-    },
-    [isDisabledBuy, onLoginRequired, onclickBuyDatasetSize, t, toast, userInfo]
-  );
-
   useEffect(() => {
     if (!resumePurchaseIntent || resumePurchaseIntent.type === 'standard') return;
 
     queueMicrotask(() => {
       onResumePurchaseIntentHandled?.();
+      // 鲁港通 - 知识库索引量购买已下线：仅恢复积分包购买意图，历史索引量意图直接丢弃
       if (resumePurchaseIntent.type === 'extraPoints') {
         submitExtraPointsPurchase(resumePurchaseIntent);
-      } else {
-        submitExtraDatasetPurchase(resumePurchaseIntent);
       }
     });
-  }, [
-    onResumePurchaseIntentHandled,
-    resumePurchaseIntent,
-    submitExtraDatasetPurchase,
-    submitExtraPointsPurchase
-  ]);
+  }, [onResumePurchaseIntentHandled, resumePurchaseIntent, submitExtraPointsPurchase]);
 
   // 计算活动时间
   const { text: activityExpirationTime } = formatActivityExpirationTime(
@@ -210,12 +125,9 @@ const ExtraPlan = ({
   return (
     <VStack w={'100%'} alignItems={'center'}>
       <Flex
-        w={['100%', DUAL_CARD_CONTAINER_MAX_WIDTH]}
-        maxW={['100%', DUAL_CARD_CONTAINER_MAX_WIDTH]}
-        // 鲁港通 - 两卡等高由 stretch 决定（较高者撑开），避免固定高裁剪内容
-        alignItems={'stretch'}
-        gap={['16px', DUAL_CARD_GAP]}
-        flexWrap={['wrap', 'nowrap']}
+        w={['100%', PLAN_CARD_MAX_WIDTH]}
+        maxW={['100%', PLAN_CARD_MAX_WIDTH]}
+        justifyContent={'center'}
       >
         <Box position={'relative'} {...planCardProps}>
           {subPlans?.activityExpirationTime && (
@@ -430,168 +342,6 @@ const ExtraPlan = ({
             </Box>
           </HStack>
         </Box>
-
-        <Flex position={'relative'} gap={'8px'} {...planCardProps}>
-          <Flex
-            borderBottomWidth={'1px'}
-            borderBottomColor={'myGray.200'}
-            pb={[2, 4]}
-            position={'relative'}
-            w={'100%'}
-          >
-            <Flex flexDir="column" gap={[2, 3]} flex={'1 0 0'} pr={[0, '120px']}>
-              <Box fontSize={['16px', '18px', 'lg']} fontWeight={'500'} color={'primary.700'}>
-                {t('price:support.wallet.subscription.Extra dataset size')}
-              </Box>
-              <Box
-                fontSize={['20px', '32px']}
-                fontWeight={'bold'}
-                color={'black'}
-                lineHeight={['1.2', 'normal']}
-              >
-                {/* 鲁港通 - 主价与单位拆分显示，避免 32px 整串过长折行 */}
-                {`￥${extraDatasetPrice}`}
-                <Box
-                  as={'span'}
-                  fontSize={['12px', '16px']}
-                  fontWeight={'500'}
-                  color={'myGray.500'}
-                >{`/1000${t('price:support.wallet.subscription.Extra dataset unit')}`}</Box>
-              </Box>
-              <Box
-                mt="auto"
-                fontSize={['10px', 'xs']}
-                color={'myGray.600'}
-                fontWeight={'500'}
-                lineHeight={['1.3', 'normal']}
-              >
-                {t('price:support.wallet.subscription.Extra dataset description')}
-              </Box>
-            </Flex>
-            <Box
-              as={'img'}
-              display={['none', 'block']}
-              position={'absolute'}
-              top={'-30px'}
-              right={0}
-              src={'/imgs/price/extraDatasetIcon.svg'}
-              alt=""
-              w={'152px'}
-              h={'152px'}
-              pointerEvents={'none'}
-            />
-          </Flex>
-
-          <Flex flexDir="column" gap={[3, 4]} h={['auto', '180px']} w={'100%'}>
-            <Flex color={'myGray.900'} alignItems={'center'}>
-              <MyIcon
-                mr={[2, 3]}
-                name={'support/bill/shoppingCart'}
-                fontWeight={'500'}
-                w={['14px', '16px']}
-                color={'primary.600'}
-              />
-              <Box fontSize={['14px', 'sm']} fontWeight={'500'}>
-                {t('price:support.wallet.buy_dataset_capacity')}
-              </Box>
-            </Flex>
-
-            <Flex alignItems={'center'} fontSize={'sm'}>
-              <Box flex={['0 0 100px', '1 0 0']} color={'myGray.600'} fontWeight={'500'}>
-                {t('price:support.wallet.subscription.Dataset size')}
-              </Box>
-              <Flex
-                justifyContent={'end'}
-                alignItems={'center'}
-                mt={[0, 1]}
-                w={['100%', '180px']}
-                position={'relative'}
-              >
-                <MyNumberInput
-                  name="datasetSize"
-                  register={registerDatasetSize}
-                  defaultValue={1}
-                  max={10000}
-                  min={0}
-                  size={'sm'}
-                />
-                <Box flexShrink={0} color={'myGray.600'}>
-                  &nbsp;{`X 1000${t('price:core.dataset.data.group')}`}
-                </Box>
-              </Flex>
-            </Flex>
-
-            <Flex alignItems={'center'} fontSize={'sm'}>
-              <Box flex={['0 0 100px', '1 0 0']} color={'myGray.600'} fontWeight={'500'}>
-                {t('price:invalid_time')}
-              </Box>
-              <Flex
-                justifyContent={['flex-start', 'end']}
-                alignItems={'center'}
-                mt={[0, 1]}
-                w={['100%', '180px']}
-                position={'relative'}
-              >
-                <MySelect
-                  bg={'myGray.50'}
-                  value={watchedDatasetMonth}
-                  size={'sm'}
-                  list={expireSelectorOptions}
-                  onChange={(val) => setValueDatasetSize('month', val)}
-                />
-              </Flex>
-            </Flex>
-
-            <Flex alignItems={'end'} fontSize={'sm'} h="36px" gap={[2, 0]}>
-              <Box flex={['0 0 100px', '1 0 0']} color={'myGray.600'} fontWeight={'500'}>
-                {t('price:support.wallet.subscription.Update extra price')}
-              </Box>
-              <Flex
-                justifyContent={['flex-start', 'end']}
-                alignItems={'center'}
-                mt={[0, 1]}
-                w={['100%', '180px']}
-                position={'relative'}
-                fontWeight={500}
-                fontSize={'20px'}
-              >
-                {`￥${(() => {
-                  const price = calculatePrice(extraDatasetPrice, {
-                    type: 'dataset',
-                    size: watchedDatasetSize,
-                    month: watchedDatasetMonth
-                  });
-                  return Number.isNaN(price) ? 0 : price;
-                })()}`}
-              </Flex>
-            </Flex>
-          </Flex>
-
-          <Box mt={['auto', 4]} w={'100%'}>
-            <Button
-              w={'100%'}
-              h={['40px', '44px']}
-              variant={'primaryGhost'}
-              isLoading={isLoadingBuyDatasetSize}
-              onClick={(e) => {
-                handleSubmitDatasetSize((values) =>
-                  submitExtraDatasetPurchase({ type: 'extraDataset', ...values })
-                )(e);
-              }}
-              color={'primary.700'}
-              fontSize={['14px', '16px']}
-            >
-              {t('price:support.wallet.Buy')}
-            </Button>
-
-            <Flex color={'blue.700'} mt={5} alignItems={['flex-start', 'center']} gap={[2, 0]}>
-              <MyIcon name={'infoRounded'} w={['14px', '1rem']} mt={['2px', 0]} />
-              <Box fontSize={['12px', 'sm']} fontWeight={'500'} lineHeight={['1.4', 'normal']}>
-                {t('price:support.wallet.subscription.Update extra dataset tips')}
-              </Box>
-            </Flex>
-          </Box>
-        </Flex>
       </Flex>
 
       {!!qrPayData && (

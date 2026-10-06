@@ -149,6 +149,7 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
 // 1 积分 = 0.01 元，月积分 = 月费 × 100（含约 60% 毛利）；年付按付 10 个月计（subModeMap.year.payMonth=10），积分按 12 个月发放。
 // 积分消耗口径：一次深度问答平均约 40 积分（LUGANG_POINTS_PER_DEEP_QA），免费档 300 积分约可体验 7 次。
 // 全平台共享同一团队积分池，容量类数值全档位统一宽松，避免启用套餐校验后阻塞日常训练与采集导入。
+// 鲁港通 - 文件上传限额：单文件 50MB、单次最多 8 个，四档统一；套餐未配置时回退到 env 的 UPLOAD_FILE_MAX_SIZE / UPLOAD_FILE_MAX_AMOUNT。
 const defaultSubPlans: SubPlanType = {
   standard: {
     [StandardSubLevelEnum.free]: {
@@ -160,6 +161,8 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 90,
+      maxUploadFileSize: 50,
+      maxUploadFileCount: 8,
       enableSandbox: false
     },
     [StandardSubLevelEnum.experience]: {
@@ -171,6 +174,8 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 180,
+      maxUploadFileSize: 50,
+      maxUploadFileCount: 8,
       enableSandbox: false
     },
     [StandardSubLevelEnum.basic]: {
@@ -182,6 +187,8 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 365,
+      maxUploadFileSize: 50,
+      maxUploadFileCount: 8,
       ticketResponseTime: 24,
       enableSandbox: false
     },
@@ -194,6 +201,8 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 730,
+      maxUploadFileSize: 50,
+      maxUploadFileCount: 8,
       ticketResponseTime: 12,
       enableSandbox: false
     }

@@ -22,21 +22,8 @@ const FAQ = () => {
       desc: t('price:FAQ.ai_point_expire_a')
     },
     {
-      title: t('price:FAQ.dataset_compute_q'),
-      desc: t('price:FAQ.dataset_compute_a')
-    },
-
-    {
-      title: t('price:FAQ.index_del_q'),
-      desc: t('price:FAQ.index_del_a')
-    },
-    {
       title: t('price:FAQ.package_overlay_q'),
       desc: t('price:FAQ.package_overlay_a')
-    },
-    {
-      title: t('price:FAQ.qpm_q'),
-      desc: t('price:FAQ.qpm_a')
     },
     {
       title: t('price:FAQ.year_day_q'),
