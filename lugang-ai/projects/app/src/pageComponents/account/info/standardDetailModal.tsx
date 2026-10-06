@@ -1,191 +1,94 @@
+// 鲁港通 - 套餐详情弹窗：与「我的积分」卡同源（个人积分账户）展示，两处数字始终一致
 import React, { useMemo } from 'react';
-import {
-  ModalBody,
-  ModalFooter,
-  Table,
-  Thead,
-  Tbody,
-  Tr,
-  Th,
-  Td,
-  TableContainer,
-  ModalCloseButton,
-  HStack,
-  Box,
-  Flex
-} from '@chakra-ui/react';
+import { Box, Flex, HStack, ModalBody, ModalCloseButton } from '@chakra-ui/react';
 import MyModal from '@fastgpt/web/components/common/MyModal';
+import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useLoading } from '@fastgpt/web/hooks/useLoading';
-import MyIcon from '@fastgpt/web/components/common/Icon';
-import { getTeamPlans } from '@/web/support/user/team/api';
-import {
-  subTypeMap,
-  standardSubLevelMap,
-  SubTypeEnum
-} from '@fastgpt/global/support/wallet/sub/constants';
-import { formatTime2YMDHM } from '@fastgpt/global/common/string/time';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
-import { useUserStore } from '@/web/support/user/useUserStore';
-
-type packageStatus = 'active' | 'inactive' | 'expired';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { getUserPointsDetail } from '@/web/support/wallet/points/api';
+import { formatNumber } from '@fastgpt/global/common/math/tools';
+import { formatTime2YMD } from '@fastgpt/global/common/string/time';
+import { standardSubLevelMap } from '@fastgpt/global/support/wallet/sub/constants';
 
 const StandDetailModal = ({ onClose }: { onClose: () => void }) => {
   const { t } = useClientTranslation('account_info');
   const { Loading } = useLoading();
   const { subPlans } = useSystemStore();
-  const { userInfo } = useUserStore();
-  const isWecomTeam = !!userInfo?.team.isWecomTeam;
-  const { data: teamPlans = [], loading: isLoading } = useRequest(
-    () =>
-      getTeamPlans().then((res) => {
-        return [
-          ...res.filter((plan) => plan.type === SubTypeEnum.standard),
-          ...res.filter((plan) => plan.type === SubTypeEnum.extraDatasetSize),
-          ...res.filter((plan) => plan.type === SubTypeEnum.extraPoints)
-        ].map((item, index) => {
-          return {
-            ...item,
-            status:
-              new Date(item.expiredTime).getTime() < new Date().getTime()
-                ? 'expired'
-                : item.type === SubTypeEnum.standard
-                  ? index === 0
-                    ? 'active'
-                    : 'inactive'
-                  : 'active'
-          };
-        });
-      }),
-    {
-      manual: false
-    }
-  );
+
+  const { data: pointsDetail, loading: isLoading } = useRequest(getUserPointsDetail, {
+    manual: false
+  });
+
+  const planName = useMemo(() => {
+    if (!pointsDetail?.currentSubLevel) return '';
+    return (
+      subPlans?.standard?.[pointsDetail.currentSubLevel]?.name ||
+      standardSubLevelMap[pointsDetail.currentSubLevel].label
+    );
+  }, [pointsDetail?.currentSubLevel, subPlans]);
+
+  const surplusPoints = pointsDetail?.surplusPoints ?? 0;
+  const totalPoints = pointsDetail?.totalPoints ?? 0;
 
   return (
     <MyModal
       isOpen
-      maxW={['90vw', '1200px']}
+      maxW={['90vw', '520px']}
       iconSrc="modal/teamPlans"
       title={t('account_info:package_details')}
       isCentered
     >
       <ModalCloseButton onClick={onClose} />
       <ModalBody px={[4, 8]} py={[2, 6]}>
-        <TableContainer mt={2} position={'relative'} minH={'300px'}>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>{t('account_info:type')}</Th>
-                {/* 鲁港通 - 已去掉「存储量」列：内部计量单位不再面向用户展示 */}
-                <Th>{t('account_info:ai_points')}</Th>
-                <Th>{t('account_info:effective_time')}</Th>
-                <Th>{t('account_info:expiration_time')}</Th>
-              </Tr>
-            </Thead>
-            <Tbody fontSize={'sm'}>
-              {teamPlans.map(
-                ({
-                  _id,
-                  type,
-                  currentSubLevel,
-                  surplusPoints = 0,
-                  totalPoints = 0,
-                  startTime,
-                  expiredTime,
-                  status
-                }) => {
-                  return (
-                    <Tr key={_id} fontWeight={500} fontSize={'mini'} color={'myGray.900'}>
-                      <Td>
-                        <Flex>
-                          <Flex align={'center'}>
-                            <MyIcon
-                              mr={2}
-                              name={subTypeMap[type]?.icon as any}
-                              w={'20px'}
-                              h={'20px'}
-                              color={'myGray.600'}
-                              fontWeight={500}
-                            />
-                          </Flex>
-                          <Flex align={'center'} color={'myGray.900'}>
-                            {t(subTypeMap[type]?.label as any)}
-                            {currentSubLevel &&
-                              `(${subPlans?.standard?.[currentSubLevel]?.name || t(standardSubLevelMap[currentSubLevel]?.label as any)})`}
-                          </Flex>
-                          <StatusTag status={status as packageStatus} />
-                        </Flex>
-                      </Td>
-                      <Td>
-                        {totalPoints
-                          ? `${Math.round(totalPoints - surplusPoints)} / ${totalPoints} ${t('account_info:ai_points_calculation_standard')}`
-                          : '-'}
-                      </Td>
-                      <Td color={'myGray.600'}>{formatTime2YMDHM(startTime)}</Td>
-                      <Td color={'myGray.600'}>{formatTime2YMDHM(expiredTime)}</Td>
-                    </Tr>
-                  );
-                }
-              )}
-              <Tr key={'_id'}></Tr>
-            </Tbody>
-          </Table>
-          <Loading loading={isLoading} fixed={false} />
-        </TableContainer>
-        {!isWecomTeam && (
-          <HStack mt={4} color={'primary.700'}>
-            <MyIcon name={'infoRounded'} w={'1rem'} />
-            <Box fontSize={'mini'} fontWeight={'500'}>
-              {t('account_info:package_usage_rules')}
+        <Box position={'relative'} minH={'160px'}>
+          <Box color={'myGray.600'} fontSize={'sm'}>
+            {t('account_info:points_surplus')}
+          </Box>
+          <Box
+            mt={1}
+            fontWeight={'bold'}
+            fontSize={'2xl'}
+            color={pointsDetail && surplusPoints <= 0 ? 'red.600' : 'myGray.900'}
+          >
+            {pointsDetail ? formatNumber(surplusPoints) : '-'}
+          </Box>
+          <Box mt={1} color={'myGray.600'} fontSize={'xs'}>
+            {t('account_info:points_total')}: {pointsDetail ? formatNumber(totalPoints) : '-'}
+          </Box>
+
+          <Flex
+            mt={5}
+            pt={4}
+            flexWrap={'wrap'}
+            columnGap={6}
+            rowGap={2}
+            color={'#485264'}
+            fontSize={'xs'}
+            borderTopWidth={'1px'}
+            borderTopColor={'borderColor.low'}
+          >
+            <Box>
+              {t('account_info:current_package')}: {pointsDetail ? t(planName as any) : '-'}
             </Box>
+            {!!pointsDetail?.expiredTime && (
+              <Box>
+                {t('account_info:package_expiry_time')}: {formatTime2YMD(pointsDetail.expiredTime)}
+              </Box>
+            )}
+          </Flex>
+
+          <HStack mt={5} color={'myGray.500'}>
+            <MyIcon name={'infoRounded'} w={'1rem'} />
+            <Box fontSize={'xs'}>{t('account_info:points_order_record_tip')}</Box>
           </HStack>
-        )}
+
+          <Loading loading={isLoading} fixed={false} />
+        </Box>
       </ModalBody>
     </MyModal>
   );
 };
-
-function StatusTag({ status }: { status: packageStatus }) {
-  const { t } = useClientTranslation('account_info');
-  const statusText = useMemo(() => {
-    return {
-      inactive: t('account_info:pending_usage'),
-      active: t('account_info:active'),
-      expired: t('account_info:expired')
-    };
-  }, [t]);
-  const styleMap = useMemo(() => {
-    return {
-      inactive: {
-        color: 'adora.600',
-        bg: 'adora.50'
-      },
-      active: {
-        color: 'green.600',
-        bg: 'green.50'
-      },
-      expired: {
-        color: 'myGray.700',
-        bg: 'myGray.100'
-      }
-    };
-  }, []);
-  return (
-    <Box
-      py={'0.25rem'}
-      ml={'0.375rem'}
-      px={'0.5rem'}
-      fontSize={'0.625rem'}
-      fontWeight={500}
-      borderRadius={'sm'}
-      bg={styleMap[status]?.bg}
-      color={styleMap[status]?.color}
-    >
-      {statusText[status]}
-    </Box>
-  );
-}
 
 export default StandDetailModal;

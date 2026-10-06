@@ -50,6 +50,7 @@
   "password_update_success": "비밀번호가 변경되었습니다",
   "pending_usage": "사용 예정",
   "please_bind_contact": "연락처 정보를 등록해 주세요",
+  "points_order_record_tip": "포인트 구매 내역은 “내 주문”에서 확인할 수 있습니다.",
   "points_surplus": "사용 가능 포인트",
   "points_total": "누적 포인트",
   "purchase_extra_package": "애드온 구매",
