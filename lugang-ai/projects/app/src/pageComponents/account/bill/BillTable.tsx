@@ -22,9 +22,10 @@ import { formatStorePrice2Read } from '@fastgpt/global/support/wallet/usage/tool
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
-import type { BillPayWayEnum, BillTypeEnum } from '@fastgpt/global/support/wallet/bill/constants';
+import type { BillPayWayEnum } from '@fastgpt/global/support/wallet/bill/constants';
 import {
   BillStatusEnum,
+  BillTypeEnum,
   billStatusMap,
   billTypeMap
 } from '@fastgpt/global/support/wallet/bill/constants';
@@ -46,12 +47,13 @@ const BillTable = () => {
   const [qrPayData, setQRPayData] = useState<QRPayProps>();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  // 鲁港通 - 订单类型筛选精简：仅保留平台实际会产生的两类订单（套餐订阅 / AI积分套餐）
   const billTypeList = useMemo(
     () =>
       [
         { label: t('account_bill:all'), value: undefined },
-        ...Object.entries(billTypeMap).map(([key, value]) => ({
-          label: t(value.label as any),
+        ...[BillTypeEnum.standSubPlan, BillTypeEnum.extraPoints].map((key) => ({
+          label: t(billTypeMap[key].label as any),
           value: key
         }))
       ] as {

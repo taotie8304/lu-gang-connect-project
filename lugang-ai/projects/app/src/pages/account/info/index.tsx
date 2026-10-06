@@ -632,129 +632,133 @@ const PlanUsage = () => {
           </Box>
         </Box>
       </Box>
-      <Box
-        mt={6}
-        bg={'white'}
-        borderWidth={'1px'}
-        borderColor={'borderColor.low'}
-        borderRadius={'md'}
-        px={[5, 10]}
-        pt={4}
-        pb={[4, 7]}
-      >
-        <Flex>
-          <Flex flex={'1 0 0'} alignItems={'flex-end'}>
-            <Box fontSize={'md'} fontWeight={'bold'} color={'myGray.900'}>
-              {t('account_info:resource_usage')}
-            </Box>
-            <Box ml={1} display={['none', 'block']} fontSize={'xs'} color={'myGray.500'}>
-              {t('account_info:standard_package_and_extra_resource_package')}
-            </Box>
-          </Flex>
-          <Link
-            href={getWebReqUrl(getExtraPlanCardRoute())}
-            transform={'translateX(15px)'}
-            display={'flex'}
-            alignItems={'center'}
-            color={'primary.600'}
-            cursor={'pointer'}
-            fontSize={'sm'}
-          >
-            {t('account_info:purchase_extra_package')}
-            <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
-          </Link>
-        </Flex>
-        <Box width={'100%'} mt={5} fontSize={'sm'}>
-          <Flex alignItems={'center'} mb={2}>
-            <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'} mr={1}>
-              {t('common:support.wallet.subscription.AI points usage')}
-            </Box>
-            <QuestionTip label={t('account_info:ai_points_usage_tip')} />
-            <Box ml={4} fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-              {teamPlanStatus?.usedPoints === null
-                ? t('account_info:unlimited')
-                : Math.round(teamPlanStatus?.usedPoints ?? 0)}{' '}
-              / {aiPointsUsageMap.total}
-            </Box>
-          </Flex>
-          <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-            <Box
-              borderRadius={'sm'}
-              transition="width 0.3s"
-              w={`${aiPointsUsageMap.rate}%`}
-              bg={`${aiPointsUsageMap.rate < 50 ? 'primary' : aiPointsUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
-            />
-          </Flex>
-        </Box>
-
-        <Box mt="6" width={'100%'} fontSize={'sm'}>
-          <Flex gap={4} alignItems={'center'} mb={2}>
-            <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-              {t('common:support.user.team.Dataset usage')}
-            </Box>
-            <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-              {Math.round(teamPlanStatus?.usedDatasetIndexSize || 0)} / {datasetIndexUsageMap.total}
-            </Box>
-          </Flex>
-          <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-            <Box
-              borderRadius={'sm'}
-              transition="width 0.3s"
-              w={`${datasetIndexUsageMap.rate}%`}
-              bg={`${datasetIndexUsageMap.rate < 50 ? 'primary' : datasetIndexUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
-            />
-          </Flex>
-        </Box>
-
-        <MyDivider />
-
-        {limitData.map((item) => {
-          const isAppRegistration = item.label === t('account_info:app_registration_count');
-
-          return (
-            <Box
-              key={item.label}
-              _notFirst={{
-                mt: 6
-              }}
-              width={'100%'}
+      {/* 鲁港通 - 资源用量为团队管理视角（配额消耗与追加购买入口），仅管理者可见 */}
+      {userInfo?.permission.hasManagePer && (
+        <Box
+          mt={6}
+          bg={'white'}
+          borderWidth={'1px'}
+          borderColor={'borderColor.low'}
+          borderRadius={'md'}
+          px={[5, 10]}
+          pt={4}
+          pb={[4, 7]}
+        >
+          <Flex>
+            <Flex flex={'1 0 0'} alignItems={'flex-end'}>
+              <Box fontSize={'md'} fontWeight={'bold'} color={'myGray.900'}>
+                {t('account_info:resource_usage')}
+              </Box>
+              <Box ml={1} display={['none', 'block']} fontSize={'xs'} color={'myGray.500'}>
+                {t('account_info:standard_package_and_extra_resource_package')}
+              </Box>
+            </Flex>
+            <Link
+              href={getWebReqUrl(getExtraPlanCardRoute())}
+              transform={'translateX(15px)'}
+              display={'flex'}
+              alignItems={'center'}
+              color={'primary.600'}
+              cursor={'pointer'}
               fontSize={'sm'}
             >
-              <Flex gap={4} alignItems={'center'} mb={2}>
-                <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-                  {item.label}
-                </Box>
-                <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-                  {item.value}/{item.max}
-                </Box>
-                {isAppRegistration && subPlans?.appRegistrationUrl && (
-                  <Link
-                    href={subPlans?.appRegistrationUrl}
-                    target="_blank"
-                    ml={'auto'}
-                    display={'flex'}
-                    alignItems={'center'}
-                    color={'primary.600'}
-                    cursor={'pointer'}
-                    fontSize={'sm'}
-                  >
-                    {t('account_info:apply_app_registration')}
-                    <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
-                  </Link>
-                )}
-              </Flex>
-              <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-                <Box
-                  borderRadius={'sm'}
-                  transition="width 0.3s"
-                  w={`${item.rate}%`}
-                  bg={`${item.rate < 50 ? 'green' : item.rate < 80 ? 'yellow' : 'red'}.500`}
-                />
-              </Flex>
-            </Box>
-          );
-        })}
-      </Box>
+              {t('account_info:purchase_extra_package')}
+              <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
+            </Link>
+          </Flex>
+          <Box width={'100%'} mt={5} fontSize={'sm'}>
+            <Flex alignItems={'center'} mb={2}>
+              <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'} mr={1}>
+                {t('common:support.wallet.subscription.AI points usage')}
+              </Box>
+              <QuestionTip label={t('account_info:ai_points_usage_tip')} />
+              <Box ml={4} fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
+                {teamPlanStatus?.usedPoints === null
+                  ? t('account_info:unlimited')
+                  : Math.round(teamPlanStatus?.usedPoints ?? 0)}{' '}
+                / {aiPointsUsageMap.total}
+              </Box>
+            </Flex>
+            <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
+              <Box
+                borderRadius={'sm'}
+                transition="width 0.3s"
+                w={`${aiPointsUsageMap.rate}%`}
+                bg={`${aiPointsUsageMap.rate < 50 ? 'primary' : aiPointsUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
+              />
+            </Flex>
+          </Box>
+
+          <Box mt="6" width={'100%'} fontSize={'sm'}>
+            <Flex gap={4} alignItems={'center'} mb={2}>
+              <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
+                {t('common:support.user.team.Dataset usage')}
+              </Box>
+              <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
+                {Math.round(teamPlanStatus?.usedDatasetIndexSize || 0)} /{' '}
+                {datasetIndexUsageMap.total}
+              </Box>
+            </Flex>
+            <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
+              <Box
+                borderRadius={'sm'}
+                transition="width 0.3s"
+                w={`${datasetIndexUsageMap.rate}%`}
+                bg={`${datasetIndexUsageMap.rate < 50 ? 'primary' : datasetIndexUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
+              />
+            </Flex>
+          </Box>
+
+          <MyDivider />
+
+          {limitData.map((item) => {
+            const isAppRegistration = item.label === t('account_info:app_registration_count');
+
+            return (
+              <Box
+                key={item.label}
+                _notFirst={{
+                  mt: 6
+                }}
+                width={'100%'}
+                fontSize={'sm'}
+              >
+                <Flex gap={4} alignItems={'center'} mb={2}>
+                  <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
+                    {item.label}
+                  </Box>
+                  <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
+                    {item.value}/{item.max}
+                  </Box>
+                  {isAppRegistration && subPlans?.appRegistrationUrl && (
+                    <Link
+                      href={subPlans?.appRegistrationUrl}
+                      target="_blank"
+                      ml={'auto'}
+                      display={'flex'}
+                      alignItems={'center'}
+                      color={'primary.600'}
+                      cursor={'pointer'}
+                      fontSize={'sm'}
+                    >
+                      {t('account_info:apply_app_registration')}
+                      <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
+                    </Link>
+                  )}
+                </Flex>
+                <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
+                  <Box
+                    borderRadius={'sm'}
+                    transition="width 0.3s"
+                    w={`${item.rate}%`}
+                    bg={`${item.rate < 50 ? 'green' : item.rate < 80 ? 'yellow' : 'red'}.500`}
+                  />
+                </Flex>
+              </Box>
+            );
+          })}
+        </Box>
+      )}
       {isOpenStandardModal && <StandDetailModal onClose={onCloseStandardModal} />}
       {isOpenRedeemCouponModal && (
         <RedeemCouponModal

@@ -78,7 +78,7 @@ const StandDetailModal = ({ onClose }: { onClose: () => void }) => {
             <Thead>
               <Tr>
                 <Th>{t('account_info:type')}</Th>
-                <Th>{t('account_info:storage_capacity')}</Th>
+                {/* 鲁港通 - 已去掉「存储量」列：内部计量单位不再面向用户展示 */}
                 <Th>{t('account_info:ai_points')}</Th>
                 <Th>{t('account_info:effective_time')}</Th>
                 <Th>{t('account_info:expiration_time')}</Th>
@@ -90,18 +90,12 @@ const StandDetailModal = ({ onClose }: { onClose: () => void }) => {
                   _id,
                   type,
                   currentSubLevel,
-                  currentExtraDatasetSize,
                   surplusPoints = 0,
                   totalPoints = 0,
                   startTime,
                   expiredTime,
                   status
                 }) => {
-                  const standardPlan = currentSubLevel
-                    ? subPlans?.standard?.[currentSubLevel]
-                    : undefined;
-                  const datasetSize = standardPlan?.maxDatasetSize || currentExtraDatasetSize;
-
                   return (
                     <Tr key={_id} fontWeight={500} fontSize={'mini'} color={'myGray.900'}>
                       <Td>
@@ -124,7 +118,6 @@ const StandDetailModal = ({ onClose }: { onClose: () => void }) => {
                           <StatusTag status={status as packageStatus} />
                         </Flex>
                       </Td>
-                      <Td>{datasetSize ? `${datasetSize + t('account_info:group')}` : '-'}</Td>
                       <Td>
                         {totalPoints
                           ? `${Math.round(totalPoints - surplusPoints)} / ${totalPoints} ${t('account_info:ai_points_calculation_standard')}`

@@ -78,14 +78,21 @@ const UsageTable = () => {
     isSelectAll: isSelectAllSource,
     setIsSelectAll: setIsSelectAllSource
   } = useMultipleSelect<UsageSourceEnum>(Object.values(UsageSourceEnum), true);
-  const sourceList = useMemo(
-    () =>
-      Object.entries(UsageSourceMap).map(([key, value]) => ({
-        label: t(value.label as any),
-        value: key as UsageSourceEnum
-      })),
-    [t]
-  );
+  // 鲁港通 - 来源筛选按角色分流：普通成员仅保留「在线使用」，管理者保留平台实际产生的四类来源
+  const sourceList = useMemo(() => {
+    const sourceKeys = userInfo?.team?.permission.hasManagePer
+      ? [
+          UsageSourceEnum.fastgpt,
+          UsageSourceEnum.api,
+          UsageSourceEnum.shareLink,
+          UsageSourceEnum.training
+        ]
+      : [UsageSourceEnum.fastgpt];
+    return sourceKeys.map((key) => ({
+      label: t(UsageSourceMap[key].label as any),
+      value: key
+    }));
+  }, [t, userInfo?.team?.permission.hasManagePer]);
 
   const [projectName, setProjectName] = useState<string>('');
   const [inputValue, _setInputValue] = useState('');
