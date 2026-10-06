@@ -7,9 +7,13 @@ import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import { formatNumber } from '@fastgpt/global/common/math/tools';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { useUserStore } from '@/web/support/user/useUserStore';
 
 const UsageDetail = ({ usage, onClose }: { usage: UsageListItemType; onClose: () => void }) => {
   const { t } = useClientTranslation('account_usage');
+  const { userInfo } = useUserStore();
+  // 鲁港通 - 消耗展示简化：普通成员仅看基础信息与总额，团队管理者保留计费模块完整明细
+  const showModuleDetail = !!userInfo?.team?.permission.hasManagePer;
   const filterBillList = useMemo(
     () => usage.list.filter((item) => item && item.moduleName),
     [usage.list]
@@ -96,45 +100,47 @@ const UsageDetail = ({ usage, onClose }: { usage: UsageListItemType; onClose: ()
         <FormLabel flex={'0 0 80px'}>{t('account_usage:total_points_consumed')}:</FormLabel>
         <Box fontWeight={'bold'}>{formatNumber(usage.totalPoints)}</Box>
       </Flex>
-      <Box pb={4}>
-        <FormLabel flex={'0 0 80px'} mb={1}>
-          {t('account_usage:billing_module')}
-        </FormLabel>
-        <TableContainer fontSize={'sm'}>
-          <Table>
-            <Thead>
-              <Tr>
-                <Th>{t('account_usage:module_name')}</Th>
-                {hasModel && <Th>{t('account_usage:ai_model')}</Th>}
-                {hasToken && <Th>{t('account_usage:token_length')}</Th>}
-                {hasInputToken && <Th>{t('account_usage:input_token_length')}</Th>}
-                {hasOutputToken && <Th>{t('account_usage:output_token_length')}</Th>}
-                {hasCount && <Th>{t('account_usage:count')}</Th>}
-                {hasCharsLen && <Th>{t('account_usage:text_length')}</Th>}
-                {hasDuration && <Th>{t('account_usage:duration_seconds')}</Th>}
-                {hasPages && <Th>{t('account_usage:pages')}</Th>}
-                <Th>{t('account_usage:total_points_consumed')}</Th>
-              </Tr>
-            </Thead>
-            <Tbody>
-              {filterBillList.map((item, i) => (
-                <Tr key={i}>
-                  <Td>{t(item.moduleName as any)}</Td>
-                  {hasModel && <Td>{item.model ?? '-'}</Td>}
-                  {hasToken && <Td>{item.tokens ?? '-'}</Td>}
-                  {hasInputToken && <Td>{item.inputTokens ?? '-'}</Td>}
-                  {hasOutputToken && <Td>{item.outputTokens ?? '-'}</Td>}
-                  {hasCount && <Td>{item.count ?? '-'}</Td>}
-                  {hasCharsLen && <Td>{item.charsLength ?? '-'}</Td>}
-                  {hasDuration && <Td>{item.duration ?? '-'}</Td>}
-                  {hasPages && <Td>{item.pages ?? '-'}</Td>}
-                  <Td>{formatNumber(item.amount)}</Td>
+      {showModuleDetail && (
+        <Box pb={4}>
+          <FormLabel flex={'0 0 80px'} mb={1}>
+            {t('account_usage:billing_module')}
+          </FormLabel>
+          <TableContainer fontSize={'sm'}>
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>{t('account_usage:module_name')}</Th>
+                  {hasModel && <Th>{t('account_usage:ai_model')}</Th>}
+                  {hasToken && <Th>{t('account_usage:token_length')}</Th>}
+                  {hasInputToken && <Th>{t('account_usage:input_token_length')}</Th>}
+                  {hasOutputToken && <Th>{t('account_usage:output_token_length')}</Th>}
+                  {hasCount && <Th>{t('account_usage:count')}</Th>}
+                  {hasCharsLen && <Th>{t('account_usage:text_length')}</Th>}
+                  {hasDuration && <Th>{t('account_usage:duration_seconds')}</Th>}
+                  {hasPages && <Th>{t('account_usage:pages')}</Th>}
+                  <Th>{t('account_usage:total_points_consumed')}</Th>
                 </Tr>
-              ))}
-            </Tbody>
-          </Table>
-        </TableContainer>
-      </Box>
+              </Thead>
+              <Tbody>
+                {filterBillList.map((item, i) => (
+                  <Tr key={i}>
+                    <Td>{t(item.moduleName as any)}</Td>
+                    {hasModel && <Td>{item.model ?? '-'}</Td>}
+                    {hasToken && <Td>{item.tokens ?? '-'}</Td>}
+                    {hasInputToken && <Td>{item.inputTokens ?? '-'}</Td>}
+                    {hasOutputToken && <Td>{item.outputTokens ?? '-'}</Td>}
+                    {hasCount && <Td>{item.count ?? '-'}</Td>}
+                    {hasCharsLen && <Td>{item.charsLength ?? '-'}</Td>}
+                    {hasDuration && <Td>{item.duration ?? '-'}</Td>}
+                    {hasPages && <Td>{item.pages ?? '-'}</Td>}
+                    <Td>{formatNumber(item.amount)}</Td>
+                  </Tr>
+                ))}
+              </Tbody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
     </MyModal>
   );
 };

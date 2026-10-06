@@ -7,17 +7,12 @@ import { Box, Flex, Grid, Text } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
-import dynamic from 'next/dynamic';
 import Markdown from '@/components/Markdown';
 import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import type { TeamPlanStandardType } from '@fastgpt/global/support/wallet/sub/type';
 import { LUGANG_POINTS_PER_DEEP_QA } from '@fastgpt/global/support/wallet/bill/lugangPrice';
-
-const ModelPriceModal = dynamic(() =>
-  import('@/components/core/ai/ModelTable').then((mod) => mod.ModelPriceModal)
-);
 
 const StandardPlanContentList = ({
   level,
@@ -130,11 +125,6 @@ const StandardPlanContentList = ({
               <Text ml={1}>{t('common:support.wallet.subscription.point')}</Text>
             </Box>
           )}
-          <ModelPriceModal>
-            {({ onOpen }) => (
-              <QuestionTip ml={1} label={t('common:aipoint_desc')} onClick={onOpen} />
-            )}
-          </ModelPriceModal>
         </Flex>
       </Flex>
       {/* 鲁港通 - 平台级指标行（索引量/成员/应用/知识库数/QPM）全档位统一且面向内部，销售卡片不再展示；积分换算为深度问答次数便于用户理解价值 */}

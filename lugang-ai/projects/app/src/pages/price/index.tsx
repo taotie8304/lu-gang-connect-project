@@ -5,7 +5,6 @@ import { getTeamPlanStatus } from '@/web/support/user/team/api';
 
 import StandardPlan, { BillingModeSwitch } from '@/pageComponents/price/Standard';
 import ExtraPlan from '@/pageComponents/price/ExtraPlan';
-import PointsCard from '@/pageComponents/price/Points';
 import FAQ from '@/pageComponents/price/FAQ';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import MyIcon from '@fastgpt/web/components/common/Icon';
@@ -275,9 +274,8 @@ const PriceBox = () => {
             )}
           </Flex>
 
-          {/* AI 积分计算标准、FAQ：保持原页面布局，不受 tab 区域 maxW / padding 影响 */}
+          {/* FAQ：保持原页面布局，不受 tab 区域 maxW / padding 影响 */}
           <Box w={'100%'} px={['20px', '5vw']} pb={['30px', '80px']}>
-            <PointsCard />
             <FAQ />
           </Box>
         </Flex>

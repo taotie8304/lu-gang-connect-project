@@ -75,10 +75,6 @@ const EnterpriseAuthStatusRow = dynamic(
   }
 );
 
-const ModelPriceModal = dynamic(() =>
-  import('@/components/core/ai/ModelTable').then((mod) => mod.ModelPriceModal)
-);
-
 const Info = () => {
   const { isPc } = useSystem();
   const { teamPlanStatus } = useUserStore();
@@ -559,13 +555,6 @@ const PlanUsage = () => {
           {t('account_info:package_and_usage')}
         </Flex>
         <Flex mt={[3, 0]} flexWrap={'wrap'} gap={[2, 0]}>
-          <ModelPriceModal>
-            {({ onOpen }) => (
-              <Button ml={[0, 3]} size={'sm'} onClick={onOpen}>
-                {t('account_info:billing_standard')}
-              </Button>
-            )}
-          </ModelPriceModal>
           <Button ml={[0, 3]} variant={'whitePrimary'} size={'sm'} onClick={onOpenStandardModal}>
             {t('account_info:package_details')}
           </Button>

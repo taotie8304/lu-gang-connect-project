@@ -2,22 +2,7 @@ import React, { useMemo, useState } from 'react';
 import MyModal from '@fastgpt/web/components/v2/common/MyModal';
 import { useTranslation } from 'next-i18next';
 import { useForm } from 'react-hook-form';
-import {
-  Box,
-  Button,
-  Flex,
-  HStack,
-  Switch,
-  TableContainer,
-  Tbody,
-  Td,
-  Th,
-  Thead,
-  Tr,
-  Table,
-  Input,
-  VStack
-} from '@chakra-ui/react';
+import { Box, Button, Flex, HStack, Switch, Input, VStack } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { NodeInputKeyEnum } from '@fastgpt/global/core/workflow/constants';
 import type { SettingAIDataType } from '@fastgpt/global/core/app/type';
@@ -25,10 +10,8 @@ import { getDocPath } from '@/web/common/system/doc';
 import AIModelSelector from '@/components/Select/AIModelSelector';
 import { type LLMModelItemType } from '@fastgpt/global/core/ai/model.schema';
 import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
-import { PriceLine } from '../PriceTiersLabel';
 import { getWebLLMModel } from '@/web/common/system/utils';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import dynamic from 'next/dynamic';
 import InputSlider from '@fastgpt/web/components/common/MySlider/InputSlider';
 import MySelect from '@fastgpt/web/components/common/MySelect';
 import MultipleSelect from '@fastgpt/web/components/common/MySelect/MultipleSelect';
@@ -41,10 +24,6 @@ type MultimodalValue =
   | NodeInputKeyEnum.aiChatVision
   | NodeInputKeyEnum.aiChatAudio
   | NodeInputKeyEnum.aiChatVideo;
-
-const ModelPriceModal = dynamic(() =>
-  import('@/components/core/ai/ModelTable').then((mod) => mod.ModelPriceModal)
-);
 
 const RIGHT_AREA_WIDTH = '320px';
 
@@ -282,64 +261,6 @@ const AIChatSettingsModal = ({
               onChange={onChangeModel}
             />
           </SettingRow>
-
-          <TableContainer borderRadius={'sm'} borderWidth={'1px'} borderColor={'myGray.200'}>
-            <Table variant={'bordered'}>
-              <Thead>
-                <Tr>
-                  <Th>
-                    <HStack spacing={1}>
-                      <Box>{t('app:ai_point_price')}</Box>
-                      <ModelPriceModal>
-                        {({ onOpen }) => (
-                          <QuestionTip label={t('app:look_ai_point_price')} onClick={onOpen} />
-                        )}
-                      </ModelPriceModal>
-                    </HStack>
-                  </Th>
-                  <Th>{t('common:core.ai.Max context')}</Th>
-                  <Th>
-                    <HStack spacing={1}>
-                      <Box>{t('common:core.ai.Support tool')}</Box>
-                      <QuestionTip label={t('common:core.module.template.AI support tool tip')} />
-                    </HStack>
-                  </Th>
-                </Tr>
-              </Thead>
-              <Tbody>
-                <Tr>
-                  <Td>
-                    {!!selectedModel && (
-                      <PriceLine
-                        config={selectedModel}
-                        unitLabel={t('common:support.wallet.subscription.point') + ' / 1K Tokens'}
-                        priceKey={'input'}
-                        fontSize={'mini'}
-                      />
-                    )}
-                  </Td>
-                  <Td rowSpan={2}>{Math.round((selectedModel?.maxContext || 4096) / 1000)}K</Td>
-                  <Td rowSpan={2}>
-                    {selectedModel?.toolChoice || selectedModel?.functionCall
-                      ? t('common:support')
-                      : t('common:not_support')}
-                  </Td>
-                </Tr>
-                <Tr>
-                  <Td>
-                    {!!selectedModel && (
-                      <PriceLine
-                        config={selectedModel}
-                        unitLabel={t('common:support.wallet.subscription.point') + ' / 1K Tokens'}
-                        priceKey={'output'}
-                        fontSize={'mini'}
-                      />
-                    )}
-                  </Td>
-                </Tr>
-              </Tbody>
-            </Table>
-          </TableContainer>
 
             {showMaxHistoriesSlider && (
               <SettingRow
