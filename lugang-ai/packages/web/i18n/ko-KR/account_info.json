@@ -3,7 +3,7 @@
   "active": "적용 중",
   "ai_points": "AI 포인트",
   "ai_points_calculation_standard": "AI 포인트",
-  "ai_points_usage_tip": "AI 모델을 호출할 때마다 일정량의 AI 포인트가 소비됩니다. 구체적인 계산 기준은 위의 \"과금 기준\"을 참고하세요.",
+  "ai_points_usage_tip": "AI 모델을 호출할 때마다 일정량의 AI 포인트가 소비됩니다.",
   "app_amount": "에이전트 수",
   "app_registration_count": "등록된 앱 수",
   "apply_app_registration": "앱 등록 신청",

@@ -60,7 +60,7 @@
   "active": "生效中",
   "ai_points": "AI 積分",
   "ai_points_calculation_standard": "AI 積分",
-  "ai_points_usage_tip": "每次呼叫 AI 模型都會消耗一定的 AI 積分。具體計算方式請參考上方的「計費標準」。",
+  "ai_points_usage_tip": "每次呼叫 AI 模型都會消耗一定的 AI 積分。",
   "app_amount": "Agent 數量",
   "app_registration_count": "備案應用數量",
   "apply_app_registration": "申請應用備案",

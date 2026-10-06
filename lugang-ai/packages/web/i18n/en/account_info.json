@@ -60,7 +60,7 @@
   "account_cancellation_wechat_scan": "Scan with WeChat",
   "ai_points": "AI points",
   "ai_points_calculation_standard": "AI points",
-  "ai_points_usage_tip": "Each AI model call uses AI points. See the billing rules above for calculation details.",
+  "ai_points_usage_tip": "Each AI model call uses AI points.",
   "app_amount": "Agent count",
   "app_registration_count": "Registered app count",
   "apply_app_registration": "Request App registration",

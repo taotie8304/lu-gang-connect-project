@@ -1,5 +1,5 @@
 {
-  "FAQ.ai_point_a": "Each AI model call uses AI points. See \"AI points calculation\" above for details. The system uses the actual usage reported by the model provider when available; otherwise, it estimates usage based on GPT-3.5. One token is approximately 0.7 Chinese characters or 0.9 English words. Consecutive characters may be counted as a single token.",
+  "FAQ.ai_point_a": "Each AI model call uses AI points. The system uses the actual usage reported by the model provider when available; otherwise, it estimates usage based on GPT-3.5. One token is approximately 0.7 Chinese characters or 0.9 English words. Consecutive characters may be counted as a single token.",
   "FAQ.ai_point_expire_a": "Yes. When your current plan expires, its AI points are cleared and replaced with the allocation from your new plan. AI points included with an annual plan are valid for one year rather than resetting monthly.",
   "FAQ.ai_point_expire_q": "Do AI points expire?",
   "FAQ.ai_point_q": "What are AI points?",
