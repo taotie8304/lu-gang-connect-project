@@ -35,7 +35,8 @@ export const generatedLoaders: Record<localeType, Record<I18nNsType[number], Res
     dashboard_evaluation: () => import('./en/dashboard_evaluation.json'),
     admin_plugin: () => import('./en/admin_plugin.json'),
     skill: () => import('./en/skill.json'),
-    price: () => import('./en/price.json')
+    price: () => import('./en/price.json'),
+    ticket: () => import('./en/ticket.json')
   },
   'zh-CN': {
     common: () => import('./zh-CN/common.json'),
@@ -65,7 +66,8 @@ export const generatedLoaders: Record<localeType, Record<I18nNsType[number], Res
     dashboard_evaluation: () => import('./zh-CN/dashboard_evaluation.json'),
     admin_plugin: () => import('./zh-CN/admin_plugin.json'),
     skill: () => import('./zh-CN/skill.json'),
-    price: () => import('./zh-CN/price.json')
+    price: () => import('./zh-CN/price.json'),
+    ticket: () => import('./zh-CN/ticket.json')
   },
   'zh-Hant': {
     common: () => import('./zh-Hant/common.json'),
@@ -95,7 +97,8 @@ export const generatedLoaders: Record<localeType, Record<I18nNsType[number], Res
     dashboard_evaluation: () => import('./zh-Hant/dashboard_evaluation.json'),
     admin_plugin: () => import('./zh-Hant/admin_plugin.json'),
     skill: () => import('./zh-Hant/skill.json'),
-    price: () => import('./zh-Hant/price.json')
+    price: () => import('./zh-Hant/price.json'),
+    ticket: () => import('./zh-Hant/ticket.json')
   },
   'ko-KR': {
     common: () => import('./ko-KR/common.json'),
@@ -125,6 +128,7 @@ export const generatedLoaders: Record<localeType, Record<I18nNsType[number], Res
     dashboard_evaluation: () => import('./ko-KR/dashboard_evaluation.json'),
     admin_plugin: () => import('./ko-KR/admin_plugin.json'),
     skill: () => import('./ko-KR/skill.json'),
-    price: () => import('./ko-KR/price.json')
+    price: () => import('./ko-KR/price.json'),
+    ticket: () => import('./ko-KR/ticket.json')
   }
 };

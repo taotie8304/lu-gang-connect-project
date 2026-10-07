@@ -1,12 +1,12 @@
 /**
  * 鲁港通 - 用户设置面板（C7a 骨架）。
  * 非 root 普通用户点击头像后打开的设置菜单。开源版普通用户无法进入 account/dashboard 后台，
- * 故在此集中提供语言切换、修改密码、产品反馈、辅助使用设计、登出等基础入口。
+ * 故在此集中提供语言切换、修改密码、工单反馈、辅助使用设计、登出等基础入口。
  *
  * C7a 仅实现 5 个「零依赖」入口（全部复用官方组件/常量，无需新后端）。
  * D10（商业化）与 D11（系统内容多语言）依赖的入口已在 menuItems 中预留插入点注释，待对应域实现后补入。
  */
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { ModalBody, Flex, Text, Box } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import MyModal from '@fastgpt/web/components/common/MyModal';
@@ -14,9 +14,11 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import Badge from '@/components/Badge';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
-import { LUGANG_SUPPORT_EMAIL } from '@/web/common/system/constants';
+import { getTicketUnreadCount } from '@/web/support/ticket/api';
 import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
 import SystemContentModal from '@/components/SystemContentModal';
@@ -55,18 +57,27 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     title: string;
   }>({ isOpen: false, contentKey: null, title: '' });
 
+  // 鲁港通 - 批2-C：工单未读红点（面板常挂载，每次打开时刷新一次）
+  const { data: ticketUnreadData, refresh: refreshTicketUnread } = useRequest(getTicketUnreadCount, {
+    manual: false,
+    errorToast: ''
+  });
+  const ticketUnread = ticketUnreadData?.count ?? 0;
+  useEffect(() => {
+    if (isOpen) refreshTicketUnread();
+  }, [isOpen, refreshTicketUnread]);
+
   const handleLogout = useCallback(() => {
     setUserInfo(null);
     clearToken();
     router.replace('/login');
   }, [setUserInfo, router]);
 
-  // 鲁港通 - 产品反馈：邮箱走统一常量，主题走 i18n 并 URL 编码（修复 staging 未编码中文 subject 的问题）。
-  const handleFeedback = useCallback(() => {
-    const subject = encodeURIComponent(t('common:user_settings.feedback_subject'));
-    window.location.href = `mailto:${LUGANG_SUPPORT_EMAIL}?subject=${subject}`;
+  // 鲁港通 - 批2-C：产品反馈升级为站内工单系统，点击直达「我的工单」页（不再走邮箱）。
+  const handleTicketFeedback = useCallback(() => {
     onClose();
-  }, [t, onClose]);
+    router.push('/account/myTickets');
+  }, [onClose, router]);
 
   // 鲁港通 - 设置菜单入口。D11 已补入使用条款/隐私政策/资料收集声明（走 SystemContentModal + /api/system/content/[key]，正文按 getLocale 多语言）。
   // D10 商业化一期：订阅套餐 / 我的订单 / 用量明细 三个入口前置（普通用户付款与消费可见性的唯一入口）。
@@ -113,10 +124,10 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       onClick: () => setIsPasswordModalOpen(true)
     },
     {
-      key: 'feedback',
+      key: 'ticketFeedback',
       icon: 'common/quickActionFeedback',
-      label: t('common:user_settings.product_feedback'),
-      onClick: handleFeedback
+      label: t('common:user_settings.ticket_feedback'),
+      onClick: handleTicketFeedback
     },
     {
       key: 'accessibility',
@@ -210,7 +221,9 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
                   onClick={item.onClick}
                   {...(item.key === 'logout' ? { color: 'red.500' } : {})}
                 >
-                  <MyIcon name={item.icon} w="20px" h="20px" />
+                  <Badge count={item.key === 'ticketFeedback' ? ticketUnread : 0} max={99}>
+                    <MyIcon name={item.icon} w="20px" h="20px" />
+                  </Badge>
                   <Text fontSize="14px" fontWeight="500">
                     {item.label}
                   </Text>

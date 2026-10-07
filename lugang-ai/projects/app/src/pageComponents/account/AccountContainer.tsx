@@ -19,7 +19,8 @@ export enum TabEnum {
   'loginout' = 'loginout',
   'team' = 'team',
   'model' = 'model',
-  'customDomain' = 'customDomain'
+  'customDomain' = 'customDomain',
+  'myTickets' = 'myTickets'
 }
 
 const AccountContainer = ({
@@ -78,6 +79,12 @@ const AccountContainer = ({
           }
         ]
       : []),
+    // 鲁港通 - 工单系统：所有登录用户可见（与价格页免费版「工单反馈」权益口径一致）
+    {
+      icon: 'common/quickActionFeedback',
+      label: t('account:my_tickets'),
+      value: TabEnum.myTickets
+    },
     ...(showThirdPartyTab
       ? [
           {

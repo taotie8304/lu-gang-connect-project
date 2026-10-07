@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { useRouter } from 'next/router';
 import { Flex, Box } from '@chakra-ui/react';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
@@ -7,6 +7,8 @@ import Badge from '../Badge';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { getTicketUnreadCount } from '@/web/support/ticket/api';
 
 // 鲁港通 - 导航项类型（显式标注，避免 t() 返回值被推断为 never 导致 filteredList 重新赋值报 “string 不能赋给 never”）
 type NavbarItem = {
@@ -32,6 +34,20 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
   const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
   // 鲁港通 - 普通用户在纯聊天模式下隐藏管理功能
   const showAdminFeatures = isOwner || !enableUserChatOnly;
+
+  // 鲁港通 - root 用户工单未读角标（路由切换时刷新）
+  const isRoot = userInfo?.username === 'root';
+  const { data: ticketUnreadData, refresh: refreshTicketUnread } = useRequest(
+    getTicketUnreadCount,
+    {
+      manual: true,
+      errorToast: ''
+    }
+  );
+  const ticketUnread = isRoot ? ticketUnreadData?.count ?? 0 : 0;
+  useEffect(() => {
+    if (isRoot) refreshTicketUnread();
+  }, [isRoot, router.pathname, refreshTicketUnread]);
 
   const navbarList = useMemo(
     () => {
@@ -96,7 +112,7 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
       // 鲁港通 - 根据用户角色过滤导航项
       let filteredList = showAdminFeatures ? baseList : baseList.filter((item) => item.showForUser);
 
-      // 鲁港通 - root 用户添加用户管理入口和配置入口
+      // 鲁港通 - root 用户添加用户管理入口、工单管理入口和配置入口
       if (userInfo?.username === 'root') {
         filteredList = [
           ...filteredList,
@@ -107,6 +123,15 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
             link: '/admin/users',
             activeLink: ['/admin/users'],
             unread: 0,
+            showForUser: false
+          },
+          {
+            label: t('common:navbar.TicketManage'),
+            icon: 'common/quickActionFeedback',
+            activeIcon: 'common/quickActionFeedback',
+            link: '/admin/tickets',
+            activeLink: ['/admin/tickets'],
+            unread: ticketUnread,
             showForUser: false
           },
           {
@@ -123,7 +148,7 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
 
       return filteredList;
     },
-    [lastChatAppId, lastPane, t, unread, userInfo?.username, showAdminFeatures]
+    [lastChatAppId, lastPane, t, ticketUnread, unread, userInfo?.username, showAdminFeatures]
   );
 
   return (

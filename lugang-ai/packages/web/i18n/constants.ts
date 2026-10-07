@@ -26,7 +26,8 @@ export const I18N_NAMESPACES = [
   'dashboard_evaluation',
   'admin_plugin',
   'skill',
-  'price'
+  'price',
+  'ticket'
 ];
 
 export const I18N_NAMESPACES_MAP = I18N_NAMESPACES.reduce(

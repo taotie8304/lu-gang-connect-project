@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Box, type BoxProps, Flex, Link, type LinkProps } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { useUserStore } from '@/web/support/user/useUserStore';
@@ -13,6 +13,8 @@ import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import { LOGO_ICON } from '@fastgpt/global/common/system/constants';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { getTicketUnreadCount } from '@/web/support/ticket/api';
 
 export enum NavbarTypeEnum {
   normal = 'normal',
@@ -51,6 +53,20 @@ const Navbar = ({ unread }: { unread: number }) => {
   // 鲁港通 - 普通用户在纯聊天模式下隐藏管理功能
   const showAdminFeatures = isOwner || !enableUserChatOnly;
 
+  // 鲁港通 - root 用户工单未读角标（路由切换时刷新）
+  const isRoot = userInfo?.username === 'root';
+  const { data: ticketUnreadData, refresh: refreshTicketUnread } = useRequest(
+    getTicketUnreadCount,
+    {
+      manual: true,
+      errorToast: ''
+    }
+  );
+  const ticketUnread = isRoot ? ticketUnreadData?.count ?? 0 : 0;
+  useEffect(() => {
+    if (isRoot) refreshTicketUnread();
+  }, [isRoot, router.pathname, refreshTicketUnread]);
+
   const navbarList = useMemo(() => {
     const baseList = [
       {
@@ -59,6 +75,7 @@ const Navbar = ({ unread }: { unread: number }) => {
         activeIcon: 'navbar/chatFill',
         link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
         activeLink: ['/chat'],
+        unread: 0,
         showForUser: true // 鲁港通 - 普通用户可见
       },
       {
@@ -80,6 +97,7 @@ const Navbar = ({ unread }: { unread: number }) => {
           '/dashboard/evaluation',
           '/dashboard/evaluation/create'
         ],
+        unread: 0,
         showForUser: false // 鲁港通 - 仅管理员可见
       },
       {
@@ -88,6 +106,7 @@ const Navbar = ({ unread }: { unread: number }) => {
         activeIcon: 'navbar/datasetFill',
         link: `/dataset/list`,
         activeLink: ['/dataset/list', '/dataset/detail'],
+        unread: 0,
         showForUser: false // 鲁港通 - 仅管理员可见
       },
       {
@@ -105,8 +124,10 @@ const Navbar = ({ unread }: { unread: number }) => {
           '/account/apikey',
           '/account/setting',
           '/account/inform',
-          '/account/model'
+          '/account/model',
+          '/account/myTickets'
         ],
+        unread: 0,
         showForUser: true // 鲁港通 - 普通用户可见
       }
     ];
@@ -114,7 +135,7 @@ const Navbar = ({ unread }: { unread: number }) => {
     // 鲁港通 - 根据用户角色过滤导航项
     let filteredList = showAdminFeatures ? baseList : baseList.filter((item) => item.showForUser);
 
-    // 鲁港通 - root 用户添加用户管理入口和配置入口
+    // 鲁港通 - root 用户添加用户管理入口、工单管理入口和配置入口
     if (userInfo?.username === 'root') {
       filteredList = [
         ...filteredList,
@@ -124,6 +145,16 @@ const Navbar = ({ unread }: { unread: number }) => {
           activeIcon: 'support/team/memberFill',
           link: '/admin/users',
           activeLink: ['/admin/users'],
+          unread: 0,
+          showForUser: false
+        },
+        {
+          label: t('common:navbar.TicketManage'),
+          icon: 'common/quickActionFeedback',
+          activeIcon: 'common/quickActionFeedback',
+          link: '/admin/tickets',
+          activeLink: ['/admin/tickets'],
+          unread: ticketUnread,
           showForUser: false
         },
         {
@@ -132,13 +163,14 @@ const Navbar = ({ unread }: { unread: number }) => {
           activeIcon: 'support/config/configFill',
           link: '/config/plugin/tool',
           activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model'],
+          unread: 0,
           showForUser: false
         }
       ];
     }
 
     return filteredList;
-  }, [lastChatAppId, lastPane, t, userInfo?.username, showAdminFeatures]);
+  }, [lastChatAppId, lastPane, t, ticketUnread, userInfo?.username, showAdminFeatures]);
 
   const isDashboardPage = useMemo(() => {
     return router.pathname.startsWith('/dashboard');
@@ -195,19 +227,21 @@ const Navbar = ({ unread }: { unread: number }) => {
                   }
                 : {})}
             >
-              <MyIcon
-                {...(isActive
-                  ? {
-                      name: item.activeIcon as any,
-                      color: 'primary.600'
-                    }
-                  : {
-                      name: item.icon as any,
-                      color: 'myGray.400'
-                    })}
-                width={'24px'}
-                height={'24px'}
-              />
+              <Badge isDot count={item.unread}>
+                <MyIcon
+                  {...(isActive
+                    ? {
+                        name: item.activeIcon as any,
+                        color: 'primary.600'
+                      }
+                    : {
+                        name: item.icon as any,
+                        color: 'myGray.400'
+                      })}
+                  width={'24px'}
+                  height={'24px'}
+                />
+              </Badge>
               <Box
                 fontSize={'12px'}
                 transform={'scale(0.9)'}
