@@ -12,7 +12,14 @@ export enum SystemContentKeyEnum {
   privacyPolicyEn = 'privacy_policy_en',
   dataCollection = 'data_collection',
   dataCollectionZhCN = 'data_collection_zh-CN',
-  dataCollectionEn = 'data_collection_en'
+  dataCollectionEn = 'data_collection_en',
+  // 鲁港通 - N4 支付法律文档（2026-10-07）：付费服务协议与支付隐私政策
+  paidServiceAgreement = 'paid_service_agreement',
+  paidServiceAgreementZhCN = 'paid_service_agreement_zh-CN',
+  paidServiceAgreementEn = 'paid_service_agreement_en',
+  paymentPrivacyPolicy = 'payment_privacy_policy',
+  paymentPrivacyPolicyZhCN = 'payment_privacy_policy_zh-CN',
+  paymentPrivacyPolicyEn = 'payment_privacy_policy_en'
 }
 
 export const systemContentKeyMap = {
@@ -587,12 +594,226 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
     label: 'Personal Data Collection Statement',
     defaultTitle: 'Personal Data Collection Statement',
     defaultContent: '# Personal Data Collection Statement\n\nEnglish content to be configured by administrator.'
+  },
+  // 鲁港通 - N4 支付法律文档（2026-10-07）：繁体为正文基准（zh-CN 走派生表按需转简体），英文为占位待配置
+  [SystemContentKeyEnum.paidServiceAgreement]: {
+    label: '付費服務協議',
+    defaultTitle: '鲁港通 (LuGangTong) 付費服務協議',
+    defaultContent: `# 鲁港通 (LuGangTong) 付費服務協議
+
+**最後更新：2026年10月7日**
+
+歡迎使用鲁港通付費服務。本《付費服務協議》（「**本協議**」）由閣下與硕谷光核文化传播有限公司（英文名稱：Airscend Media Communications Limited，一家於香港成立的有限公司）及深圳市硕谷光核科技文化有限公司（以下統稱「**Airscend**」、「**我們**」或「**我們的**」）共同訂立，是《鲁港通使用條款》的補充協議，適用於閣下購買及使用鲁港通付費服務（包括套餐訂閱、積分充值及企業定制服務）。
+
+本協議與《使用條款》及《隱私政策》共同構成規管閣下使用本服務的完整協議。如本協議與《使用條款》就付費事項的約定存在不一致，就該等事項以本協議為準。
+
+閣下在購買付費服務前，請仔細閱讀本協議全部內容。閣下完成購買即表示閣下已閱讀、理解並同意受本協議約束。
+
+---
+
+## 1. 定義
+
+- **付費服務**：指鲁港通提供的需付費使用的服務，包括套餐訂閱、積分充值及企業定制服務。
+- **積分（AI 積分）**：指使用本服務各項功能時消耗的計量單位。不同功能按其實際資源用量消耗相應數量的積分。
+- **套餐**：指本服務按等級提供的訂閱服務，包括免費版、體驗版、進階版、專業版等，具體以購買頁面展示為準。
+- **購買頁面**：指鲁港通網站（www.airscend.com）內的「購買套餐」頁面及其後續更新頁面。
+
+---
+
+## 2. 付費服務的內容
+
+1. 本服務提供不同等級的套餐及積分包。各套餐的價格、包含的積分數量、優惠及權益內容，以購買頁面即時展示為準。
+2. 各等級套餐（包括免費版）均開放本服務的核心功能；不同等級主要體現在可用積分的數量以及企業定制對應的附加服務。
+3. Airscend 有權根據運營情況適時調整付費服務的內容、價格及權益；該等調整不影響調整前已完成購買的訂單。
+
+---
+
+## 3. 價格與支付
+
+1. **支付方式**：現時支持的支付方式以購買頁面展示為準。閣下應僅通過官方頁面展示的支付方式完成付款。
+2. **單次支付、無自動續費**：本服務現時不提供自動續費或免密代扣服務。所有購買均為閣下主動發起的單次支付；套餐到期後不會自動扣款，如需繼續使用，請由閣下主動續費。
+3. **支付提示**：支付完成後，相應權益一般即時到賬；如遇網絡延遲或系統繁忙，請稍作等待或聯絡我們核實。
+4. **安全提示**：請勿向任何個人或其他非官方渠道付款。通過非官方渠道進行的交易，Airscend 不予認可且不承擔責任。
+
+---
+
+## 4. 積分規則
+
+1. 積分是使用本服務時消耗的計量單位；計費以系統記錄的實際消耗為準。
+2. **積分長期有效、不清零**：已到賬的積分保留於閣下帳戶中，套餐到期或未續費不會清空積分。
+3. 積分不可轉讓、不可兌換現金、不可提現，亦不可用於本服務以外的用途。
+4. 註冊贈送積分：新用戶註冊可獲贈體驗積分（具體數量以頁面說明為準）；贈送積分與付費積分的使用無差異。
+5. 如閣下發現帳戶積分記錄異常，請及時聯絡我們核實。
+
+---
+
+## 5. 套餐訂閱規則
+
+1. **生效**：套餐購買完成後即時生效。
+2. **累加**：在現有套餐有效期內購買新套餐的，權益與積分照常累加，具體規則以購買頁面說明為準。
+3. **到期**：套餐到期後，閣下帳戶中剩餘積分不受影響；是否續費由閣下自行決定。
+4. 閣下可隨時購買更高等級套餐，權益照常累加。
+
+---
+
+## 6. 企業定制服務
+
+1. 企業定制服務採用年費制（人民幣 3,000 元/年起，最終以商務洽談結果為準），可提供多席位統一管理、對公轉賬結算、發票開具及專屬支持等服務。
+2. 企業定制服務通過線下方式洽談及簽約；閣下可電郵 info@airscend.com 與我們聯絡。
+3. 企業定制服務的具體權益內容、服務水平及開票安排，以雙方另行簽署的書面協議為準。
+
+---
+
+## 7. 退款規則
+
+1. 付費服務屬於虛擬數字商品，一經購買即為閣下開通相應權益，原則上不支持退款。
+2. 如出現下列情形，請及時聯絡我們，我們將在核實後妥善處理：
+
+   - 重複支付；
+   - 支付成功但權益未到賬；
+   - 其他因 Airscend 或支付渠道原因導致的支付異常。
+
+3. 除適用法律另有強制性規定外，上述安排適用於本服務的全部付費項目。
+
+---
+
+## 8. 發票
+
+1. 如需開具發票，請通過 service@airscend.com 與我們聯絡；企業定制客戶按簽約約定開具。
+2. 發票類型、開具週期及所需資料以實際溝通確認為準。
+
+---
+
+## 9. 用戶的責任
+
+1. 閣下應妥善保管帳戶及支付信息，並對其帳戶下發生的所有購買行為負責。
+2. 閣下不得利用付費服務進行任何違法違規活動，不得通過非官方渠道購買，或以不正當方式獲取積分及其他權益。
+3. 如發現帳戶被盜用或存在未經授權的支付，請立即聯絡我們。
+
+---
+
+## 10. 服務變更與終止
+
+1. Airscend 有權根據法律法規、運營需要或第三方支付渠道的變化，變更、暫停或終止部分或全部付費服務，並將通過適當方式（如站內公告）通知閣下。
+2. 如付費服務終止，閣下已購買但尚未消耗的權益，我們將按適用法律及公平原則妥善處理。
+
+---
+
+## 11. 免責聲明
+
+1. 付費服務按「現狀」提供。人工智能生成內容的準確性限制及責任限制，適用《使用條款》第 7 條（免責聲明）及第 8 條（法律責任的限制）的約定。
+2. 因不可抗力、第三方支付渠道故障、網絡故障等原因導致的服務中斷或延遲，Airscend 在適用法律允許的範圍內不承擔責任，但將盡合理努力恢復服務。
+
+---
+
+## 12. 爭議解決與法律適用
+
+本協議的訂立、效力、履行及爭議解決，適用《使用條款》第 14 條（一般條款）的約定。
+
+---
+
+## 13. 聯絡方式
+
+如閣下對本協議或付費服務有任何疑問，請通過以下方式與我們聯絡：
+
+- 服務及售後：**service@airscend.com**
+- 商務及咨詢：**info@airscend.com**
+
+本服務由硕谷光核文化传播有限公司（Airscend Media Communications Limited）及深圳市硕谷光核科技文化有限公司運營。`
+  },
+  [SystemContentKeyEnum.paidServiceAgreementEn]: {
+    label: 'Paid Service Agreement',
+    defaultTitle: 'Paid Service Agreement',
+    defaultContent: '# Paid Service Agreement\n\nEnglish content to be configured by administrator.'
+  },
+  [SystemContentKeyEnum.paymentPrivacyPolicy]: {
+    label: '支付隱私政策',
+    defaultTitle: '鲁港通 (LuGangTong) 支付隱私政策',
+    defaultContent: `# 鲁港通 (LuGangTong) 支付隱私政策
+
+**最後更新：2026年10月7日**
+
+本《支付隱私政策》適用於閣下在鲁港通購買付費服務（套餐訂閱、積分充值、企業定制服務）過程中涉及的個人信息處理活動。本政策是《鲁港通隱私政策》及《個人資料收集聲明》的組成部分；本政策未盡事宜，適用該等文件。
+
+閣下使用本服務的支付功能前，請仔細閱讀本政策。閣下完成支付即表示閣下已閱讀、理解並同意本政策所述的個人信息處理方式。
+
+---
+
+## 1. 我們收集的資訊
+
+在支付環節，我們會處理以下與交易相關的資訊：
+
+- **帳戶資訊**：用戶 ID、註冊郵箱等帳戶標識資訊；
+- **訂單資訊**：購買的套餐或積分包、訂單金額、訂單編號、下單時間、支付狀態；
+- **支付結果資訊**：支付渠道（支付寶）返回的支付結果及交易流水號。
+
+**請注意**：本服務的支付功能由第三方支付機構（支付寶）提供。我們不收集、不存儲閣下的銀行卡號、銀行卡密碼、支付密碼等支付工具敏感資訊；該等資訊由支付機構依據其自身的隱私政策處理。
+
+---
+
+## 2. 資訊的使用
+
+我們將上述資訊用於以下用途：
+
+1. **完成交易處理**：確認支付結果，向閣下的帳戶發放相應權益（積分或套餐）；
+2. **對賬與記錄**：生成並保存訂單記錄，按需開具發票；
+3. **客戶服務**：核實交易異常、處理退款申請及售後問題；
+4. **合規義務**：遵守適用法律法規對交易記錄留存的要求。
+
+---
+
+## 3. 資訊的存儲與保護
+
+1. 我們在運營過程中收集和產生的交易資訊，存儲於中華人民共和國境內。
+2. 我們採用訪問權限控制、加密傳輸等技術措施保護閣下的交易資訊安全。
+3. 交易記錄的保存期限遵循適用法律法規的要求；超出保存期限的資訊將被刪除或匿名化處理。
+
+---
+
+## 4. 資訊的共享
+
+1. 為完成支付，訂單資訊（訂單號、金額等）將按必要原則提供至支付渠道（支付寶）處理；除此之外，我們不會向無關第三方共享閣下的交易資訊。
+2. 除非獲得閣下的同意或者法律法規要求，我們不會對外披露閣下的交易資訊。
+
+---
+
+## 5. 閣下的權利
+
+閣下有權查閱、更正閣下的訂單及交易記錄。閣下可通過鲁港通「帳號」頁面自助查閱購買記錄與消費明細，或通過本政策載明的聯絡方式向我們提出查閱、更正、刪除申請。我們將在核實閣下身份後依法處理。
+
+---
+
+## 6. 未成年人
+
+本服務面向成年人提供。如閣下為未成年人，請在閣下的父母或其他監護人的同意及指導下使用付費服務。
+
+---
+
+## 7. 政策更新
+
+我們可能適時修訂本政策。修訂後的版本將在本頁面公佈，並更新「最後更新」日期。如修訂涉及重大變更，我們將通過適當方式（如站內公告）通知閣下。
+
+---
+
+## 8. 聯絡方式
+
+如閣下對本政策有任何疑問、意見或投訴，請通過以下方式與我們聯絡：
+
+- 服務及售後：**service@airscend.com**
+- 商務及咨詢：**info@airscend.com**
+
+本服務由硕谷光核文化传播有限公司（Airscend Media Communications Limited）及深圳市硕谷光核科技文化有限公司運營。`
+  },
+  [SystemContentKeyEnum.paymentPrivacyPolicyEn]: {
+    label: 'Payment Privacy Policy',
+    defaultTitle: 'Payment Privacy Policy',
+    defaultContent: '# Payment Privacy Policy\n\nEnglish content to be configured by administrator.'
   }
 };
 
 /**
  * 鲁港通 - zh-CN 系统内容派生映射。
- * 使用条款繁体正文约 270 行真实法律文本，为避免维护重复的简体大 blob，
+ * 使用条款、付费服务协议、支付隐私政策的繁体正文为真实法律文本，为避免维护重复的简体大 blob，
  * 简体版不内嵌正文，而是在读取时基于繁体基准用 opencc（traditionalToSimplified）按需转换；
  * 隐私政策 / 个人资料收集声明的繁体仅为占位符，故直接在 systemContentKeyMap 内嵌简体占位，不走派生。
  * 契约：每个枚举 key 要么在 systemContentKeyMap 有自有默认，要么在此表登记为派生（二者必居其一）。
@@ -600,7 +821,9 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 export const systemContentZhCNBaseMap: Partial<
   Record<SystemContentKeyEnum, SystemContentKeyEnum>
 > = {
-  [SystemContentKeyEnum.termsOfUseZhCN]: SystemContentKeyEnum.termsOfUse
+  [SystemContentKeyEnum.termsOfUseZhCN]: SystemContentKeyEnum.termsOfUse,
+  [SystemContentKeyEnum.paidServiceAgreementZhCN]: SystemContentKeyEnum.paidServiceAgreement,
+  [SystemContentKeyEnum.paymentPrivacyPolicyZhCN]: SystemContentKeyEnum.paymentPrivacyPolicy
 };
 
 // 鲁港通 - locale → 内容 key 后缀映射（韩语无系统内容，回退英文；繁体为基准无后缀）

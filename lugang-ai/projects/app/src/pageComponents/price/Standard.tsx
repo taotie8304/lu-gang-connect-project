@@ -25,6 +25,7 @@ import {
   PackageChangeStatusEnum,
   type PricePurchaseIntent
 } from './purchaseIntent';
+import { LUGANG_BUSINESS_EMAIL } from '@/web/common/system/constants';
 
 // 鲁港通 - 价格页展示档位：免费版 / 体验版 / 进阶版 / 专业版（定制版无 customFormUrl 时不展示）
 const NEW_PLAN_LEVELS = [
@@ -813,6 +814,98 @@ const Standard = ({
               </Box>
             );
           })}
+        </Flex>
+
+        {/* 鲁港通 - 企业定制：年费制、线下签约，面向对公客户（银行转账+发票），独立于在线套餐的商务通道 */}
+        <Flex
+          mt={['32px', '40px']}
+          w={'100%'}
+          px={['20px', '28px']}
+          py={['18px', '22px']}
+          flexDirection={['column', 'row']}
+          alignItems={['flex-start', 'center']}
+          justifyContent={'space-between'}
+          gap={[5, 6]}
+          borderRadius={'16px'}
+          background={'linear-gradient(120deg, #101729 0%, #1B2A4A 55%, #22345C 100%)'}
+        >
+          <Flex flexDirection={'column'} gap={'10px'}>
+            <Flex alignItems={'center'} gap={'10px'} flexWrap={'wrap'}>
+              <Box color={'white'} fontSize={'17px'} fontWeight={600}>
+                {t('price:corp.title')}
+              </Box>
+              <Box
+                h={'22px'}
+                px={'10px'}
+                display={'inline-flex'}
+                alignItems={'center'}
+                flexShrink={0}
+                borderRadius={'full'}
+                fontSize={'11.5px'}
+                fontWeight={500}
+                color={'#C7D6FF'}
+                bg={'rgba(122,158,255,.16)'}
+                borderWidth={'1px'}
+                borderColor={'rgba(122,158,255,.35)'}
+              >
+                {t('price:corp.tag')}
+              </Box>
+            </Flex>
+            <Flex
+              alignItems={'center'}
+              gap={2}
+              flexWrap={'wrap'}
+              fontSize={'13px'}
+              color={'#9AA9C7'}
+            >
+              <Box as={'span'}>{t('price:corp.feat_members')}</Box>
+              <Box as={'span'} w={'3px'} h={'3px'} borderRadius={'full'} bg={'#4A5A7E'} />
+              <Box as={'span'}>{t('price:corp.feat_payment')}</Box>
+              <Box as={'span'} w={'3px'} h={'3px'} borderRadius={'full'} bg={'#4A5A7E'} />
+              <Box as={'span'}>{t('price:corp.feat_support')}</Box>
+              <Box as={'span'} w={'3px'} h={'3px'} borderRadius={'full'} bg={'#4A5A7E'} />
+              <Box as={'span'}>{t('price:corp.feat_custom')}</Box>
+            </Flex>
+          </Flex>
+          <Flex
+            alignItems={'center'}
+            gap={['16px', '26px']}
+            flexShrink={0}
+            w={['100%', 'auto']}
+            justifyContent={'space-between'}
+          >
+            <Box
+              as={'span'}
+              fontSize={['26px', '30px']}
+              fontWeight={650}
+              letterSpacing={'-0.5px'}
+              color={'white'}
+              whiteSpace={'nowrap'}
+            >
+              {t('price:corp.price_text')}
+            </Box>
+            <Button
+              as={'a'}
+              href={`mailto:${LUGANG_BUSINESS_EMAIL}`}
+              h={'40px'}
+              px={'22px'}
+              flexShrink={0}
+              borderRadius={'10px'}
+              bg={'#E9EFFF'}
+              color={'#1B2A4A'}
+              fontSize={'13.5px'}
+              fontWeight={600}
+              _hover={{ bg: '#F3F6FF' }}
+            >
+              {t('price:corp.cta')}
+            </Button>
+          </Flex>
+        </Flex>
+
+        {/* 鲁港通 - 套餐激活规则提示：与发放逻辑一致（购买即时生效、未到期时长自动顺延），替代原弹窗内的旧计费规则文案 */}
+        <Flex mt={'20px'} alignItems={'center'} gap={'6px'} color={'#3B6FE0'} fontSize={'12.5px'}>
+          <MyIcon name={'infoRounded'} w={'15px'} />
+          <Box>{t('price:plan.activation_rule')}</Box>
         </Flex>
 
         {!!qrPayData && packageChange && (

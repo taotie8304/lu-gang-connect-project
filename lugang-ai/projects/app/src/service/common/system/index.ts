@@ -147,9 +147,9 @@ const defaultFeConfigs: FastGPTFeConfigsType = {
 // 鲁港通 - N4 在线支付：正式套餐销售配置（2026-10-05 定价定稿）。
 // 4.16.2 未接入商业版时数据库与 config.json 的 subPlans 均不生效，价格页展示与服务端计价统一读取本对象；
 // 1 积分 = 0.01 元，月积分 = 月费 × 100（含约 60% 毛利）；年付按付 10 个月计（subModeMap.year.payMonth=10），积分按 12 个月发放。
-// 积分消耗口径：一次深度问答平均约 40 积分（LUGANG_POINTS_PER_DEEP_QA），免费档 300 积分约可体验 7 次。
+// 积分长期有效、不清零（个人积分账户仅递增与扣减，无过期重置逻辑），与价格页及付费服务协议表述一致。
 // 全平台共享同一团队积分池，容量类数值全档位统一宽松，避免启用套餐校验后阻塞日常训练与采集导入。
-// 鲁港通 - 文件上传限额：单文件 50MB、单次最多 8 个，四档统一；套餐未配置时回退到 env 的 UPLOAD_FILE_MAX_SIZE / UPLOAD_FILE_MAX_AMOUNT。
+// 鲁港通 - 文件上传限额：单文件 20MB、单次最多 8 个，四档统一；套餐未配置时回退到 env 的 UPLOAD_FILE_MAX_SIZE / UPLOAD_FILE_MAX_AMOUNT。
 const defaultSubPlans: SubPlanType = {
   standard: {
     [StandardSubLevelEnum.free]: {
@@ -161,7 +161,7 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 90,
-      maxUploadFileSize: 50,
+      maxUploadFileSize: 20,
       maxUploadFileCount: 8,
       enableSandbox: false
     },
@@ -174,7 +174,7 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 180,
-      maxUploadFileSize: 50,
+      maxUploadFileSize: 20,
       maxUploadFileCount: 8,
       enableSandbox: false
     },
@@ -187,7 +187,7 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 365,
-      maxUploadFileSize: 50,
+      maxUploadFileSize: 20,
       maxUploadFileCount: 8,
       ticketResponseTime: 24,
       enableSandbox: false
@@ -201,7 +201,7 @@ const defaultSubPlans: SubPlanType = {
       maxDatasetSize: 10000000,
       requestsPerMinute: 5000,
       chatHistoryStoreDuration: 730,
-      maxUploadFileSize: 50,
+      maxUploadFileSize: 20,
       maxUploadFileCount: 8,
       ticketResponseTime: 12,
       enableSandbox: false
@@ -211,7 +211,7 @@ const defaultSubPlans: SubPlanType = {
   extraDatasetSize: {
     price: 0.01
   },
-  // 积分包：1 积分 = 0.01 元，有效期 1 年；充值后可在个人中心查看订单与到账积分。
+  // 积分包：1 积分 = 0.01 元，积分长期有效；month 仅作包标识与历史兼容，充值后可在个人中心查看订单与到账积分。
   extraPoints: {
     packages: [
       {

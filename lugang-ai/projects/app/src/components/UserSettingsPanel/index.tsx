@@ -158,6 +158,29 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
           title: t('common:system_content.data_collection')
         })
     },
+    // 鲁港通 - N4 支付法律文档两项（付费服务协议 / 支付隐私政策），与上方法律条款同机制
+    {
+      key: 'paidServiceAgreement',
+      icon: 'book',
+      label: t('common:system_content.paid_service_agreement'),
+      onClick: () =>
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.paidServiceAgreement,
+          title: t('common:system_content.paid_service_agreement')
+        })
+    },
+    {
+      key: 'paymentPrivacyPolicy',
+      icon: 'book',
+      label: t('common:system_content.payment_privacy_policy'),
+      onClick: () =>
+        setSystemContentModal({
+          isOpen: true,
+          contentKey: SystemContentKeyEnum.paymentPrivacyPolicy,
+          title: t('common:system_content.payment_privacy_policy')
+        })
+    },
     {
       key: 'logout',
       icon: 'core/chat/sidebar/logout',

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box, Button, Flex, HStack, IconButton } from '@chakra-ui/react';
+import { Box, Button, Flex, IconButton } from '@chakra-ui/react';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { getTeamPlanStatus } from '@/web/support/user/team/api';
 
@@ -253,12 +253,6 @@ const PriceBox = () => {
                   // 鲁港通 - 四档卡片改由响应式网格排布，避免固定 300px 在主流笔记本宽度下折行
                   responsiveCardLayout
                 />
-                <HStack mt={8} color={'blue.700'} justifyContent={'center'} w={'100%'}>
-                  <MyIcon name={'infoRounded'} w={'1rem'} />
-                  <Box fontSize={'sm'} fontWeight={'500'}>
-                    {t('price:bill.standard_valid_tip')}
-                  </Box>
-                </HStack>
               </Box>
             )}
 

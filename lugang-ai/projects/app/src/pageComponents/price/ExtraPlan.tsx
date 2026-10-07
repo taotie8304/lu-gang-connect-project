@@ -41,11 +41,6 @@ const ExtraPlan = ({
   const extraPointsPackages = subPlans?.extraPoints?.packages || [];
   const [selectedPackageIndex, setSelectedPackageIndex] = useState<number>(0);
 
-  const getMonthText = (month: number) => {
-    if (month < 12) return `${month} ${t('price:month_text')}`;
-    return t('price:one_year');
-  };
-
   const { runAsync: onclickBuyExtraPoints, loading: isLoadingBuyExtraPoints } = useRequest(
     async ({ points, month }: { points: number; month: number }) => {
       points = Math.ceil(points);
@@ -245,8 +240,7 @@ const ExtraPlan = ({
                   color={'myGray.500'}
                   mt={[1, 2]}
                 >
-                  {t('price:invalid_time') + ' '}
-                  {getMonthText(pkg.month)}
+                  {t('price:extra_points.valid_permanent')}
                 </Box>
               </Flex>
             ))}

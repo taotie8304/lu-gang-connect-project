@@ -26,12 +26,12 @@ const FAQ = () => {
       desc: t('price:FAQ.package_overlay_a')
     },
     {
-      title: t('price:FAQ.year_day_q'),
-      desc: t('price:FAQ.year_day_a')
+      title: t('price:FAQ.upload_limit_q'),
+      desc: t('price:FAQ.upload_limit_a')
     },
     {
-      title: t('price:FAQ.free_user_clean_q'),
-      desc: t('price:FAQ.free_user_clean_a')
+      title: t('price:FAQ.year_day_q'),
+      desc: t('price:FAQ.year_day_a')
     }
   ];
 

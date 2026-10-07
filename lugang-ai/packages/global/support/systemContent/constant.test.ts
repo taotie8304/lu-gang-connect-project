@@ -64,11 +64,32 @@ describe('resolveSystemContentKey - locale→key 映射与回退', () => {
     expect(resolveSystemContentKey('nonexistent_key', 'en')).toBe('nonexistent_key');
     expect(resolveSystemContentKey('nonexistent_key', 'zh-Hant')).toBe('nonexistent_key');
   });
+
+  it('支付法律文档（付费服务协议 / 支付隐私政策）同样按 locale 命中本地化 key', () => {
+    expect(resolveSystemContentKey('paid_service_agreement', 'zh-CN')).toBe(
+      SystemContentKeyEnum.paidServiceAgreementZhCN
+    );
+    expect(resolveSystemContentKey('paid_service_agreement', 'en')).toBe(
+      SystemContentKeyEnum.paidServiceAgreementEn
+    );
+    expect(resolveSystemContentKey('paid_service_agreement', 'ko-KR')).toBe(
+      SystemContentKeyEnum.paidServiceAgreementEn
+    );
+    expect(resolveSystemContentKey('payment_privacy_policy', 'zh-CN')).toBe(
+      SystemContentKeyEnum.paymentPrivacyPolicyZhCN
+    );
+    expect(resolveSystemContentKey('payment_privacy_policy', 'en')).toBe(
+      SystemContentKeyEnum.paymentPrivacyPolicyEn
+    );
+    expect(resolveSystemContentKey('payment_privacy_policy', 'zh-Hant')).toBe(
+      SystemContentKeyEnum.paymentPrivacyPolicy
+    );
+  });
 });
 
 describe('systemContentKeyMap / 派生映射完整性契约', () => {
-  it('枚举共 9 个 key（3 类内容 × 繁/简/英）', () => {
-    expect(allEnumValues).toHaveLength(9);
+  it('枚举共 15 个 key（5 类内容 × 繁/简/英）', () => {
+    expect(allEnumValues).toHaveLength(15);
   });
 
   it('每个枚举 key 要么在 map 有自有默认，要么登记为 zh-CN 派生（二者必居其一）', () => {
@@ -85,6 +106,17 @@ describe('systemContentKeyMap / 派生映射完整性契约', () => {
     );
     // 派生 key 不内嵌简体大 blob（避免重复维护 ~270 行法律文本）
     expect(SystemContentKeyEnum.termsOfUseZhCN in systemContentKeyMap).toBe(false);
+  });
+
+  it('支付法律文档的 _zh-CN 变体同样登记为派生：基准指向繁体且不内嵌简体 blob', () => {
+    expect(systemContentZhCNBaseMap[SystemContentKeyEnum.paidServiceAgreementZhCN]).toBe(
+      SystemContentKeyEnum.paidServiceAgreement
+    );
+    expect(systemContentZhCNBaseMap[SystemContentKeyEnum.paymentPrivacyPolicyZhCN]).toBe(
+      SystemContentKeyEnum.paymentPrivacyPolicy
+    );
+    expect(SystemContentKeyEnum.paidServiceAgreementZhCN in systemContentKeyMap).toBe(false);
+    expect(SystemContentKeyEnum.paymentPrivacyPolicyZhCN in systemContentKeyMap).toBe(false);
   });
 
   it('派生表的每个基准 key 必须在 map 中存在（保证派生有源）', () => {
@@ -109,6 +141,31 @@ describe('默认内容：真实法律文本 vs 占位符', () => {
     expect(hant).toContain('service@airscend.com');
     expect(en).toContain('HKIAC');
     expect(en.length).toBeGreaterThan(1000);
+  });
+
+  it('付费服务协议繁体为真实法律内容（含积分不清零、无自动续费等关键要素）', () => {
+    const paid = systemContentKeyMap[SystemContentKeyEnum.paidServiceAgreement].defaultContent;
+    expect(isPlaceholder(paid)).toBe(false);
+    expect(paid).toContain('service@airscend.com');
+    expect(paid).toContain('info@airscend.com');
+    expect(paid).toContain('不清零');
+    expect(paid).toContain('不提供自動續費');
+  });
+
+  it('支付隐私政策繁体为真实法律内容（含支付宝处理与不存银行卡信息要素）', () => {
+    const privacy = systemContentKeyMap[SystemContentKeyEnum.paymentPrivacyPolicy].defaultContent;
+    expect(isPlaceholder(privacy)).toBe(false);
+    expect(privacy).toContain('支付寶');
+    expect(privacy).toContain('銀行卡號');
+  });
+
+  it('付费服务协议/支付隐私政策英文版为占位符（待管理员配置）', () => {
+    expect(
+      isPlaceholder(systemContentKeyMap[SystemContentKeyEnum.paidServiceAgreementEn].defaultContent)
+    ).toBe(true);
+    expect(
+      isPlaceholder(systemContentKeyMap[SystemContentKeyEnum.paymentPrivacyPolicyEn].defaultContent)
+    ).toBe(true);
   });
 
   it('隐私政策/资料收集声明为占位符（待管理员配置）', () => {

@@ -1,19 +1,24 @@
 import { useSystemStore } from '@/web/common/system/useSystemStore';
-import type { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constants';
-import { SubModeEnum } from '@fastgpt/global/support/wallet/sub/constants';
+import {
+  StandardSubLevelEnum,
+  SubModeEnum
+} from '@fastgpt/global/support/wallet/sub/constants';
 import React, { useMemo } from 'react';
-import { standardSubLevelMap } from '@fastgpt/global/support/wallet/sub/constants';
 import { Box, Flex, Grid, Text } from '@chakra-ui/react';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
-import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
-import Markdown from '@/components/Markdown';
-import MyPopover from '@fastgpt/web/components/common/MyPopover';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { formatFileSize } from '@fastgpt/global/common/file/tools';
 import type { TeamPlanStandardType } from '@fastgpt/global/support/wallet/sub/type';
-import { LUGANG_POINTS_PER_DEEP_QA } from '@fastgpt/global/support/wallet/bill/lugangPrice';
 
+/** 鲁港通 - 积分数千分位展示，跨语言稳定（如 82,800） */
+const formatPoints = (points: number) => points.toLocaleString('en-US');
+
+/**
+ * 鲁港通 - 套餐权益列表（价格页/账号页共用）。
+ * 销售口径（豆包式）：免费版直列功能与额度；付费档仅「包括免费版的所有权益」+ 积分数 + 积分长期有效。
+ * 不再展示深度问答次数与对话记录保留天数（无强制执行保障的依据），上传限制四档统一。
+ */
 const StandardPlanContentList = ({
   level,
   mode,
@@ -24,7 +29,6 @@ const StandardPlanContentList = ({
   standplan?: TeamPlanStandardType;
 }) => {
   const { t } = useClientTranslation();
-
   const { subPlans, feConfigs } = useSystemStore();
   const { userInfo } = useUserStore();
 
@@ -33,72 +37,69 @@ const StandardPlanContentList = ({
     const formatMode = isWecomTeam ? SubModeEnum.year : mode;
 
     // For wecom teams, free plan should use basic plan config
-    const effectiveLevel = isWecomTeam && level === 'free' ? 'basic' : level;
+    const effectiveLevel =
+      isWecomTeam && level === StandardSubLevelEnum.free ? StandardSubLevelEnum.basic : level;
     const plan = subPlans?.standard?.[effectiveLevel];
 
     if (!plan) return;
-    // For wecom free plan (trial), use WecomFreePlan constants
+
+    // 鲁港通 - 免费档固定展示注册赠送额度，不随付费模式翻倍
+    const isFreeLevel = effectiveLevel === StandardSubLevelEnum.free;
+    const monthMultiplier = formatMode === SubModeEnum.month || isFreeLevel ? 1 : 12;
 
     return {
-      price: plan.price * (formatMode === SubModeEnum.month ? 1 : 10),
       level: level as `${StandardSubLevelEnum}`,
-      ...standardSubLevelMap[level as `${StandardSubLevelEnum}`],
+      isFreeLevel,
+      isYearMode: formatMode === SubModeEnum.year,
       annualBonusPoints:
         formatMode === SubModeEnum.month
           ? 0
           : (standplan?.annualBonusPoints ?? plan.annualBonusPoints),
       totalPoints:
         standplan?.totalPoints ??
-        (isWecomTeam
-          ? (plan.wecom?.points ?? 2000)
-          : plan.totalPoints * (formatMode === SubModeEnum.month ? 1 : 12)),
-      requestsPerMinute: standplan?.requestsPerMinute ?? plan.requestsPerMinute,
-      maxTeamMember: standplan?.maxTeamMember ?? plan.maxTeamMember,
-      maxAppAmount: standplan?.maxAppAmount ?? plan.maxAppAmount,
-      maxDatasetAmount: standplan?.maxDatasetAmount ?? plan.maxDatasetAmount,
-      maxDatasetSize: standplan?.maxDatasetSize ?? plan.maxDatasetSize,
-      websiteSyncPerDataset: standplan?.websiteSyncPerDataset ?? plan.websiteSyncPerDataset,
-      chatHistoryStoreDuration:
-        standplan?.chatHistoryStoreDuration ?? plan.chatHistoryStoreDuration,
-      auditLogStoreDuration: standplan?.auditLogStoreDuration ?? plan.auditLogStoreDuration,
-      appRegistrationCount: standplan?.appRegistrationCount ?? plan.appRegistrationCount,
-      ticketResponseTime: standplan?.ticketResponseTime ?? plan.ticketResponseTime,
-      customDomain: standplan?.customDomain ?? plan.customDomain,
+        (isWecomTeam ? (plan.wecom?.points ?? 2000) : plan.totalPoints * monthMultiplier),
       maxUploadFileSize: formatFileSize(
         (standplan?.maxUploadFileSize || plan.maxUploadFileSize || feConfigs.uploadFileMaxSize) *
           1024 ** 2
       ),
       maxUploadFileCount:
-        standplan?.maxUploadFileCount || plan.maxUploadFileCount || feConfigs.uploadFileMaxAmount,
-      enableSandbox: standplan?.enableSandbox ?? plan.enableSandbox
+        standplan?.maxUploadFileCount || plan.maxUploadFileCount || feConfigs.uploadFileMaxAmount
     };
   }, [
     subPlans?.standard,
     level,
     mode,
     userInfo?.team?.isWecomTeam,
-    standplan?.totalPoints,
     standplan?.annualBonusPoints,
-    standplan?.requestsPerMinute,
-    standplan?.maxTeamMember,
-    standplan?.maxAppAmount,
-    standplan?.maxDatasetAmount,
-    standplan?.maxDatasetSize,
-    standplan?.websiteSyncPerDataset,
-    standplan?.chatHistoryStoreDuration,
-    standplan?.auditLogStoreDuration,
-    standplan?.appRegistrationCount,
-    standplan?.ticketResponseTime,
-    standplan?.customDomain,
+    standplan?.totalPoints,
     standplan?.maxUploadFileSize,
     standplan?.maxUploadFileCount,
-    standplan?.enableSandbox,
     feConfigs?.uploadFileMaxSize,
     feConfigs?.uploadFileMaxAmount
   ]);
 
-  return planContent ? (
+  if (!planContent) return null;
+
+  // 鲁港通 - 价格页（无真实订阅传入）付费档展示「积分/月（年）」；账号页展示真实到账总量，不带周期单位
+  const pointsUnit =
+    !standplan && !planContent.isFreeLevel
+      ? planContent.isYearMode
+        ? t('price:plan.points_unit_year')
+        : t('price:plan.points_unit_month')
+      : t('common:support.wallet.subscription.point');
+
+  return (
     <Grid gap={4} fontSize={'sm'} fontWeight={500}>
+      {/* 首行：付费档「包括免费版的所有权益」；免费档列功能范围 */}
+      <Flex alignItems={'center'}>
+        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
+        <Box color={'myGray.600'}>
+          {planContent.isFreeLevel
+            ? t('price:plan.feature.free_all_open')
+            : t('price:plan.feature.all_free')}
+        </Box>
+      </Flex>
+      {/* 积分行（年付赠送时划掉原值展示到账总量） */}
       <Flex alignItems={'center'}>
         <MyIcon
           name={'price/right'}
@@ -110,129 +111,48 @@ const StandardPlanContentList = ({
           {planContent.annualBonusPoints ? (
             <>
               <Text fontWeight={'bold'} color={'myGray.600'} textDecoration={'line-through'} mr={1}>
-                {planContent.totalPoints}
+                {formatPoints(planContent.totalPoints)}
               </Text>
               <Text fontWeight={'bold'} color={'#DF531E'}>
-                {planContent.totalPoints + planContent.annualBonusPoints}
+                {formatPoints(planContent.totalPoints + planContent.annualBonusPoints)}
               </Text>
               <Text color={'myGray.600'} ml={1}>
-                {t('common:support.wallet.subscription.point')}
+                {pointsUnit}
               </Text>
             </>
           ) : (
             <Box fontWeight={'bold'} color={'myGray.600'} display={'flex'}>
-              <Text>{planContent.totalPoints}</Text>
-              <Text ml={1}>{t('common:support.wallet.subscription.point')}</Text>
+              <Text>{formatPoints(planContent.totalPoints)}</Text>
+              <Text ml={1}>{pointsUnit}</Text>
             </Box>
           )}
         </Flex>
       </Flex>
-      {/* 鲁港通 - 平台级指标行（索引量/成员/应用/知识库数/QPM）全档位统一且面向内部，销售卡片不再展示；积分换算为深度问答次数便于用户理解价值 */}
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_deep_qa_count', {
-            amount: Math.floor(
-              (planContent.totalPoints + (planContent.annualBonusPoints ?? 0)) /
-                LUGANG_POINTS_PER_DEEP_QA
-            )
-          })}
-        </Box>
-      </Flex>
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_chat_records_retain', {
-            amount: planContent.chatHistoryStoreDuration
-          })}
-        </Box>
-      </Flex>
-      {!!planContent.auditLogStoreDuration && (
+      {planContent.isFreeLevel ? (
+        <>
+          {/* 免费档：上传限制 + 云端对话记录/工单反馈 */}
+          <Flex alignItems={'center'}>
+            <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
+            <Box color={'myGray.600'}>
+              {t('price:plan.feature.upload_limit', {
+                count: planContent.maxUploadFileCount,
+                size: planContent.maxUploadFileSize
+              })}
+            </Box>
+          </Flex>
+          <Flex alignItems={'center'}>
+            <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
+            <Box color={'myGray.600'}>{t('price:plan.feature.free_cloud_ticket')}</Box>
+          </Flex>
+        </>
+      ) : (
         <Flex alignItems={'center'}>
           <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-          <Box color={'myGray.600'}>
-            {t('common:n_team_audit_day', {
-              amount: planContent.auditLogStoreDuration
-            })}
-          </Box>
-        </Flex>
-      )}
-      {!!planContent.websiteSyncPerDataset && (
-        <Flex alignItems={'center'}>
-          <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-          <Box fontWeight={'bold'} color={'myGray.600'}>
-            {t('common:n_website_sync_max_pages', {
-              amount: planContent.websiteSyncPerDataset
-            })}
-          </Box>
-        </Flex>
-      )}
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {planContent.ticketResponseTime
-            ? t('common:worker_order_support_time', {
-                amount: planContent.ticketResponseTime
-              })
-            : t('common:community_support')}
-        </Box>
-        {subPlans?.communitySupportTip && !planContent.ticketResponseTime && (
-          <MyPopover
-            trigger="hover"
-            placement="bottom"
-            offset={[0, 10]}
-            Trigger={
-              <Flex alignItems={'center'}>
-                <MyIcon name={'help' as any} w={'16px'} color={'myGray.500'} ml={1} />
-              </Flex>
-            }
-          >
-            {({ onClose }) => (
-              <Box maxW="300px" p={3}>
-                <Markdown source={subPlans.communitySupportTip} />
-              </Box>
-            )}
-          </MyPopover>
-        )}
-      </Flex>
-      {!!planContent.appRegistrationCount && (
-        <Flex alignItems={'center'}>
-          <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-          <Box color={'myGray.600'}>
-            {t('common:n_app_registration_amount', {
-              amount: planContent.appRegistrationCount
-            })}
-          </Box>
-        </Flex>
-      )}
-      {planContent.customDomain !== undefined && (
-        <Flex alignItems={'center'}>
-          <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-          <Box color={'myGray.600'}>
-            {t('common:n_custom_domain_amount', {
-              amount: planContent.customDomain
-            })}
-          </Box>
-          <QuestionTip ml={1} label={t('common:n_custom_domain_amount_tip')} />
-        </Flex>
-      )}
-      <Flex alignItems={'center'}>
-        <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-        <Box color={'myGray.600'}>
-          {t('common:n_max_upload_file_limit', {
-            count: planContent.maxUploadFileCount,
-            size: planContent.maxUploadFileSize
-          })}
-        </Box>
-      </Flex>
-      {planContent.enableSandbox && (
-        <Flex alignItems={'center'}>
-          <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
-          <Box color={'myGray.600'}>{t('common:enable_sandbox')}</Box>
+          <Box color={'myGray.600'}>{t('price:plan.feature.points_permanent')}</Box>
         </Flex>
       )}
     </Grid>
-  ) : null;
+  );
 };
 
 export default StandardPlanContentList;
