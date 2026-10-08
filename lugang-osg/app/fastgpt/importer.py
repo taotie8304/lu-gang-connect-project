@@ -3,6 +3,7 @@
 # dry-run 预演（零副作用）、失败断点续传（failed 记录下轮重试）。
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass, field
 
@@ -14,10 +15,40 @@ from app.fastgpt.formatting import build_import_text
 from app.fastgpt.mapping import MappingError, resolve_route
 from app.models import Document, DocumentVersion, ImportMap, Source
 
+logger = logging.getLogger(__name__)
+
 # 鲁港通 - 实测口径：库中文档无 approved 态（入库即 candidate），
 # 导入候选 = 有当前版本、正文非空，且状态不在以下排除集
 EXCLUDED_STATUSES = ("rejected", "fetch_failed", "archived", "superseded")
 DEFAULT_CHUNK_SIZE = 512
+
+# 鲁港通 - 防回流（kb-cleanup 2026-10-04 配套）：以下 5 个来源的导航/索引类页面
+# （下载清单、栏目链接堆叠、名录代码表）曾被人工清理出知识库，但其文档仍是导入
+# 候选，内容更新触发重建时会把垃圾页重新导回。故在导入层按文本结构拦截：
+# 命中即跳过且不写 import_map（规则可调，放宽后下轮自动恢复导入）。
+_JUNK_SCOPE_SOURCES = frozenset({"hk_tid", "hk_ird", "hk_immd", "hk_hkma", "hk_wfsfaa"})
+JUNK_MIN_CHARS = 200
+JUNK_MIN_LINES = 12
+JUNK_SHORT_LINE_MAX = 30
+JUNK_SHORT_LINE_RATIO = 0.70
+JUNK_MAX_LONG_LINES = 2
+
+
+def is_index_like_text(text: str) -> bool:
+    """判断正文是否为枚举/索引页（整屏短行堆叠、几乎无整句长行）。
+
+    阈值取自 2026-10-04 知识库清理 34 条人工判定样本实测：全部 ≥200 字、≥12 行、
+    短行（≤30 字）占比 ≥73%、长行（≥40 字）≤5。长行取 ≤2 可保住含段落正文的
+    页面（实测保留页长行 ≥3），代价是漏判约 1 成纯文本型垃圾页（可人工再清理）。
+    """
+    if len(text) < JUNK_MIN_CHARS:
+        return False
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    if len(lines) < JUNK_MIN_LINES:
+        return False
+    short = sum(1 for ln in lines if len(ln) <= JUNK_SHORT_LINE_MAX)
+    long_lines = sum(1 for ln in lines if len(ln) >= 40)
+    return short >= JUNK_SHORT_LINE_RATIO * len(lines) and long_lines <= JUNK_MAX_LONG_LINES
 
 
 class ImporterError(Exception):
@@ -34,6 +65,7 @@ class ImportReport:
     rebuilt: int = 0
     skipped: int = 0
     duplicates: int = 0
+    filtered: int = 0
     failed: int = 0
     errors: list[str] = field(default_factory=list)
 
@@ -41,7 +73,8 @@ class ImportReport:
         """单行摘要（CLI 输出用）。"""
         return (
             f"总计 {self.total}｜新建 {self.imported}｜重建 {self.rebuilt}"
-            f"｜跳过(未变) {self.skipped}｜重复未导 {self.duplicates}｜失败 {self.failed}"
+            f"｜跳过(未变) {self.skipped}｜重复未导 {self.duplicates}"
+            f"｜拦截(索引页) {self.filtered}｜失败 {self.failed}"
         )
 
 
@@ -218,6 +251,14 @@ def run_import(
             and not rebuild
         ):
             report.skipped += 1
+            continue
+
+        # 鲁港通 - 防回流拦截（见 is_index_like_text）：命中即跳过且不落 import_map
+        if source_code in _JUNK_SCOPE_SOURCES and is_index_like_text(
+            version.extracted_text or ""
+        ):
+            report.filtered += 1
+            logger.info("%s｜索引页拦截未导：%s", source_code, title)
             continue
 
         try:

@@ -2,7 +2,12 @@
 import pytest
 
 from app.fastgpt.client import FastGPTError
-from app.fastgpt.importer import ImporterError, run_import, sync_names
+from app.fastgpt.importer import (
+    ImporterError,
+    is_index_like_text,
+    run_import,
+    sync_names,
+)
 from app.fastgpt.mapping import HK_DATASET_ID
 from app.models import Document, DocumentVersion, ImportMap, Source
 
@@ -553,3 +558,128 @@ def test_sync_names_rename_failure_reported(db):
 
     assert (report.fixed, report.unfixed) == (0, 1)
     assert "改名失败" in report.errors[0]
+
+
+# --- 防回流拦截（kb-cleanup 2026-10-04 配套：索引页结构特征过滤，限 5 个来源） ---
+
+
+def index_text() -> str:
+    """模拟枚举/索引页：整屏短行堆叠（下载清单形态，实测垃圾页同构）。"""
+    return "文件下載\n" + "\n".join(f"附件{i:02d}doc格式" for i in range(25))
+
+
+def prose_text() -> str:
+    """模拟含段落正文的页面：多条整句长行 + 短行混杂（实测保留页同构）。"""
+    para = (
+        "特區政府今日公布有關安排，闡述香港貨品輸往內地的產地來源規則及相關證明"
+        "文件的處理方式，並說明業界須注意的事項與過渡安排。"
+    )
+    return "\n".join([para] * 3 + ["下載表格"] * 12)
+
+
+def test_is_index_like_text_detects_index_page():
+    assert is_index_like_text(index_text())
+
+
+def test_is_index_like_text_keeps_prose_with_long_lines():
+    assert not is_index_like_text(prose_text())
+
+
+def test_is_index_like_text_ignores_short_text():
+    assert not is_index_like_text("通知\n" * 20)  # 篇幅不足 200 字
+
+
+def test_is_index_like_text_ignores_few_lines():
+    para = (
+        "特區政府今日公布有關安排，闡述香港貨品輸往內地的產地來源規則及相關證明"
+        "文件的處理方式，並說明業界須注意的事項與過渡安排。"
+    )
+    assert not is_index_like_text(f"{para}\n{para}\n{para}\n{para}")  # 行数不足 12
+
+
+def test_index_page_filtered_for_scoped_source(db):
+    src = make_source(db)
+    make_document(db, src, TID_URL, text=index_text())
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.filtered == 1
+    assert report.imported == 0
+    assert fake.calls == []
+    assert db.query(ImportMap).count() == 0
+
+
+def test_index_page_imported_for_unscoped_source(db):
+    src = make_source(db, code="hk_edb", name="教育局")
+    make_document(
+        db,
+        src,
+        "https://www.edb.gov.hk/tc/abc.html",
+        title="教育局文章",
+        text=index_text(),
+    )
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_edb")
+
+    assert report.imported == 1
+    assert report.filtered == 0
+
+
+def test_prose_page_not_filtered(db):
+    src = make_source(db)
+    make_document(db, src, TID_URL, text=prose_text())
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.imported == 1
+    assert report.filtered == 0
+
+
+def test_rebuild_backflow_blocked_on_version_change(db):
+    src = make_source(db)
+    doc, ver1 = make_document(db, src, TID_URL, text="正文内容")
+    write_imported(db, doc, ver1)
+    add_new_version(db, doc, sha=SHA2, text=index_text())
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.filtered == 1
+    assert report.rebuilt == 0
+    assert report.imported == 0
+    assert fake.calls == []
+    rec = db.query(ImportMap).one()
+    assert rec.collection_id == "OLD1"
+    assert rec.content_sha256 == SHA1
+    assert rec.status == "imported"
+
+
+def test_rebuild_flag_does_not_bypass_filter(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL, text=index_text())
+    write_imported(db, doc, ver)
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", rebuild=True)
+
+    assert report.filtered == 1
+    assert report.rebuilt == 0
+    assert fake.calls == []
+    rec = db.query(ImportMap).one()
+    assert rec.collection_id == "OLD1"
+
+
+def test_dry_run_counts_filtered_without_writes(db):
+    src = make_source(db)
+    make_document(db, src, TID_URL, text=index_text())
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", dry_run=True)
+
+    assert report.filtered == 1
+    assert report.imported == 0
+    assert fake.calls == []
+    assert db.query(ImportMap).count() == 0
