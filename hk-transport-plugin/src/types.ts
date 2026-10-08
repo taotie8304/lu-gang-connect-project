@@ -311,6 +311,8 @@ export interface TransitCandidate {
   destination: string;        // 路线终点站名
   fare?: number | null;       // 票价（HKD）
   score: number;              // 综合评分（越小越优）
+  /** 鲁港通 - 是否为通宵线（N/NA 字头巴士）：白天停开，日间排序需沉底 */
+  isOvernight?: boolean;
   
   // MTR 实时数据字段（由 buildMTRStationMap 填充）
   stationCode?: string;       // MTR 车站代码，如 "HUH"（红磡）

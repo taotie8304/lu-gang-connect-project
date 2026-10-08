@@ -113,7 +113,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_transport_assistant',
-    version: '1.0.0',
+    version: '1.0.2',
     name: {
       en: 'HK Smart Transport Assistant',
       'zh-CN': '香港智能交通助手',
@@ -131,9 +131,9 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Migrated to FastGPT plugin SDK v1.x format',
-      'zh-CN': '迁移到 FastGPT 新插件 SDK v1.x 格式',
-      'zh-Hant': '遷移到 FastGPT 新插件 SDK v1.x 格式'
+      en: 'Daytime ranking fix: overnight (N/NA) bus routes now sink to the bottom of route suggestions during HK daytime',
+      'zh-CN': '日间排序优化：通宵巴士线（N/NA 字头）在香港日间时段自动排到末尾，优先推荐日间线路',
+      'zh-Hant': '日間排序優化：通宵巴士線（N/NA 字頭）在香港日間時段自動排到末尾，優先推薦日間線路'
     }
   },
   handler

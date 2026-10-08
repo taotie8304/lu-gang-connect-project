@@ -39,6 +39,7 @@ const TRAD_TO_SIMP: Record<string, string> = {
   // 香港地名/屋邨/道路补充（繁→简有差异的字符）
   '邨': '村', '碩': '硕', '徑': '径', '閣': '阁',
   '瀝': '沥', '匯': '汇', '薈': '荟',
+  '際': '际',
 };
 
 /**
@@ -231,32 +232,38 @@ export function geocodeByStopName(input: string): GeoLocation | undefined {
     }
   }
 
-  // 2. 包含匹配：找出所有站名 key 中包含查询词的条目
-  //    优先选 priority 最小的（MTR 优先）
-  let bestMatch: StopEntry | undefined;
-  let bestMatchLen = Infinity; // 越短越精确
+  // 2. 包含匹配（分两轮，完整名称优先）
+  //    轮 A（正向）：站名 key 包含查询词，如"香港国际机场"命中"香港国际机场新旅游车总站…"
+  //    轮 B（碎片回退）：查询词包含站名 key，如用户输"尖沙咀码头"命中站名"尖沙咀"
+  //    ★ 必须分轮：若混合匹配，碎片键（如"香港"）会反过来劫持完整查询（如"香港国际机场"）
+  const findBest = (fragmentFallback: boolean): StopEntry | undefined => {
+    let bestMatch: StopEntry | undefined;
+    let bestMatchLen = Infinity; // 越短越精确
 
-  for (const [stopKey, entries] of index.entries()) {
-    const matched =
-      (queryKey && stopKey.includes(queryKey)) ||
-      (queryKeyTrad && stopKey.includes(queryKeyTrad)) ||
-      (queryKey && queryKey.includes(stopKey)) ||
-      (queryKeyTrad && queryKeyTrad.includes(stopKey));
+    for (const [stopKey, entries] of index.entries()) {
+      const matched = fragmentFallback
+        ? (queryKey && queryKey.includes(stopKey)) ||
+          (queryKeyTrad && queryKeyTrad.includes(stopKey))
+        : (queryKey && stopKey.includes(queryKey)) ||
+          (queryKeyTrad && stopKey.includes(queryKeyTrad));
 
-    if (matched && entries.length > 0) {
-      const candidate = entries[0];
-      // 优先级更高（数字更小），或同等优先级时选名字更短（更精确匹配）的
-      if (
-        !bestMatch ||
-        candidate.priority < bestMatch.priority ||
-        (candidate.priority === bestMatch.priority && stopKey.length < bestMatchLen)
-      ) {
-        bestMatch = candidate;
-        bestMatchLen = stopKey.length;
+      if (matched && entries.length > 0) {
+        const candidate = entries[0];
+        // 优先级更高（数字更小），或同等优先级时选名字更短（更精确匹配）的
+        if (
+          !bestMatch ||
+          candidate.priority < bestMatch.priority ||
+          (candidate.priority === bestMatch.priority && stopKey.length < bestMatchLen)
+        ) {
+          bestMatch = candidate;
+          bestMatchLen = stopKey.length;
+        }
       }
     }
-  }
+    return bestMatch;
+  };
 
+  const bestMatch = findBest(false) ?? findBest(true);
   if (bestMatch) return toGeoLocation(bestMatch);
   return undefined;
 }

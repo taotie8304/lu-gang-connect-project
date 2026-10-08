@@ -13,9 +13,9 @@ import {
   generatePaymentInfo,
   generateTips,
 } from './integrator';
-import { planPublicTransit } from './planner';
+import { planPublicTransit, isHongKongDaytime } from './planner';
 import { findStopByName } from './stop-db';
-import type { ResponseMetadata, RouteOption, ParsedQuestion } from './types';
+import type { ResponseMetadata, RouteOption, ParsedQuestion, TransitCandidate } from './types';
 
 // ============================================================
 // InputType - 插件输入参数（Zod Schema）
@@ -109,6 +109,34 @@ export const OutputType = z.object({
   error: z.string().optional().describe('错误信息（部分失败时）'),
   _debug: z.array(z.string()).optional().describe('调试诊断信息（仅管理员）'),
 });
+
+// ============================================================
+// 候选路线统一排序（鲁港通 - 深夜排序：白天把通宵线沉底）
+// ============================================================
+
+/**
+ * 排序规则：香港日间（06:00–23:59）通宵线（N/NA 字头）整体沉底（车程短但白天停开）；
+ * 其余按实时总时长 → 实时数据优先 → 票价。夜间时段不做沉底（通宵线正是首选）。
+ */
+export function sortEnrichedCandidates(
+  candidates: TransitCandidate[],
+  now: Date = new Date()
+): void {
+  const daytime = isHongKongDaytime(now);
+  candidates.sort((a, b) => {
+    if (daytime && Boolean(a.isOvernight) !== Boolean(b.isOvernight)) {
+      return a.isOvernight ? 1 : -1;
+    }
+    const timeA = a.realTimeETA?.totalMinutes ?? 999;
+    const timeB = b.realTimeETA?.totalMinutes ?? 999;
+    if (timeA !== timeB) return timeA - timeB;
+    // 时间相同时，优先实时数据
+    if (a.realTimeETA?.dataSource !== 'static' && b.realTimeETA?.dataSource === 'static') return -1;
+    if (a.realTimeETA?.dataSource === 'static' && b.realTimeETA?.dataSource !== 'static') return 1;
+    // 都相同时，按费用排序
+    return (a.fare ?? 999) - (b.fare ?? 999);
+  });
+}
 
 // ============================================================
 // tool - 插件主函数
@@ -297,18 +325,9 @@ export async function tool(
         diagLines.push(`实时数据获取成功: ${realTimeCount}/${enrichedCandidates.length} 条路线`);
         
         // ========================================================
-        // 3.2 智能排序：基于实时总时长重新排序
+        // 3.2 智能排序：基于实时总时长重新排序（白天通宵线沉底）
         // ========================================================
-        enrichedCandidates.sort((a, b) => {
-          const timeA = a.realTimeETA?.totalMinutes ?? 999;
-          const timeB = b.realTimeETA?.totalMinutes ?? 999;
-          if (timeA !== timeB) return timeA - timeB;
-          // 时间相同时，优先实时数据
-          if (a.realTimeETA?.dataSource !== 'static' && b.realTimeETA?.dataSource === 'static') return -1;
-          if (a.realTimeETA?.dataSource === 'static' && b.realTimeETA?.dataSource !== 'static') return 1;
-          // 都相同时，按费用排序
-          return (a.fare ?? 999) - (b.fare ?? 999);
-        });
+        sortEnrichedCandidates(enrichedCandidates);
         
         // 转换为 RouteOption 并标记推荐路线
         for (let i = 0; i < enrichedCandidates.length; i++) {
@@ -379,14 +398,7 @@ export async function tool(
           if (retryResult.candidates.length > 0) {
             apiStatus['transit-planner'] = 'success';
             const enrichedRetry = await enrichCandidatesWithRealTimeETA(retryResult.candidates);
-            enrichedRetry.sort((a, b) => {
-              const timeA = a.realTimeETA?.totalMinutes ?? 999;
-              const timeB = b.realTimeETA?.totalMinutes ?? 999;
-              if (timeA !== timeB) return timeA - timeB;
-              if (a.realTimeETA?.dataSource !== 'static' && b.realTimeETA?.dataSource === 'static') return -1;
-              if (a.realTimeETA?.dataSource === 'static' && b.realTimeETA?.dataSource !== 'static') return 1;
-              return (a.fare ?? 999) - (b.fare ?? 999);
-            });
+            sortEnrichedCandidates(enrichedRetry);
             for (let i = 0; i < enrichedRetry.length; i++) {
               const cand = enrichedRetry[i];
               const ro = transitCandidateToRouteOption(cand);

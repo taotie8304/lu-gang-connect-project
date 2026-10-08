@@ -10,7 +10,7 @@ describe('FastGPT plugin export (新插件 SDK v1.x 格式)', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest).toBeDefined();
     expect(manifest.pluginId).toBe('hk_transport_assistant');
-    expect(manifest.version).toBe('1.0.0');
+    expect(manifest.version).toBe('1.0.2');
     expect(manifest.name['zh-CN']).toBe('香港智能交通助手');
     expect(manifest.name.en).toBe('HK Smart Transport Assistant');
     expect(manifest.description['zh-CN']).toContain('必须');

@@ -3,6 +3,8 @@
 import { describe, it, expect } from 'vitest';
 import { geocode, geocodeRoute, getKnownLocations, isKnownLocation, isOrganizationName, geocodeWithFallback, geocodeRouteWithFallback } from '../src/geocoder';
 import { resolveLocation } from '../src/parser';
+import { geocodeByStopName } from '../src/stop-db';
+import { planPublicTransit } from '../src/planner';
 
 // ============================================================
 // 单元测试：地点坐标词典查询
@@ -186,5 +188,52 @@ describe('parser → geocoder 集成', () => {
       const coord = geocode(standardName!);
       expect(coord, `"${standardName}" 应该有坐标`).toBeDefined();
     }
+  });
+});
+
+// ============================================================
+// 回归测试：机场全称不得错配到市区（香港国际机场 → 香港站 缺陷）
+// ============================================================
+
+describe('机场全称识别（回归：香港国际机场不得错配香港站且能出路线）', () => {
+  // 机场客运核心区（GTC/客运大楼/MTR 机场站）：22.31~22.325N, 113.925~113.95E
+  // 可排除两类历史坏坐标：香港站(22.285,114.157) 与机场岛西南货运区(22.308,113.9185)
+  const inAirportCore = (coord: { lat: number; lng: number } | undefined) =>
+    !!coord &&
+    coord.lat > 22.31 && coord.lat < 22.325 &&
+    coord.lng > 113.925 && coord.lng < 113.95;
+
+  it('geocode 应该把「香港国际机场」落在机场客运核心区', () => {
+    const result = geocode('香港国际机场');
+    expect(result).toBeDefined();
+    expect(inAirportCore(result), `坐标 ${result?.lat},${result?.lng} 不在机场核心区`).toBe(true);
+    expect(result!.name).not.toContain('香港站');
+  });
+
+  it('geocode「香港机场」也应在机场客运核心区', () => {
+    const result = geocode('香港机场');
+    expect(result).toBeDefined();
+    expect(inAirportCore(result), `坐标 ${result?.lat},${result?.lng} 不在机场核心区`).toBe(true);
+  });
+
+  it('geocode 简体/繁体写法都应落在机场客运核心区', () => {
+    for (const name of ['香港国际机场', '香港國際機場']) {
+      const result = geocode(name);
+      expect(result, `"${name}" 应该有坐标`).toBeDefined();
+      expect(inAirportCore(result), `"${name}" 坐标 ${result?.lat},${result?.lng} 不在机场核心区`).toBe(true);
+    }
+  });
+
+  it('stop-db 直查「香港国际机场」也应落在机场客运核心区', () => {
+    const result = geocodeByStopName('香港国际机场');
+    expect(result).toBeDefined();
+    expect(inAirportCore(result), `坐标 ${result?.lat},${result?.lng} 不在机场核心区`).toBe(true);
+  });
+
+  it('机场坐标在本地规划器能出路线（旺角 → 机场）', async () => {
+    const dest = geocode('香港国际机场');
+    expect(dest).toBeDefined();
+    const plan = await planPublicTransit(22.3193, 114.1694, dest!.lat, dest!.lng);
+    expect(plan.candidates.length, '旺角 → 机场应规划出至少一条路线').toBeGreaterThan(0);
   });
 });

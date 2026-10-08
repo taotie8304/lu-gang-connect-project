@@ -21,6 +21,32 @@ const MAX_CANDIDATES = 10;
 // 步行路径校正系数（城市中直线距离 vs 实际道路距离的典型比例）
 const WALK_DETOUR_FACTOR = 1.4;
 
+// ============================================================
+// 通宵线识别与香港时区判断（深夜排序优化：通宵线白天沉底）
+// ============================================================
+
+// N/NA 字头 = 通宵巴士线（如 N23 / N21A / NA21；实测全库 N 字头均为通宵巴士）。
+// 通宵线车程短，历史问题：白天规划时因评分低排到首位，误导"日间推荐"
+const OVERNIGHT_ROUTE_RE = /^N[A-Z]?\d/;
+// 日间惩罚值：大于任何真实评分（mode权重×站数+步行距离），确保日间候选整列排前
+const OVERNIGHT_DAYTIME_PENALTY = 1000;
+
+export function isOvernightRoute(routeName: string): boolean {
+  return OVERNIGHT_ROUTE_RE.test((routeName || '').trim());
+}
+
+const HK_HOUR_FORMAT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Hong_Kong',
+  hour: '2-digit',
+  hourCycle: 'h23',
+});
+
+/** 香港时区是否处于日间（06:00–23:59）；通宵线只在 00:00–05:59 保持原始排序 */
+export function isHongKongDaytime(now: Date = new Date()): boolean {
+  const hour = parseInt(HK_HOUR_FORMAT.format(now), 10);
+  return hour >= 6 && hour <= 23;
+}
+
 // MTR 站点名 → { line(线路代码), code(车站代码) } 映射表
 // 数据来源: https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv (2025)
 // 换乘站取其主要线路
@@ -293,6 +319,9 @@ function findDirectRoutes(
   const nearOrigin = new Map<string, NearEntry>();
   const nearDest = new Map<string, NearEntry>();
 
+  // 鲁港通 - 日间标记：通宵线（N/NA 字头）在日间时段加惩罚分沉底
+  const daytime = isHongKongDaytime();
+
   const latEps = 0.01, lngEps = 0.01;
 
   for (const p of index.routeStopPoints) {
@@ -343,7 +372,9 @@ function findDirectRoutes(
     // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离）
     const correctedWalkIn = o.distanceM === 0 ? 0 : Math.round(o.distanceM * WALK_DETOUR_FACTOR);
     const correctedWalkOut = d.distanceM === 0 ? 0 : Math.round(d.distanceM * WALK_DETOUR_FACTOR);
-    const score = modeW * numStops + (correctedWalkIn + correctedWalkOut) / 100;
+    const isOvernight = isOvernightRoute(meta.name);
+    const score = modeW * numStops + (correctedWalkIn + correctedWalkOut) / 100
+      + (isOvernight && daytime ? OVERNIGHT_DAYTIME_PENALTY : 0);
 
     candidates.push({
       company: modeToCompany(meta.mode, meta.co),
@@ -363,6 +394,7 @@ function findDirectRoutes(
       destination: meta.dest,
       fare: meta.fare,
       score,
+      isOvernight,
     });
   }
 
