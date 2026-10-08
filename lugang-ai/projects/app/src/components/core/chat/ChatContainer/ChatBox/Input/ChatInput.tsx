@@ -24,6 +24,7 @@ import { useFileUpload } from '../hooks/useFileUpload';
 import { getFileUploadId } from '../utils/uploadTask';
 import { isChatFileAllowedBySelectConfig } from '../utils/file';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
+import PointsBalanceNotice, { PointsBalanceTag } from '@/pageComponents/chat/PointsBalanceNotice';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
 import MyBox from '@fastgpt/web/components/common/MyBox';
@@ -377,6 +378,8 @@ const ChatInput = ({
         {/* 左侧自定义按钮组 */}
         <Flex alignItems={'center'} gap={2} flex={'1 1 0'} minW={0} w={0}>
           {InputLeftComponent}
+          {/* 鲁港通 - 积分余额标签 */}
+          <PointsBalanceTag />
         </Flex>
 
         {/* 右侧原有按钮组 */}
@@ -533,6 +536,9 @@ const ChatInput = ({
         }
       }}
     >
+      {/* 鲁港通 - 低余额购买提示条 */}
+      <PointsBalanceNotice />
+
       {/* Real Chat Input */}
       <Flex
         direction={'column'}
