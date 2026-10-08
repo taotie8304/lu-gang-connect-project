@@ -30,7 +30,12 @@ const useIsPointsVisible = () => {
   const outLinkAuthData = useContextSelector(WorkflowRuntimeContext, (v) => v.outLinkAuthData);
   const chatType = useContextSelector(ChatBoxContext, (v) => v.chatType);
 
-  return !outLinkAuthData && (chatType === ChatTypeEnum.chat || chatType === ChatTypeEnum.home);
+  // 鲁港通 - 外链访客以携带分享鉴权为准（普通场景该对象被规范为空对象，不能直接判空）
+  const isOutLinkVisitor = !!(outLinkAuthData?.shareId && outLinkAuthData?.outLinkUid);
+
+  return (
+    !isOutLinkVisitor && (chatType === ChatTypeEnum.chat || chatType === ChatTypeEnum.home)
+  );
 };
 
 // 鲁港通 - 进入时加载一次余额，每轮回答结束（扣费入库后）自动刷新
