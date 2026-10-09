@@ -22,8 +22,14 @@ export interface FilteredResult extends RawSearchResult {
   sourceType: SourceType;
 }
 
+// 鲁港通 - 搜索源名称：用于输出元数据 engine 字段与测试断言
+export type SearchProviderName = 'bailian' | 'bing' | 'ddg';
+
 // 鲁港通 - 搜索源抽象接口，可插拔：日后新增 Brave/SearXNG 只需实现该接口
 export interface SearchProvider {
+  readonly name: SearchProviderName;
+  // 鲁港通 - 是否支持 site: 操作符增强补发（百炼支持；必应抓取页不稳定，不启用）
+  readonly supportsSiteBoost: boolean;
   search(
     query: string,
     opts?: { maxResults?: number; lang?: string }

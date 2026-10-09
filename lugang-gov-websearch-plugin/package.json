@@ -1,6 +1,6 @@
 {
   "name": "fastgpt-tools-hk-gov-websearch",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "政府官网联网搜索 - FastGPT 系统插件",
   "type": "module",
   "main": "dist/index.js",

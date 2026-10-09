@@ -2,7 +2,11 @@
 // 默认实现走免费、无密钥的 Bing 必应（生产数据中心网络无法访问 DuckDuckGo/Google）；
 // DuckDuckGoProvider 保留作备选源，但生产环境不可用（国际搜索引擎被阻断）。
 import { parse, type HTMLElement } from 'node-html-parser';
-import type { RawSearchResult, SearchProvider } from './types';
+import type {
+  RawSearchResult,
+  SearchProvider,
+  SearchProviderName
+} from './types';
 
 const UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
@@ -155,6 +159,31 @@ export function resolveBingUrl(href: string): string {
   }
 }
 
+// 鲁港通 - URL 归一化键：小写主机名 + 去 www 前缀 + 去尾斜杠，保留查询串，用于跨源合并去重
+export function normalizeUrlKey(url: string): string {
+  try {
+    const u = new URL(url);
+    let host = u.hostname.toLowerCase();
+    if (host.startsWith('www.')) host = host.slice(4);
+    return `${host}${u.pathname.replace(/\/+$/, '')}${u.search}`;
+  } catch {
+    return (url || '').trim().toLowerCase();
+  }
+}
+
+// 鲁港通 - 按归一化 URL 去重，保留先出现者（跨搜索源合并时维持优先级顺序）
+export function dedupeByUrl(results: RawSearchResult[]): RawSearchResult[] {
+  const seen = new Set<string>();
+  const out: RawSearchResult[] = [];
+  for (const r of results) {
+    const key = normalizeUrlKey(r.url);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
 // 鲁港通 - 简单延时，用于 Bing 限流重试间隔
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -167,6 +196,10 @@ const BING_MAX_ATTEMPTS = 3;
 const BING_RETRY_DELAY_MS = 1_500;
 
 export class BingProvider implements SearchProvider {
+  readonly name: SearchProviderName = 'bing';
+  // 鲁港通 - 必应抓取页对 site: 支持不稳定，不启用增强补发
+  readonly supportsSiteBoost = false;
+
   async search(
     query: string,
     opts?: { maxResults?: number; lang?: string }
@@ -202,6 +235,9 @@ export class BingProvider implements SearchProvider {
 }
 
 export class DuckDuckGoProvider implements SearchProvider {
+  readonly name: SearchProviderName = 'ddg';
+  readonly supportsSiteBoost = false;
+
   async search(
     query: string,
     opts?: { maxResults?: number; lang?: string }

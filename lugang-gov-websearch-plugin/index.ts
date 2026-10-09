@@ -1,11 +1,13 @@
 // 鲁港通 - 政府官网联网搜索插件 SDK 封装层
 // 只负责 defineTool + createToolHandler + manifest + meta 注解；业务逻辑在 src/index.ts。
-// 数据源为公开搜索（Bing 必应，生产数据中心网络可用），无需密钥，故不设 secretSchema。
+// 百炼（DashScope）联网搜索为第一搜索源，密钥经 secretSchema 在后台配置后运行时注入；
+// 未配置密钥时自动只用必应抓取（与旧版行为一致），历史数据不阻塞。
 import {
   createToolHandler,
   defineTool,
   type InputSchemaMetaType,
-  type OutputSchemaMetaType
+  type OutputSchemaMetaType,
+  type SecretSchemaMetaType
 } from '@fastgpt-plugin/sdk-factory';
 import z from 'zod';
 import {
@@ -112,14 +114,33 @@ const outputSchema = z.object({
 });
 
 // ============================================================
+// 密钥 schema：百炼 API 密钥（可选）。后台配置后加密存储，运行时经 ctx.secrets 注入；
+// 留空 = 不启用百炼搜索源，自动只用必应抓取（与旧版行为一致）
+// ============================================================
+const secretSchema = z.object({
+  dashscopeApiKey: z
+    .string()
+    .optional()
+    .meta({
+      title: '百炼 API 密钥',
+      description:
+        '阿里云百炼(DashScope) API Key，作为联网搜索第一来源；留空则自动只用必应抓取',
+      isSecret: true
+    } satisfies SecretSchemaMetaType)
+});
+
+// ============================================================
 // handler：桥接 SDK 与 src 业务层
 // ============================================================
 const handler = createToolHandler({
   inputSchema,
   outputSchema,
-  handler: async (input) => {
+  secretSchema,
+  handler: async (input, ctx) => {
     const parsed = await InputType.parseAsync(input);
-    const output = await searchTool(parsed);
+    const output = await searchTool(parsed, {
+      dashscopeApiKey: ctx.secrets?.dashscopeApiKey
+    });
     const { _debug, ...result } = output; // 鲁港通 - 剔除调试字段，避免噪声传给模型
     return result;
   }
@@ -132,7 +153,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.0.1',
+    version: '1.1.0',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
@@ -150,9 +171,11 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Switch search engine to Bing (with 3-attempt retry) since DuckDuckGo is unreachable from the production datacenter network',
-      'zh-CN': '搜索源改为必应 Bing（带 3 次重试）：生产数据中心网络无法访问 DuckDuckGo',
-      'zh-Hant': '搜索源改為必應 Bing（帶 3 次重試）：生產數據中心網絡無法訪問 DuckDuckGo'
+      en: 'Add Bailian (DashScope) web search as the primary source with Bing fallback, plus site:gov.hk boost when results are insufficient. Configure the API key in the admin panel to enable; empty = Bing only (unchanged behavior).',
+      'zh-CN':
+        '新增百炼联网搜索为第一来源、必应自动兜底，结果不足时用 site:gov.hk 增强补发。在后台配置百炼 API 密钥后生效；留空则与旧版一致仅用必应。',
+      'zh-Hant':
+        '新增百煉聯網搜索為第一來源、必應自動兜底，結果不足時用 site:gov.hk 增強補發。在後台配置百煉 API 密鑰後生效；留空則與舊版一致僅用必應。'
     }
   },
   handler
