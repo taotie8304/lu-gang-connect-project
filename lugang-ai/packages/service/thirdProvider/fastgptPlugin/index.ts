@@ -90,12 +90,14 @@ const buildPluginApiUrl = (path: string) => {
   return `${baseUrl}${path}`;
 };
 
-const parseSseData = (chunk: string): ToolStreamMessage | null => {
+// 鲁港通 - 导出供单测覆盖解析行为（含插件裸 JSON 响应场景）
+// 鲁港通 - 对齐官方 SDK 解析口径：非 data: 行原样保留（插件无流式输出时返回裸 JSON，过滤会丢结果）
+export const parseSseData = (chunk: string): ToolStreamMessage | null => {
   const data = chunk
     .split('\n')
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice('data:'.length).trim())
-    .join('\n');
+    .map((line) => (line.startsWith('data:') ? line.slice('data:'.length).trimStart() : line))
+    .join('\n')
+    .trim();
 
   if (!data) return null;
 
