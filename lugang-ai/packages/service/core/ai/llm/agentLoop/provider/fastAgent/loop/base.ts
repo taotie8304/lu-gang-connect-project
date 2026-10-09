@@ -373,6 +373,8 @@ export const runAgentLoop = async <TChildrenResponse = unknown>({
   // 只限制工具顺序和参数长度都连续相同的轮次，避免将正常的多工具任务误判为模型幻觉。
   let lastConsecutiveToolSignature: string | undefined;
   let consecutiveSameToolRequestTimes = 0;
+  // 鲁港通 - 畸形应答（无正文且无有效工具调用）的自愈重试计数，最多重试一次。
+  let malformedResponseRetryTimes = 0;
   while (runTimes < maxRunAgentTimes) {
     let stopAgentLoop = false;
 
@@ -696,6 +698,31 @@ export const runAgentLoop = async <TChildrenResponse = unknown>({
           break;
         }
       }
+    }
+
+    // 鲁港通 - 畸形应答自愈：模型既没有输出正文，也没有产出有效工具调用时，
+    // 注入纠错提示让模型重新作答，避免用户看到空白回复。
+    if (
+      toolCalls.length === 0 &&
+      !answer &&
+      !toolChildPause &&
+      !stopAgentLoop &&
+      !isAborted?.() &&
+      !requestError
+    ) {
+      if (malformedResponseRetryTimes < 1) {
+        malformedResponseRetryTimes++;
+        const toolNames = body.tools.map((item) => item.function.name).join('、');
+        await appendRequestMessages({
+          role: ChatCompletionRequestMessageRoleEnum.User,
+          content: toolNames
+            ? `上一轮回复没有产出任何内容。请重新作答：仅可使用这些工具——${toolNames}；若不需要调用工具，请直接输出完整回答。`
+            : '上一轮回复没有产出任何内容。请直接输出完整回答。'
+        });
+        continue;
+      }
+
+      requestError = '模型未生成有效回复，请重新发送或将问题换一种问法。';
     }
 
     if (toolCalls.length === 0 || !!toolChildPause || stopAgentLoop || isAborted?.()) {

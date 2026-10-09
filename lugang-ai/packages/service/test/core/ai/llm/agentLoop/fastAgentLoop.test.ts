@@ -612,6 +612,78 @@ describe('runFastAgentMainLoop', () => {
     expect(createLLMResponseMock).toHaveBeenCalledTimes(2);
   });
 
+  it('recovers from a malformed empty response with corrective guidance', async () => {
+    mockCreateLLMResponseQueue(createLLMResponseMock, [
+      {
+        requestId: 'req_malformed',
+        finishReason: 'tool_calls',
+        reasoningText: '模型只输出了思考过程',
+        toolCalls: []
+      },
+      text({
+        requestId: 'req_recovered',
+        content: '重试后的回答'
+      })
+    ]);
+
+    const result = await runFastAgentMainLoop({
+      runtime: createRuntime(),
+      input: {
+        messages: [
+          {
+            role: ChatCompletionRequestMessageRoleEnum.User,
+            content: '我刚来香港没有收入，可以申请公屋吗？'
+          }
+        ]
+      }
+    });
+
+    expect(result.status).toBe('done');
+    expect(getFinalAssistantText(result)).toBe('重试后的回答');
+    expect(createLLMResponseMock).toHaveBeenCalledTimes(2);
+
+    const retryMessages = createLLMResponseMock.mock.calls[1][0].body.messages;
+    expect(retryMessages).toContainEqual(
+      expect.objectContaining({
+        role: ChatCompletionRequestMessageRoleEnum.User,
+        content: expect.stringContaining('search')
+      })
+    );
+  });
+
+  it('returns an actionable error when the model keeps producing empty responses', async () => {
+    mockCreateLLMResponseQueue(createLLMResponseMock, [
+      {
+        requestId: 'req_malformed_1',
+        finishReason: 'tool_calls',
+        reasoningText: '只有思考内容',
+        toolCalls: []
+      },
+      {
+        requestId: 'req_malformed_2',
+        finishReason: 'tool_calls',
+        reasoningText: '还是只有思考内容',
+        toolCalls: []
+      }
+    ]);
+
+    const result = await runFastAgentMainLoop({
+      runtime: createRuntime(),
+      input: {
+        messages: [
+          {
+            role: ChatCompletionRequestMessageRoleEnum.User,
+            content: '我刚来香港没有收入，可以申请公屋吗？'
+          }
+        ]
+      }
+    });
+
+    expect(result.status).toBe('error');
+    expect(String(result.error)).toContain('模型未生成有效回复');
+    expect(createLLMResponseMock).toHaveBeenCalledTimes(2);
+  });
+
   it('normalizes empty ask_agent resume answer to none in tool message', async () => {
     mockCreateLLMResponseQueue(createLLMResponseMock, [
       text({

@@ -36,7 +36,11 @@ export const createStreamResponse = async ({
 
   if (tools?.length) {
     if (toolCallMode === 'toolChoice') {
-      let callingTool: ChatCompletionMessageToolCall['function'] | null = null;
+      // 鲁港通 - 未匹配本轮工具表的调用按 index 暂存、流末补发，避免静默丢弃导致空回复。
+      const pendingToolCalls = new Map<
+        number,
+        { id?: string; function: ChatCompletionMessageToolCall['function'] }
+      >();
       const toolCalls: ChatCompletionMessageToolCall[] = [];
 
       try {
@@ -66,39 +70,44 @@ export const createStreamResponse = async ({
             responseChoice.tool_calls.forEach((toolCall, i) => {
               // 多 tool 并发时必须按模型返回的 index 聚合参数，避免参数串到其他工具上。
               const index = toolCall.index ?? i;
-              const hasNewTool = toolCall?.function?.name || callingTool;
+              const nameDelta = toolCall?.function?.name;
+              const argsDelta = toolCall?.function?.arguments ?? '';
 
-              if (hasNewTool) {
-                // 有些供应商会把 function.name 和 arguments 分片返回，先缓存到 callingTool。
-                if (toolCall?.function?.name) {
-                  callingTool = {
-                    name: toolCall.function?.name || '',
-                    arguments: toolCall.function?.arguments || ''
-                  };
-                } else if (callingTool) {
-                  callingTool.name += toolCall.function?.name || '';
-                  callingTool.arguments += toolCall.function?.arguments || '';
-                }
+              if (nameDelta) {
+                // 有些供应商会把 function.name 和 arguments 分片返回，先按 index 缓存。
+                const existingPending = pendingToolCalls.get(index);
+                pendingToolCalls.set(index, {
+                  id: toolCall.id || existingPending?.id,
+                  function: {
+                    name: (existingPending?.function.name ?? '') + nameDelta,
+                    arguments: (existingPending?.function.arguments ?? '') + argsDelta
+                  }
+                });
 
-                // 只有命中本轮请求传入的工具名时，才认为一个 tool call 已经开始。
-                if (tools.find((item) => item.function.name === callingTool!.name)) {
+                const pending = pendingToolCalls.get(index)!;
+                // 命中本轮工具表才立即建立调用；未命中的保留到流末补发，交给执行层兜底。
+                if (tools.find((item) => item.function.name === pending.function.name)) {
                   const call: ChatCompletionMessageToolCall = {
-                    id: toolCall.id || getNanoid(6),
+                    id: pending.id || getNanoid(6),
                     type: 'function',
-                    function: callingTool!
+                    function: pending.function
                   };
                   toolCalls[index] = call;
+                  pendingToolCalls.delete(index);
                   onToolCall?.({ call });
-                  callingTool = null;
                 }
-              } else {
-                const arg: string = toolCall?.function?.arguments ?? '';
+              } else if (argsDelta) {
                 const currentTool = toolCalls[index];
-                if (currentTool && arg) {
+                if (currentTool) {
                   // 后续 arguments delta 直接追加到已创建的 tool call，并把增量同步给上层。
-                  currentTool.function.arguments += arg;
+                  currentTool.function.arguments += argsDelta;
 
-                  onToolParam?.({ call: currentTool, argsDelta: arg });
+                  onToolParam?.({ call: currentTool, argsDelta });
+                } else {
+                  const pending = pendingToolCalls.get(index);
+                  if (pending) {
+                    pending.function.arguments += argsDelta;
+                  }
                 }
               }
             });
@@ -108,6 +117,19 @@ export const createStreamResponse = async ({
         // stream 迭代异常不立即抛出，先写入 parser 状态，最终由 createLLMResponse 决定是否 throw。
         updateError(error?.error || error);
       }
+
+      // 鲁港通 - 流末补发未匹配本轮工具表的调用（保留供应商 id），执行层会返回"工具不存在"让模型自愈。
+      pendingToolCalls.forEach((pending, index) => {
+        if (!pending.function.name) return;
+
+        const call: ChatCompletionMessageToolCall = {
+          id: pending.id || getNanoid(6),
+          type: 'function',
+          function: pending.function
+        };
+        toolCalls[index] = call;
+        onToolCall?.({ call });
+      });
 
       const { reasoningContent, content, finish_reason, usage, error } = getResponseData();
 

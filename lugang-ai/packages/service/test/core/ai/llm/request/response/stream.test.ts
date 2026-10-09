@@ -268,6 +268,205 @@ describe('createStreamResponse', () => {
     expect(updateError).not.toHaveBeenCalled();
   });
 
+  it('should keep unknown tool call instead of silently dropping it', async () => {
+    // 鲁港通 - 模型可能复读历史里的工具名（当前请求工具表中不存在）。此类调用不能被静默丢弃，
+    // 应补发出来交给执行层返回“工具不存在”，让模型自行纠正。
+    const chunks = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'call_unknown',
+                  function: {
+                    name: 'unknownTool',
+                    arguments: '{"a"'
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  function: {
+                    arguments: ':1}'
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ];
+
+    mockParseLLMStreamResponse.mockReturnValue({
+      parsePart: ({ part }: { part: any }) => ({
+        reasoningContent: part.choices?.[0]?.delta?.reasoning_content || '',
+        content: part.choices?.[0]?.delta?.content || '',
+        responseContent: part.choices?.[0]?.delta?.content || ''
+      }),
+      getResponseData: () => ({
+        error: undefined,
+        reasoningContent: '',
+        content: '',
+        finish_reason: 'tool_calls' as const,
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+      }),
+      updateFinishReason: vi.fn(),
+      updateError: vi.fn()
+    });
+
+    const onToolCall = vi.fn();
+    const result = await createStreamResponse({
+      body: {
+        model: 'gpt-4o',
+        messages: [],
+        stream: true,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'search',
+              description: 'search',
+              parameters: { type: 'object' }
+            }
+          }
+        ],
+        toolCallMode: 'toolChoice'
+      },
+      response: createMockStreamResponse(chunks),
+      onToolCall
+    });
+
+    expect(result.toolCalls).toEqual([
+      {
+        id: 'call_unknown',
+        type: 'function',
+        function: {
+          name: 'unknownTool',
+          arguments: '{"a":1}'
+        }
+      }
+    ]);
+    expect(onToolCall).toHaveBeenCalledTimes(1);
+    expect(result.finish_reason).toBe('tool_calls');
+  });
+
+  it('should not mix argument deltas when a known and an unknown tool call stream together', async () => {
+    // 鲁港通 - 一轮里同时存在“已知工具 + 未知工具”时，参数增量必须按 index 归属，
+    // 不能被挂起的未匹配调用吞掉（否则已知工具的入参会不完整）。
+    const chunks = [
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  index: 0,
+                  id: 'call_known',
+                  function: { name: 'search', arguments: '' }
+                },
+                {
+                  index: 1,
+                  id: 'call_unknown',
+                  function: { name: 'unknownTool', arguments: '' }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, function: { arguments: '{"q":"fast' } },
+                { index: 1, function: { arguments: '{"b":' } }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, function: { arguments: 'gpt"}' } },
+                { index: 1, function: { arguments: '2}' } }
+              ]
+            }
+          }
+        ]
+      }
+    ];
+
+    mockParseLLMStreamResponse.mockReturnValue({
+      parsePart: ({ part }: { part: any }) => ({
+        reasoningContent: part.choices?.[0]?.delta?.reasoning_content || '',
+        content: part.choices?.[0]?.delta?.content || '',
+        responseContent: part.choices?.[0]?.delta?.content || ''
+      }),
+      getResponseData: () => ({
+        error: undefined,
+        reasoningContent: '',
+        content: '',
+        finish_reason: 'tool_calls' as const,
+        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 }
+      }),
+      updateFinishReason: vi.fn(),
+      updateError: vi.fn()
+    });
+
+    const result = await createStreamResponse({
+      body: {
+        model: 'gpt-4o',
+        messages: [],
+        stream: true,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'search',
+              description: 'search',
+              parameters: { type: 'object' }
+            }
+          }
+        ],
+        toolCallMode: 'toolChoice'
+      },
+      response: createMockStreamResponse(chunks)
+    });
+
+    expect(result.toolCalls).toHaveLength(2);
+    expect(result.toolCalls[0]).toEqual({
+      id: 'call_known',
+      type: 'function',
+      function: {
+        name: 'search',
+        arguments: '{"q":"fastgpt"}'
+      }
+    });
+    expect(result.toolCalls[1]).toEqual({
+      id: 'call_unknown',
+      type: 'function',
+      function: {
+        name: 'unknownTool',
+        arguments: '{"b":2}'
+      }
+    });
+  });
+
   it('should parse prompt tool stream and emit parsed tool calls after stream ends', async () => {
     const chunks = [
       { choices: [{ delta: { content: '  0: hel' } }] },
