@@ -217,9 +217,10 @@ const Layout = ({ children }: { children: JSX.Element }) => {
           </>
         )}
       </Box>
+      {/* 鲁港通 - 积分不足购买引导弹窗移出商业版开关：生产环境未开通商业版（isPlus=false）时仍需展示 */}
+      <NotSufficientModal />
       {feConfigs?.isPlus && (
         <>
-          <NotSufficientModal />
           <SystemMsgModal />
           {showUpdateNotification && (
             <UpdateContact onClose={() => setIsUpdateNotification(false)} mode="contact" />
