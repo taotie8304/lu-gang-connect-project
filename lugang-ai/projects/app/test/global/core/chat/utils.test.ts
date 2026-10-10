@@ -506,4 +506,73 @@ describe('addStatisticalDataToHistoryItem', () => {
 
     expect(addStatisticalDataToHistoryItem(historyItem).totalQuoteList).toHaveLength(1);
   });
+
+  const buildHistoryItemWithQuotes = (content: string, quoteIds: string[]): ChatItemMiniType => ({
+    obj: ChatRoleEnum.AI,
+    value: [{ text: { content } }],
+    responseData: [
+      {
+        id: 'dataset-response',
+        nodeId: 'dataset-node',
+        moduleName: 'Dataset Search',
+        moduleType: FlowNodeTypeEnum.datasetSearchNode,
+        quoteList: quoteIds.map((id, index) => ({
+          id,
+          chunkIndex: index,
+          datasetId: 'dataset-1',
+          collectionId: `collection-${index + 1}`,
+          sourceName: `doc-${index + 1}.pdf`,
+          score: [{ type: 'embedding', value: 0.9, index: 0 }]
+        }))
+      }
+    ]
+  });
+
+  it('falls back to the full quote list when the answer has no citation marks', () => {
+    const quoteA = '507f1f77bcf86cd799439011';
+    const quoteB = '507f1f77bcf86cd799439012';
+    const historyItem = buildHistoryItemWithQuotes('根据香港特区政府公布的信息，申请条件如下。', [
+      quoteA,
+      quoteB
+    ]);
+
+    expect(
+      addStatisticalDataToHistoryItem(historyItem).totalQuoteList?.map((quote) => quote.id)
+    ).toEqual([quoteA, quoteB]);
+  });
+
+  it('keeps only cited quotes when part of the citation marks match', () => {
+    const quoteA = '507f1f77bcf86cd799439011';
+    const quoteB = '507f1f77bcf86cd799439012';
+    const historyItem = buildHistoryItemWithQuotes(`done [${quoteA}](CITE)`, [quoteA, quoteB]);
+
+    expect(
+      addStatisticalDataToHistoryItem(historyItem).totalQuoteList?.map((quote) => quote.id)
+    ).toEqual([quoteA]);
+  });
+
+  it('falls back to the full quote list when all citation marks are mismatched ids', () => {
+    const quoteA = '507f1f77bcf86cd799439011';
+    const quoteB = '507f1f77bcf86cd799439012';
+    const wrongId = '507f1f77bcf86cd799439099';
+    const historyItem = buildHistoryItemWithQuotes(`done [${wrongId}](CITE)`, [quoteA, quoteB]);
+
+    expect(
+      addStatisticalDataToHistoryItem(historyItem).totalQuoteList?.map((quote) => quote.id)
+    ).toEqual([quoteA, quoteB]);
+  });
+
+  it('deduplicates the fallback quote list by id', () => {
+    const quoteA = '507f1f77bcf86cd799439011';
+    const quoteB = '507f1f77bcf86cd799439012';
+    const historyItem = buildHistoryItemWithQuotes('根据官方公布的信息作答。', [
+      quoteA,
+      quoteA,
+      quoteB
+    ]);
+
+    expect(
+      addStatisticalDataToHistoryItem(historyItem).totalQuoteList?.map((quote) => quote.id)
+    ).toEqual([quoteA, quoteB]);
+  });
 });

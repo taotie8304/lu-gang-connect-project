@@ -208,10 +208,22 @@ export function addStatisticalDataToHistoryItem(historyItem: ChatItemMiniType) {
     return true;
   });
 
+  // 鲁港通 - 引用过滤结果为空时回退展示全部检索来源：来源清单不应依赖模型输出的引用标记
+  const dedupeIds = new Set<string>();
+  const fallbackQuoteList =
+    filteredQuoteList.length > 0
+      ? filteredQuoteList
+      : totalQuoteList.filter((quote) => {
+          if (!quote.id || dedupeIds.has(quote.id)) return false;
+
+          dedupeIds.add(quote.id);
+          return true;
+        });
+
   return {
     ...historyItem,
     useAgentSandbox: resolvedUseAgentSandbox,
-    totalQuoteList: filteredQuoteList,
+    totalQuoteList: fallbackQuoteList,
     ...(toolCiteLinks.length ? { toolCiteLinks } : {}),
     ...(errorText ? { errorText } : {}),
 
