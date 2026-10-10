@@ -46,16 +46,23 @@ const AIChatBubbleContent = ({
     if (isRoot) return rawChatValue;
 
     return rawChatValue.map((value) => {
-      const reasoningContent = value.reasoning?.content;
-      if (!reasoningContent) return value;
-
-      return {
+      // 鲁港通 - 普通用户隐藏插件调用明细（工具面板/名称标签/参数与返回原文），思考过程与正文照常展示
+      const stripped: AIChatItemValueItemType = {
         ...value,
-        reasoning: {
-          ...value.reasoning,
-          content: replaceInternalTerms(reasoningContent)
-        }
+        tools: undefined,
+        tool: undefined
       };
+      const reasoningContent = stripped.reasoning?.content;
+
+      return reasoningContent
+        ? {
+            ...stripped,
+            reasoning: {
+              ...stripped.reasoning,
+              content: replaceInternalTerms(reasoningContent)
+            }
+          }
+        : stripped;
     });
   }, [rawChatValue, isRoot]);
 
