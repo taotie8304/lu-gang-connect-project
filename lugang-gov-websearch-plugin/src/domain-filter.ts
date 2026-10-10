@@ -1,10 +1,14 @@
-// 鲁港通 - 域名过滤：默认拒绝策略。凡不在白名单(A-F)的一律丢弃，而不是“不在黑名单就放行”。
+// 鲁港通 - 域名过滤：默认拒绝策略。凡不在白名单(A-H)的一律丢弃，而不是“不在黑名单就放行”。
 import {
   GOV_SUFFIXES,
   PUBLIC_BODIES,
   ACADEMIC_SUFFIXES,
   UNIVERSITIES,
   NONPROFIT_SUFFIXES,
+  FINANCE_BANKS,
+  FINANCE_INSURERS,
+  FINANCE_SECURITIES_FUNDS,
+  MEDICAL_INSTITUTIONS,
   NEWS_MEDIA,
   TV_STATIONS,
   SOCIAL_MEDIA,
@@ -37,13 +41,20 @@ function matchAny(host: string, domains: string[]): boolean {
   return domains.some((d) => matchSuffix(host, d));
 }
 
-// 鲁港通 - 来源分类：按 A政府→B公营→C学术→D非盈利→F电视台→E新闻 顺序命中即返回；都不命中为 other
+// 鲁港通 - 来源分类：按 A政府→B公营→C学术→D非盈利→G金融→H医疗→F电视台→E新闻 顺序命中即返回；都不命中为 other
 export function classify(host: string): SourceType {
   if (matchAny(host, GOV_SUFFIXES)) return 'gov';
   if (matchAny(host, PUBLIC_BODIES)) return 'public';
   if (matchAny(host, ACADEMIC_SUFFIXES) || matchAny(host, UNIVERSITIES))
     return 'academic';
   if (matchAny(host, NONPROFIT_SUFFIXES)) return 'nonprofit';
+  if (
+    matchAny(host, FINANCE_BANKS) ||
+    matchAny(host, FINANCE_INSURERS) ||
+    matchAny(host, FINANCE_SECURITIES_FUNDS)
+  )
+    return 'finance';
+  if (matchAny(host, MEDICAL_INSTITUTIONS)) return 'medical';
   if (matchAny(host, TV_STATIONS)) return 'tv';
   if (matchAny(host, NEWS_MEDIA)) return 'news';
   return 'other';
@@ -78,7 +89,7 @@ export function judge(url: string, scope: SearchScope): JudgeVerdict {
   if (matchAny(host, MARKETING_PLATFORMS))
     return { allow: false, reason: 'marketing', sourceType };
 
-  // 4. official 模式：白名单(A-F)命中才放行
+  // 4. official 模式：白名单(A-H)命中才放行
   if (sourceType !== 'other')
     return { allow: true, reason: 'whitelist', sourceType };
 

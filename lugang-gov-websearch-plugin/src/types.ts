@@ -4,6 +4,8 @@ export type SourceType =
   | 'public'
   | 'academic'
   | 'nonprofit'
+  | 'finance'
+  | 'medical'
   | 'news'
   | 'tv'
   | 'other';

@@ -22,7 +22,7 @@ describe('normalizeHost 主机名规范化', () => {
   });
 });
 
-describe('classify 来源分类（A-F 白名单）', () => {
+describe('classify 来源分类（A-H 白名单）', () => {
   it('A 政府 *.gov.hk', () => {
     expect(classify('www.gov.hk')).toBe('gov');
     expect(classify('info.gov.hk')).toBe('gov');
@@ -51,13 +51,25 @@ describe('classify 来源分类（A-F 白名单）', () => {
     expect(classify('tvb.com')).toBe('tv');
     expect(classify('rthk.hk')).toBe('tv');
   });
+  it('G 金融机构（银行/保险/证券基金）', () => {
+    expect(classify('www.hsbc.com.hk')).toBe('finance');
+    expect(classify('bochk.com')).toBe('finance');
+    expect(classify('aia.com.hk')).toBe('finance');
+    expect(classify('futuhk.com')).toBe('finance');
+    expect(classify('mox.com')).toBe('finance');
+  });
+  it('H 医疗机构', () => {
+    expect(classify('www.hksh.com')).toBe('medical');
+    expect(classify('gleneagles.hk')).toBe('medical');
+    expect(classify('hkma.org')).toBe('medical');
+  });
   it('未知域名分类为 other', () => {
     expect(classify('random-blog.com')).toBe('other');
   });
 });
 
 describe('judge - official 模式（默认拒绝策略）', () => {
-  it('政府/公营/学术/非盈利/媒体/电视台放行，reason=whitelist', () => {
+  it('政府/公营/学术/非盈利/金融/医疗/媒体/电视台放行，reason=whitelist', () => {
     expect(judge('https://www.gov.hk/', 'official')).toMatchObject({
       allow: true,
       reason: 'whitelist',
@@ -82,6 +94,18 @@ describe('judge - official 模式（默认拒绝策略）', () => {
     expect(judge('https://tvb.com/', 'official')).toMatchObject({
       allow: true,
       sourceType: 'tv'
+    });
+    expect(
+      judge('https://www.hsbc.com.hk/accounts/', 'official')
+    ).toMatchObject({
+      allow: true,
+      reason: 'whitelist',
+      sourceType: 'finance'
+    });
+    expect(judge('https://www.hksh.com/', 'official')).toMatchObject({
+      allow: true,
+      reason: 'whitelist',
+      sourceType: 'medical'
     });
   });
 

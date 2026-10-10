@@ -24,6 +24,8 @@ export const SearchResultSchema = z.object({
     'public',
     'academic',
     'nonprofit',
+    'finance',
+    'medical',
     'news',
     'tv',
     'other'
@@ -193,8 +195,8 @@ function buildEmptyMessage(query: string, lang: string): string {
   if (lang === 'en')
     return `No official-source result found for "${query}". Answer from the knowledge base and note that the latest official information could not be verified.`;
   if (lang === 'zh-HK')
-    return `暫未從政府及權威官網檢索到與「${query}」相關的內容，請依據知識庫作答並註明「未能核實最新官方信息」。`;
-  return `暂未从政府及权威官网检索到与“${query}”相关的内容，请依据知识库作答并注明“未能核实最新官方信息”。`;
+    return `暫未從官方來源檢索到與「${query}」相關的內容，請依據知識庫作答並註明「未能核實最新官方信息」。`;
+  return `暂未从官方来源检索到与“${query}”相关的内容，请依据知识库作答并注明“未能核实最新官方信息”。`;
 }
 
 function buildErrorMessage(lang: string): string {

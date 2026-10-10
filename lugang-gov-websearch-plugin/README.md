@@ -1,22 +1,23 @@
 # 政府官网联网搜索 · FastGPT 系统插件（hk_gov_websearch）
 
-为 FastGPT 工作流提供「只检索香港权威官网来源」的联网搜索能力：输入查询词 → 调用免费的
-DuckDuckGo → **默认拒绝未知来源**，仅保留政府 / 公营机构 / 学术机构 / 非盈利团体 / 正规新闻媒体 /
-电视台，并硬拒绝社交媒体与营销平台，输出结构化来源列表，供上层 AI 节点做「知识库 + 最新官网信息」融合。
+为 FastGPT 工作流提供「只检索香港官方来源」的联网搜索能力：输入查询词 → 百炼（DashScope）
+联网搜索（未配密钥时自动降级必应抓取）→ **默认拒绝未知来源**，仅保留政府 / 公营机构 /
+学术机构 / 非盈利团体 / 持牌金融机构（银行/保险/证券基金）/ 医疗机构 / 正规新闻媒体 / 电视台，
+并硬拒绝社交媒体与营销平台，输出结构化来源列表，供上层 AI 节点做「知识库 + 最新官网信息」融合。
 
 - 插件 ID：`hk_gov_websearch`（下划线，发布后保持稳定）
 - 运行时：Node.js 18+（使用原生 `fetch`，无需任何 API Key）
 - 语言：TypeScript strict（无 `any`）
-- 搜索源：DuckDuckGo（`html.duckduckgo.com` 主接口 + `lite.duckduckgo.com` 降级），抽象为可插拔的 `SearchProvider`
+- 搜索源：百炼（DashScope）联网搜索为第一来源，必应抓取自动兜底；抽象为可插拔的 `SearchProvider`
 
 ## 两种搜索范围
 
 | 入参 `searchScope` | 行为 | 适用节点 |
 |---|---|---|
-| `official`（默认） | 社交媒体/营销平台硬拒绝；仅白名单 A–F 放行；**其余未知域名默认拒绝** | 所有政策/民生/金融/经贸/教育节点 |
+| `official`（默认） | 社交媒体/营销平台硬拒绝；仅白名单 A–H 放行；**其余未知域名默认拒绝** | 所有政策/民生/金融/经贸/教育节点 |
 | `open` | **完全不过滤**（白名单、黑名单都不生效），全部放行 | 仅「香港本地生活小助手」节点（休闲类：美食/景点/交通） |
 
-来源分类 `sourceType`：`gov` / `public` / `academic` / `nonprofit` / `news` / `tv` / `other`。
+来源分类 `sourceType`：`gov` / `public` / `academic` / `nonprofit` / `finance` / `medical` / `news` / `tv` / `other`。
 域名清单见 `src/whitelist.ts`，匹配算法见 `src/domain-filter.ts`（主机名去 `www.`、转小写后做
 `host === domain || host.endsWith('.' + domain)` 后缀匹配）。
 
@@ -34,7 +35,8 @@ lugang-gov-websearch-plugin/
 │   ├── types.ts             # 内部类型
 │   ├── whitelist.ts         # 白名单/黑名单域名清单（核心，可扩充）
 │   ├── domain-filter.ts     # 域名过滤算法（核心，默认拒绝）
-│   └── search-provider.ts   # 搜索源接口 + DuckDuckGo 实现（含 uddg 真实链接解码）
+│   ├── bailian-provider.ts  # 百炼（DashScope）联网搜索源（MCP 协议）
+│   └── search-provider.ts   # 搜索源接口 + 必应/DDG 实现（含 uddg 真实链接解码）
 └── test/                    # vitest 单测与集成测试（mock，不联网）
 ```
 
@@ -85,7 +87,8 @@ npx @fastgpt-plugin/cli debug . --run --input '{"query":"維港美食","searchSc
 ## 扩充权威来源
 
 只改 `src/whitelist.ts`：政府后缀加 `GOV_SUFFIXES`，公营机构加 `PUBLIC_BODIES`，
-大学加 `UNIVERSITIES`，媒体加 `NEWS_MEDIA`，电视台加 `TV_STATIONS`；新增营销/社交黑名单同理。
+大学加 `UNIVERSITIES`，金融机构加 `FINANCE_BANKS` / `FINANCE_INSURERS` / `FINANCE_SECURITIES_FUNDS`，
+医疗机构加 `MEDICAL_INSTITUTIONS`，媒体加 `NEWS_MEDIA`，电视台加 `TV_STATIONS`；新增营销/社交黑名单同理。
 改动后运行 `pnpm test` 并按需在 `test/domain-filter.test.ts` 补用例。
 
 ## License

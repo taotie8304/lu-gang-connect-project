@@ -38,7 +38,7 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.1.0');
+    expect(manifest.version).toBe('1.1.1');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
@@ -103,6 +103,41 @@ describe('tool 业务集成（official 默认过滤）', () => {
   });
 });
 
+describe('tool 业务集成（金融/医疗官方来源放行）', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('银行/保险/医疗官网在 official 模式放行，sourceType 正确', async () => {
+    const financeHtml =
+      '<html><body><ol id="b_results">' +
+      '<li class="b_algo"><h2><a href="https://www.hsbc.com.hk/accounts/">滙豐銀行開戶</a></h2><div class="b_caption"><p>滙豐摘要</p></div></li>' +
+      '<li class="b_algo"><h2><a href="https://www.aia.com.hk/">友邦保險</a></h2><div class="b_caption"><p>友邦摘要</p></div></li>' +
+      '<li class="b_algo"><h2><a href="https://www.hksh.com/">養和醫院</a></h2><div class="b_caption"><p>養和摘要</p></div></li>' +
+      '<li class="b_algo"><h2><a href="https://www.gov.hk/tc/">政府一站通</a></h2><div class="b_caption"><p>政府摘要</p></div></li>' +
+      '</ol></body></html>';
+    stubFetchHtml(financeHtml);
+
+    const input = await InputType.parseAsync({
+      query: '香港汇丰银行怎么开户 个人账户'
+    });
+    const out = await tool(input);
+
+    expect(out.resultCount).toBe(4);
+    expect(out.filteredOut).toBe(0);
+    expect(out.results.map((r) => r.source)).toEqual([
+      'hsbc.com.hk',
+      'aia.com.hk',
+      'hksh.com',
+      'gov.hk'
+    ]);
+    expect(out.results.map((r) => r.sourceType)).toEqual([
+      'finance',
+      'finance',
+      'medical',
+      'gov'
+    ]);
+  });
+});
+
 describe('tool 业务集成（open 完全不过滤）', () => {
   beforeEach(() => stubFetchHtml(buildBingHtml()));
   afterEach(() => vi.unstubAllGlobals());
@@ -131,7 +166,7 @@ describe('tool 空结果与上游失败', () => {
     const out = await tool(input);
     expect(out.resultCount).toBe(0);
     expect(out.results).toEqual([]);
-    expect(out.error).toContain('暂未从政府及权威官网检索到');
+    expect(out.error).toContain('暂未从官方来源检索到');
     expect(out.error).toContain('知识库');
   });
 

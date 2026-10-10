@@ -24,9 +24,9 @@ const inputSchema = z.object({
     .string()
     .meta({
       title: '搜索词',
-      description: '要向政府/权威官网检索的关键词或问题',
+      description: '要向官方来源检索的关键词或问题',
       toolDescription:
-        '需要联网核实的政策/民生问题关键词，如“香港人才清单 2025”“强积金提取条件”“跨境学童入学”。传入越具体越好',
+        '需要联网核实的政策/民生/金融问题关键词，如“香港人才清单 2025”“强积金提取条件”“汇丰银行个人开户”。传入越具体越好',
       isToolParam: true
     } satisfies InputSchemaMetaType),
   searchScope: z
@@ -35,7 +35,7 @@ const inputSchema = z.object({
     .meta({
       title: '搜索范围',
       description:
-        'official=只搜政府/公营/学术/非盈利/媒体/电视台（默认）；open=完全不过滤，仅“香港本地生活小助手”节点用',
+        'official=只搜政府/公营/学术/非盈利/金融/医疗/媒体/电视台（默认）；open=完全不过滤，仅“香港本地生活小助手”节点用',
       toolDescription:
         '搜索范围。默认 official（严格只搜权威官网）。仅“香港本地生活小助手”节点（休闲类）传 open（不过滤）',
       isToolParam: true
@@ -71,7 +71,7 @@ const outputSchema = z.object({
     .array(SearchResultSchema)
     .meta({
       title: '权威来源列表',
-      description: '经过白名单过滤的政府/公营/学术/非盈利/媒体/电视台来源'
+      description: '经过白名单过滤的政府/公营/学术/非盈利/金融/医疗/媒体/电视台来源'
     } satisfies OutputSchemaMetaType),
   resultCount: z
     .number()
@@ -153,29 +153,29 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.1.0',
+    version: '1.1.1',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
       'zh-Hant': '政府官網聯網搜索'
     },
     description: {
-      en: '[MUST invoke to verify policy/livelihood answers] Searches ONLY Hong Kong official sources — government, public bodies, academic institutions, non-profits, licensed news media and TV stations — then filters out all social media and marketing sites.',
+      en: '[MUST invoke to verify policy/livelihood/finance answers] Searches ONLY Hong Kong official sources — government, public bodies, academic institutions, non-profits, regulated financial institutions (banks/insurers/securities & funds), medical institutions, licensed news media and TV stations — then filters out all social media and marketing sites.',
       'zh-CN':
-        '【必须调用来核实政策/民生答案】只检索香港权威官网来源——政府、公营机构、学术机构、非盈利团体、正规新闻媒体与电视台，并自动过滤掉所有社交媒体与营销网站。',
+        '【必须调用来核实政策/民生/金融答案】只检索香港官方来源——政府、公营机构、学术机构、非盈利团体、持牌金融机构（银行/保险/证券基金）、医疗机构、正规新闻媒体与电视台，并自动过滤掉所有社交媒体与营销网站。',
       'zh-Hant':
-        '【必須調用來核實政策/民生答案】只檢索香港權威官網來源——政府、公營機構、學術機構、非營利團體、正規新聞媒體與電視台，並自動過濾掉所有社交媒體與營銷網站。'
+        '【必須調用來核實政策/民生/金融答案】只檢索香港官方來源——政府、公營機構、學術機構、非營利團體、持牌金融機構（銀行/保險/證券基金）、醫療機構、正規新聞媒體與電視台，並自動過濾掉所有社交媒體與營銷網站。'
     },
     toolDescription:
-      '【必须调用】当需要核实或补充香港政策/民生/金融/经贸/教育类信息、或知识库内容可能过期时，调用此工具从政府及权威官网检索最新来源。传入 query=用户问题的核心关键词。工具只返回政府(*.gov.hk)、公营机构(港交所/港铁/证监会/医管局等)、学术机构(*.edu.hk/*.sch.hk/大学)、非盈利(*.org.hk)、正规新闻媒体与电视台的结果，已自动排除所有社交媒体与营销网站。\n【重要】若返回 results 为空数组，说明权威官网暂未检索到相关内容，请直接依据知识库作答并注明“未能核实最新官方信息”，不要重复调用此工具——重复调用无法改变结果。\n【重要】仅当本工具被“香港本地生活小助手”节点调用（休闲类：美食/景点/行程）时才传 searchScope=open（该节点不做来源过滤）；其余所有政策/民生/金融/经贸/教育节点一律用默认 official。',
+      '【必须调用】当需要核实或补充香港政策/民生/金融/经贸/教育/医疗类信息、或知识库内容可能过期时，调用此工具从官方来源检索最新资料。传入 query=用户问题的核心关键词。检索范围覆盖：政府(*.gov.hk)、公营机构(港交所/港铁/证监会/医管局等)、学术机构(*.edu.hk/*.sch.hk/大学)、非盈利(*.org.hk)、持牌金融机构官网（银行/保险/证券基金，如汇丰银行、中银香港、友邦保险等）、医疗机构官网（公私立医院/医学会等）、正规新闻媒体与电视台；已自动排除所有社交媒体与营销网站。\n【重要】“官方来源”不限于政府网站：持牌银行/保险/证券基金等金融机构官网与公私立医疗机构官网均属检索范围内的官方来源，涉及银行开户、投保理赔、预约就医等问题时照常调用本工具检索官方页面。\n【重要】若返回 results 为空数组，说明官方来源暂未检索到相关内容，请直接依据知识库作答并注明“未能核实最新官方信息”，不要重复调用此工具——重复调用无法改变结果。\n【重要】仅当本工具被“香港本地生活小助手”节点调用（休闲类：美食/景点/行程）时才传 searchScope=open（该节点不做来源过滤）；其余所有政策/民生/金融/经贸/教育节点一律用默认 official。',
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Add Bailian (DashScope) web search as the primary source with Bing fallback, plus site:gov.hk boost when results are insufficient. Configure the API key in the admin panel to enable; empty = Bing only (unchanged behavior).',
+      en: 'Expand whitelist with financial institutions (banks/insurers/securities & funds) and medical institutions as official sources; align source-category wording so bank and medical sites are recognized as official sources.',
       'zh-CN':
-        '新增百炼联网搜索为第一来源、必应自动兜底，结果不足时用 site:gov.hk 增强补发。在后台配置百炼 API 密钥后生效；留空则与旧版一致仅用必应。',
+        '白名单新增金融机构（银行/保险/证券基金）与医疗机构为官方来源类别；同步调整来源分类口径与提示文案，避免误判“银行网站不属于检索范围”。',
       'zh-Hant':
-        '新增百煉聯網搜索為第一來源、必應自動兜底，結果不足時用 site:gov.hk 增強補發。在後台配置百煉 API 密鑰後生效；留空則與舊版一致僅用必應。'
+        '白名單新增金融機構（銀行/保險/證券基金）與醫療機構為官方來源類別；同步調整來源分類口徑與提示文案，避免誤判「銀行網站不屬於檢索範圍」。'
     }
   },
   handler
