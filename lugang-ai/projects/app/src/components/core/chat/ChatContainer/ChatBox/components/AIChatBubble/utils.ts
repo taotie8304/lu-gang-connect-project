@@ -54,6 +54,18 @@ export const shouldFilterAiValue = (item: AIChatItemValueItemType) => {
 export const replaceInternalTerms = (text: string) =>
   text.replace(/知识库/g, '资料').replace(/知識庫/g, '資料');
 
+// 鲁港通 - 普通用户展示层过滤工具定义残留：模型思考时偶把工具 schema/函数清单抄进代码块（界面渲染为深色小框），
+// 此处整块移除；普通文本与不含工具标识的代码块保持原样
+const toolDefinitionMarkerRegExp =
+  /(<functions>|<invoke|hkGovWebSearch|schoolFinderTool|dataset_search|read_files|"name"\s*:)/;
+
+export const stripToolDefinitionBlocks = (text: string) =>
+  text
+    .replace(/```[\s\S]*?```/g, (block) =>
+      toolDefinitionMarkerRegExp.test(block) ? '' : block
+    )
+    .replace(/\n{3,}/g, '\n\n');
+
 /**
  * 判断 AI 气泡是否需要展示“应用无输出内容”兜底提示。
  *

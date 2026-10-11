@@ -17,7 +17,8 @@ import {
   hasAiInteractiveContent,
   hasAiProcessingContent,
   hasAiStandaloneProcessingContent,
-  replaceInternalTerms
+  replaceInternalTerms,
+  stripToolDefinitionBlocks
 } from './utils';
 
 type AIChatBubbleContentProps = {
@@ -41,6 +42,7 @@ const AIChatBubbleContent = ({
 }: AIChatBubbleContentProps) => {
   // 鲁港通 - 深度思考展示：普通用户以紧凑模式（4 行滚动窗口）可见思考过程，root 完整展示；
   // 渲染差异由 AIResponseBox 内的 isRoot 门控；普通用户视角的思考文本额外过滤内部术语"知识库"
+  // 与工具定义代码块残留（深色小框）
   const isRoot = useUserStore((s) => s.userInfo?.username === 'root');
   const chatValue = React.useMemo(() => {
     if (isRoot) return rawChatValue;
@@ -59,7 +61,7 @@ const AIChatBubbleContent = ({
             ...stripped,
             reasoning: {
               ...stripped.reasoning,
-              content: replaceInternalTerms(reasoningContent)
+              content: stripToolDefinitionBlocks(replaceInternalTerms(reasoningContent))
             }
           }
         : stripped;
