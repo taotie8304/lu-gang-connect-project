@@ -73,6 +73,18 @@ const outputSchema = z.object({
       title: '权威来源列表',
       description: '经过白名单过滤的政府/公营/学术/非盈利/金融/医疗/媒体/电视台来源'
     } satisfies OutputSchemaMetaType),
+  citeLinks: z
+    .array(
+      z.object({
+        name: z.string(),
+        url: z.string()
+      })
+    )
+    .meta({
+      title: '可点击来源链接',
+      description:
+        '随检索结果返回的标题+网址清单，聊天底部来源卡片据此展示可点击的网页链接'
+    } satisfies OutputSchemaMetaType),
   resultCount: z
     .number()
     .meta({
@@ -153,7 +165,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.1.1',
+    version: '1.2.0',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
@@ -171,11 +183,11 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Expand whitelist with financial institutions (banks/insurers/securities & funds) and medical institutions as official sources; align source-category wording so bank and medical sites are recognized as official sources.',
+      en: 'Return a clickable source list (title + URL) with search results, so the chat source card can display clickable links to official web sources.',
       'zh-CN':
-        '白名单新增金融机构（银行/保险/证券基金）与医疗机构为官方来源类别；同步调整来源分类口径与提示文案，避免误判“银行网站不属于检索范围”。',
+        '检索结果附带可点击来源清单（标题+网址），聊天底部来源卡片可展示可点击的官方来源链接。',
       'zh-Hant':
-        '白名單新增金融機構（銀行/保險/證券基金）與醫療機構為官方來源類別；同步調整來源分類口徑與提示文案，避免誤判「銀行網站不屬於檢索範圍」。'
+        '檢索結果附帶可點擊來源清單（標題+網址），聊天底部來源卡片可展示可點擊的官方來源連結。'
     }
   },
   handler

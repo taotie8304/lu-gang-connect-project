@@ -36,6 +36,13 @@ export const SearchResultSchema = z.object({
 
 export const OutputType = z.object({
   results: z.array(SearchResultSchema),
+  // 鲁港通 - 来源网址清单：聊天底部来源卡片据此展示可点击的网页链接（标题+网址）
+  citeLinks: z.array(
+    z.object({
+      name: z.string(),
+      url: z.string()
+    })
+  ),
   resultCount: z.number(),
   filteredOut: z.number(),
   query: z.string(),
@@ -149,6 +156,7 @@ export async function tool(
       // 鲁港通 - 无权威来源：给可操作中文错误，明确让模型据知识库作答、不要重复调用
       return {
         results: [],
+        citeLinks: [],
         resultCount: 0,
         filteredOut: rejected.length,
         query: input.query,
@@ -164,6 +172,10 @@ export async function tool(
 
     return {
       results,
+      citeLinks: results.map((r) => ({
+        name: r.title || r.source,
+        url: r.url
+      })),
       resultCount: results.length,
       filteredOut: rejected.length,
       query: input.query,
@@ -176,6 +188,7 @@ export async function tool(
     debug.push(`搜索异常: ${msg}`);
     return {
       results: [],
+      citeLinks: [],
       resultCount: 0,
       filteredOut: 0,
       query: input.query,

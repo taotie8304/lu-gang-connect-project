@@ -38,7 +38,7 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.1.1');
+    expect(manifest.version).toBe('1.2.0');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
@@ -83,6 +83,11 @@ describe('tool 业务集成（official 默认过滤）', () => {
     expect(out.filteredOut).toBe(3);
     expect(out.results.map((r) => r.source)).toEqual(['gov.hk', 'hk01.com']);
     expect(out.results.map((r) => r.sourceType)).toEqual(['gov', 'news']);
+    // 鲁港通 - 来源网址清单：与结果一一对应（标题+网址），供聊天底部来源卡片展示可点击链接
+    expect(out.citeLinks).toEqual([
+      { name: '香港政府一站通', url: 'https://www.gov.hk/tc/' },
+      { name: '港聞', url: 'https://hk01.com/article/123' }
+    ]);
     // 红线：绝不含任何社交媒体 / 营销平台
     const allUrls = out.results.map((r) => r.url).join(' ');
     expect(allUrls).not.toMatch(/facebook|klook|random-blog/);
@@ -100,6 +105,9 @@ describe('tool 业务集成（official 默认过滤）', () => {
     expect('_debug' in returned).toBe(false);
     expect(def.outputSchema.safeParse(returned).success).toBe(true);
     expect(returned.resultCount).toBe(2);
+    // 鲁港通 - 清单经 SDK 层透传（未被剔除），且条数与结果一致
+    expect(Array.isArray(returned.citeLinks)).toBe(true);
+    expect((returned.citeLinks as unknown[]).length).toBe(2);
   });
 });
 
@@ -166,6 +174,7 @@ describe('tool 空结果与上游失败', () => {
     const out = await tool(input);
     expect(out.resultCount).toBe(0);
     expect(out.results).toEqual([]);
+    expect(out.citeLinks).toEqual([]);
     expect(out.error).toContain('暂未从官方来源检索到');
     expect(out.error).toContain('知识库');
   });
@@ -191,6 +200,7 @@ describe('tool 空结果与上游失败', () => {
     const input = await InputType.parseAsync({ query: '强积金提取条件' });
     const out = await tool(input);
     expect(out.resultCount).toBe(0);
+    expect(out.citeLinks).toEqual([]);
     expect(typeof out.error).toBe('string');
   });
 });
