@@ -248,6 +248,69 @@ describe('classify - 大陆白名单（region=cn）', () => {
     expect(classify('qust.edu.cn', 'cn')).toBe('academic');
   });
 
+  // 鲁港通 - L 档官方媒体：收录依据＝2026-10-12 双重验证
+  // （14 题自由检索命中频次 + 28 域 site: 定向命中 + 生产出口抓取站点抬头/版权行核实主管单位）
+  it('L1 中央重点新闻网站（央媒）', () => {
+    expect(classify('www.xinhuanet.com', 'cn')).toBe('news');
+    expect(classify('sd.xinhuanet.com', 'cn')).toBe('news'); // 新华网山东频道
+    expect(classify('news.cn', 'cn')).toBe('news');
+    expect(classify('www.people.com.cn', 'cn')).toBe('news');
+    expect(classify('finance.people.com.cn', 'cn')).toBe('news');
+    expect(classify('www.peopleapp.com', 'cn')).toBe('news');
+    expect(classify('news.cctv.com', 'cn')).toBe('news');
+    expect(classify('www.cnr.cn', 'cn')).toBe('news');
+    expect(classify('www.gmw.cn', 'cn')).toBe('news');
+    expect(classify('www.ce.cn', 'cn')).toBe('news');
+    expect(classify('www.jjckb.cn', 'cn')).toBe('news');
+    expect(classify('ccpd.china.com.cn', 'cn')).toBe('news'); // 中国网子站
+    expect(classify('www.banyuetan.org', 'cn')).toBe('news');
+    expect(classify('www.chinaqw.com', 'cn')).toBe('news');
+  });
+
+  it('L2 山东省级与济南市级党媒', () => {
+    expect(classify('www.dzwww.com', 'cn')).toBe('news');
+    expect(classify('w.dzwww.com', 'cn')).toBe('news'); // 大众网手机站
+    expect(classify('sdqy.dzwww.com', 'cn')).toBe('news'); // 大众网山东企业频道
+    expect(classify('news.iqilu.com', 'cn')).toBe('news'); // 齐鲁网·闪电新闻
+    expect(classify('jinan.sdchina.com', 'cn')).toBe('news'); // 中国山东网济南频道
+    expect(classify('finance.sdchina.com', 'cn')).toBe('news');
+    expect(classify('m.qlwb.com.cn', 'cn')).toBe('news'); // 齐鲁晚报网
+    expect(classify('news.e23.cn', 'cn')).toBe('news'); // 舜网
+  });
+
+  // 鲁港通 - 央视网/央广网按网站形态一并归 news，cn 档不拆 tv，避免下游来源标签分叉
+  it('L3 中央驻港媒体在 cn 档同样在册', () => {
+    expect(classify('www.takungpao.com', 'cn')).toBe('news');
+    expect(classify('www.hkcd.com', 'cn')).toBe('news');
+    expect(classify('www.wenweipo.com', 'cn')).toBe('news');
+    expect(classify('www.chinadailyhk.com', 'cn')).toBe('news');
+    expect(classify('www.hkcna.hk', 'cn')).toBe('news');
+  });
+
+  // 鲁港通 - 政务优先于媒体：政府站点不得被媒体档抢先归类（分类顺序＝政务→高校→媒体）
+  it('政务优先于媒体', () => {
+    expect(classify('www.scio.gov.cn', 'cn')).toBe('gov');
+    expect(classify('www.gov.cn', 'cn')).toBe('gov');
+    expect(classify('jntzcjj.jinan.gov.cn', 'cn')).toBe('gov');
+    expect(classify('sdu.edu.cn', 'cn')).toBe('academic');
+  });
+
+  // 鲁港通 - 媒体外形但实测排除：商业门户 / 身份不可核实 / 外省党媒 / 商业学术库
+  it('媒体外形的噪音与不可核实域名仍拒绝', () => {
+    expect(classify('sd.china.com', 'cn')).toBe('other'); // 中华网山东频道＝商业门户
+    expect(classify('www.163.com', 'cn')).toBe('other'); // 网易＝商业门户
+    expect(classify('www.lznews.cn', 'cn')).toBe('other'); // 抬头实证为「鲁中网」（淄博市级），非省级「鲁网」
+    expect(classify('www.ficc.org.cn', 'cn')).toBe('other'); // 站点不可达、主管单位无法核实
+    expect(classify('www.chinareform.org.cn', 'cn')).toBe('other'); // 身份无法核实
+    expect(classify('www.mnw.cn', 'cn')).toBe('other'); // 闽南网＝福建外省党媒
+    expect(classify('www.wanfangdata.com.cn', 'cn')).toBe('other'); // 商业学术数据库
+    expect(classify('www.cnki.com.cn', 'cn')).toBe('other'); // 商业学术数据库
+    expect(classify('stock.10jqka.com.cn', 'cn')).toBe('other'); // 财经营销
+    expect(classify('zgbk.com', 'cn')).toBe('other'); // site: 定向零命中，暂无收录依据
+    expect(classify('xhhnews.com', 'cn')).toBe('other');
+    expect(classify('haibaonews.com', 'cn')).toBe('other');
+  });
+
   it('外省政务与聚合站不得进入大陆白名单', () => {
     expect(classify('zhsi.zhuhai.gov.cn', 'cn')).toBe('other');
     expect(classify('qb.fujian.gov.cn', 'cn')).toBe('other');
@@ -300,6 +363,16 @@ describe('classify - 大陆白名单（region=cn）', () => {
     expect(classify('sdu.edu.cn')).toBe('other');
     expect(classify('gov.cn')).toBe('other');
     expect(classify('www.gov.hk')).toBe('gov');
+    // 鲁港通 - 大陆媒体档只在 cn 生效：央媒与山东党媒不得进入香港档，
+    // 否则山东来源会污染香港答案、并打破 HK 侧既有回归基线。
+    expect(classify('sd.xinhuanet.com')).toBe('other');
+    expect(classify('www.people.com.cn')).toBe('other');
+    expect(classify('www.dzwww.com')).toBe('other');
+    expect(classify('news.iqilu.com')).toBe('other');
+    expect(classify('jinan.sdchina.com')).toBe('other');
+    // 驻港媒体本就在 hk 档 NEWS_MEDIA 在册，属既有行为，不得因本次改动变化
+    expect(classify('www.takungpao.com')).toBe('news');
+    expect(classify('www.hkcd.com')).toBe('news');
   });
 });
 
@@ -344,6 +417,39 @@ describe('judge - 地域档 region=cn', () => {
     });
   });
 
+  // 鲁港通 - 官方媒体档：政策报道属权威来源，须放行并标注 news（供来源卡分类展示）
+  it('cn+official：央媒与山东省市党媒放行并归 news', () => {
+    expect(judge('https://www.xinhuanet.com/fortune/2026/x.html', 'official', 'cn')).toMatchObject({
+      allow: true,
+      reason: 'whitelist',
+      sourceType: 'news'
+    });
+    expect(judge('https://news.iqilu.com/shandong/sdnews/x.shtml', 'official', 'cn')).toMatchObject({
+      allow: true,
+      sourceType: 'news'
+    });
+    expect(judge('https://jinan.sdchina.com/news/x.html', 'official', 'cn')).toMatchObject({
+      allow: true,
+      sourceType: 'news'
+    });
+  });
+
+  // 鲁港通 - 黑名单先于白名单：挂着官方媒体账号的社交平台页面仍按社交噪音拒绝
+  it('cn+official：媒体档不得放行社交平台与商业门户', () => {
+    expect(judge('https://weibo.com/xinhuawang', 'official', 'cn')).toMatchObject({
+      allow: false,
+      reason: 'social-media'
+    });
+    expect(judge('https://sd.china.com/shandong/x.html', 'official', 'cn')).toMatchObject({
+      allow: false,
+      reason: 'not-whitelisted'
+    });
+    expect(judge('https://www.lznews.cn/news/x.html', 'official', 'cn')).toMatchObject({
+      allow: false,
+      reason: 'not-whitelisted'
+    });
+  });
+
   it('cn 档不返回香港来源（山东题不得引香港文件）', () => {
     expect(judge('https://www.gov.hk/', 'official', 'cn').allow).toBe(false);
     expect(judge('https://www.hsbc.com.hk/', 'official', 'cn').allow).toBe(false);
@@ -355,6 +461,11 @@ describe('judge - 地域档 region=cn', () => {
       sourceType: 'public'
     });
     expect(judge('https://shandong.gov.cn/', 'official')).toMatchObject({
+      allow: false,
+      reason: 'not-whitelisted'
+    });
+    // 鲁港通 - 大陆央媒在默认（香港）档必须落在拒绝侧
+    expect(judge('https://www.people.com.cn/n1/x.html', 'official')).toMatchObject({
       allow: false,
       reason: 'not-whitelisted'
     });
@@ -394,5 +505,32 @@ describe('filterResults - 大陆档', () => {
   it('默认（香港）：同批只保留香港官方 1 条', () => {
     const { allowed } = filterResults(cnInput, 'official');
     expect(allowed.map((r) => r.source)).toEqual(['gov.hk']);
+  });
+
+  // 鲁港通 - 媒体档生效后：政务与官方媒体按原始顺序一并放行，噪音仍逐条给出拒绝理由
+  it('cn：官方媒体与政务一并放行，噪音维持拒绝', () => {
+    const batch: RawSearchResult[] = [
+      raw('https://zwfw.jinan.gov.cn/a', 'jinan'),
+      raw('https://www.xinhuanet.com/fortune/b', 'xinhua'),
+      raw('https://news.iqilu.com/shandong/c', 'iqilu'),
+      raw('https://sd.china.com/shandong/d', 'china-portal'),
+      raw('https://mp.weixin.qq.com/s/e', 'wechat'),
+      raw('https://www.lznews.cn/news/f', 'lznews'),
+      raw('https://www.gov.hk/g', 'hk-gov')
+    ];
+    const { allowed, rejected } = filterResults(batch, 'official', 'cn');
+    expect(allowed.map((r) => r.source)).toEqual([
+      'zwfw.jinan.gov.cn',
+      'xinhuanet.com',
+      'news.iqilu.com'
+    ]);
+    expect(allowed.map((r) => r.sourceType)).toEqual(['gov', 'news', 'news']);
+    expect(rejected).toHaveLength(4);
+    expect(rejected.map((r) => r.reason)).toEqual([
+      'not-whitelisted',
+      'social-media',
+      'not-whitelisted',
+      'not-whitelisted'
+    ]);
   });
 });

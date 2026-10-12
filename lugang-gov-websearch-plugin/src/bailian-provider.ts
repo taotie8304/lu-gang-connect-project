@@ -9,7 +9,9 @@ const TOOL_NAME = 'bailian_web_search';
 const PROTOCOL_VERSION = '2025-03-26';
 const INIT_TIMEOUT_MS = 3_000;
 const CALL_TIMEOUT_MS = 6_000;
-const MAX_COUNT = 10;
+// 鲁港通 - 百炼 WebSearch 的 count 实测上限＝20（请求 30 只返回 20；请求 20 稳定 18~20）。
+// 这里贴着服务端上限取，业务层才能靠一次调用拿到足够多的原始结果，供白名单过滤后仍够 maxResults 条。
+const MAX_COUNT = 20;
 
 // 鲁港通 - 折叠摘要里的换行与连续空白
 function collapseWhitespace(text: string): string {

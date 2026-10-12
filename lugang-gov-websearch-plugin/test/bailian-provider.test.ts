@@ -202,7 +202,7 @@ describe('BailianProvider 协议交互（mock fetch）', () => {
     expect(log[2].headers['mcp-session-id']).toBe('sess-1');
   });
 
-  it('count 封顶 10（maxResults 超限时）', async () => {
+  it('count 封顶 20（实测服务端上限；maxResults 超限时）', async () => {
     const bodies: Array<{ name?: string; arguments?: { count?: number } }> = [];
     vi.stubGlobal(
       'fetch',
@@ -221,7 +221,31 @@ describe('BailianProvider 协议交互（mock fetch）', () => {
     const provider = new BailianProvider('sk-test');
     await provider.search('q', { maxResults: 999 });
 
-    expect(bodies[0].arguments?.count).toBe(10);
+    expect(bodies[0].arguments?.count).toBe(20);
+  });
+
+  // 鲁港通 - 上限提到 20 只为让「节点索取 10 条」能凑够；索取 5 条时请求量仍是 10，
+  // 香港侧节点的原始取数与 v1.3.1 完全一致（零回归）。
+  it('count 未超限则按请求量原样下发（maxResults=5 → count=5）', async () => {
+    const bodies: Array<{ name?: string; arguments?: { count?: number } }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const payload = JSON.parse(String(init?.body ?? '{}'));
+        if (payload.method === 'initialize') {
+          return mockResponse({
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} })
+          });
+        }
+        bodies.push(payload.params);
+        return mockResponse({ body: callOkBody([]) });
+      })
+    );
+
+    const provider = new BailianProvider('sk-test');
+    await provider.search('q', { maxResults: 5 });
+
+    expect(bodies[0].arguments?.count).toBe(5);
   });
 
   it('HTTP 非 2xx 抛错（交由业务层降级到下一源）', async () => {

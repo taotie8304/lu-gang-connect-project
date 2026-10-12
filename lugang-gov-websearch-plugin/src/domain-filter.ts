@@ -16,7 +16,10 @@ import {
   CN_CENTRAL_EXACT,
   CN_CENTRAL_GOV,
   CN_SHANDONG_GOV,
-  CN_SHANDONG_UNIVERSITIES
+  CN_SHANDONG_UNIVERSITIES,
+  CN_CENTRAL_MEDIA,
+  CN_SHANDONG_MEDIA,
+  CN_HK_RESIDENT_MEDIA
 } from './whitelist';
 import type {
   RawSearchResult,
@@ -68,6 +71,7 @@ export function classify(host: string, region: SearchRegion = 'hk'): SourceType 
 }
 
 // 鲁港通 - 大陆档分类：国务院门户走精确匹配，其余走后缀匹配；外省政务与聚合站返回 other（默认拒绝）
+// 顺序＝政务 → 高校 → 官方媒体：政务优先，避免政府站点被媒体档抢先归类
 function classifyMainland(inputHost: string): SourceType {
   // 鲁港通 - 精确匹配对前导 www. 敏感，须先剥掉（后缀匹配本不受影响）
   const host = inputHost.startsWith('www.') ? inputHost.slice(4) : inputHost;
@@ -78,6 +82,14 @@ function classifyMainland(inputHost: string): SourceType {
   )
     return 'gov';
   if (matchAny(host, CN_SHANDONG_UNIVERSITIES)) return 'academic';
+  // 鲁港通 - 央媒/山东省市党媒/中央驻港媒体统一归 news。
+  // 央视网、央广网按网站形态也归 news，不拆 tv：cn 档无需区分电视台，拆开只会让下游标签分叉。
+  if (
+    matchAny(host, CN_CENTRAL_MEDIA) ||
+    matchAny(host, CN_SHANDONG_MEDIA) ||
+    matchAny(host, CN_HK_RESIDENT_MEDIA)
+  )
+    return 'news';
   return 'other';
 }
 

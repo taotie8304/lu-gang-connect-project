@@ -38,12 +38,15 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.3.1');
+    expect(manifest.version).toBe('1.4.0');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
     expect(manifest.toolDescription).toContain('【必须调用】');
     expect(manifest.toolDescription).toContain('不要重复调用');
+    // 鲁港通 - v1.4.0 大陆档扩到官方媒体：新建节点会从这里复制说明，须写明媒体范围
+    expect(manifest.toolDescription).toContain('中央重点新闻网站');
+    expect(manifest.toolDescription).toContain('山东省级与济南市级党媒');
     expect(manifest.tags).toContain('tools');
   });
 
@@ -488,6 +491,46 @@ describe('检索地域档 cn（大陆白名单）', () => {
     ]);
     expect(out.filteredOut).toBe(3);
     expect((out._debug ?? []).join('\n')).toContain('region=cn');
+  });
+
+  // 鲁港通 - v1.4.0 媒体档端到端：cn 档官方媒体报道须与政务一并进入 results；
+  // 商业门户与身份未核实的地方网站仍被过滤，守住「去营销噪音」这一核心优势
+  const cnMediaHtml = `<html><body><ol id="b_results">${item(
+    'https://www.xinhuanet.com/fortune/a',
+    '新华网'
+  )}${item('https://news.iqilu.com/shandong/b', '齐鲁网')}${item(
+    'https://jinan.sdchina.com/news/c',
+    '中国山东网济南频道'
+  )}${item('https://sd.china.com/shandong/d', '商业门户')}${item(
+    'https://www.lznews.cn/news/e',
+    '鲁中网'
+  )}</ol></body></html>`;
+
+  it('cn 档：官方媒体放行并标注 news，商业门户与非在册地方网拒绝', async () => {
+    stubFetchHtml(cnMediaHtml);
+    const input = await InputType.parseAsync({
+      query: '济南吸引港资企业优惠政策',
+      searchRegion: 'cn'
+    });
+    const out = await tool(input);
+
+    expect(out.results.map((r) => r.source)).toEqual([
+      'xinhuanet.com',
+      'news.iqilu.com',
+      'jinan.sdchina.com'
+    ]);
+    expect(out.results.map((r) => r.sourceType)).toEqual([
+      'news',
+      'news',
+      'news'
+    ]);
+    expect(out.filteredOut).toBe(2);
+    // 鲁港通 - 来源卡的可点击链接须跟着媒体结果一起给出，否则前端只剩纯文本出处
+    expect(out.citeLinks.map((c) => c.url)).toEqual([
+      'https://www.xinhuanet.com/fortune/a',
+      'https://news.iqilu.com/shandong/b',
+      'https://jinan.sdchina.com/news/c'
+    ]);
   });
 
   it('未传 searchRegion 时仍为香港档：gov.hk 放行、山东域名拒绝（零回归）', async () => {
