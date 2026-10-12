@@ -21,6 +21,31 @@ type PostReRankResponse = {
     };
   };
 };
+
+// 鲁港通 - 百炼(DashScope)原生重排响应：结果在 output.results，用量在 usage.total_tokens
+type PostDashScopeReRankResponse = {
+  output?: {
+    results?: {
+      index: number;
+      relevance_score: number;
+    }[];
+  };
+  usage?: {
+    total_tokens?: number;
+  };
+};
+
+// 鲁港通 - 百炼不提供 OpenAI 风格的 /rerank，重排只能打原生服务端点、发 input/parameters 信封。
+// 按扁平协议打 compatible-mode/v1/rerank 会稳定 404，而该错误被上层 reRankSearchResults 静默降级，
+// 结果是混合召回下相似度阈值永远不生效（阈值只作用于重排分数）。
+const DASHSCOPE_HOST_PREFIX = 'https://dashscope.aliyuncs.com/';
+const DASHSCOPE_RERANK_PATH = '/api/v1/services/rerank/text-rerank/text-rerank';
+
+const isDashScopeEndpoint = (url?: string) => !!url && url.startsWith(DASHSCOPE_HOST_PREFIX);
+
+// 从 baseUrl 取协议 + 主机，用于拼原生端点（baseUrl 形如 https://host/compatible-mode/v1）
+const urlOrigin = (url: string) => url.split('/').slice(0, 3).join('/');
+
 type ReRankCallResult = {
   results: { id: string; score?: number }[];
   inputTokens: number;
@@ -94,16 +119,29 @@ export async function reRankRecall({
   const start = Date.now();
 
   // 模型的请求 url，允许是内网
-  const requestUrl = model.requestUrl ? model.requestUrl : `${baseUrl}/rerank`;
-  const requestBody = {
-    model: model.model,
-    query,
-    documents: documentsTextArray,
-    ...model.defaultConfig
-  };
+  // 鲁港通 - 未显式配置且 baseUrl 指向百炼时，回落到百炼原生重排端点而不是不存在的 /rerank
+  const requestUrl = model.requestUrl
+    ? model.requestUrl
+    : isDashScopeEndpoint(baseUrl)
+      ? `${urlOrigin(baseUrl)}${DASHSCOPE_RERANK_PATH}`
+      : `${baseUrl}/rerank`;
+  const useDashScopeProtocol = isDashScopeEndpoint(requestUrl);
+
+  const requestBody = useDashScopeProtocol
+    ? {
+        model: model.model,
+        input: { query, documents: documentsTextArray },
+        parameters: { return_documents: false, ...model.defaultConfig }
+      }
+    : {
+        model: model.model,
+        query,
+        documents: documentsTextArray,
+        ...model.defaultConfig
+      };
 
   const apiResult = await axiosWithoutSSRF
-    .post<PostReRankResponse>(requestUrl, requestBody, {
+    .post<PostReRankResponse | PostDashScopeReRankResponse>(requestUrl, requestBody, {
       headers: {
         Authorization: model.requestAuth ? `Bearer ${model.requestAuth}` : authorization,
         ...headers
@@ -112,7 +150,14 @@ export async function reRankRecall({
     })
     .then((res) => res.data)
     .then(async (data) => {
-      if (!data?.results || data?.results?.length === 0) {
+      const providerResults = useDashScopeProtocol
+        ? ((data as PostDashScopeReRankResponse)?.output?.results ?? [])
+        : ((data as PostReRankResponse)?.results ?? []);
+      const reportedTokens = useDashScopeProtocol
+        ? (data as PostDashScopeReRankResponse)?.usage?.total_tokens
+        : (data as PostReRankResponse)?.meta?.tokens?.input_tokens;
+
+      if (providerResults.length === 0) {
         logger.error('Rerank returned empty results', { data });
         return {
           results: [],
@@ -125,8 +170,6 @@ export async function reRankRecall({
         logger.info('Rerank completed', { durationMs: time });
       }
 
-      const providerResults = data.results ?? [];
-
       const existsId = new Set<string>();
       const results: {
         id: string;
@@ -136,7 +179,7 @@ export async function reRankRecall({
       providerResults.forEach((item) => {
         const chunkId = expandedDocuments[item.index].id;
         const docId = chunkIdToDocIdMap.get(chunkId);
-        // 因为 data.results 是从高到低的，如果高分的同一个docId，则低分的不用处理
+        // 因为 providerResults 是从高到低的，如果高分的同一个docId，则低分的不用处理
         if (!docId || existsId.has(docId)) return;
         existsId.add(docId);
         results.push({
@@ -148,8 +191,7 @@ export async function reRankRecall({
       return {
         results,
         inputTokens:
-          data?.meta?.tokens?.input_tokens ||
-          (await countPromptTokens(documentsTextArray.join('\n') + query))
+          reportedTokens || (await countPromptTokens(documentsTextArray.join('\n') + query))
       };
     })
     .catch((err) => {

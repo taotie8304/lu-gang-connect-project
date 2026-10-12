@@ -3,6 +3,9 @@ import type { RerankModelItemType } from '@fastgpt/global/core/ai/model.schema';
 import type { SearchDataResponseItemType } from '@fastgpt/global/core/dataset/type';
 import { reRankRecall } from '../../../../core/ai/rerank';
 import { concatWeightedRecallLists, removeDuplicateSearchResults } from './result';
+import { getLogger, LogCategories } from '../../../../common/logger';
+
+const logger = getLogger(LogCategories.MODULE.AI.RERANK);
 
 const datasetDataReRank = async ({
   rerankModel,
@@ -100,7 +103,9 @@ export const reRankSearchResults = async ({
       inputTokens,
       usingReRank: true
     };
-  } catch {
+  } catch (error) {
+    // 鲁港通 - 重排失败会连带关闭相似度阈值过滤（阈值只认重排分），必须留痕，否则退化不可见
+    logger.warn('Rerank degraded to original recall, similarity threshold disabled', { error });
     return {
       results: textRecallResults,
       inputTokens: 0,

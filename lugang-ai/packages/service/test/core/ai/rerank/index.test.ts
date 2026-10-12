@@ -3,10 +3,15 @@ import { ModelTypeEnum } from '@fastgpt/global/core/ai/constants';
 import type { RerankModelItemType } from '@fastgpt/global/core/ai/model.schema';
 
 // hoisted：让 mock 实例可在 beforeEach 中重设
-const { mockCountPromptTokens, mockAxiosPost } = vi.hoisted(() => ({
+const { mockCountPromptTokens, mockAxiosPost, mockAxiosConfig } = vi.hoisted(() => ({
   mockCountPromptTokens: vi.fn(),
   // mockAxiosPost 接收原始 payload(即 axios response 的 .data),包装成 { data }
-  mockAxiosPost: vi.fn()
+  mockAxiosPost: vi.fn(),
+  mockAxiosConfig: { baseUrl: 'https://api.openai.com/v1', authorization: 'Bearer test-key' }
+}));
+
+vi.mock('@fastgpt/service/core/ai/config', () => ({
+  getAxiosConfig: () => mockAxiosConfig
 }));
 
 vi.mock('@fastgpt/service/common/string/tiktoken', () => ({
@@ -47,6 +52,9 @@ describe('reRankRecall', () => {
     mockAxiosPost.mockReset();
     mockCountPromptTokens.mockReset();
     mockCountPromptTokens.mockImplementation(async (text: string) => text.length);
+    mockAxiosConfig.baseUrl = 'https://api.openai.com/v1';
+    // 鲁港通 - mock core/ai/config 后 global.systemDefaultModel 不再被初始化，getDefaultRerankModel 会读到 undefined
+    global.systemDefaultModel = {} as any;
   });
 
   // ── 基础场景 ──────────────────────────────────────────────────────────────
@@ -422,5 +430,165 @@ describe('reRankRecall', () => {
     expect(mockAxiosPost).toHaveBeenCalledOnce();
     // 空 results 时提前返回，inputTokens 固定为 0
     expect(result.inputTokens).toBe(0);
+  });
+
+  // ── 鲁港通 - 百炼(DashScope)原生重排协议 ──────────────────────────────────
+  // 百炼没有 OpenAI 风格的 /rerank：端点是 api/v1/services/rerank/text-rerank/text-rerank，
+  // 报文用 input/parameters 信封，响应在 output.results，用量在 usage.total_tokens。
+
+  const DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+  const DASHSCOPE_RERANK_URL =
+    'https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank';
+
+  it('baseUrl 是百炼且未配 requestUrl 时，回落到原生重排端点并发原生报文', async () => {
+    mockAxiosConfig.baseUrl = DASHSCOPE_BASE_URL;
+    mockAxiosPost.mockResolvedValueOnce({
+      output: { results: [{ index: 0, relevance_score: 0.9 }] },
+      usage: { total_tokens: 30 }
+    });
+
+    await reRankRecall({
+      model: mockModel,
+      query: 'q',
+      documents: [{ id: 'doc1', text: 'hello' }]
+    });
+
+    expect(mockAxiosPost.mock.calls[0][0]).toBe(DASHSCOPE_RERANK_URL);
+    expect(mockAxiosPost.mock.calls[0][1]).toEqual({
+      model: mockModel.model,
+      input: { query: 'q', documents: ['hello'] },
+      parameters: { return_documents: false }
+    });
+  });
+
+  it('解析百炼原生响应：output.results 映射 id/score，usage.total_tokens 作为用量', async () => {
+    mockAxiosConfig.baseUrl = DASHSCOPE_BASE_URL;
+    mockAxiosPost.mockResolvedValueOnce({
+      output: {
+        results: [
+          { index: 1, relevance_score: 0.9966 },
+          { index: 0, relevance_score: 0.0006 }
+        ]
+      },
+      usage: { prompt_tokens: 175, total_tokens: 175 },
+      request_id: 'req-1'
+    });
+
+    const result = await reRankRecall({
+      model: mockModel,
+      query: 'q',
+      documents: [
+        { id: 'doc1', text: 'hello' },
+        { id: 'doc2', text: 'world' }
+      ]
+    });
+
+    expect(result.results).toEqual([
+      { id: 'doc2', score: 0.9966 },
+      { id: 'doc1', score: 0.0006 }
+    ]);
+    expect(result.inputTokens).toBe(175);
+  });
+
+  it('显式配置百炼原生 requestUrl 时同样用原生报文', async () => {
+    mockAxiosPost.mockResolvedValueOnce({
+      output: { results: [{ index: 0, relevance_score: 0.5 }] },
+      usage: { total_tokens: 8 }
+    });
+
+    const result = await reRankRecall({
+      model: { ...mockModel, requestUrl: DASHSCOPE_RERANK_URL },
+      query: 'q',
+      documents: [{ id: 'doc1', text: 'hello' }]
+    });
+
+    expect(mockAxiosPost.mock.calls[0][1]).toMatchObject({
+      input: { query: 'q', documents: ['hello'] }
+    });
+    expect(result.inputTokens).toBe(8);
+  });
+
+  it('百炼原生协议下 defaultConfig 合并进 parameters', async () => {
+    mockAxiosConfig.baseUrl = DASHSCOPE_BASE_URL;
+    mockAxiosPost.mockResolvedValueOnce({
+      output: { results: [{ index: 0, relevance_score: 0.5 }] },
+      usage: { total_tokens: 8 }
+    });
+
+    await reRankRecall({
+      model: { ...mockModel, defaultConfig: { top_n: 1 } },
+      query: 'q',
+      documents: [{ id: 'doc1', text: 'hello' }]
+    });
+
+    expect(mockAxiosPost.mock.calls[0][1]).toEqual({
+      model: mockModel.model,
+      input: { query: 'q', documents: ['hello'] },
+      parameters: { return_documents: false, top_n: 1 }
+    });
+  });
+
+  it('百炼原生协议下长文档切分后仍按 index 聚合回原始 doc id', async () => {
+    mockAxiosConfig.baseUrl = DASHSCOPE_BASE_URL;
+    const longText = 'c'.repeat(1100);
+
+    mockAxiosPost.mockResolvedValueOnce({
+      output: {
+        results: [
+          { index: 1, relevance_score: 0.9 }, // doc1__chunk_1 → doc1
+          { index: 0, relevance_score: 0.4 }, // doc1__chunk_0 跳过
+          { index: 3, relevance_score: 0.2 } // doc2
+        ]
+      },
+      usage: { total_tokens: 40 }
+    });
+
+    const result = await reRankRecall({
+      model: { ...mockModel, maxToken: 600 },
+      query: 'q',
+      documents: [
+        { id: 'doc1', text: longText },
+        { id: 'doc2', text: 'short' }
+      ]
+    });
+
+    expect(result.results).toEqual([
+      { id: 'doc1', score: 0.9 },
+      { id: 'doc2', score: 0.2 }
+    ]);
+  });
+
+  it('百炼原生响应缺 output.results 时按空结果处理，不抛异常', async () => {
+    mockAxiosConfig.baseUrl = DASHSCOPE_BASE_URL;
+    mockAxiosPost.mockResolvedValueOnce({ request_id: 'req-2' });
+
+    const result = await reRankRecall({
+      model: mockModel,
+      query: 'q',
+      documents: [{ id: 'doc1', text: 'hello' }]
+    });
+
+    expect(result).toEqual({ results: [], inputTokens: 0 });
+  });
+
+  it('非百炼地址仍用扁平报文（回归保护）', async () => {
+    mockAxiosPost.mockResolvedValueOnce({
+      id: 'r1',
+      results: [{ index: 0, relevance_score: 0.5 }],
+      meta: { tokens: { input_tokens: 5, output_tokens: 0 } }
+    });
+
+    await reRankRecall({
+      model: mockModel,
+      query: 'q',
+      documents: [{ id: 'doc1', text: 'hello' }]
+    });
+
+    expect(mockAxiosPost.mock.calls[0][0]).toBe('https://api.openai.com/v1/rerank');
+    expect(mockAxiosPost.mock.calls[0][1]).toEqual({
+      model: mockModel.model,
+      query: 'q',
+      documents: ['hello']
+    });
   });
 });
