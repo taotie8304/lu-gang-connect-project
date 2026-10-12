@@ -298,6 +298,22 @@ class TestDiscover:
         urls = [i.url for i in items]
         assert not any("/module/" in u for u in urls)
 
+    def test_parse_listing_skips_pure_anchor_hrefs(self):
+        """鲁港通 - href="#" / "#anchor"（商务厅 xxgk 检索页「当前位置」面包屑即此形态）
+        经 urljoin 会变成页面自身 URL，被误当候选每页噪声抓一轮，必须在解析层挡掉。"""
+        html = (
+            "<html><body>"
+            "<a href='#'>法规文件</a><a href='#top'>政策文件</a>"
+            "<a href='http://commerce.shandong.gov.cn/art/2026/9/1/art_1_2.html'>正文</a>"
+            "</body></html>"
+        ).encode("utf-8")
+        items = parse_listing(
+            html, "http://commerce.shandong.gov.cn/module/xxgk/search.jsp?x=1"
+        )
+        assert [i.url for i in items] == [
+            "http://commerce.shandong.gov.cn/art/2026/9/1/art_1_2.html"
+        ]
+
     def test_parse_api_json_extracts_embedded_body(self):
         """api_json：列表 rows 直接内嵌全文，解析出 canonical_url + title + body_html。"""
         items = parse_api_json(API_JSON_SAMPLE, API_PARSE_CFG)
@@ -1203,3 +1219,113 @@ class TestContentSelector:
         assert "当前位置" in out.text
         # 标题清洗不依赖容器选择器
         assert out.title == "省商务厅召开创建全国文明单位工作推进会"
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - listing 检索式列表页：POST + {currpage} 翻页（商务厅 xxgk 实测形态）
+# ---------------------------------------------------------------------------
+
+COMMERCE_YAML = """
+sources:
+  - id: sd_commerce_test
+    name: 山东省商务厅测试
+    group: sd_business_talent
+    organization: 山东省商务厅
+    base_domains: [commerce.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    method: POST
+    listing_urls:
+      - "http://commerce.shandong.gov.cn/module/xxgk/search.jsp?divid=div16288&jdid=79&standardXxgk=0&infotypeId=SD0202&sortfield=top:0,compaltedate:0&currpage={currpage}&vc_title=%E5%A4%96%E8%B5%84"
+    paginate:
+      page_param: currpage
+      start: 1
+      max_pages: 3
+    content_selector: "#zoom"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 10
+    enabled: true
+"""
+
+_XXGK_T = ("http://commerce.shandong.gov.cn/module/xxgk/search.jsp?"
+           "divid=div16288&jdid=79&standardXxgk=0&infotypeId=SD0202"
+           "&sortfield=top:0,compaltedate:0&currpage={currpage}&vc_title=%E5%A4%96%E8%B5%84")
+_XXGK_ART = "http://commerce.shandong.gov.cn/art/2026/9/1/"
+
+
+def _xxgk_page(articles) -> bytes:
+    """构造 xxgk 检索结果页（实测形态：面包屑 a href='#' + 文章链接列表；空列表=末页）。"""
+    links = "".join(f"<a href='{_XXGK_ART}{aid}.html'>{t}</a>" for aid, t in articles)
+    return (
+        "<html><head><meta charset='utf-8'><title>政策文件</title></head><body>"
+        "<div class='position'><a href='#'>当前位置</a></div>"
+        f"{links}</body></html>"
+    ).encode("utf-8")
+
+
+def _xxgk_article(title: str) -> bytes:
+    """构造 xxgk 详情页（实测形态：<title>=站点名+栏目名+标题，正文在 #zoom 容器）。"""
+    return (
+        "<html><head><meta charset='utf-8'>"
+        f"<title>山东省商务厅 政策文件库 {title}</title></head><body>"
+        "<div class='main'>当前位置：首页 &gt; 政策文件</div>"
+        f"<div id='zoom'><p>{_LONG_ZH}</p></div>"
+        "<div class='main_right'>相关报道：噪声</div>"
+        "</body></html>"
+    ).encode("utf-8")
+
+
+class TestPipelineListingSearch:
+    """listing 检索式页：POST + {currpage} 逐页拉取，空页停止；href="#" 面包屑不成候选。"""
+
+    A1 = "art_10579_20001"
+    A2 = "art_10579_20002"
+    T1 = "关于印发《山东省进一步优化外商投资环境若干措施》的通知"
+    T2 = "山东省外资研发中心免税资格核定办法"
+
+    def _setup_source(self, db):
+        import_sources_yaml(COMMERCE_YAML, db)
+        return db.execute(select(Source).where(Source.code == "sd_commerce_test")).scalar_one()
+
+    def test_post_pagination_and_two_stage_fetch(self, db):
+        src = self._setup_source(db)
+        fetcher = _FakeFetcher({
+            _XXGK_T.replace("{currpage}", "1"): _xxgk_page(
+                [(self.A1, self.T1), (self.A2, self.T2)]
+            ),
+            _XXGK_T.replace("{currpage}", "2"): _xxgk_page([]),   # 空页 → 停止翻页
+            _XXGK_ART + self.A1 + ".html": _xxgk_article(self.T1),
+            _XXGK_ART + self.A2 + ".html": _xxgk_article(self.T2),
+        })
+
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        # 翻页：currpage=1、2 各 POST 一次；第 2 页无文章 → 停（不再请求第 3 页）
+        pages = [(u, m) for u, m in zip(fetcher.calls, fetcher.methods) if "search.jsp" in u]
+        assert [u for u, _ in pages] == [
+            _XXGK_T.replace("{currpage}", str(n)) for n in (1, 2)
+        ]
+        assert all(m == "POST" for _, m in pages)
+        # 「当前位置」href='#' 经 urljoin 即页面自身 URL：必须解析层挡掉，否则每页一条
+        # 噪声候选、且空页也被误判成有内容而永不停页（总调用数卡死在 4 即证）
+        assert len(fetcher.calls) == 4
+
+        # 两段式：2 条候选（列表页不带标题）各抓一次详情（GET）
+        details = [(u, m) for u, m in zip(fetcher.calls, fetcher.methods) if "/art/" in u]
+        assert sorted(u for u, _ in details) == sorted(
+            [_XXGK_ART + self.A1 + ".html", _XXGK_ART + self.A2 + ".html"]
+        )
+        assert all(m == "GET" for _, m in details)
+
+        assert stats.discovered == 2
+        assert stats.new_docs == 2
+        # 标题清洗：剥站点名 + 栏目名（「政策文件库」）前缀，保留真实文章标题
+        titles = sorted(d.title for d in db.execute(select(Document)).scalars().all())
+        assert titles == sorted([self.T1, self.T2])
+        ver = db.execute(select(DocumentVersion)).scalars().first()
+        assert ver.extracted_text and "省商务厅今日发布通知" in ver.extracted_text
+        # 正文来自 #zoom 容器：容器外面包屑等 UI 噪声不混入
+        assert "当前位置" not in ver.extracted_text

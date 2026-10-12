@@ -152,7 +152,9 @@ def parse_listing(content: bytes, base_url: str, *, max_links: int = 500) -> lis
     items: list[DiscoveredItem] = []
     seen: set[str] = set()
     for href in all_links:
-        if href.lower().startswith(_LinkCollector._SKIP_SCHEMES):
+        # 鲁港通 - 纯页内锚点（href="#" / "#anchor"）：urljoin 后会变成页面自身 URL，
+        # 被误当候选抓一轮（商务厅检索页「当前位置」面包屑即此形态，每页一条噪声）。
+        if href.lower().startswith(_LinkCollector._SKIP_SCHEMES) or href.startswith("#"):
             continue
         absolute = urljoin(base_url, href)
         # 鲁港通 - 去掉 fragment（#xxx 不产生新内容）并去重

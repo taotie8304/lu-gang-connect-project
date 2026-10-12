@@ -148,9 +148,14 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
                 _fetch_sitemap_recursive(db, url, rules, settings, fetcher, sleeper, stats, depth=0)
             )
     elif method == "listing":
+        # 鲁港通 - 商务厅 xxgk 检索式列表页：POST + {currpage} 翻页（参数在 query、无 body，
+        # 即网站自身 funclick 的调用形态）；普通 GET 列表页不受影响（缺省 GET、无 paginate）。
+        http_method = (cfg.get("method") or "GET").upper()
+        paginate = cfg.get("paginate") or {}
         for url in cfg.get("listing_urls", []):
-            items.extend(_fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats,
-                                          lambda c, b: parse_listing(c, b)))
+            items.extend(_discover_paged(db, url, lambda c, b: parse_listing(c, b),
+                                         http_method, paginate,
+                                         rules, settings, fetcher, sleeper, stats))
     elif method == "js_menu":
         # 鲁港通 - TID：栏目页是 JS 空壳（main_card_section 由 JS 填充），全站栏目树
         # 在静态 .js 菜单文件里；解析出白名单栏目下的文章页 URL（排除通告/统计栏目）。
@@ -183,17 +188,16 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
     return items
 
 
-def _discover_api_json(db, endpoint, parse_cfg, http_method, paginate,
-                       rules, settings, fetcher, sleeper, stats) -> list[DiscoveredItem]:
-    """api_json 发现：无 paginate → 单端点一次拉取（海右 rc）；有 paginate → 按
-    {page_param} 模板逐页拉取，某页解析出 0 条（末页之后）或达 max_pages 即停。
+def _discover_paged(db, endpoint, parser, http_method, paginate,
+                    rules, settings, fetcher, sleeper, stats) -> list[DiscoveredItem]:
+    """分页发现（api_json / listing 共用）：无 paginate → 单端点一次拉取；
+    有 paginate → 按 {page_param} 模板逐页拉取，某页解析出 0 条（末页之后）或达 max_pages 即停。
 
     鲁港通 - 济南市政府文件库 do-search：level=0 筛出市政府+市直部门共 4819 条，
     pageSize=100 约 49 页；逐页 POST 累积候选，空页停止翻页（下轮调度再从首页起）。
+    鲁港通 - 商务厅 xxgk 检索页（listing + POST + {currpage}）：与 do-search 同一翻页机制，
+    参数在 query（无 body），越界页解析出 0 条即停。
     """
-    def parser(c, b):
-        return parse_api_json(c, parse_cfg)
-
     if not paginate:
         return _fetch_and_parse(db, endpoint, rules, settings, fetcher, sleeper, stats,
                                 parser, method=http_method)
@@ -215,6 +219,13 @@ def _discover_api_json(db, endpoint, parse_cfg, http_method, paginate,
             break   # 模板无占位符 → 单页即止，防死循环
         page += 1
     return out
+
+
+def _discover_api_json(db, endpoint, parse_cfg, http_method, paginate,
+                       rules, settings, fetcher, sleeper, stats) -> list[DiscoveredItem]:
+    """api_json 发现：绑定 JSON 解析器后走公共分页循环。"""
+    return _discover_paged(db, endpoint, lambda c, b: parse_api_json(c, parse_cfg),
+                           http_method, paginate, rules, settings, fetcher, sleeper, stats)
 
 
 def _fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats, parser_fn,
