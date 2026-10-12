@@ -38,13 +38,22 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.2.0');
+    expect(manifest.version).toBe('1.3.1');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
     expect(manifest.toolDescription).toContain('【必须调用】');
     expect(manifest.toolDescription).toContain('不要重复调用');
     expect(manifest.tags).toContain('tools');
+  });
+
+  it('manifest 文案不含内部术语（「知识库」类泄漏词零残留）', () => {
+    const manifest = pluginExport.getUserToolManifest();
+    const blob = [
+      manifest.toolDescription,
+      ...Object.values(manifest.description)
+    ].join('\n');
+    expect(blob).not.toMatch(/知识库|知識庫|knowledge\s+base/i);
   });
 
   it('secretSchema 声明可选百炼密钥（isSecret 透传后台加密配置）', () => {
@@ -176,10 +185,12 @@ describe('tool 空结果与上游失败', () => {
     expect(out.results).toEqual([]);
     expect(out.citeLinks).toEqual([]);
     expect(out.error).toContain('暂未从官方来源检索到');
-    expect(out.error).toContain('知识库');
+    // 鲁港通 - 兜底文案不得出现内部术语
+    expect(out.error).toContain('已有权威资料');
+    expect(out.error).not.toMatch(/知识库|知識庫/);
   });
 
-  it('英文语言返回英文空结果文案', async () => {
+  it('英文语言返回英文空结果文案（不含 knowledge base）', async () => {
     stubFetchHtml('<html>challenge</html>');
     const input = await InputType.parseAsync({
       query: 'unknown policy',
@@ -187,7 +198,22 @@ describe('tool 空结果与上游失败', () => {
     });
     const out = await tool(input);
     expect(out.resultCount).toBe(0);
-    expect(out.error).toMatch(/official-source|knowledge base/i);
+    expect(out.error).toMatch(/official-source/i);
+    expect(out.error).toMatch(/authoritative material/i);
+    expect(out.error).not.toMatch(/knowledge\s+base/i);
+  });
+
+  it('繁体语言兜底文案不含知識庫', async () => {
+    const socialOnly =
+      '<html><body><li class="b_algo"><h2><a href="https://instagram.com/x">ig</a></h2><div class="b_caption"><p>s</p></div></li></body></html>';
+    stubFetchHtml(socialOnly);
+    const input = await InputType.parseAsync({
+      query: '不存在的政策xyz',
+      language: 'zh-HK'
+    });
+    const out = await tool(input);
+    expect(out.error).toContain('既有權威資料');
+    expect(out.error).not.toContain('知識庫');
   });
 
   it('fetch 直接失败也不抛异常，返回空结果与错误说明', async () => {
@@ -264,9 +290,10 @@ function stubRoutedFetch(plan: BailianPlan, bingHtml: string) {
               })
           };
         }
-        const pages = query.startsWith('site:gov.hk')
-          ? (plan.boostPages ?? [])
-          : (plan.mainPages ?? []);
+        const pages =
+          query.startsWith('site:') || /\bsite:\S+$/.test(query)
+            ? (plan.boostPages ?? [])
+            : (plan.mainPages ?? []);
         return {
           ok: true,
           status: 200,
@@ -413,5 +440,112 @@ describe('多源链路（百炼优先，必应兜底）', () => {
 
     expect(calls.filter((c) => c.url.includes('dashscope'))).toHaveLength(0);
     expect(out.metadata.engine).toBe('bing');
+  });
+});
+
+// ============================================================
+// 检索地域档（cn = 中央部委 + 山东官方来源，山东支线专用）
+// ============================================================
+describe('检索地域档 cn（大陆白名单）', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function item(href: string, title: string): string {
+    return `<li class="b_algo"><h2><a href="${href}">${title}</a></h2><div class="b_caption"><p>摘要</p></div></li>`;
+  }
+
+  const cnHtml = `<html><body><ol id="b_results">${item(
+    'https://www.shandong.gov.cn/policy/x',
+    '山东省政府'
+  )}${item('https://www.mohrss.gov.cn/service/y', '人社部')}${item(
+    'https://www.zhuhai.gov.cn/z',
+    '外省政务'
+  )}${item('https://mp.weixin.qq.com/s/abc', '微信公众号')}${item(
+    'https://www.sdu.edu.cn/a',
+    '山东大学'
+  )}${item(
+    'https://random-blog.com/post',
+    '个人博客'
+  )}</ol></body></html>`;
+
+  it('cn 档：山东政务/部委/山东高校放行，外省政务与微信公众号拒绝', async () => {
+    stubFetchHtml(cnHtml);
+    const input = await InputType.parseAsync({
+      query: '港澳台居民在山东创办企业',
+      searchRegion: 'cn'
+    });
+    const out = await tool(input);
+
+    expect(out.resultCount).toBe(3);
+    expect(out.results.map((r) => r.source)).toEqual([
+      'shandong.gov.cn',
+      'mohrss.gov.cn',
+      'sdu.edu.cn'
+    ]);
+    expect(out.results.map((r) => r.sourceType)).toEqual([
+      'gov',
+      'gov',
+      'academic'
+    ]);
+    expect(out.filteredOut).toBe(3);
+    expect((out._debug ?? []).join('\n')).toContain('region=cn');
+  });
+
+  it('未传 searchRegion 时仍为香港档：gov.hk 放行、山东域名拒绝（零回归）', async () => {
+    stubFetchHtml(cnHtml);
+    const input = await InputType.parseAsync({ query: '香港人才清单' });
+    const out = await tool(input);
+
+    expect(out.resultCount).toBe(0);
+    expect((out._debug ?? []).join('\n')).toContain('region=hk');
+  });
+
+  it('香港档补发用 site:gov.hk 前缀式，cn 档补发用 site:shandong.gov.cn 后缀式', async () => {
+    const { calls } = stubRoutedFetch(
+      {
+        mainPages: [page('https://mp.weixin.qq.com/s/x', '微信公众号')],
+        boostPages: [page('https://www.shandong.gov.cn/a', '山东省政府')]
+      },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '山东人才引进住房补贴',
+      searchRegion: 'cn'
+    });
+    const out = await tool(input, SECRETS);
+
+    expect(out.metadata.engine).toBe('bailian');
+    expect(
+      calls
+        .filter((c) => c.url.includes('dashscope') && c.method === 'tools/call')
+        .map((c) => c.query)
+    ).toEqual([
+      '山东人才引进住房补贴',
+      '山东人才引进住房补贴 site:shandong.gov.cn'
+    ]);
+    expect(out.resultCount).toBe(1);
+    expect(out.results[0].source).toBe('shandong.gov.cn');
+  });
+
+  it('cn + open：完全不过滤（含外省政务与微信公众号）', async () => {
+    stubFetchHtml(cnHtml);
+    const input = await InputType.parseAsync({
+      query: '山东生活好去处',
+      searchScope: 'open',
+      searchRegion: 'cn'
+    });
+    const out = await tool(input);
+
+    expect(out.resultCount).toBe(5); // 默认 maxResults=5，6 条全部通过过滤后截断
+    expect(out.filteredOut).toBe(0);
+  });
+
+  it('SDK 层 searchRegion 为节点固定参数（非模型可改）', () => {
+    const def = pluginExport.getToolHandler();
+    const json = z.toJSONSchema(def.inputSchema as z.ZodTypeAny) as any;
+    expect(def.inputSchema.safeParse({ query: '山东创业', searchRegion: 'cn' })
+      .success).toBe(true);
+    expect(json.properties.searchRegion.enum).toEqual(['hk', 'cn']);
+    expect(json.properties.searchRegion.isToolParam).toBeUndefined();
+    expect(json.properties.searchRegion.title).toBe('检索地域');
   });
 });

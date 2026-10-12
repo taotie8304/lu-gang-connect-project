@@ -4,12 +4,19 @@ import { z } from 'zod';
 import { BailianProvider } from './bailian-provider';
 import { BingProvider, dedupeByUrl } from './search-provider';
 import { filterResults } from './domain-filter';
-import type { RawSearchResult, SearchProvider, SearchScope } from './types';
+import type {
+  RawSearchResult,
+  SearchProvider,
+  SearchRegion,
+  SearchScope
+} from './types';
 
 // 鲁港通 - 输入（业务层可带 .refine 兜底；SDK 层的 inputSchema 必须是纯 z.object，不能带 .refine）
 export const InputType = z.object({
   query: z.string().min(1, '搜索词不能为空'),
   searchScope: z.enum(['official', 'open']).default('official'),
+  // 鲁港通 - 检索地域档：由工作流节点固定配置，不作为模型可改参数（避免山东题搜香港来源）
+  searchRegion: z.enum(['hk', 'cn']).default('hk'),
   maxResults: z.number().int().min(1).max(10).default(5),
   language: z.enum(['zh-CN', 'zh-HK', 'en']).default('zh-CN')
 });
@@ -74,8 +81,9 @@ export async function tool(
 ): Promise<z.infer<typeof OutputType>> {
   const debug: string[] = [];
   const scope: SearchScope = input.searchScope;
+  const region: SearchRegion = input.searchRegion;
   debug.push(
-    `收到参数: query="${input.query}", scope=${scope}, max=${input.maxResults}`
+    `收到参数: query="${input.query}", scope=${scope}, region=${region}, max=${input.maxResults}`
   );
 
   const chain = buildProviderChain(secrets);
@@ -109,24 +117,28 @@ export async function tool(
     }
 
     // 4. 域名过滤（核心）：official 默认拒绝，open 完全不过滤
-    let { allowed, rejected } = filterResults(raw, scope);
+    let { allowed, rejected } = filterResults(raw, scope, region);
     debug.push(`过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`);
 
-    // 5. 增强补发：official 且权威结果不足时，用 site:gov.hk 再搜一轮，合并去重后重新过滤
+    // 5. 增强补发：official 且权威结果不足时，按地域补搜一轮官方站点，合并去重后重新过滤
+    const boostQuery =
+      region === 'cn'
+        ? `${input.query} site:shandong.gov.cn`
+        : `site:gov.hk ${input.query}`;
     if (
       active?.supportsSiteBoost &&
       scope === 'official' &&
       allowed.length < input.maxResults
     ) {
       try {
-        const boosted = await active.search(`site:gov.hk ${input.query}`, {
+        const boosted = await active.search(boostQuery, {
           maxResults: input.maxResults,
           lang: input.language
         });
-        debug.push(`[${active.name}] site:gov.hk 增强补发 ${boosted.length} 条`);
+        debug.push(`[${active.name}] 增强补发(${boostQuery}) ${boosted.length} 条`);
         if (boosted.length > 0) {
           raw = dedupeByUrl([...raw, ...boosted]);
-          ({ allowed, rejected } = filterResults(raw, scope));
+          ({ allowed, rejected } = filterResults(raw, scope, region));
           debug.push(
             `合并去重后 ${raw.length} 条，过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`
           );
@@ -153,7 +165,7 @@ export async function tool(
     };
 
     if (results.length === 0) {
-      // 鲁港通 - 无权威来源：给可操作中文错误，明确让模型据知识库作答、不要重复调用
+      // 鲁港通 - 无权威来源：给可操作中文错误，明确让模型据已有资料作答、不要重复调用
       return {
         results: [],
         citeLinks: [],
@@ -206,16 +218,16 @@ export async function tool(
 
 function buildEmptyMessage(query: string, lang: string): string {
   if (lang === 'en')
-    return `No official-source result found for "${query}". Answer from the knowledge base and note that the latest official information could not be verified.`;
+    return `No official-source result found for "${query}". Answer from existing authoritative material and note that the latest official information could not be verified.`;
   if (lang === 'zh-HK')
-    return `暫未從官方來源檢索到與「${query}」相關的內容，請依據知識庫作答並註明「未能核實最新官方信息」。`;
-  return `暂未从官方来源检索到与“${query}”相关的内容，请依据知识库作答并注明“未能核实最新官方信息”。`;
+    return `暫未從官方來源檢索到與「${query}」相關的內容，請依據既有權威資料作答並註明「未能核實最新官方信息」。`;
+  return `暂未从官方来源检索到与“${query}”相关的内容，请依据已有权威资料作答并注明“未能核实最新官方信息”。`;
 }
 
 function buildErrorMessage(lang: string): string {
   if (lang === 'en')
-    return 'Web search temporarily unavailable. Please answer from the knowledge base.';
+    return 'Web search temporarily unavailable. Please answer from existing authoritative material.';
   if (lang === 'zh-HK')
-    return '聯網搜索暫時不可用，請依據知識庫作答。';
-  return '联网搜索暂时不可用，请依据知识库作答。';
+    return '聯網搜索暫時不可用，請依據既有權威資料作答。';
+  return '联网搜索暂时不可用，请依据已有权威资料作答。';
 }

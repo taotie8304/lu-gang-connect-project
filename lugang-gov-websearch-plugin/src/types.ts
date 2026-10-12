@@ -13,6 +13,9 @@ export type SourceType =
 // 鲁港通 - 搜索范围：official=严格白名单+黑名单；open=完全不过滤（仅香港本地生活小助手节点）
 export type SearchScope = 'official' | 'open';
 
+// 鲁港通 - 检索地域档：hk=香港官方来源（默认，行为与历史版本一致）；cn=中央部委+山东官方来源（山东支线专用）
+export type SearchRegion = 'hk' | 'cn';
+
 export interface RawSearchResult {
   title: string;
   url: string; // 鲁港通 - 已解码的真实 URL（非 DuckDuckGo 跳转包裹链接）

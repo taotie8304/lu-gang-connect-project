@@ -12,12 +12,17 @@ import {
   NEWS_MEDIA,
   TV_STATIONS,
   SOCIAL_MEDIA,
-  MARKETING_PLATFORMS
+  MARKETING_PLATFORMS,
+  CN_CENTRAL_EXACT,
+  CN_CENTRAL_GOV,
+  CN_SHANDONG_GOV,
+  CN_SHANDONG_UNIVERSITIES
 } from './whitelist';
 import type {
   RawSearchResult,
   FilteredResult,
   SearchScope,
+  SearchRegion,
   SourceType
 } from './types';
 
@@ -42,7 +47,9 @@ function matchAny(host: string, domains: string[]): boolean {
 }
 
 // 鲁港通 - 来源分类：按 A政府→B公营→C学术→D非盈利→G金融→H医疗→F电视台→E新闻 顺序命中即返回；都不命中为 other
-export function classify(host: string): SourceType {
+// region=cn 时走大陆档清单（中央部委+山东政务/高校），香港清单一律不参与
+export function classify(host: string, region: SearchRegion = 'hk'): SourceType {
+  if (region === 'cn') return classifyMainland(host);
   if (matchAny(host, GOV_SUFFIXES)) return 'gov';
   if (matchAny(host, PUBLIC_BODIES)) return 'public';
   if (matchAny(host, ACADEMIC_SUFFIXES) || matchAny(host, UNIVERSITIES))
@@ -60,6 +67,20 @@ export function classify(host: string): SourceType {
   return 'other';
 }
 
+// 鲁港通 - 大陆档分类：国务院门户走精确匹配，其余走后缀匹配；外省政务与聚合站返回 other（默认拒绝）
+function classifyMainland(inputHost: string): SourceType {
+  // 鲁港通 - 精确匹配对前导 www. 敏感，须先剥掉（后缀匹配本不受影响）
+  const host = inputHost.startsWith('www.') ? inputHost.slice(4) : inputHost;
+  if (CN_CENTRAL_EXACT.some((d) => host === d)) return 'gov';
+  if (
+    matchAny(host, CN_CENTRAL_GOV) ||
+    matchAny(host, CN_SHANDONG_GOV)
+  )
+    return 'gov';
+  if (matchAny(host, CN_SHANDONG_UNIVERSITIES)) return 'academic';
+  return 'other';
+}
+
 export interface JudgeVerdict {
   allow: boolean;
   reason:
@@ -73,9 +94,14 @@ export interface JudgeVerdict {
 }
 
 // 鲁港通 - 单条判定：official 模式先黑名单（社交→营销）再白名单，其余默认拒绝；open 模式完全放行
-export function judge(url: string, scope: SearchScope): JudgeVerdict {
+// region 决定用哪套白名单：hk=香港 A-H 清单（默认），cn=中央部委+山东官方清单
+export function judge(
+  url: string,
+  scope: SearchScope,
+  region: SearchRegion = 'hk'
+): JudgeVerdict {
   const host = normalizeHost(url);
-  const sourceType = classify(host);
+  const sourceType = classify(host, region);
   if (!host) return { allow: false, reason: 'invalid-url', sourceType };
 
   // 1. open 模式（仅“香港本地生活小助手”节点）：白名单、黑名单都不生效，直接放行
@@ -89,7 +115,7 @@ export function judge(url: string, scope: SearchScope): JudgeVerdict {
   if (matchAny(host, MARKETING_PLATFORMS))
     return { allow: false, reason: 'marketing', sourceType };
 
-  // 4. official 模式：白名单(A-H)命中才放行
+  // 4. official 模式：白名单命中才放行（hk=A-H，cn=中央部委+山东）
   if (sourceType !== 'other')
     return { allow: true, reason: 'whitelist', sourceType };
 
@@ -105,12 +131,13 @@ export interface FilterResult {
 // 鲁港通 - 批量过滤：放行项补齐规范化 source 主机名与 sourceType 分类
 export function filterResults(
   raw: RawSearchResult[],
-  scope: SearchScope
+  scope: SearchScope,
+  region: SearchRegion = 'hk'
 ): FilterResult {
   const allowed: FilteredResult[] = [];
   const rejected: { url: string; reason: string }[] = [];
   for (const r of raw) {
-    const verdict = judge(r.url, scope);
+    const verdict = judge(r.url, scope, region);
     if (verdict.allow) {
       allowed.push({
         ...r,
