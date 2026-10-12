@@ -1,0 +1,580 @@
+# 鲁港通 OSG sources.yaml（DB 权威配置对齐版，由 PostgreSQL lugang_osg 重新生成）
+# 规则：本文件所有 URL / 路径均已在服务器实测通过；未验证的来源一律不得加入。
+# 说明：本文件与 DB source / source_domain_rule 完全一致；上传导入（admin API）为幂等操作，
+#       不会回滚 2026-09 的关停/收窄配置。后续修改建议：先在 DB 生效，再回写本文件对齐。
+# 抓取礼仪：UA=LuGangTongOfficialSourceBot/1.0 (+https://www.airscend.com/official-sources; contact=service@airscend.com)
+
+sources:
+  - id: sd_ouc
+    name: 中国海洋大学
+    group: academic
+    organization: 中国海洋大学
+    base_domains: [www.ouc.edu.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ouc.edu.cn/"
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: sd_qdu
+    name: 青岛大学
+    group: academic
+    organization: 青岛大学
+    base_domains: [www.qdu.edu.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.qdu.edu.cn/"
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: sd_sdnu
+    name: 山东师范大学
+    group: academic
+    organization: 山东师范大学
+    base_domains: [www.sdnu.edu.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    discovery_method: listing
+    listing_urls:
+      - "https://www.sdnu.edu.cn/"
+    content_selector: .school
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: sd_sdu
+    name: 山东大学
+    group: academic
+    organization: 山东大学
+    base_domains: [www.sdu.edu.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.sdu.edu.cn/"
+    content_selector: .row-a
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: sd_sdufe
+    name: 山东财经大学
+    group: academic
+    organization: 山东财经大学
+    base_domains: [www.sdufe.edu.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.sdufe.edu.cn/"
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: sd_ujn
+    name: 济南大学
+    group: academic
+    organization: 济南大学
+    base_domains: [www.ujn.edu.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ujn.edu.cn/"
+    content_selector: .arc-con
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_data_gov
+    name: 香港开放数据平台 DATA.GOV.HK
+    group: hk_core_gov
+    organization: 香港特别行政区政府数字政策办公室
+    base_domains: [api.data.gov.hk, app.data.gov.hk, data.gov.hk]
+    allowed_path_prefixes: [/en-data/, /en/, /filestore/, /sc-data/, /sc/, /tc-data/, /tc/, /v1/, /v2/]
+    discovery_method: api
+    api_config:
+      filter_api:
+        url: https://api.data.gov.hk/v2/filter
+      update_rss:
+      - https://data.gov.hk/filestore/feeds/data_rss_en.xml
+      - https://data.gov.hk/filestore/feeds/data_rss_sc.xml
+      - https://data.gov.hk/filestore/feeds/data_rss_tc.xml
+      archive_list_api:
+        url: https://app.data.gov.hk/v1/historical-archive/list-files
+        params:
+          end: YYYYMMDD
+          start: YYYYMMDD
+    schedule: "0 */12 * * *"
+    rate_limit_per_minute: 10
+    enabled: false
+
+  - id: hk_gia_press
+    name: 政府新闻处新闻公报
+    group: hk_core_gov
+    organization: 香港特别行政区政府新闻处
+    base_domains: [www.info.gov.hk]
+    allowed_path_prefixes: [/gia/general/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.info.gov.hk/gia/general/ctoday.htm"
+    content_selector: "#contentbody"
+    schedule: "30 */6 * * *"
+    rate_limit_per_minute: 6
+    enabled: false
+
+  - id: hk_gov_portal
+    name: 香港政府一站通
+    group: hk_core_gov
+    organization: 香港特别行政区政府
+    base_domains: [www.gov.hk]
+    allowed_path_prefixes: [/en/residents/immigration/, /en/residents/taxes/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.gov.hk/en/residents/immigration/idcard/index.htm"
+      - "https://www.gov.hk/en/residents/immigration/bdmreg/index.htm"
+      - "https://www.gov.hk/en/residents/immigration/traveldoc/index.htm"
+      - "https://www.gov.hk/en/residents/immigration/nonpermanent/index.htm"
+      - "https://www.gov.hk/en/residents/taxes/etax/index.htm"
+      - "https://www.gov.hk/en/residents/taxes/salaries/index.htm"
+      - "https://www.gov.hk/en/residents/taxes/profits/index.htm"
+      - "https://www.gov.hk/en/residents/taxes/property/index.htm"
+    content_selector: .mainHolder
+    schedule: "0 3 * * *"
+    rate_limit_per_minute: 6
+    enabled: true
+
+  - id: hk_news_gov
+    name: 香港政府新闻网
+    group: hk_core_gov
+    organization: 香港特别行政区政府新闻处
+    base_domains: [www.news.gov.hk]
+    allowed_path_prefixes: [/en/, /eng/, /sc/, /tc/]
+    discovery_method: rss
+    feed_urls:
+      - "https://www.news.gov.hk/en/common/html/topstories.rss.xml"
+    sitemap_urls:
+      - "https://www.news.gov.hk/sitemap.xml"
+    content_selector: .newsdetail-content
+    schedule: "0 */6 * * *"
+    rate_limit_per_minute: 6
+    enabled: false
+
+  - id: hk_policy_address
+    name: 施政报告官网
+    group: hk_core_gov
+    organization: 香港特别行政区政府
+    base_domains: [www.policyaddress.gov.hk]
+    allowed_path_prefixes: [/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.policyaddress.gov.hk/consultation26/tc/index.html"
+    schedule: "0 5 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_investhk
+    name: 投资推广署
+    group: hk_economy_innovation
+    organization: 香港投资推广署 InvestHK
+    base_domains: [www.investhk.gov.hk]
+    allowed_path_prefixes: [/zh-hk]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.investhk.gov.hk/zh-hk"
+    content_selector: .articlesdetail__container
+    schedule: "30 10 * * *"
+    rate_limit_per_minute: 6
+    enabled: false
+
+  - id: hk_itib
+    name: 创新科技及工业局
+    group: hk_economy_innovation
+    organization: 创新科技及工业局 ITIB
+    base_domains: [www.itib.gov.hk]
+    allowed_path_prefixes: [/en/, /sc/, /tc/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.itib.gov.hk/en/"
+    schedule: "0 3 * * *"
+    rate_limit_per_minute: 6
+    enabled: true
+
+  - id: hk_tid
+    name: 工业贸易署
+    group: hk_economy_innovation
+    organization: 香港工业贸易署
+    base_domains: [www.tid.gov.hk]
+    allowed_path_prefixes: [/js/data/tc_top_menu.js, /tc/]
+    discovery_method: js_menu
+    js_menu_config:
+      base_url: https://www.tid.gov.hk/tc/
+      menu_urls:
+      - https://www.tid.gov.hk/js/data/tc_top_menu.js
+      allow_prefixes:
+      - our_work/import_export_licensing_control/
+      - our_work/support_for_trade_industry/
+      - our_work/cepa/
+      - our_work/trade_and_investment_agreements/
+      - our_work/trade_relations/
+      - our_work/hk_participation_in_ito/
+      exclude_prefixes:
+      - our_work/trade_relations/mainland/mainland_link/
+      - our_work/cepa/promotional_materials
+      exclude_substrings:
+      - reference_links.html
+      - useful_links.html
+      - ad_link.html
+      - mainland_link.html
+      - related_links_and_contacts.html
+      - success_sme_link.html
+      - relevant_links.html
+      - weblinks.html
+      - contact.html
+      - contact_us.html
+      - ref_pub.html
+      - statistics.html
+    content_selector: .contentArea
+    title_strip_prefixes: ["工業貿易署 - "]
+    schedule: "30 21 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 400
+    enabled: true
+
+  - id: hk_edb
+    name: 教育局
+    group: hk_education
+    organization: 香港教育局
+    base_domains: [www.edb.gov.hk]
+    allowed_path_prefixes: [/en/, /sc/, /sitemap.xml, /tc/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.edb.gov.hk/sitemap.xml"
+    schedule: "0 4 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_hkma
+    name: 香港金融管理局
+    group: hk_livelihood_finance
+    organization: 香港金融管理局 HKMA
+    base_domains: [www.hkma.gov.hk]
+    allowed_path_prefixes: [/chi/key-functions/, /chi/regulatory-resources/, /chi/smart-consumers]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.hkma.gov.hk/chi/key-functions/"
+      - "https://www.hkma.gov.hk/chi/regulatory-resources/"
+      - "https://www.hkma.gov.hk/chi/smart-consumers/"
+    content_selector: .full-content-printer
+    schedule: "30 9 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_immd
+    name: 入境事务处
+    group: hk_livelihood_finance
+    organization: 香港入境事务处
+    base_domains: [www.immd.gov.hk]
+    allowed_path_prefixes: [/hkt/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.immd.gov.hk/hkt/index.html"
+      - "https://www.immd.gov.hk/hkt/services/index.html"
+    schedule: "30 1 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_ird
+    name: 税务局
+    group: hk_livelihood_finance
+    organization: 香港税务局
+    base_domains: [www.ird.gov.hk]
+    allowed_path_prefixes: [/chi/ese/, /chi/pol/, /chi/tax/, /chi/welcome.htm]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ird.gov.hk/chi/welcome.htm"
+    content_selector: "#content"
+    schedule: "30 2 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: hk_wfsfaa
+    name: 在职家庭及学生资助事务处
+    group: hk_livelihood_finance
+    organization: 香港在职家庭及学生资助事务处
+    base_domains: [www.wfsfaa.gov.hk]
+    allowed_path_prefixes: [/tc/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.wfsfaa.gov.hk/tc/index.htm"
+      - "https://www.wfsfaa.gov.hk/tc/wfao/wfas/overview.php"
+      - "https://www.wfsfaa.gov.hk/tc/sfo/index.htm"
+      - "https://www.wfsfaa.gov.hk/tc/resources/online_services/online_services.htm"
+    schedule: "30 7 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: jinan_hrss
+    name: 济南市人力资源和社会保障局
+    group: sd_business_talent
+    organization: 济南市人力资源和社会保障局
+    base_domains: [jnhrss.jinan.gov.cn]
+    allowed_path_prefixes: [/col/col121890/, /col/col39924/, /col121890/, /col39924/]
+    discovery_method: listing
+    listing_urls:
+      - "https://jnhrss.jinan.gov.cn/col/col121890/index_1.html"
+      - "https://jnhrss.jinan.gov.cn/col/col39924/index_1.html"
+    content_selector: "#zoom"
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: jinan_rc
+    name: 海右人社政策通
+    group: sd_business_talent
+    organization: 海右人社政策通
+    base_domains: [rc.jinan.gov.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: api_json
+    api_config:
+      parse:
+        id_field: id
+        rows_path: rows
+        body_fields:
+        - - 政策级别
+          - zcLevel
+        - - 发布单位
+          - sourceUnit
+        - - 发布时间
+          - publishTime
+        - - 受理单位
+          - acceptingUnit
+        - - 有效期
+          - validity
+        - - 适用对象
+          - applicableObjects
+        - - 申请条件
+          - applyCondition
+        - - 申请材料
+          - sqcl
+        - - 政策支持
+          - zczc
+        - - 补贴标准
+          - btbz
+        - - 办理渠道
+          - jbqd
+        - - 政策文件
+          - zcwj
+        - - 政策依据
+          - sourceFile
+        - - 政策说明
+          - policyExplanation
+        - - 有效性说明
+          - zcyxxsm
+        - - 联系电话
+          - phone
+        title_field: zcmc
+        url_template: https://rc.jinan.gov.cn/prod-api/portal/policyInfo/getInfo?id={id}
+      endpoints:
+      - https://rc.jinan.gov.cn/prod-api/portal/policyInfo/portalList?zcsylx=1&pageNum=1&pageSize=300
+      - https://rc.jinan.gov.cn/prod-api/portal/policyInfo/portalList?zcsylx=2&pageNum=1&pageSize=300
+      - https://rc.jinan.gov.cn/prod-api/portal/policyInfo/portalList?zcsylx=3&pageNum=1&pageSize=300
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 400
+    enabled: true
+
+  - id: jinan_zwfw
+    name: 济南市政务服务网（外资企业/外国人办事）
+    group: sd_business_talent
+    organization: 济南市政务服务网
+    base_domains: [zwfw.jinan.gov.cn]
+    allowed_path_prefixes: [/]
+    discovery_method: listing
+    listing_urls:
+      - "https://zwfw.jinan.gov.cn/col/col127148/index.html"
+      - "https://zwfw.jinan.gov.cn/col/col127149/index.html"
+      - "https://zwfw.jinan.gov.cn/col/col127242/index.html"
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 50
+    enabled: true
+
+  - id: sd_commerce
+    name: 山东省商务厅
+    group: sd_business_talent
+    organization: 山东省商务厅
+    base_domains: [commerce.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    # 鲁港通 - 批4实测打通：信息公开 xxgk 检索接口（政策文件库 SD0202，按标题关键词
+    # 检索、POST、{currpage} 逐页翻至空页）；旧配置指向 col106474 模板页（显示年报）
+    # 才采不到政策文件。两关键词=两份检索清单（外资/外商），同一文档跨清单自动判重。
+    method: POST
+    listing_urls:
+      - "http://commerce.shandong.gov.cn/module/xxgk/search.jsp?divid=div16288&jdid=79&area=&standardXxgk=0&infotypeId=SD0202&sortfield=top:0,compaltedate:0&currpage={currpage}&vc_title=%E5%A4%96%E8%B5%84"
+      - "http://commerce.shandong.gov.cn/module/xxgk/search.jsp?divid=div16288&jdid=79&area=&standardXxgk=0&infotypeId=SD0202&sortfield=top:0,compaltedate:0&currpage={currpage}&vc_title=%E5%A4%96%E5%95%86"
+    paginate:
+      page_param: currpage
+      start: 1
+      max_pages: 10
+    content_selector: "#zoom"
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_czt
+    name: 山东省财政厅
+    group: sd_business_talent
+    organization: 山东省财政厅
+    base_domains: [czt.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - "http://czt.shandong.gov.cn/"
+    content_selector: .main-txt
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 50
+    enabled: false
+
+  - id: sd_edu
+    name: 山东省教育厅
+    group: sd_business_talent
+    organization: 山东省教育厅（省委教育工委）
+    base_domains: [edu.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - "http://edu.shandong.gov.cn/col/col11990/index.html"
+    content_selector: "#zoom"
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 70
+    enabled: true
+
+  - id: sd_gxt
+    name: 山东省工业和信息化厅
+    group: sd_business_talent
+    organization: 山东省工业和信息化厅
+    base_domains: [gxt.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - "http://gxt.shandong.gov.cn/col/col103863/index.html?number=SD0202"
+    content_selector: .news-body
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 70
+    enabled: true
+
+  - id: sd_kjt
+    name: 山东省科学技术厅
+    group: sd_business_talent
+    organization: 山东省科学技术厅
+    base_domains: [kjt.shandong.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - "http://kjt.shandong.gov.cn/col/col103585/index.html?number=SD020210"
+    content_selector: "#zoom"
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    enabled: true
+
+  - id: jinan_gov
+    name: 济南市人民政府（政府文件库）
+    group: sd_core_gov
+    organization: 济南市人民政府
+    base_domains: [www.jinan.gov.cn]
+    allowed_path_prefixes: [/api-gateway/]
+    discovery_method: api_json
+    api_config:
+      parse:
+        id_field: infoid
+        rows_path: data.bean.results
+        title_field: title
+        url_template: https://www.jinan.gov.cn/api-gateway/jpaas-jpolicy-web-server/front/info/detail?iid={id}
+      method: POST
+      paginate:
+        start: 1
+        max_pages: 55
+        page_param: pageNo
+      endpoints:
+      - https://www.jinan.gov.cn/api-gateway/jpaas-jpolicy-web-server/front/info/do-search?title=&issue=&publishYear=&infoLevel=&category=&agencyword=&publishUnit=&themeCategory=&city=&sortKey=publishdate&level=0&content=&analysis=&pageSize=100&pageNo={pageNo}
+    content_selector: .main_content
+    schedule: "0 */6 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_prov_gov
+    name: 山东省人民政府（政策文件库）
+    group: sd_core_gov
+    organization: 山东省人民政府
+    base_domains: [www.shandong.gov.cn]
+    allowed_path_prefixes: [/jpaas-jpolicy-web-server/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: api_json
+    api_config:
+      parse:
+        id_field: infoid
+        rows_path: data.bean.results
+        title_field: title
+        url_template: http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/detail?iid={id}
+      method: POST
+      paginate:
+        start: 1
+        max_pages: 5
+        page_param: pageNo
+      endpoints:
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=港澳台
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=华侨
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=侨胞
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=台胞
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=台商
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=港商
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=外商
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=外资
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=跨境
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=外籍
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=外国人
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=海外
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=留学
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=港澳
+      - http://www.shandong.gov.cn/jpaas-jpolicy-web-server/front/info/do-search?level=0&pageSize=100&pageNo={pageNo}&title=台湾
+    content_selector: .main_content
+    schedule: "0 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_tjj
+    name: 山东省统计局
+    group: sd_core_gov
+    organization: 山东省统计局
+    base_domains: [tjj.shandong.gov.cn]
+    allowed_path_prefixes: [/art/, /col/col6120/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - "http://tjj.shandong.gov.cn/col/col6120/index.html"
+    content_selector: "#zoom"
+    schedule: "0 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 50
+    enabled: true
