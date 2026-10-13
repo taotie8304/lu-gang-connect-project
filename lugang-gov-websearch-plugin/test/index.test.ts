@@ -38,7 +38,7 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.4.0');
+    expect(manifest.version).toBe('1.4.2');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
@@ -235,7 +235,7 @@ describe('tool 空结果与上游失败', () => {
 });
 
 // ============================================================
-// 多源链路（百炼优先 + 必应兜底 + site:gov.hk 增强补发）
+// 多源链路（百炼优先；无密钥时必应兜底）+ 科创定向增强补发
 // ============================================================
 interface BailianPlan {
   mainPages?: Array<{ url: string; title: string; snippet: string }>;
@@ -318,7 +318,7 @@ function stubRoutedFetch(plan: BailianPlan, bingHtml: string) {
 
 const SECRETS = { dashscopeApiKey: 'sk-test' };
 
-describe('多源链路（百炼优先，必应兜底）', () => {
+describe('多源链路（百炼优先；无密钥时必应）', () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it('有密钥且百炼有结果：engine=bailian，必应不被调用', async () => {
@@ -350,7 +350,8 @@ describe('多源链路（百炼优先，必应兜底）', () => {
     expect(calls.filter((c) => c.method === 'bing')).toHaveLength(0);
   });
 
-  it('百炼异常（RPC error）：自动降级必应且 engine 记录为 bing', async () => {
+  // 鲁港通 - 必应通道已被反爬封死（实测 b_algo=0），不再作为百炼的兜底源
+  it('百炼异常（RPC error）：不降级必应，返回可操作错误文案', async () => {
     const { calls } = stubRoutedFetch(
       { callErrorMessage: 'Invalid API-key provided' },
       buildBingHtml()
@@ -358,56 +359,211 @@ describe('多源链路（百炼优先，必应兜底）', () => {
     const input = await InputType.parseAsync({ query: '香港人才清单' });
     const out = await tool(input, SECRETS);
 
-    expect(out.metadata.engine).toBe('bing');
-    expect(out.resultCount).toBe(2);
-    expect(out.metadata.rawCount).toBe(5);
-    expect(calls.filter((c) => c.method === 'bing')).toHaveLength(1);
+    expect(out.metadata.engine).toBe('bailian');
+    expect(out.resultCount).toBe(0);
+    expect(out.error).toContain('联网搜索暂时不可用');
+    expect(out.results).toEqual([]);
+    expect(calls.filter((c) => c.method === 'bing')).toHaveLength(0);
     expect((out._debug ?? []).join('\n')).toContain('Invalid API-key');
   });
 
-  it('百炼空结果：自动降级必应', async () => {
+  // 鲁港通 - 百炼偶发空手：主搜重试 1 次；仍空则由主题定向补发兜（此桩补发也空）
+  it('百炼空结果（科创题）：主搜重试 1 次 + 主题定向补发，仍空则无结果（不降级必应）', async () => {
     const { calls } = stubRoutedFetch({ mainPages: [] }, buildBingHtml());
-    const input = await InputType.parseAsync({ query: '香港人才清单' });
+    const input = await InputType.parseAsync({ query: '香港科创资助' });
     const out = await tool(input, SECRETS);
 
-    expect(out.metadata.engine).toBe('bing');
-    expect(out.resultCount).toBe(2);
-    expect(calls.filter((c) => c.method === 'bing')).toHaveLength(1);
+    expect(out.metadata.engine).toBe('bailian');
+    expect(out.resultCount).toBe(0);
+    expect(out.error).toContain('暂未从官方来源检索到');
+    expect(calls.filter((c) => c.method === 'bing')).toHaveLength(0);
+    const mainCalls = calls.filter(
+      (c) => c.method === 'tools/call' && c.query === '香港科创资助'
+    );
+    expect(mainCalls).toHaveLength(2); // 空手重试 1 次
+    // 鲁港通 - 主源 0 条时 active 为空，booster 兜底仍应触发主题定向补发（前缀式 + 繁体官方词）
+    expect(calls.some((c) => c.query === 'site:hkstp.org 創科培育計劃 資助')).toBe(true);
+    expect(calls.some((c) => c.query === 'site:cyberport.hk 培育計劃 資助')).toBe(true);
   });
 
-  it('增强补发：结果不足时 site:gov.hk 再搜一轮，合并去重后重新过滤', async () => {
+  // 鲁港通 - 香港档补发主题定向（前缀式 + 繁体官方词）：hkstp 命中并够数即停
+  it('增强补发（香港档科创题）：前缀式 site:hkstp.org 定向，够数即停', async () => {
+    const { calls } = stubRoutedFetch(
+      {
+        mainPages: [page('https://www.gov.hk/a', '政府A')],
+        boostPages: [page('https://www.hkstp.org/en/x', '科技园A')]
+      },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '香港科创资助',
+      maxResults: 2
+    });
+    const out = await tool(input, SECRETS);
+
+    expect(out.metadata.engine).toBe('bailian');
+    const toolsCalls = calls.filter(
+      (c) => c.url.includes('dashscope') && c.method === 'tools/call'
+    );
+    expect(toolsCalls.map((c) => c.query)).toEqual([
+      '香港科创资助',
+      'site:hkstp.org 創科培育計劃 資助'
+    ]);
+    expect(out.resultCount).toBe(2);
+    expect(out.results.map((r) => r.source)).toEqual([
+      'gov.hk',
+      'hkstp.org'
+    ]);
+    expect(out.results.map((r) => r.sourceType)).toEqual(['gov', 'public']);
+  });
+
+  // 鲁港通 - 第一轮仍不足时补 cyberport 定向；重复 URL 去重、不重复计数
+  it('增强补发（香港档科创题）：第一轮不足再补 site:cyberport.hk，重复结果去重', async () => {
     const { calls } = stubRoutedFetch(
       {
         mainPages: [page('https://www.gov.hk/a', '政府A')],
         boostPages: [
-          page('https://www.gov.hk/a', '政府A重复'),
-          page('https://www.info.gov.hk/b', '政府B'),
-          page('https://www.instagram.com/x', '社媒')
+          page('https://www.hkstp.org/en/x', '科技园A'),
+          page('https://www.cyberport.hk/tc/y', '数码港B')
         ]
       },
       buildBingHtml()
     );
-    const input = await InputType.parseAsync({ query: '香港人才清单' });
+    const input = await InputType.parseAsync({
+      query: '香港科创资助',
+      maxResults: 5
+    });
     const out = await tool(input, SECRETS);
 
-    expect(out.metadata.engine).toBe('bailian');
-    const bailianToolCalls = calls.filter(
+    const toolsCalls = calls.filter(
       (c) => c.url.includes('dashscope') && c.method === 'tools/call'
     );
-    expect(bailianToolCalls.map((c) => c.query)).toEqual([
-      '香港人才清单',
-      'site:gov.hk 香港人才清单'
+    expect(toolsCalls.map((c) => c.query)).toEqual([
+      '香港科创资助',
+      'site:hkstp.org 創科培育計劃 資助',
+      'site:cyberport.hk 培育計劃 資助'
     ]);
-    expect(out.metadata.rawCount).toBe(3); // 重复 URL 已去重（保留先出现者）
-    expect(out.resultCount).toBe(2); // 政府A + 政府B；社媒被过滤
-    expect(out.filteredOut).toBe(1);
-    expect(out.results.map((r) => r.url)).toEqual([
-      'https://www.gov.hk/a',
-      'https://www.info.gov.hk/b'
+    expect(out.metadata.rawCount).toBe(3); // 第二轮与第一轮重复，已去重
+    expect(out.resultCount).toBe(3);
+    expect(out.results.map((r) => r.sourceType)).toEqual([
+      'gov',
+      'public',
+      'public'
     ]);
   });
 
-  it('open 模式不补发（site:gov.hk 仅 official 启用）', async () => {
+  // 鲁港通 - 非主题词查询不补发：避免无效站点查询与无关内容混入（人才/民生类走主搜索）
+  it('增强补发（香港档）：非主题词（人才清单）不足也不补发', async () => {
+    const { calls } = stubRoutedFetch(
+      { mainPages: [page('https://www.gov.hk/a', '政府A')] },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '香港人才清单',
+      maxResults: 5
+    });
+    const out = await tool(input, SECRETS);
+
+    const toolsCalls = calls.filter(
+      (c) => c.url.includes('dashscope') && c.method === 'tools/call'
+    );
+    expect(toolsCalls).toHaveLength(1);
+    expect(out.resultCount).toBe(1);
+  });
+
+  // 鲁港通 - 金融语境误匹配防护：出现「创新高/创业板」等词不得触发培育补发
+  it('增强补发（香港档）：金融语境词（港股创新高）不误触发补发', async () => {
+    const { calls } = stubRoutedFetch(
+      { mainPages: [page('https://www.gov.hk/a', '政府A')] },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '港股创新高 后市走势',
+      maxResults: 5
+    });
+    const out = await tool(input, SECRETS);
+
+    const toolsCalls = calls.filter(
+      (c) => c.url.includes('dashscope') && c.method === 'tools/call'
+    );
+    expect(toolsCalls).toHaveLength(1);
+    expect(out.resultCount).toBe(1);
+  });
+
+  // 鲁港通 - BUD 主题：只发 bud.hkpc.org 子域定向（hkpc 主域 site: 实测无效）
+  it('增强补发（香港档 BUD 题）：site:bud.hkpc.org 定向', async () => {
+    const { calls } = stubRoutedFetch(
+      {
+        mainPages: [page('https://www.gov.hk/a', '政府A')],
+        boostPages: [page('https://bud.hkpc.org/tc/x', 'BUD主页')]
+      },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: 'BUD 专项基金 申请资格',
+      maxResults: 3
+    });
+    const out = await tool(input, SECRETS);
+
+    const toolsCalls = calls.filter(
+      (c) => c.url.includes('dashscope') && c.method === 'tools/call'
+    );
+    expect(toolsCalls.map((c) => c.query)).toEqual([
+      'BUD 专项基金 申请资格',
+      'site:bud.hkpc.org BUD 專項基金'
+    ]);
+    expect(out.results.map((r) => r.source)).toEqual(['gov.hk', 'bud.hkpc.org']);
+  });
+
+  // 鲁港通 - 河套主题：itib 定向优先，其次科创培育兜底，总查询数封顶 3
+  it('增强补发（香港档河套题）：itib 定向 + 科创培育兜底，封顶 3 条', async () => {
+    const { calls } = stubRoutedFetch(
+      {
+        mainPages: [page('https://www.gov.hk/a', '政府A')],
+        boostPages: [page('https://www.itib.gov.hk/tc/x', '河套页')]
+      },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '河套培育计划 资助',
+      maxResults: 5
+    });
+    const out = await tool(input, SECRETS);
+
+    const boostQueries = calls
+      .filter((c) => c.method === 'tools/call' && c.query.startsWith('site:'))
+      .map((c) => c.query);
+    expect(boostQueries).toEqual([
+      'site:itib.gov.hk 河套 創科',
+      'site:hkstp.org 創科培育計劃 資助',
+      'site:cyberport.hk 培育計劃 資助'
+    ]);
+    expect(out.results.map((r) => r.source)).toContain('itib.gov.hk');
+  });
+
+  // 鲁港通 - 科技券主题：只发 tvp 子域定向（不含科创培育泛化查询）
+  it('增强补发（香港档科技券题）：site:tvp.itf.gov.hk 定向', async () => {
+    const { calls } = stubRoutedFetch(
+      {
+        mainPages: [page('https://www.gov.hk/a', '政府A')],
+        boostPages: [page('https://tvp.itf.gov.hk/tc/x', '科技券')]
+      },
+      buildBingHtml()
+    );
+    const input = await InputType.parseAsync({
+      query: '科技券 申请资格 资助金额',
+      maxResults: 3
+    });
+    const out = await tool(input, SECRETS);
+
+    const boostQueries = calls
+      .filter((c) => c.method === 'tools/call' && c.query.startsWith('site:'))
+      .map((c) => c.query);
+    expect(boostQueries).toEqual(['site:tvp.itf.gov.hk 科技券']);
+    expect(out.results.map((r) => r.source)).toEqual(['gov.hk', 'tvp.itf.gov.hk']);
+  });
+
+  it('open 模式不补发（定向补发仅 official 启用）', async () => {
     const { calls } = stubRoutedFetch(
       { mainPages: [page('https://www.gov.hk/a', '政府A')] },
       buildBingHtml()
@@ -542,7 +698,8 @@ describe('检索地域档 cn（大陆白名单）', () => {
     expect((out._debug ?? []).join('\n')).toContain('region=hk');
   });
 
-  it('香港档补发用 site:gov.hk 前缀式，cn 档补发用 site:shandong.gov.cn 后缀式', async () => {
+  // 鲁港通 - 香港档补发已改科创定向（见上）；cn 档维持原 site:shandong.gov.cn 语法
+  it('cn 档补发用 site:shandong.gov.cn 后缀式', async () => {
     const { calls } = stubRoutedFetch(
       {
         mainPages: [page('https://mp.weixin.qq.com/s/x', '微信公众号')],

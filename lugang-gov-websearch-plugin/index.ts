@@ -173,7 +173,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.4.0',
+    version: '1.4.2',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
@@ -191,11 +191,11 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Add a mainland official-media tier to the cn region (central state media, Shandong provincial and Jinan municipal party media, central media based in Hong Kong) so Shandong investment answers can cite authoritative news coverage; every domain was verified by measured search hits plus a fetched site masthead, and unverifiable mirrors and commercial portals stay rejected. Raise the Bailian result ceiling from 10 to its measured maximum of 20 so a tool node asking for 10 sources can actually be filled after whitelist filtering.',
+      en: 'Fix the long-dead boost: suffix-style boost queries returned zero hits under Bailian (16-group field test). Boost is now topic-targeted — prefix-style site: queries with traditional Chinese official terms, covering four topics: BUD Fund (HKPC subdomain), Hetao / HK-Shenzhen Innovation and Technology Park (ITIB official pages), Technology Voucher Programme (TVP subdomain) and innovation/startup incubation (HKSTP, Cyberport). At most three boost queries per search, no boost for non-matching topics, and finance-context false matches (e.g. "record high" market words) are filtered first.',
       'zh-CN':
-        '大陆档新增官方媒体层（中央重点新闻网站、山东省级与济南市级党媒、中央驻港媒体），山东投资类答案可据此引用权威新闻报道；每个域名都经「实测命中 + 抓取站点抬头核实主管单位」双重验证，身份无法核实的镜像站与商业门户继续拒绝。百炼取数上限由 10 提升到实测上限 20，使工具节点索取 10 条来源时，白名单过滤后仍能凑够数。',
+        '修复长期失效的补发机制：后缀式补发查询在百炼下零命中（16 组实测确证）。改为主题定向补发——前缀式 site: 查询配合繁体官方用词，覆盖四类主题：BUD 专项基金（生产力局子域）、河套/港深创科园（创科工业局官方页）、科技券计划（TVP 子域）与科创培育（科技园、数码港）。每次补发至多 3 条查询，未命中主题不补发，且先剔除金融语境误匹配（如「创新高」类行情词）。',
       'zh-Hant':
-        '大陸檔新增官方媒體層（中央重點新聞網站、山東省級與濟南市級黨媒、中央駐港媒體），山東投資類答案可據此引用權威新聞報道；每個域名都經「實測命中 + 抓取站點抬頭核實主管單位」雙重驗證，身份無法核實的鏡像站與商業門戶繼續拒絕。百煉取數上限由 10 提升到實測上限 20，使工具節點索取 10 條來源時，白名單過濾後仍能湊夠數。'
+        '修復長期失效的補發機制：後綴式補發查詢在百煉下零命中（16 組實測確證）。改為主題定向補發——前綴式 site: 查詢配合繁體官方用詞，覆蓋四類主題：BUD 專項基金（生產力局子域）、河套/港深創科園（創科工業局官方頁）、科技券計劃（TVP 子域）與科創培育（科技園、數碼港）。每次補發至多 3 條查詢，未命中主題不補發，且先剔除金融語境誤匹配（如「創新高」類行情詞）。'
     }
   },
   handler

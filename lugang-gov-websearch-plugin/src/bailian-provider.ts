@@ -18,6 +18,19 @@ function collapseWhitespace(text: string): string {
   return text.replace(/\s+/g, ' ').trim();
 }
 
+// 鲁港通 - 面包屑式标题清洗：站点 <title> 退化为「首页 > 栏目 > 子栏目」导航链时取最右有效段
+// 实测（v9 验收 41 条标题中 4 条）：">政务公开 >政府信息公开 >政策法规 >其他文件" → "其他文件"
+// 仅处理「>」导航链；「 - 」/「 | 」两种分隔语义不定（右段可能是站点名），不在此处理
+export function cleanTitle(title: string): string {
+  const t = title.trim();
+  if (!t || !t.includes('>')) return t;
+  const segs = t
+    .split(/\s*>\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return segs.length >= 2 ? segs[segs.length - 1] : t;
+}
+
 // 鲁港通 - 从响应正文提取 JSON-RPC 消息：兼容纯 JSON 与 SSE（data: 行取最后一条可解析 JSON）
 export function extractRpcMessage(body: string): unknown {
   const trimmed = (body || '').trim();
@@ -70,7 +83,7 @@ export function pagesText2Results(text: string): RawSearchResult[] {
     if (!u || seen.has(u)) continue;
     seen.add(u);
     out.push({
-      title: collapseWhitespace(typeof title === 'string' ? title : ''),
+      title: cleanTitle(collapseWhitespace(typeof title === 'string' ? title : '')),
       url: u,
       snippet: collapseWhitespace(typeof snippet === 'string' ? snippet : '')
     });
@@ -130,7 +143,20 @@ export class BailianProvider implements SearchProvider {
       await this.notifyInitialized(init.sessionId);
     }
 
-    // 3. tools/call：发起搜索
+    // 3. tools/call：发起搜索；实测偶发空手（rawCount=0），空手时同一查询重发 1 次再放弃
+    let results = await this.callSearch(query, count, init.sessionId ?? undefined);
+    if (results.length === 0) {
+      results = await this.callSearch(query, count, init.sessionId ?? undefined);
+    }
+    return results.slice(0, count);
+  }
+
+  // 鲁港通 - 单次搜索调用：tools/call + JSON-RPC 层错误抛出（首搜与空手重试共用同一入口）
+  private async callSearch(
+    query: string,
+    count: number,
+    sessionId?: string
+  ): Promise<RawSearchResult[]> {
     const call = await this.rpc(
       {
         jsonrpc: '2.0',
@@ -139,10 +165,10 @@ export class BailianProvider implements SearchProvider {
         params: { name: TOOL_NAME, arguments: { query, count } }
       },
       CALL_TIMEOUT_MS,
-      init.sessionId ?? undefined
+      sessionId
     );
     this.throwIfRpcError(call.text, 'tools/call');
-    return parseBailianResponse(call.text).slice(0, count);
+    return parseBailianResponse(call.text);
   }
 
   // 鲁港通 - 单次 JSON-RPC 调用：HTTP 非 2xx 直接抛错（交由业务层降级到下一搜索源）

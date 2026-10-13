@@ -68,11 +68,76 @@ export interface ToolSecrets {
   dashscopeApiKey?: string;
 }
 
-// 鲁港通 - 搜索源链：配了百炼密钥则百炼优先、必应兜底；否则只用必应（与现状一致）
+// 鲁港通 - 搜索源链：配了百炼密钥则只走百炼——必应通道已被反爬封死（实测 b_algo=0），
+// 留在链上只会让失败路径多等 3 次重试；未配置密钥时维持必应，行为与旧版一致
 export function buildProviderChain(secrets?: ToolSecrets): SearchProvider[] {
   const key = secrets?.dashscopeApiKey?.trim();
-  if (key) return [new BailianProvider(key), new BingProvider()];
+  if (key) return [new BailianProvider(key)];
   return [new BingProvider()];
+}
+
+// 鲁港通 - 香港档增强补发：主题定向（前缀式 site: + 繁体官方用词）。
+// 2026-10-13 十六组对照实测结论：后缀式「{查询词} site:域名」与简体长查询在百炼下零命中；
+// 前缀式 + 繁体官方词稳定命中（hkstp 4-5 条 / cyberport 2 条 / bud.hkpc.org 3 条）；
+// 未命中主题不补发（site:gov.hk、hkpc 主域、hsitp.org 定向均实测无效，不再使用）
+const HK_BOOST_TOPICS: Array<{ keywords: string[]; queries: string[] }> = [
+  // BUD 专项基金：hkpc 主域 site: 无效，子域 bud.hkpc.org 有效
+  { keywords: ['bud', '专项基金', '專項基金'], queries: ['site:bud.hkpc.org BUD 專項基金'] },
+  // 河套/港深创科园：创科工业局 itib.gov.hk 官方页有效；hsitp.org 收录差不启用
+  {
+    keywords: ['河套', '港深创新', '港深創新', '深港创新', '深港創新'],
+    queries: ['site:itib.gov.hk 河套 創科']
+  },
+  // 科技券 TVP：tvp 子域有效（itf 主域 site: 无效）
+  { keywords: ['科技券', 'tvp'], queries: ['site:tvp.itf.gov.hk 科技券'] },
+  // 科创/创业培育：hkstp 与 cyberport 双域稳定命中
+  {
+    keywords: [
+      '创新',
+      '創新',
+      '科创',
+      '科創',
+      '创科',
+      '創科',
+      '创业',
+      '創業',
+      '初创',
+      '初創',
+      '培育',
+      '孵化',
+      '数码港',
+      '數碼港',
+      '科技园',
+      '科技園'
+    ],
+    queries: ['site:hkstp.org 創科培育計劃 資助', 'site:cyberport.hk 培育計劃 資助']
+  }
+];
+
+// 鲁港通 - 金融语境常见误匹配先剔除：避免「港股创新高」「创业板」「科创50」触发培育补发
+const HK_BOOST_NEGATIVE_PATTERNS = [
+  /创新高|创新低|創新高|創新低/g,
+  /创业板|創業板/g,
+  /科创50|科創50/g
+];
+
+// 鲁港通 - 每次补发查询数封顶，控制耗时与成本
+export const HK_BOOST_MAX_QUERIES = 3;
+
+export function buildHkBoostQueries(query: string): string[] {
+  let normalized = query.toLowerCase();
+  for (const pattern of HK_BOOST_NEGATIVE_PATTERNS) {
+    normalized = normalized.replace(pattern, '');
+  }
+  const out: string[] = [];
+  for (const topic of HK_BOOST_TOPICS) {
+    if (!topic.keywords.some((keyword) => normalized.includes(keyword))) continue;
+    for (const boostQuery of topic.queries) {
+      if (!out.includes(boostQuery)) out.push(boostQuery);
+      if (out.length >= HK_BOOST_MAX_QUERIES) return out;
+    }
+  }
+  return out;
 }
 
 export async function tool(
@@ -120,32 +185,37 @@ export async function tool(
     let { allowed, rejected } = filterResults(raw, scope, region);
     debug.push(`过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`);
 
-    // 5. 增强补发：official 且权威结果不足时，按地域补搜一轮官方站点，合并去重后重新过滤
-    const boostQuery =
+    // 5. 增强补发：official 且权威结果不足时，按地域补搜官方站点，合并去重后重新过滤
+    // 鲁港通 - 香港档改主题定向补发（前缀式繁体官方词，见 HK_BOOST_TOPICS）；
+    // cn 档维持 site:shandong.gov.cn 后缀式（对该域实测有效）
+    const boostQueries =
       region === 'cn'
-        ? `${input.query} site:shandong.gov.cn`
-        : `site:gov.hk ${input.query}`;
-    if (
-      active?.supportsSiteBoost &&
-      scope === 'official' &&
-      allowed.length < input.maxResults
-    ) {
-      try {
-        const boosted = await active.search(boostQuery, {
-          maxResults: input.maxResults,
-          lang: input.language
-        });
-        debug.push(`[${active.name}] 增强补发(${boostQuery}) ${boosted.length} 条`);
-        if (boosted.length > 0) {
-          raw = dedupeByUrl([...raw, ...boosted]);
-          ({ allowed, rejected } = filterResults(raw, scope, region));
+        ? [`${input.query} site:shandong.gov.cn`]
+        : buildHkBoostQueries(input.query);
+    // 鲁港通 - booster 兜底：主源空手时 active 为空，仍取链上支持补发的源（能救回偶发 0 条）
+    const booster = active ?? chain.find((p) => p.supportsSiteBoost);
+    if (booster && scope === 'official' && allowed.length < input.maxResults) {
+      for (const boostQuery of boostQueries) {
+        if (allowed.length >= input.maxResults) break;
+        try {
+          const boosted = await booster.search(boostQuery, {
+            maxResults: input.maxResults,
+            lang: input.language
+          });
           debug.push(
-            `合并去重后 ${raw.length} 条，过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`
+            `[${booster.name}] 增强补发(${boostQuery}) ${boosted.length} 条`
           );
+          if (boosted.length > 0) {
+            raw = dedupeByUrl([...raw, ...boosted]);
+            ({ allowed, rejected } = filterResults(raw, scope, region));
+            debug.push(
+              `合并去重后 ${raw.length} 条，过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`
+            );
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          debug.push(`[${booster.name}] 增强补发失败: ${msg}`);
         }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        debug.push(`[${active.name}] 增强补发失败: ${msg}`);
       }
     }
 

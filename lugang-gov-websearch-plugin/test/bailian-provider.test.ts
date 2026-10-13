@@ -2,6 +2,7 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import {
   BailianProvider,
+  cleanTitle,
   extractRpcMessage,
   pagesText2Results,
   parseBailianResponse
@@ -94,6 +95,46 @@ describe('响应解析（纯函数）', () => {
   it('pagesText2Results 对非法 JSON / 无 pages 返回空数组', () => {
     expect(pagesText2Results('not-json')).toEqual([]);
     expect(pagesText2Results('{"items":[]}')).toEqual([]);
+  });
+
+  // 鲁港通 - 面包屑式标题清洗（v9 验收：41 条标题中 4 条为「>」导航链）
+  it('cleanTitle 面包屑链取最右有效段，普通标题不动', () => {
+    expect(cleanTitle('>政务公开 >政府信息公开 >政策法规 >其他文件')).toBe(
+      '其他文件'
+    );
+    expect(
+      cleanTitle(
+        '>部门信息公开 >济南市人民政府办公厅 >政策法规 >其他文件 >济政办字'
+      )
+    ).toBe('济政办字');
+    expect(cleanTitle('首页 > 重要新闻')).toBe('重要新闻');
+    expect(cleanTitle('发布机构:自贸试验区济南片区管委会组配分类:机关简介')).toBe(
+      '发布机构:自贸试验区济南片区管委会组配分类:机关简介'
+    );
+    expect(cleanTitle('山东省2023年国民经济和社会发展计划')).toBe(
+      '山东省2023年国民经济和社会发展计划'
+    );
+    expect(cleanTitle('关于XX的通知 - 济南市人民政府')).toBe(
+      '关于XX的通知 - 济南市人民政府'
+    );
+    expect(cleanTitle('')).toBe('');
+  });
+
+  it('pagesText2Results 应用面包屑标题清洗', () => {
+    const text = JSON.stringify({
+      pages: [
+        {
+          title: '>政务公开 >政府信息公开 >政策法规 >其他文件',
+          url: 'https://jntzcjj.jinan.gov.cn/a',
+          snippet: 's'
+        },
+        { title: ' 正常标题 ', url: 'https://gov.hk/b', snippet: 's' }
+      ]
+    });
+    expect(pagesText2Results(text)).toEqual([
+      { title: '其他文件', url: 'https://jntzcjj.jinan.gov.cn/a', snippet: 's' },
+      { title: '正常标题', url: 'https://gov.hk/b', snippet: 's' }
+    ]);
   });
 
   it('parseBailianResponse 从信封提取 content text 并解析 pages', () => {
@@ -193,13 +234,69 @@ describe('BailianProvider 协议交互（mock fetch）', () => {
     const provider = new BailianProvider('sk-test');
     await provider.search('q');
 
+    // 空手响应触发 1 次重试，故 tools/call 出现两次
     expect(log.map((c) => c.payload.method)).toEqual([
       'initialize',
       'notifications/initialized',
+      'tools/call',
       'tools/call'
     ]);
     expect(log[1].headers['mcp-session-id']).toBe('sess-1');
     expect(log[2].headers['mcp-session-id']).toBe('sess-1');
+    expect(log[3].headers['mcp-session-id']).toBe('sess-1');
+  });
+
+  // 鲁港通 - 百炼偶发空手（实测 rawCount=0）：同一查询重发 1 次；第二次有结果即返回
+  it('空手重试：第一次空、第二次有结果则返回结果', async () => {
+    const methods: string[] = [];
+    let callCount = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const payload = JSON.parse(String(init?.body ?? '{}'));
+        if (payload.method === 'initialize') {
+          return mockResponse({
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} })
+          });
+        }
+        methods.push(payload.method);
+        callCount++;
+        return mockResponse({
+          body:
+            callCount === 1
+              ? callOkBody([])
+              : callOkBody([
+                  { title: 't', url: 'https://gov.hk/1', snippet: 's' }
+                ])
+        });
+      })
+    );
+    const provider = new BailianProvider('sk-test');
+    const out = await provider.search('q');
+    expect(out).toEqual([{ title: 't', url: 'https://gov.hk/1', snippet: 's' }]);
+    expect(methods).toEqual(['tools/call', 'tools/call']);
+  });
+
+  // 鲁港通 - 两次都空才放弃：不做无限重试（业务层还有定向补发可救）
+  it('两次都空：返回空数组，只重试 1 次', async () => {
+    const methods: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        const payload = JSON.parse(String(init?.body ?? '{}'));
+        if (payload.method === 'initialize') {
+          return mockResponse({
+            body: JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} })
+          });
+        }
+        methods.push(payload.method);
+        return mockResponse({ body: callOkBody([]) });
+      })
+    );
+    const provider = new BailianProvider('sk-test');
+    const out = await provider.search('q');
+    expect(out).toEqual([]);
+    expect(methods).toEqual(['tools/call', 'tools/call']);
   });
 
   it('count 封顶 20（实测服务端上限；maxResults 超限时）', async () => {
@@ -221,7 +318,8 @@ describe('BailianProvider 协议交互（mock fetch）', () => {
     const provider = new BailianProvider('sk-test');
     await provider.search('q', { maxResults: 999 });
 
-    expect(bodies[0].arguments?.count).toBe(20);
+    // 空手响应触发重试，两次请求的 count 都封顶 20
+    expect(bodies.map((b) => b.arguments?.count)).toEqual([20, 20]);
   });
 
   // 鲁港通 - 上限提到 20 只为让「节点索取 10 条」能凑够；索取 5 条时请求量仍是 10，
@@ -245,7 +343,7 @@ describe('BailianProvider 协议交互（mock fetch）', () => {
     const provider = new BailianProvider('sk-test');
     await provider.search('q', { maxResults: 5 });
 
-    expect(bodies[0].arguments?.count).toBe(5);
+    expect(bodies.map((b) => b.arguments?.count)).toEqual([5, 5]);
   });
 
   it('HTTP 非 2xx 抛错（交由业务层降级到下一源）', async () => {

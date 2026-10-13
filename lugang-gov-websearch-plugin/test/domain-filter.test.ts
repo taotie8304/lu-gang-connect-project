@@ -32,6 +32,21 @@ describe('classify 来源分类（A-H 白名单）', () => {
     expect(classify('hkex.com.hk')).toBe('public');
     expect(classify('mtr.com.hk')).toBe('public');
     expect(classify('sfc.hk')).toBe('public');
+    // 鲁港通 - 2026-10-13 新增：科创与公共服务机构（含子域）
+    expect(classify('hkstp.org')).toBe('public');
+    expect(classify('www.hkstp.org')).toBe('public');
+    expect(classify('cyberport.hk')).toBe('public');
+    expect(classify('www.cyberport.hk')).toBe('public');
+    expect(classify('hkpc.org')).toBe('public');
+    expect(classify('hsitp.org')).toBe('public');
+    expect(classify('discoverhongkong.com')).toBe('public');
+    expect(classify('www.discoverhongkong.com')).toBe('public');
+    expect(classify('hongkongpost.hk')).toBe('public');
+    expect(classify('hkmc.com.hk')).toBe('public');
+    expect(classify('hkecic.com')).toBe('public');
+    expect(classify('westk.hk')).toBe('public');
+    expect(classify('www.westk.hk')).toBe('public');
+    expect(classify('hkhs.com')).toBe('public');
   });
   it('C 学术（后缀 + 显式大学 + 子域）', () => {
     expect(classify('hku.hk')).toBe('academic');
@@ -46,10 +61,20 @@ describe('classify 来源分类（A-H 白名单）', () => {
   it('E 正规新闻媒体', () => {
     expect(classify('hk01.com')).toBe('news');
     expect(classify('on.cc')).toBe('news');
+    // 鲁港通 - 2026-10-13 对照 DeepSeek 来源清点新增的网媒/纸媒
+    expect(classify('jdonline.com.hk')).toBe('news');
+    expect(classify('skypost.hk')).toBe('news');
+    expect(classify('orangenews.hk')).toBe('news');
+    expect(classify('bastillepost.com')).toBe('news');
+    expect(classify('www.hkheadline.com')).toBe('news');
   });
   it('F 电视台', () => {
     expect(classify('tvb.com')).toBe('tv');
     expect(classify('rthk.hk')).toBe('tv');
+    // 鲁港通 - 2026-10-13 新增：电台与持牌电视
+    expect(classify('881903.com')).toBe('tv');
+    expect(classify('metroradio.com.hk')).toBe('tv');
+    expect(classify('hkstv.tv')).toBe('tv');
   });
   it('G 金融机构（银行/保险/证券基金）', () => {
     expect(classify('www.hsbc.com.hk')).toBe('finance');
@@ -65,6 +90,12 @@ describe('classify 来源分类（A-H 白名单）', () => {
   });
   it('未知域名分类为 other', () => {
     expect(classify('random-blog.com')).toBe('other');
+  });
+  // 鲁港通 - 2026-10-13 已核身但不收录：清单维持默认拒绝，防止日后凭印象补录
+  it('已核身但不收录的香港域名维持拒绝', () => {
+    expect(classify('singpao.com')).toBe('other'); // 成报：立场争议 + 抽样零命中
+    expect(classify('metrohk.com.hk')).toBe('other'); // 都市日报旧域：已被重注册为聚合站
+    expect(classify('cmdevfund.hk')).toBe('other'); // 站点身份无法核实
   });
 });
 
@@ -106,6 +137,17 @@ describe('judge - official 模式（默认拒绝策略）', () => {
       allow: true,
       reason: 'whitelist',
       sourceType: 'medical'
+    });
+    // 鲁港通 - 2026-10-13 新增域名的判官层抽查
+    expect(judge('https://www.hkstp.org/en', 'official')).toMatchObject({
+      allow: true,
+      reason: 'whitelist',
+      sourceType: 'public'
+    });
+    expect(judge('https://www.orangenews.hk/', 'official')).toMatchObject({
+      allow: true,
+      reason: 'whitelist',
+      sourceType: 'news'
     });
   });
 
@@ -453,6 +495,9 @@ describe('judge - 地域档 region=cn', () => {
   it('cn 档不返回香港来源（山东题不得引香港文件）', () => {
     expect(judge('https://www.gov.hk/', 'official', 'cn').allow).toBe(false);
     expect(judge('https://www.hsbc.com.hk/', 'official', 'cn').allow).toBe(false);
+    // 鲁港通 - 2026-10-13 新增香港机构域名（科技园/数码港等）不得串入大陆档
+    expect(judge('https://www.hkstp.org/', 'official', 'cn').allow).toBe(false);
+    expect(judge('https://www.cyberport.hk/', 'official', 'cn').allow).toBe(false);
   });
 
   it('默认档仍是香港，行为与现状一致', () => {
