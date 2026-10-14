@@ -432,3 +432,93 @@ def _compose_body_html(row: dict, title_field: str | None, body_fields: list) ->
             continue
         parts.append(f"<h2>{label}</h2><div>{val}</div>")
     return "".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# jpaas_unit（济南市系政务云「单元构建」接口：栏目页 JS 空壳，文章列表由接口直出）
+# ---------------------------------------------------------------------------
+
+# 鲁港通 - 用友 jpaas 政务云栏目列表构建端点（hy/zq/sz/cq/tq/jnxxq/jndpc 七站同构，
+# d4r7~d4r11 服务器实测，2026-10-14）；paramJson 翻页与 pageSize 上限见 pipeline 侧注释。
+_JPAAS_ART_MARKER = "/art/"
+
+
+class _TextLinkCollector(HTMLParser):
+    """提取 <a href> 及其锚文本与 title 属性（jpaas 单元片段用；_LinkCollector 只取 href）。
+
+    单元片段里 <a> 的 title 属性/锚文本即干净文章标题。列表标题优先入库可规避实测缺陷：
+    jnxxq 文章页 <title> 全站是站点名（round-11 复测确认），只靠文章页提取会让标题退化。
+    """
+
+    _SKIP_SCHEMES = ("javascript:", "mailto:", "tel:", "data:")
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.links: list[tuple[str, str, str | None]] = []   # (href, text, title_attr)
+        self._open: dict | None = None
+
+    def handle_starttag(self, tag: str, attrs) -> None:
+        if tag == "a":
+            self._finish_open()
+            d = dict(attrs)
+            href = (d.get("href") or "").strip()
+            if href:
+                self._open = {"href": href, "title": d.get("title"), "text": []}
+
+    def handle_data(self, data: str) -> None:
+        if self._open is not None:
+            self._open["text"].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            self._finish_open()
+
+    def _finish_open(self) -> None:
+        """闭合当前 <a>（含未闭合就被下一个 <a> 顶掉的畸形片段）。"""
+        if self._open is None:
+            return
+        text = " ".join("".join(self._open["text"]).split())
+        self.links.append((self._open["href"], text, self._open["title"]))
+        self._open = None
+
+
+def parse_jpaas_unit(content: bytes, base_url: str) -> list[DiscoveredItem]:
+    """解析 jpaas「单元构建」接口响应：JSON.data.html 里的文章链接列表。
+
+    实测（d4r7，2026-10-14）：响应形如 {"success": true, "code": "200", "data":
+    {"html": "<li><a href=\\"/col/col21118/art/...\\" title=\\"文章标题\\">..."}}——
+    data.html 是列表 HTML 片段，<a> 的 title 属性即文章标题（hy/zq 实证；缺 title
+    回退锚文本）。只收 /art/ 形态的文章页（片段内亦混有栏目/站务导航链接）；
+    解析失败（非 JSON / 无 data.html / 片段畸形）一律返回 []，绝不抛异常。
+    """
+    import json
+
+    try:
+        payload = json.loads(content.decode("utf-8", errors="replace"))
+    except (ValueError, TypeError):
+        return []
+    data = payload.get("data") if isinstance(payload, dict) else None
+    html = data.get("html") if isinstance(data, dict) else None
+    if not isinstance(html, str) or not html.strip():
+        return []
+
+    collector = _TextLinkCollector()
+    try:
+        collector.feed(html)
+    except Exception:  # noqa: BLE001 - 片段畸形按 0 条处理（发现层纪律）
+        return []
+
+    items: list[DiscoveredItem] = []
+    seen: set[str] = set()
+    for href, text, title_attr in collector.links:
+        if href.lower().startswith(_TextLinkCollector._SKIP_SCHEMES) or href.startswith("#"):
+            continue
+        absolute = urljoin(base_url, href).split("#", 1)[0]
+        if _JPAAS_ART_MARKER not in absolute:
+            continue
+        if absolute in seen:
+            continue
+        seen.add(absolute)
+        title = (title_attr or "").strip() or text or None
+        items.append(DiscoveredItem(url=absolute, title=title))
+    return items

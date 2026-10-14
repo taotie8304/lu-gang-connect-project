@@ -37,6 +37,8 @@ _DISCOVERY_KEYS = (
     # 鲁港通 - 商务厅 xxgk 检索式列表页：请求方法（POST）与 {currpage} 翻页参数
     "method",
     "paginate",
+    # 鲁港通 - 济南市系政务云（jpaas）栏目单元接口：栏目参数与翻页配置
+    "unit_config",
 )
 
 

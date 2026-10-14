@@ -37,6 +37,7 @@ _HK_DEPARTMENTS: dict[str, str] = {
     "hk_ird": "税务局",
     "hk_itib": "创新科技及工业局",
     "hk_news_gov": "政府新闻处",
+    "hk_police_so": "警务处",
     "hk_policy_address": "施政报告",
     "hk_tid": "工业贸易署",
     "hk_wfsfaa": "在职家庭及学生资助事务处",
@@ -59,6 +60,13 @@ _SD_JINAN: dict[str, str] = {
     "jinan_hrss": "济南市人力资源和社会保障局",
     "jinan_rc": "海右人社政策通",
     "jinan_zwfw": "济南市政务服务网",
+    "jinan_huaiyin": "济南市槐荫区人民政府",
+    "jinan_fgw": "济南市发展和改革委员会",
+    "jinan_jnxxq": "济南新旧动能转换起步区管委会",
+    "jinan_shizhong": "济南市市中区人民政府",
+    "jinan_zhangqiu": "济南市章丘区人民政府",
+    "jinan_changqing": "济南市长清区人民政府",
+    "jinan_tianqiao": "济南市天桥区人民政府",
 }
 
 # 鲁港通 - 高校源（academic 6 校）暂缓导入（用户 2026-09-13 决策）

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from urllib.parse import urlencode
 
 import pytest
 from sqlalchemy import select
@@ -12,6 +13,7 @@ from app.database import Base
 from app.ingest.discover import (
     is_listing_page,
     parse_api_json,
+    parse_jpaas_unit,
     parse_js_menu,
     parse_listing,
     parse_rss,
@@ -241,6 +243,34 @@ JS_MENU_CFG = {
     ],
 }
 
+# 鲁港通 - jpaas「单元构建」接口样本（照搬 d4r7 实测形态，2026-10-14）：响应 JSON 的
+# data.html 是文章列表片段；hy/zq 实测 <a> 带 title 属性（=干净文章标题）；片段内混有
+# 栏目页链接（/col/colNNNNN/index.html）与站务链接，须按 /art/ 形态过滤。
+JPAAS_UNIT_SAMPLE = json.dumps({
+    "success": True, "code": "200",
+    "data": {"html": (
+        '\t\t<ul id="information-list">\n'
+        '\t\t<li><a href="/col/col21118/art/2026/art_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6.html" '
+        'target="_blank" tabindex="0" title="济南弘阳广场西沙商业综合体项目签约落地">'
+        '济南弘阳广场西沙商业综合体项目签约落地</a><span class="pull-right">2026-09-28</span></li>\n'
+        '\t\t<li><a href="/col/col21118/art/2026/art_f6e5d4c3b2a10987766554433221100f.html" '
+        'title="槐荫区召开优化营商环境工作推进会">槐荫区召开优化营商环境工作推进会</a></li>\n'
+        '\t\t<li><a href="/col/col21118/index.html" title="更多">更多</a></li>\n'
+        '\t\t<li><a href="javascript:void(0)">返回顶部</a></li>\n'
+        '\t\t</ul>'
+    )},
+}, ensure_ascii=False).encode("utf-8")
+
+# 鲁港通 - zq 实测部分单元 <a> 无 title 属性，仅锚文本可作标题（回退路径）
+JPAAS_UNIT_SAMPLE_NO_TITLE = json.dumps({
+    "success": True, "code": "200",
+    "data": {"html": (
+        '<li class="wip_collistli clearfix">'
+        '<a href="/col/col21754/art/2026/art_11111111111111111111111111111111.html">'
+        '高官寨街道一周工作动态速览</a></li>'
+    )},
+}, ensure_ascii=False).encode("utf-8")
+
 
 class TestDiscover:
     def test_parse_rss(self):
@@ -358,6 +388,38 @@ class TestDiscover:
         # 关键：无 body_fields → body_html=None（而非 <h1>标题</h1>），交给 stage-2 抓详情页
         assert items[0].body_html is None
         assert items[1].body_html is None
+
+    def test_parse_jpaas_unit_extracts_articles_with_titles(self):
+        """jpaas 单元构建接口：data.html 片段里 <a> 的 title 属性即文章标题。
+        实测 d4r7（2026-10-14）：hy/zq 等济南市系政务云栏目页是 JS 空壳，文章列表由该
+        接口异步返回；片段内亦混有栏目/站务链接，只收 /art/ 形态文章页。"""
+        items = parse_jpaas_unit(
+            JPAAS_UNIT_SAMPLE,
+            "http://www.huaiyin.gov.cn/api-gateway/jpaas-publish-server/front/page/build/unit",
+        )
+        assert [i.url for i in items] == [
+            "http://www.huaiyin.gov.cn/col/col21118/art/2026/"
+            "art_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6.html",
+            "http://www.huaiyin.gov.cn/col/col21118/art/2026/"
+            "art_f6e5d4c3b2a10987766554433221100f.html",
+        ]
+        assert items[0].title == "济南弘阳广场西沙商业综合体项目签约落地"
+        # 栏目页（/col/colNNNNN/index.html）与 javascript 链接不成候选
+        assert all("/art/" in i.url for i in items)
+
+    def test_parse_jpaas_unit_title_falls_back_to_anchor_text(self):
+        """title 属性缺失时回退锚文本（zq 部分单元实测仅锚文本可作标题）。"""
+        items = parse_jpaas_unit(JPAAS_UNIT_SAMPLE_NO_TITLE, "http://www.jnzq.gov.cn/x")
+        assert items[0].title == "高官寨街道一周工作动态速览"
+
+    def test_parse_jpaas_unit_malformed_returns_empty(self):
+        """非 JSON / 无 data.html / 空片段 → 空列表，绝不抛异常（发现层纪律）。"""
+        assert parse_jpaas_unit(b"<html>500 Internal Server Error</html>", "http://x/") == []
+        assert parse_jpaas_unit(
+            json.dumps({"success": False, "message": "参数错误"}).encode(), "http://x/"
+        ) == []
+        assert parse_jpaas_unit(json.dumps({"data": {}}).encode(), "http://x/") == []
+        assert parse_jpaas_unit(json.dumps({"data": {"html": ""}}).encode(), "http://x/") == []
 
     def test_parse_js_menu_extracts_allowlisted_pages(self):
         """js_menu：TID 栏目树在静态 .js 菜单文件里（栏目页是 JS 空壳抓不到链接），
@@ -1073,6 +1135,143 @@ class TestPipelineJsMenu:
         assert titles == {"進出口簽證服務安排"}
         ver = db.execute(select(DocumentVersion)).scalars().first()
         assert ver.extracted_text and "版權所有" not in ver.extracted_text
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - jpaas_unit 发现方式（济南市系政务云：栏目单元接口直取 + paramJson 翻页）
+# ---------------------------------------------------------------------------
+
+JPAAS_UNIT_YAML = """
+sources:
+  - id: hy_test
+    name: 槐荫区测试
+    group: sd_core_gov
+    organization: 济南市槐荫区人民政府
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      page_size: 50
+      max_pages: 2
+      units:
+        - base_url: http://www.huaiyin.gov.cn
+          params: {parseType: bulidstatic, webId: '80', tplSetId: 'se1jER3qXWToUC5N6Trvt', pageType: column, tagId: '当前栏目列表', editType: 'null', pageId: '21118'}
+        - base_url: http://www.huaiyin.gov.cn
+          params: {parseType: bulidstatic, webId: '80', tplSetId: 'se1jER3qXWToUC5N6Trvt', pageType: column, tagId: '当前栏目列表', editType: 'null', pageId: '21117'}
+    content_selector: "#zoom"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+"""
+
+_HY_UNIT_HREF_A = "/col/col21118/art/2026/art_aaaa0000000000000000000000000001.html"
+_HY_UNIT_HREF_B = "/col/col21118/art/2026/art_bbbb0000000000000000000000000002.html"
+_HY_UNIT_HREF_C = "/col/col21118/art/2026/art_cccc0000000000000000000000000003.html"
+
+
+def _hy_unit_url(page_id: str, page, page_size: int = 50) -> str:
+    """与 d4r7 探针同款构造单元接口 URL（paramJson=json.dumps 整体 urlencode）。
+
+    实现侧（_build_jpaas_unit_endpoint）先保留 {pageNo} 占位、分页替换后与此字符串
+    逐字节一致——本构造同时验证两者产物同形（服务端解码后均为数字型页码 JSON）。
+    """
+    params = {
+        "parseType": "bulidstatic", "webId": "80",
+        "tplSetId": "se1jER3qXWToUC5N6Trvt", "pageType": "column",
+        "tagId": "当前栏目列表", "editType": "null", "pageId": page_id,
+    }
+    param_json = json.dumps({"pageNo": page, "pageSize": page_size})
+    return ("http://www.huaiyin.gov.cn/api-gateway/jpaas-publish-server/front/page/build/unit?"
+            + urlencode({**params, "paramJson": param_json}))
+
+
+def _hy_unit_page(articles) -> bytes:
+    """构造一页单元响应（实测形态：JSON.data.html；articles=[(href, title, text), ...]）。"""
+    lis = "".join(
+        f'\t\t<li><a href="{href}" title="{title}">{text}</a></li>\n'
+        for href, title, text in articles
+    )
+    return json.dumps(
+        {"success": True, "code": "200",
+         "data": {"html": f'\t\t<ul id="information-list">\n{lis}\t\t</ul>'}},
+        ensure_ascii=False,
+    ).encode("utf-8")
+
+
+def _hy_unit_empty() -> bytes:
+    return json.dumps({"success": True, "code": "200", "data": {"html": ""}},
+                      ensure_ascii=False).encode("utf-8")
+
+
+def _hy_article() -> bytes:
+    """文章页：正文在 #zoom 容器；<title> 故意是站点名（模拟 jnxxq 实测缺陷），
+    验证入库标题来自列表片段（item.title 优先于 extracted.title）。"""
+    return (
+        "<html><head><meta charset='utf-8'>"
+        "<title>济南市槐荫区人民政府</title></head><body>"
+        "<div class='nav'>当前位置：首页 &gt; 政务要闻</div>"
+        f"<div id='zoom'><p>{_LONG_ZH}</p></div>"
+        "<div class='foot'>相关推荐 噪声链接</div></body></html>"
+    ).encode("utf-8")
+
+
+class TestPipelineJpaasUnit:
+    """jpaas_unit：逐单元拉取 + paramJson 翻页 + 跨单元去重；列表标题优先入库。"""
+
+    A = "http://www.huaiyin.gov.cn" + _HY_UNIT_HREF_A
+    B = "http://www.huaiyin.gov.cn" + _HY_UNIT_HREF_B
+    C = "http://www.huaiyin.gov.cn" + _HY_UNIT_HREF_C
+
+    T_A = "济南弘阳广场西沙商业综合体项目签约落地"
+    T_B = "槐荫区召开优化营商环境工作推进会"
+    T_C = "槐荫区发布人才住房补贴申报指南"
+
+    def _setup_source(self, db):
+        import_sources_yaml(JPAAS_UNIT_YAML, db)
+        return db.execute(select(Source).where(Source.code == "hy_test")).scalar_one()
+
+    def test_unit_pagination_dedup_and_list_title(self, db):
+        src = self._setup_source(db)
+        fetcher = _FakeFetcher({
+            _hy_unit_url("21118", 1): _hy_unit_page([
+                (_HY_UNIT_HREF_A, self.T_A, self.T_A),
+                (_HY_UNIT_HREF_B, self.T_B, self.T_B),
+            ]),
+            _hy_unit_url("21118", 2): _hy_unit_empty(),   # 空页 → 停止翻页
+            _hy_unit_url("21117", 1): _hy_unit_page([
+                (_HY_UNIT_HREF_B, self.T_B, self.T_B),   # 跨单元重复文章
+                (_HY_UNIT_HREF_C, self.T_C, self.T_C),
+            ]),
+            _hy_unit_url("21117", 2): _hy_unit_empty(),
+            self.A: _hy_article(),
+            self.B: _hy_article(),
+            self.C: _hy_article(),
+        })
+
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        # 发现去重：单元1(A,B) + 单元2(B 重复剔除, C) → 3 条候选
+        assert stats.discovered == 3
+        assert stats.new_docs == 3
+        # paramJson 翻页：每单元 page1、page2 各一次，page2 空即停
+        unit_calls = [u for u in fetcher.calls if "/build/unit?" in u]
+        assert unit_calls == [
+            _hy_unit_url("21118", 1), _hy_unit_url("21118", 2),
+            _hy_unit_url("21117", 1), _hy_unit_url("21117", 2),
+        ]
+        # 跨单元重复文章只抓一次详情（去重生效，不重复消耗配额）
+        assert fetcher.calls.count(self.B) == 1
+        assert all(m == "GET" for m in fetcher.methods)
+        # 标题来自列表片段（文章页 <title> 是站点名——jnxxq 实测缺陷，列表标题兜住）
+        titles = sorted(d.title for d in db.execute(select(Document)).scalars().all())
+        assert titles == sorted([self.T_A, self.T_B, self.T_C])
+        # 正文来自 #zoom 容器：容器外导航噪声不混入
+        ver = db.execute(select(DocumentVersion)).scalars().first()
+        assert ver.extracted_text and "省商务厅今日发布通知" in ver.extracted_text
+        assert "当前位置" not in ver.extracted_text
 
 
 # ---------------------------------------------------------------------------

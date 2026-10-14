@@ -19,6 +19,7 @@ from app.ingest.discover import (
     is_sitemap,
     parse_api_json,
     parse_fixed,
+    parse_jpaas_unit,
     parse_js_menu,
     parse_listing,
     parse_rss,
@@ -39,6 +40,10 @@ logger = logging.getLogger("lugang.osg.pipeline")
 # 鲁港通 - 网络层异常重试（退避秒数）；FetchBlocked 绝不重试（spec 6.4 退避 ≥24h 由调度层负责）
 _RETRY_BACKOFF_S = (5, 15)
 _SITEMAP_MAX_DEPTH = 2   # sitemapindex 嵌套上限
+
+# 鲁港通 - 济南市系政务云（jpaas）栏目单元构建端点：栏目页是 JS 空壳，文章列表由该接口
+# 按栏目（pageId/tagId）异步返回（unitbuild.js 破译 + d4r7~d4r11 七站服务器实测，2026-10-14）。
+_JPAAS_UNIT_API_PATH = "/api-gateway/jpaas-publish-server/front/page/build/unit"
 
 # 鲁港通 - 发现入口页（首页/栏目页/sitemap/RSS）只用于提取链接，本身不是文档；
 # fixed_url 方式的入口就是目标文档（如施政报告固定页），绝不排除。
@@ -183,6 +188,26 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
         for endpoint in api_cfg.get("endpoints", []):
             items.extend(_discover_api_json(db, endpoint, parse_cfg, http_method, paginate,
                                             rules, settings, fetcher, sleeper, stats))
+    elif method == "jpaas_unit":
+        # 鲁港通 - 济南市系政务云（jpaas）栏目单元直取：栏目页是 JS 空壳，文章列表由
+        # unit 接口按栏目异步返回（d4r7~d4r11 七站实测）。逐单元拉取（paramJson 翻页）；
+        # 跨单元 seen 去重——同一文章可挂多个栏目，不去重会重复抓详情页。
+        unit_cfg = cfg.get("unit_config") or {}
+        seen: set[str] = set()
+        for unit in unit_cfg.get("units", []):
+            endpoint = _build_jpaas_unit_endpoint(unit, unit_cfg)
+            paginate = {
+                "page_param": "pageNo",
+                "start": 1,
+                "max_pages": int(unit.get("max_pages") or unit_cfg.get("max_pages") or 5),
+            }
+            unit_items = _discover_paged(db, endpoint, parse_jpaas_unit, "GET", paginate,
+                                         rules, settings, fetcher, sleeper, stats)
+            for it in unit_items:
+                if it.url in seen:
+                    continue
+                seen.add(it.url)
+                items.append(it)
     else:
         stats.errors.append(f"未知 discovery_method: {method}")
     return items
@@ -226,6 +251,26 @@ def _discover_api_json(db, endpoint, parse_cfg, http_method, paginate,
     """api_json 发现：绑定 JSON 解析器后走公共分页循环。"""
     return _discover_paged(db, endpoint, lambda c, b: parse_api_json(c, parse_cfg),
                            http_method, paginate, rules, settings, fetcher, sleeper, stats)
+
+
+def _build_jpaas_unit_endpoint(unit: dict, unit_cfg: dict) -> str:
+    """构造一个栏目单元的接口端点模板（含 {pageNo} 占位符供分页循环替换）。
+
+    实测（d4r7，2026-10-14）：单元片段翻页靠额外 query 参数 paramJson
+    （={"pageNo":N,"pageSize":M}，页码为数字型）；urlencode 会把占位符编码成
+    %7BpageNo%7D，须还原为字面量供 _discover_paged 逐页替换（替换后回归纯编码
+    形态，与探针 urlencode(json.dumps(...)) 的产物逐字节一致）。pageSize 实测
+    上限 99（hy/zq），50 为通用安全值；jndpc/jnxxq 忽略此参数、按站点模板分页。
+    """
+    from urllib.parse import urlencode
+
+    api_path = unit_cfg.get("api_path") or _JPAAS_UNIT_API_PATH
+    base_url = (unit.get("base_url") or "").rstrip("/")
+    page_size = max(1, int(unit_cfg.get("page_size") or 50))
+    param_json = '{"pageNo": {pageNo}, "pageSize": %d}' % page_size
+    query = urlencode({**dict(unit.get("params") or {}), "paramJson": param_json})
+    query = query.replace("%7BpageNo%7D", "{pageNo}")
+    return f"{base_url}{api_path}?{query}"
 
 
 def _fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats, parser_fn,

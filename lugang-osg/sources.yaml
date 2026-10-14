@@ -578,3 +578,358 @@ sources:
     rate_limit_per_minute: 4
     max_pages_per_run: 50
     enabled: true
+
+  # 鲁港通 - D4 补采（2026-10-14）：济南区县/市直 jpaas 栏目单元直取（d4r7~r11 实测）。
+  # 栏目页为 JS 空壳，走官网公开单元接口（unit_config）；units 每项一个栏目（pageId），
+  # 跨单元去重；page_size 50、每单元默认翻 5 页；7 站错峰分钟位 5/13/21/29/37/45/53。
+  - id: jinan_huaiyin
+    name: 济南市槐荫区人民政府
+    # 单元：21118 政务信息 / 21117 要闻 / 21120 部门动态 / 21121 街道动态 / 46128 通知公告
+    group: sd_core_gov
+    organization: 济南市槐荫区人民政府
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: http://www.huaiyin.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '80'
+          tplSetId: 'se1jER3qXWToUC5N6Trvt'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '21118'
+      - base_url: http://www.huaiyin.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '80'
+          tplSetId: 'se1jER3qXWToUC5N6Trvt'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '21117'
+      - base_url: http://www.huaiyin.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '80'
+          tplSetId: 'se1jER3qXWToUC5N6Trvt'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '21120'
+      - base_url: http://www.huaiyin.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '80'
+          tplSetId: 'se1jER3qXWToUC5N6Trvt'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '21121'
+      - base_url: http://www.huaiyin.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '80'
+          tplSetId: 'se1jER3qXWToUC5N6Trvt'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '46128'
+    content_selector: "#zoom"
+    schedule: "5 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（现栏目全为要闻/动态类，保留率 0/160）
+    enabled: false
+
+  - id: jinan_fgw
+    name: 济南市发展和改革委员会
+    # 单元：121808 组配分类聚合库（xxgk 全量存档，单单元翻 6 页覆盖 2010 至今）
+    group: sd_core_gov
+    organization: 济南市发展和改革委员会
+    base_domains: [jndpc.jinan.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: https://jndpc.jinan.gov.cn
+        max_pages: 6
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '7'
+          tplSetId: 'SntS8ZDi5dhpKE2ls0Ey4'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '121808'
+    content_selector: "#zoom"
+    schedule: "13 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 120
+    enabled: true
+
+  - id: jinan_jnxxq
+    name: 济南新旧动能转换起步区管委会
+    # 单元：122860 起步动态 / 40106 通知公告 / 122932 调查征集
+    group: sd_core_gov
+    organization: 济南新旧动能转换起步区管委会
+    base_domains: [jnxxq.jinan.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: https://jnxxq.jinan.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '66'
+          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          pageType: 'column'
+          tagId: 'ajax分页'
+          editType: 'null'
+          pageId: '122860'
+      - base_url: https://jnxxq.jinan.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '66'
+          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          pageType: 'column'
+          tagId: 'ajax分页'
+          editType: 'null'
+          pageId: '40106'
+      - base_url: https://jnxxq.jinan.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '66'
+          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          pageType: 'column'
+          tagId: 'ajax分页'
+          editType: 'null'
+          pageId: '122932'
+    content_selector: "#zoom"
+    schedule: "21 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 2/67）
+    enabled: false
+
+  - id: jinan_shizhong
+    name: 济南市市中区人民政府
+    # 单元：15756 政务要闻 / 15762 通知公告
+    group: sd_core_gov
+    organization: 济南市市中区人民政府
+    base_domains: [www.shizhong.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: http://www.shizhong.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '79'
+          tplSetId: 'ik3DJhu4PUYoSonnmNITw'
+          pageType: 'column'
+          tagId: '当前栏目-list'
+          editType: 'null'
+          pageId: '15756'
+      - base_url: http://www.shizhong.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '79'
+          tplSetId: 'ik3DJhu4PUYoSonnmNITw'
+          pageType: 'column'
+          tagId: '当前栏目-list'
+          editType: 'null'
+          pageId: '15762'
+    content_selector: "#zoom"
+    schedule: "29 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（现栏目全为区领导活动/会议类，保留率 0/50）
+    enabled: false
+
+  - id: jinan_zhangqiu
+    name: 济南市章丘区人民政府
+    # 单元：21750 通知公告 / 21752·21753 信息列表 / 21892 网上调查
+    group: sd_core_gov
+    organization: 济南市章丘区人民政府
+    base_domains: [www.jnzq.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: http://www.jnzq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '84'
+          tplSetId: 'DgbXss8l8xeyQU593KiTo'
+          pageType: 'column'
+          tagId: '信息列表'
+          editType: 'null'
+          pageId: '21750'
+      - base_url: http://www.jnzq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '84'
+          tplSetId: 'DgbXss8l8xeyQU593KiTo'
+          pageType: 'column'
+          tagId: '信息列表'
+          editType: 'null'
+          pageId: '21752'
+      - base_url: http://www.jnzq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '84'
+          tplSetId: 'DgbXss8l8xeyQU593KiTo'
+          pageType: 'column'
+          tagId: '信息列表'
+          editType: 'null'
+          pageId: '21753'
+      - base_url: http://www.jnzq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '84'
+          tplSetId: 'DgbXss8l8xeyQU593KiTo'
+          pageType: 'column'
+          tagId: '信息列表'
+          editType: 'null'
+          pageId: '21892'
+    content_selector: .art_con
+    schedule: "37 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 6/63）
+    enabled: false
+
+  - id: jinan_changqing
+    name: 济南市长清区人民政府
+    # 单元：21721 公告公示 / 24443 回应关切
+    group: sd_core_gov
+    organization: 济南市长清区人民政府
+    base_domains: [www.jncq.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: http://www.jncq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '83'
+          tplSetId: '6bMJbNi2pZtTHOpZi6V0Z'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '21721'
+      - base_url: http://www.jncq.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '83'
+          tplSetId: '6bMJbNi2pZtTHOpZi6V0Z'
+          pageType: 'column'
+          tagId: '当前栏目列表'
+          editType: 'null'
+          pageId: '24443'
+    content_selector: "#zoom"
+    schedule: "45 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 2/55）
+    enabled: false
+
+  - id: jinan_tianqiao
+    name: 济南市天桥区人民政府
+    # 单元：19253 民生问答（低保/营业执照/助学金） / 25954 招商投递 / 24382 行政审批服务
+    group: sd_core_gov
+    organization: 济南市天桥区人民政府
+    base_domains: [www.tianqiao.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 5
+      units:
+      - base_url: http://www.tianqiao.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '81'
+          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
+          pageType: 'column'
+          tagId: '内容列表'
+          editType: 'null'
+          pageId: '19253'
+      - base_url: http://www.tianqiao.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '81'
+          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
+          pageType: 'column'
+          tagId: '内容列表'
+          editType: 'null'
+          pageId: '25954'
+      - base_url: http://www.tianqiao.gov.cn
+        params:
+          parseType: 'bulidstatic'
+          webId: '81'
+          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
+          pageType: 'column'
+          tagId: '内容列表'
+          editType: 'null'
+          pageId: '24382'
+    content_selector: "#zoom"
+    schedule: "53 */8 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 5/39，保留项为民生问答）
+    enabled: false
+
+  - id: hk_police_so
+    name: 香港警务处社团事务处
+    # 固定页：社团注册指引 / 注册问答 / 已注册社团名单（d4r5 实测，.innerPages 命中两页、
+    # 名单页回退全文 288 字 > 200 安全）
+    group: hk_livelihood_finance
+    organization: 香港警务处
+    base_domains: [www.police.gov.hk]
+    allowed_path_prefixes: [/ppp_sc/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.police.gov.hk/ppp_sc/11_useful_info/licences/societies.html"
+      - "https://www.police.gov.hk/ppp_sc/13_faqs/faq_so.html"
+      - "https://www.police.gov.hk/ppp_sc/11_useful_info/licences/list_of_societies.html"
+    content_selector: ".innerPages"
+    schedule: "20 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 20
+    enabled: true
