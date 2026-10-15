@@ -39,6 +39,11 @@ _DISCOVERY_KEYS = (
     "paginate",
     # 鲁港通 - 济南市系政务云（jpaas）栏目单元接口：栏目参数与翻页配置
     "unit_config",
+    # 鲁港通 - listing 链接形态白名单（五区 gongkai 只收 doc_<hex>.html，
+    # 把栏目/导航/「更多」链接挡在发现层）
+    "link_pattern",
+    # 鲁港通 - 标题噪声自动归档（六区级源）：命中即置 archived 的标题排除模式（正则列表）
+    "title_exclude_patterns",
 )
 
 

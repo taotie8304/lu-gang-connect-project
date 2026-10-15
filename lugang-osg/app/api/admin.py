@@ -71,14 +71,18 @@ def trigger_sync(
     code: str,
     background_tasks: BackgroundTasks,
     force: bool = False,
+    allow_disabled: bool = False,
     actor: str = Depends(require_admin_key),
     db: Session = Depends(get_db),
 ):
-    """触发一个来源的同步（后台执行；force=true 时已知文档也重抓）。"""
+    """触发一个来源的同步（后台执行；force=true 时已知文档也重抓）。
+
+    鲁港通 - allow_disabled=true 供停用源试采（仍需管理员密钥）；默认行为不变。
+    """
     source = db.execute(select(Source).where(Source.code == code)).scalar_one_or_none()
     if source is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"来源不存在: {code}")
-    if not source.enabled:
+    if not source.enabled and not allow_disabled:
         raise HTTPException(status.HTTP_409_CONFLICT, f"来源已停用: {code}")
 
     if _sync_lock.locked():

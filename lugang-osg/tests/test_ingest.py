@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import urlencode
 
 import pytest
@@ -20,7 +21,8 @@ from app.ingest.discover import (
     parse_sitemap,
 )
 from app.ingest.extract import MIN_CONTENT_CHARS, clean_title, extract_html
-from app.ingest.pipeline import sync_source
+from app.ingest.pipeline import _build_jpaas_unit_endpoint, sync_source
+from app.ingest.title_filter import first_matching_pattern
 from app.ingest.yaml_import import import_sources_yaml
 from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
 from app.security.fetcher import FetchResult
@@ -1528,3 +1530,411 @@ class TestPipelineListingSearch:
         assert ver.extracted_text and "省商务厅今日发布通知" in ver.extracted_text
         # 正文来自 #zoom 容器：容器外面包屑等 UI 噪声不混入
         assert "当前位置" not in ver.extracted_text
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - gongkai 列表发现（五区政策文件/解读/问答改造）：link_pattern 过滤 +
+# 列表链接标题直采 + 翻页跨页去重（侧栏「最新文件」逐页重复出现）
+# ---------------------------------------------------------------------------
+
+GONGKAI_TITLES_SAMPLE = (
+    "<html><head><meta charset='utf-8'><title>济南市槐荫区人民政府</title></head><body>"
+    "<div class='contentList'>"
+    "<a class='lt-title' href='/gongkai/channel_6389a6a5375991828263c1c4/doc_1a2b3c4d5e6f7890.html' "
+    "title='济南市槐荫区人民政府关于优化调整烟花爆竹禁放区域的通告'>通告</a>"
+    "<a class='lt-title' href='/gongkai/channel_6389a6a5375991828263c1c4/doc_abcdefabcdefabcd.html'>"
+    "济南市槐荫区人民政府办公室关于印发办事指南的通知</a>"
+    "<a href='/gongkai/'>更多</a>"
+    "</div></body></html>"
+).encode("utf-8")
+
+GK_HREF_A = "/gongkai/channel_6389a6a5375991828263c1c4/doc_1a2b3c4d5e6f7890.html"
+GK_HREF_B = "/gongkai/channel_6389a6a5375991828263c1c4/doc_abcdefabcdefabcd.html"
+GK_A = "http://www.huaiyin.gov.cn" + GK_HREF_A
+GK_B = "http://www.huaiyin.gov.cn" + GK_HREF_B
+GK_TITLE_A = "济南市槐荫区人民政府关于优化调整烟花爆竹禁放区域的通告"
+GK_TITLE_B = "济南市槐荫区人民政府办公室关于印发办事指南的通知"
+
+
+class TestParseListingLinkTitles:
+    def test_captures_link_title_attr_and_anchor_text(self):
+        """列表链接标题：title 属性优先、锚文本兜底（实测五区 gongkai 三频道，2026-10-14；
+        文章页 <title> 反而是「科室 - 文号 - 标题」脏前缀或站点名，只能靠列表标题）。
+        短噪声文本（如「更多」< 6 字）不采信，防按钮文字污染文档标题。"""
+        items = parse_listing(GONGKAI_TITLES_SAMPLE, "http://www.huaiyin.gov.cn/gongkai/")
+        by_url = {i.url: i.title for i in items}
+        assert by_url[GK_A] == GK_TITLE_A          # title 属性优先（锚文本「通告」短，不覆盖）
+        assert by_url[GK_B] == GK_TITLE_B          # 无 title 属性 → 锚文本兜底
+        assert by_url["http://www.huaiyin.gov.cn/gongkai/"] is None
+
+    def test_link_pattern_filters_non_doc_links(self):
+        """link_pattern 只认文档链接形态：栏目/导航/「更多」链接在解析层挡掉
+        （五区实测：不挡则每页混入一堆栏目噪声候选）。"""
+        items = parse_listing(
+            GONGKAI_TITLES_SAMPLE, "http://www.huaiyin.gov.cn/gongkai/",
+            pattern=re.compile(r"doc_[0-9a-f]+\.html"),
+        )
+        assert [i.url for i in items] == [GK_A, GK_B]
+
+
+GONGKAI_YAML = """
+sources:
+  - id: hy_gongkai_test
+    name: 槐荫区政策文件测试
+    group: sd_core_gov
+    organization: 济南市槐荫区人民政府
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/gongkai/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - 'http://www.huaiyin.gov.cn/gongkai/channel_6389a6a5375991828263c1c4/?page1={page1}&perPage1=10'
+    paginate: {page_param: page1, start: 1, max_pages: 5}
+    link_pattern: 'doc_[0-9a-f]+\\.html'
+    content_selector: ".con"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+"""
+
+_GK_LIST = "http://www.huaiyin.gov.cn/gongkai/channel_6389a6a5375991828263c1c4/"
+GK_HREF_C = "/gongkai/channel_6389a6a5375991828263c1c4/doc_cccccccccccccccc.html"
+GK_C = "http://www.huaiyin.gov.cn" + GK_HREF_C
+GK_TITLE_C = "济南市槐荫区人民政府办公室关于印发政务公开工作要点的通知"
+GK_HREF_SIDE = "/gongkai/channel_6389a6a5375991828263c1c4/doc_feedfeedfeedfeed.html"
+GK_SIDE = "http://www.huaiyin.gov.cn" + GK_HREF_SIDE
+GK_TITLE_SIDE = "济南市槐荫区人民政府关于公布行政规范性文件清理结果的通知"
+
+
+def _gk_page_no(p: int) -> str:
+    return f"{_GK_LIST}?page1={p}&perPage1=10"
+
+
+def _gk_listing_page(articles) -> bytes:
+    """gongkai 频道页样本：contentList 主列 + 侧栏「最新文件」（每页重复）+ 「更多」导航。"""
+    rows = "".join(
+        f'<li><a class="lt-title" href="{href}" title="{title}">{title}</a></li>'
+        for href, title in articles
+    )
+    return (
+        "<html><head><meta charset='utf-8'><title>济南市槐荫区人民政府</title></head><body>"
+        f"<div class='contentList'>{rows}</div>"
+        f"<div class='side'><a class='lt-title' href='{GK_HREF_SIDE}' title='{GK_TITLE_SIDE}'>"
+        f"{GK_TITLE_SIDE}</a></div>"
+        "<a href='/gongkai/'>更多</a>"
+        "</body></html>"
+    ).encode("utf-8")
+
+
+def _gk_article(dirty_title: str) -> bytes:
+    """gongkai 文章页：正文在 .con 容器；<title> 是「科室 - 文号 - 标题」脏前缀（实测）。"""
+    return (
+        "<html><head><meta charset='utf-8'>"
+        f"<title>{dirty_title}</title></head><body>"
+        "<div class='nav'>当前位置：首页 &gt; 政务公开</div>"
+        f"<div class='con'><p>{_LONG_ZH}</p></div>"
+        "<div class='foot'>相关推荐</div></body></html>"
+    ).encode("utf-8")
+
+
+class TestPipelineGongkaiListing:
+    """gongkai 列表：翻页 + link_pattern + 跨页去重；列标题优先入库；.con 正文提取。"""
+
+    def test_paged_listing_pattern_dedup_and_list_title(self, db):
+        import_sources_yaml(GONGKAI_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "hy_gongkai_test")).scalar_one()
+        fetcher = _FakeFetcher({
+            _gk_page_no(1): _gk_listing_page([(GK_HREF_A, GK_TITLE_A), (GK_HREF_B, GK_TITLE_B)]),
+            _gk_page_no(2): _gk_listing_page([(GK_HREF_C, GK_TITLE_C)]),
+            _gk_page_no(3): _gk_listing_page([]),   # 整页无新链接 → 停（不再请求 page4）
+            GK_A: _gk_article(f"区政府办公室 - 规范性文件 - {GK_TITLE_A}"),
+            GK_B: _gk_article(f"区政府办公室 - 规范性文件 - {GK_TITLE_B}"),
+            GK_C: _gk_article(f"区政府办公室 - 规范性文件 - {GK_TITLE_C}"),
+            GK_SIDE: _gk_article(f"区政府办公室 - 规范性文件 - {GK_TITLE_SIDE}"),
+        })
+
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        # 翻页到 page3（无新链接）即停，page4 不再请求
+        pages = [u for u in fetcher.calls if "?" in u and "/gongkai/" in u]
+        assert pages == [_gk_page_no(1), _gk_page_no(2), _gk_page_no(3)]
+        # 跨页去重：侧栏重复链接只在首现页产生候选，详情页只抓一次
+        assert fetcher.calls.count(GK_SIDE) == 1
+        assert stats.discovered == 4
+        assert stats.new_docs == 4
+        # link_pattern：非 doc 的「更多」（/gongkai/）未被抓取
+        assert not any(u.rstrip("/").endswith("/gongkai") for u in fetcher.calls)
+        # 列表标题优先入库：「科室 - 文号 - 」脏前缀不入标题
+        titles = sorted(d.title for d in db.execute(select(Document)).scalars().all())
+        assert titles == sorted([GK_TITLE_A, GK_TITLE_B, GK_TITLE_C, GK_TITLE_SIDE])
+        # .con 容器正文：容器外面包屑不混入
+        ver = db.execute(select(DocumentVersion)).scalars().first()
+        assert ver.extracted_text and _LONG_ZH[:30] in ver.extracted_text
+        assert "当前位置" not in ver.extracted_text
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - jpaas_unit 类目筛选（起步区 xxgk）：unit.search 并入 paramJson
+# ---------------------------------------------------------------------------
+
+JPAAS_SEARCH_YAML = """
+sources:
+  - id: jnxxq_search_test
+    name: 起步区政策文件测试
+    group: sd_core_gov
+    organization: 济南新旧动能转换起步区管委会
+    base_domains: [jnxxq.jinan.gov.cn]
+    allowed_path_prefixes: [/col/, /api-gateway/]
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      page_size: 10
+      units:
+        - base_url: https://jnxxq.jinan.gov.cn
+          params: {parseType: bulidstatic, webId: '66', tplSetId: cfUHMSJ6T6HMO0R74BhbF, pageType: column, tagId: 组配分类list, editType: 'null', pageId: '48179'}
+          search: {xxgkId: QBQ06-03, xxgkType: '', className: 政策法规}
+          max_pages: 2
+    content_selector: ".bt-content"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+"""
+
+JNXXQ_HREF_A = "/col/col86785/art/2026/art_5e0dc59e99d44cd793df36842d544b0e.html"
+JNXXQ_A = "https://jnxxq.jinan.gov.cn" + JNXXQ_HREF_A
+JNXXQ_T_A = "济南新旧动能转换起步区管理委员会关于印发《济南新旧动能转换起步区政务服务事项告知承诺管理办法（试行）》的通知"
+
+
+def _jnxxq_unit_url(page: int, page_size: int = 10) -> str:
+    """起步区类目筛选实测 URL 形态（probe14/15，2026-10-14）：search 为双编码
+    JSON 字符串并入 paramJson（distinctList.js xxgkMorePage 同款）；本构造与
+    实现侧 _build_jpaas_unit_endpoint 的产物逐字节一致。"""
+    inner = json.dumps({"xxgkId": "QBQ06-03", "xxgkType": "", "className": "政策法规"},
+                       ensure_ascii=False, separators=(",", ":"))
+    param_json = ('{"pageNo": %d, "pageSize": %d, "search": %s}'
+                  % (page, page_size, json.dumps(inner, ensure_ascii=False)))
+    params = {
+        "parseType": "bulidstatic", "webId": "66", "tplSetId": "cfUHMSJ6T6HMO0R74BhbF",
+        "pageType": "column", "tagId": "组配分类list", "editType": "null", "pageId": "48179",
+    }
+    return ("https://jnxxq.jinan.gov.cn/api-gateway/jpaas-publish-server/front/page/build/unit?"
+            + urlencode({**params, "paramJson": param_json}))
+
+
+def _jnxxq_article() -> bytes:
+    """起步区 xxgk 文章页：正文在 bt-content 容器；<title> 是站点名（实测缺陷）。"""
+    return (
+        "<html><head><meta charset='utf-8'><title>济南新旧动能转换起步区</title></head><body>"
+        f"<div class='bt-content zoom clearfix'><p>{_LONG_ZH}</p></div>"
+        "<div class='xxgkinfo_list'>索引号：11370100MB281776XA/2026-61753</div>"
+        "</body></html>"
+    ).encode("utf-8")
+
+
+class TestPipelineJpaasUnitSearch:
+    def test_build_endpoint_with_search_matches_probe_shape(self):
+        """_build_jpaas_unit_endpoint 对 unit.search 的输出与探针实测 URL 逐字节同形。"""
+        unit = {
+            "base_url": "https://jnxxq.jinan.gov.cn",
+            "params": {
+                "parseType": "bulidstatic", "webId": "66",
+                "tplSetId": "cfUHMSJ6T6HMO0R74BhbF", "pageType": "column",
+                "tagId": "组配分类list", "editType": "null", "pageId": "48179",
+            },
+            "search": {"xxgkId": "QBQ06-03", "xxgkType": "", "className": "政策法规"},
+        }
+        built = _build_jpaas_unit_endpoint(unit, {"page_size": 10})
+        assert "{pageNo}" in built        # 占位保留给翻页替换
+        assert built.replace("{pageNo}", "1") == _jnxxq_unit_url(1)
+
+    def test_unit_search_param_end_to_end(self, db):
+        """带 search 的单元：翻页 + 详情抓取 + 列表标题兜住站点名缺陷 + bt-content 正文。"""
+        import_sources_yaml(JPAAS_SEARCH_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "jnxxq_search_test")).scalar_one()
+        fetcher = _FakeFetcher({
+            _jnxxq_unit_url(1): _hy_unit_page([(JNXXQ_HREF_A, JNXXQ_T_A, JNXXQ_T_A)]),
+            _jnxxq_unit_url(2): _hy_unit_empty(),
+            JNXXQ_A: _jnxxq_article(),
+        })
+
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert fetcher.calls[0] == _jnxxq_unit_url(1)
+        assert stats.discovered == 1
+        assert stats.new_docs == 1
+        doc = db.execute(select(Document)).scalar_one()
+        assert doc.title == JNXXQ_T_A          # 列表标题入库（文章页 <title> 是站点名）
+        ver = db.execute(select(DocumentVersion)).scalar_one()
+        assert ver.extracted_text and _LONG_ZH[:30] in ver.extracted_text
+        assert "索引号" not in ver.extracted_text   # 元信息表格在容器外
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - 标题噪声自动归档（六区级来源：任免/会议/名录类新文档不进知识库）
+# ---------------------------------------------------------------------------
+
+NOISE_FILTER_YAML = """
+sources:
+  - id: hy_noise_test
+    name: 槐荫区噪音过滤测试
+    group: sd_core_gov
+    organization: 济南市槐荫区人民政府
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/gongkai/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - 'http://www.huaiyin.gov.cn/gongkai/channel_noise/?page1={page1}&perPage1=10'
+    paginate: {page_param: page1, start: 1, max_pages: 2}
+    link_pattern: 'doc_[0-9a-f]+\\.html'
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+    content_selector: ".con"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+  - id: hy_plain_test
+    name: 槐荫区无过滤对照
+    group: sd_core_gov
+    organization: 济南市槐荫区人民政府
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/gongkai/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: listing
+    listing_urls:
+      - 'http://www.huaiyin.gov.cn/gongkai/channel_noise/?page1={page1}&perPage1=10'
+    paginate: {page_param: page1, start: 1, max_pages: 2}
+    link_pattern: 'doc_[0-9a-f]+\\.html'
+    content_selector: ".con"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+"""
+
+_NOISE_LIST = "http://www.huaiyin.gov.cn/gongkai/channel_noise/"
+_NOISE_PATH_A = "/gongkai/channel_noise/doc_1111111111111111.html"
+_NOISE_PATH_B = "/gongkai/channel_noise/doc_2222222222222222.html"
+_NOISE_PATH_C = "/gongkai/channel_noise/doc_3333333333333333.html"
+NOISE_A = "http://www.huaiyin.gov.cn" + _NOISE_PATH_A
+NOISE_B = "http://www.huaiyin.gov.cn" + _NOISE_PATH_B
+NOISE_C = "http://www.huaiyin.gov.cn" + _NOISE_PATH_C
+NOISE_T_A = "济南市槐荫区人民政府关于任免王霞蔚等工作人员职务的通知"
+NOISE_T_B = "济南市槐荫区人民政府办公室关于印发政务公开工作要点的通知"
+NOISE_T_C = "区政府召开第99次常务会议"
+
+
+def _noise_page(p: int) -> str:
+    return f"{_NOISE_LIST}?page1={p}&perPage1=10"
+
+
+def _noise_listing(entries) -> bytes:
+    """entries=[(href, title_or_None, text), ...]；title=None 且锚文本 <6 字 → item.title=None。"""
+    rows = ""
+    for href, title, text in entries:
+        attr = f' title="{title}"' if title else ""
+        rows += f'<li><a class="lt-title" href="{href}"{attr}>{text}</a></li>'
+    return (
+        "<html><head><meta charset='utf-8'><title>济南市槐荫区人民政府</title></head><body>"
+        f"<div class='contentList'>{rows}</div></body></html>"
+    ).encode("utf-8")
+
+
+class TestTitleNoiseArchive:
+    """标题命中 title_exclude_patterns 的新文档 → status=archived（不进知识库、可恢复）。
+
+    实测口径（2026-10-15 用户批准）：六区级来源「任免/常务会议/名录/建制批复」类
+    新文档约占新采两成，采到即入库会随每日自动导入混进知识库。
+    """
+
+    def _setup_source(self, db, code="hy_noise_test"):
+        import_sources_yaml(NOISE_FILTER_YAML, db)
+        return db.execute(select(Source).where(Source.code == code)).scalar_one()
+
+    def _responses(self) -> dict:
+        return {
+            _noise_page(1): _noise_listing([
+                (_NOISE_PATH_A, NOISE_T_A, NOISE_T_A),
+                (_NOISE_PATH_B, NOISE_T_B, NOISE_T_B),
+                (_NOISE_PATH_C, None, "通告"),   # 列表无标题 → 用文章页 <title> 判定
+            ]),
+            _noise_page(2): _noise_listing([]),
+            NOISE_A: _gk_article(f"人事任免 - {NOISE_T_A}"),
+            NOISE_B: _gk_article(f"区政府办公室 - 规范性文件 - {NOISE_T_B}"),
+            NOISE_C: _gk_article(NOISE_T_C),
+        }
+
+    def test_noise_title_new_doc_archived(self, db):
+        src = self._setup_source(db)
+        # yaml 白名单贯通：配置经导入器写入 discovery_config
+        assert src.discovery_config["title_exclude_patterns"] == ["任免|任命|免去", "常务会议"]
+        fetcher = _FakeFetcher(self._responses())
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert stats.discovered == 3
+        assert stats.new_docs == 1          # 只有正常政策计入新增
+        assert stats.archived_noise == 2    # 任免（列表标题命中）+ 常务会议（文章标题命中）
+        docs = {d.canonical_url: d for d in db.execute(select(Document)).scalars()}
+        assert docs[NOISE_A].status == "archived"
+        assert docs[NOISE_C].status == "archived"
+        assert docs[NOISE_B].status == "candidate"
+        assert docs[NOISE_A].title == NOISE_T_A
+        # 归档文档仍建版本（内容留存，人工恢复为 candidate 后立即可导入）
+        ver = db.execute(
+            select(DocumentVersion).where(DocumentVersion.document_id == docs[NOISE_A].id)
+        ).scalar_one()
+        assert ver.extracted_text and _LONG_ZH[:30] in ver.extracted_text
+        tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
+        assert tasks[NOISE_A] == "archived_noise"
+        assert tasks[NOISE_B] == "new"
+
+    def test_unconfigured_source_keeps_candidate(self, db):
+        """未配置 title_exclude_patterns 的来源不受影响（防误伤发改委等高质源）。"""
+        src = self._setup_source(db, code="hy_plain_test")
+        assert "title_exclude_patterns" not in (src.discovery_config or {})
+        fetcher = _FakeFetcher(self._responses())
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats.new_docs == 3
+        assert stats.archived_noise == 0
+        assert all(d.status == "candidate" for d in db.execute(select(Document)).scalars())
+
+    def test_force_refetch_does_not_rearchive_restored(self, db):
+        """已人工恢复（改回 candidate）的存量文档在后续 force 重抓中保持 candidate，
+
+        且不重复建文档——过滤器只作用于新建路径。"""
+        src = self._setup_source(db)
+        fetcher = _FakeFetcher(self._responses())
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+        doc = db.execute(select(Document).where(Document.canonical_url == NOISE_A)).scalar_one()
+        assert doc.status == "archived"
+        doc.status = "candidate"    # 模拟人工恢复
+        db.commit()
+
+        stats2 = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                             sleeper=lambda s: None, resolver=fake_resolver, force_refetch=True)
+        db.refresh(doc)
+        assert doc.status == "candidate"
+        assert stats2.archived_noise == 0
+        assert len(db.execute(select(Document)).scalars().all()) == 3
+
+
+class TestTitleFilterMatcher:
+    def test_first_hit_and_misses(self):
+        assert first_matching_pattern(NOISE_T_A, ["任免|任命|免去", "常务会议"]) == "任免|任命|免去"
+        assert first_matching_pattern(NOISE_T_C, ["任免|任命|免去", "常务会议"]) == "常务会议"
+        assert first_matching_pattern(NOISE_T_B, ["任免|任命|免去"]) is None
+        assert first_matching_pattern(None, ["任免"]) is None
+        assert first_matching_pattern(NOISE_T_A, []) is None
+
+    def test_invalid_pattern_skipped_not_raised(self):
+        """配置了非法正则时跳过该模式、其余模式照常生效，绝不中断采集。"""
+        assert first_matching_pattern(NOISE_T_A, ["([", "任免"]) == "任免"
+        assert first_matching_pattern(NOISE_T_A, ["(["]) is None

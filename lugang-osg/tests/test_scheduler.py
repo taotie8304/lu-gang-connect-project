@@ -4,6 +4,8 @@ import threading
 import time
 from types import SimpleNamespace
 
+import pytest
+
 import app.scheduler as scheduler_mod
 
 
@@ -93,6 +95,32 @@ def test_sync_job_skips_disabled_source(monkeypatch):
     )
     scheduler_mod._make_job("hk_gia_press")()
     assert ran == []
+
+
+def test_trigger_sync_allow_disabled_flag(monkeypatch):
+    """管理员强制触发：停用源带 allow_disabled=true 可试采；不带则 409。"""
+    from fastapi import BackgroundTasks, HTTPException
+
+    import app.api.admin as admin_mod
+
+    class _FakeDB:
+        def execute(self, *args, **kwargs):
+            return _FakeResult(SimpleNamespace(code="jinan_huaiyin", enabled=False))
+
+    monkeypatch.setattr(admin_mod, "_sync_lock", threading.Lock())
+
+    resp = admin_mod.trigger_sync(
+        "jinan_huaiyin", BackgroundTasks(), force=False,
+        allow_disabled=True, actor="test", db=_FakeDB(),
+    )
+    assert resp.started is True
+
+    with pytest.raises(HTTPException) as ei:
+        admin_mod.trigger_sync(
+            "jinan_huaiyin", BackgroundTasks(), force=False,
+            allow_disabled=False, actor="test", db=_FakeDB(),
+        )
+    assert ei.value.status_code == 409
 
 
 def _patch_import_env(monkeypatch, sources, calls):

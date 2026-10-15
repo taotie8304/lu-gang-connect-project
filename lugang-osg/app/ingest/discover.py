@@ -83,24 +83,43 @@ def is_sitemap(content_type: str, content: bytes) -> bool:
 # ---------------------------------------------------------------------------
 
 class _LinkCollector(HTMLParser):
-    """提取 <a href>；忽略锚点/javascript/data 链接。
+    """提取 <a href> 及其锚文本与 title 属性。忽略锚点/javascript/data 链接（外层过滤）。
 
-    鲁港通 - 不再采集同页 <title>：实测山东政务站栏目页/首页的 <title> 是站点名
-    （如「山东省商务厅」），把它当作发现项标题会让所有文章标题退化成站点名。
-    文章标题统一由 extract 从文章页自身提取。
+    鲁港通 - 链接标题即文章标题：实测 gongkai 五区频道与 jpaas 单元（2026-10-14）——
+    列表 <a> 的 title 属性/锚文本是干净完整的文章标题；而文章页 <title> 反而常带
+    「科室 - 文号 - 标题」脏前缀（五区）或只是站点名（起步区），不能用作标题来源。
     """
 
     _SKIP_SCHEMES = ("javascript:", "mailto:", "tel:", "data:")
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
-        self.links: list[str] = []
+        self.links: list[tuple[str, str, str | None]] = []   # (href, text, title_attr)
+        self._open: dict | None = None
 
     def handle_starttag(self, tag: str, attrs) -> None:
         if tag == "a":
-            href = dict(attrs).get("href")
+            self._finish_open()
+            d = dict(attrs)
+            href = (d.get("href") or "").strip()
             if href:
-                self.links.append(href.strip())
+                self._open = {"href": href, "title": d.get("title"), "text": []}
+
+    def handle_data(self, data: str) -> None:
+        if self._open is not None:
+            self._open["text"].append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "a":
+            self._finish_open()
+
+    def _finish_open(self) -> None:
+        """闭合当前 <a>（含未闭合就被下一个 <a> 顶掉的畸形片段）。"""
+        if self._open is None:
+            return
+        text = " ".join("".join(self._open["text"]).split())
+        self.links.append((self._open["href"], text, self._open["title"]))
+        self._open = None
 
 
 # 鲁港通 - 政务云 CMS（用友 jpaas）栏目页把文章列表嵌在 <script type="text/xml"><datastore>
@@ -113,13 +132,13 @@ _CDATA_RE = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
 _JPAAS_MODULE_PATH = "/module/"
 
 
-def _extract_datastore_links(html: str) -> list[str]:
-    """从 script type=text/xml 的 CDATA 片段提取 a href（jpaas 栏目文章列表）。
+def _extract_datastore_links(html: str) -> list[tuple[str, str, str | None]]:
+    """从 script type=text/xml 的 CDATA 片段提取 a href 及标题（jpaas 栏目文章列表）。
 
     鲁港通 - 每个 CDATA 片段是一段 HTML（li 包裹 a href=文章页），复用 _LinkCollector 解析，
     与常规链接走同一套 scheme 过滤；单片段畸形不影响其余，绝不打断整页发现。
     """
-    links: list[str] = []
+    links: list[tuple[str, str, str | None]] = []
     for script_body in _XML_SCRIPT_RE.findall(html):
         for cdata in _CDATA_RE.findall(script_body):
             sub = _LinkCollector()
@@ -127,17 +146,33 @@ def _extract_datastore_links(html: str) -> list[str]:
                 sub.feed(cdata)
             except Exception:  # noqa: BLE001 - 单个 CDATA 片段畸形不影响其余
                 continue
-            for href in sub.links:
+            for href, text, title_attr in sub.links:
                 if _JPAAS_MODULE_PATH in href:
                     continue
-                links.append(href)
+                links.append((href, text, title_attr))
     return links
 
 
-def parse_listing(content: bytes, base_url: str, *, max_links: int = 500) -> list[DiscoveredItem]:
+# 鲁港通 - 列表链接标题门槛：锚文本可能是「更多」「查看详情」等按钮文字（2~5 字），
+# 不达门槛不采信，防按钮文字污染文档标题（实测政务文章标题均 8 字以上）。
+_MIN_LINK_TITLE_CHARS = 6
+
+
+def _link_title(title_attr: str | None, text: str | None) -> str | None:
+    """取链接标题：title 属性优先、锚文本兜底；压缩空白；短噪声文本丢弃。"""
+    t = re.sub(r"\s+", " ", (title_attr or text or "")).strip()
+    return t if len(t) >= _MIN_LINK_TITLE_CHARS else None
+
+
+def parse_listing(content: bytes, base_url: str, *, max_links: int = 500,
+                  pattern: re.Pattern | None = None) -> list[DiscoveredItem]:
     """从列表页 HTML 提取链接（相对地址基于 base_url 拼接；上限防超大门户页）。
 
-    返回项不带 title（入口页标题不代表文章标题），由 pipeline 抓取文章页后提取。
+    鲁港通 - 链接标题即文章标题：列表 <a> 的 title 属性/锚文本是干净完整标题，
+    随项带回（pipeline 优先用列表标题，文章页 <title> 仅兜底）。实测 2026-10-14：
+    gongkai 五区频道文章页 <title> 带「科室 - 文号 - 标题」脏前缀，不能当标题源。
+    pattern：可选正则，只收命中的链接形态（如 gongkai 五区的 doc_<hex>.html），
+    把栏目/导航/静态资源链接挡在发现层。
     """
     collector = _LinkCollector()
     try:
@@ -151,7 +186,7 @@ def parse_listing(content: bytes, base_url: str, *, max_links: int = 500) -> lis
 
     items: list[DiscoveredItem] = []
     seen: set[str] = set()
-    for href in all_links:
+    for href, text, title_attr in all_links:
         # 鲁港通 - 纯页内锚点（href="#" / "#anchor"）：urljoin 后会变成页面自身 URL，
         # 被误当候选抓一轮（商务厅检索页「当前位置」面包屑即此形态，每页一条噪声）。
         if href.lower().startswith(_LinkCollector._SKIP_SCHEMES) or href.startswith("#"):
@@ -159,9 +194,11 @@ def parse_listing(content: bytes, base_url: str, *, max_links: int = 500) -> lis
         absolute = urljoin(base_url, href)
         # 鲁港通 - 去掉 fragment（#xxx 不产生新内容）并去重
         absolute = absolute.split("#", 1)[0]
+        if pattern is not None and not pattern.search(absolute):
+            continue
         if absolute and absolute not in seen:
             seen.add(absolute)
-            items.append(DiscoveredItem(url=absolute))
+            items.append(DiscoveredItem(url=absolute, title=_link_title(title_attr, text)))
         if len(items) >= max_links:
             break
     return items
@@ -443,45 +480,6 @@ def _compose_body_html(row: dict, title_field: str | None, body_fields: list) ->
 _JPAAS_ART_MARKER = "/art/"
 
 
-class _TextLinkCollector(HTMLParser):
-    """提取 <a href> 及其锚文本与 title 属性（jpaas 单元片段用；_LinkCollector 只取 href）。
-
-    单元片段里 <a> 的 title 属性/锚文本即干净文章标题。列表标题优先入库可规避实测缺陷：
-    jnxxq 文章页 <title> 全站是站点名（round-11 复测确认），只靠文章页提取会让标题退化。
-    """
-
-    _SKIP_SCHEMES = ("javascript:", "mailto:", "tel:", "data:")
-
-    def __init__(self) -> None:
-        super().__init__(convert_charrefs=True)
-        self.links: list[tuple[str, str, str | None]] = []   # (href, text, title_attr)
-        self._open: dict | None = None
-
-    def handle_starttag(self, tag: str, attrs) -> None:
-        if tag == "a":
-            self._finish_open()
-            d = dict(attrs)
-            href = (d.get("href") or "").strip()
-            if href:
-                self._open = {"href": href, "title": d.get("title"), "text": []}
-
-    def handle_data(self, data: str) -> None:
-        if self._open is not None:
-            self._open["text"].append(data)
-
-    def handle_endtag(self, tag: str) -> None:
-        if tag == "a":
-            self._finish_open()
-
-    def _finish_open(self) -> None:
-        """闭合当前 <a>（含未闭合就被下一个 <a> 顶掉的畸形片段）。"""
-        if self._open is None:
-            return
-        text = " ".join("".join(self._open["text"]).split())
-        self.links.append((self._open["href"], text, self._open["title"]))
-        self._open = None
-
-
 def parse_jpaas_unit(content: bytes, base_url: str) -> list[DiscoveredItem]:
     """解析 jpaas「单元构建」接口响应：JSON.data.html 里的文章链接列表。
 
@@ -502,7 +500,7 @@ def parse_jpaas_unit(content: bytes, base_url: str) -> list[DiscoveredItem]:
     if not isinstance(html, str) or not html.strip():
         return []
 
-    collector = _TextLinkCollector()
+    collector = _LinkCollector()
     try:
         collector.feed(html)
     except Exception:  # noqa: BLE001 - 片段畸形按 0 条处理（发现层纪律）
@@ -511,7 +509,7 @@ def parse_jpaas_unit(content: bytes, base_url: str) -> list[DiscoveredItem]:
     items: list[DiscoveredItem] = []
     seen: set[str] = set()
     for href, text, title_attr in collector.links:
-        if href.lower().startswith(_TextLinkCollector._SKIP_SCHEMES) or href.startswith("#"):
+        if href.lower().startswith(_LinkCollector._SKIP_SCHEMES) or href.startswith("#"):
             continue
         absolute = urljoin(base_url, href).split("#", 1)[0]
         if _JPAAS_ART_MARKER not in absolute:
@@ -519,6 +517,5 @@ def parse_jpaas_unit(content: bytes, base_url: str) -> list[DiscoveredItem]:
         if absolute in seen:
             continue
         seen.add(absolute)
-        title = (title_attr or "").strip() or text or None
-        items.append(DiscoveredItem(url=absolute, title=title))
+        items.append(DiscoveredItem(url=absolute, title=_link_title(title_attr, text)))
     return items

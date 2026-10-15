@@ -579,75 +579,43 @@ sources:
     max_pages_per_run: 50
     enabled: true
 
-  # 鲁港通 - D4 补采（2026-10-14）：济南区县/市直 jpaas 栏目单元直取（d4r7~r11 实测）。
-  # 栏目页为 JS 空壳，走官网公开单元接口（unit_config）；units 每项一个栏目（pageId），
-  # 跨单元去重；page_size 50、每单元默认翻 5 页；7 站错峰分钟位 5/13/21/29/37/45/53。
+  # 鲁港通 - D4 补采改造（2026-10-14，probe8~20 实测）：只采政策类栏目——五区（槐荫/市中/
+  # 章丘/长清/天桥）走 gongkai 树 listing（文件频道+政策解读+问答平台，link_pattern 收敛）；
+  # 起步区（jnxxq）走 xxgk 组配分类库单元 search（QBQ06 政策法规三个子类目）；市直发改委
+  # 保持 jpaas 单元直取。7 站错峰分钟位 5/13/21/29/37/45/53。
   - id: jinan_huaiyin
     name: 济南市槐荫区人民政府
-    # 单元：21118 政务信息 / 21117 要闻 / 21120 部门动态 / 21121 街道动态 / 46128 通知公告
+    # 政策栏目（d4 改造，probe8/18/19/20 实测）：gongkai 树三通道——文件频道（政策文件聚合，
+    # ?page1=N&perPage1=10 翻页）+ 政策解读落地区（单页）+ 民生问答平台（?page1=N）。
+    # 正文容器 .con 实测主体完整（图文解读页文本过短会被最小字数门槛自动挡掉）。
     group: sd_core_gov
     organization: 济南市槐荫区人民政府
     base_domains: [www.huaiyin.gov.cn]
-    allowed_path_prefixes: [/col, /api-gateway/]
+    allowed_path_prefixes: [/gongkai/]
     allow_http: true
     force_ipv4: true
-    discovery_method: jpaas_unit
-    unit_config:
-      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
-      page_size: 50
-      max_pages: 5
-      units:
-      - base_url: http://www.huaiyin.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '80'
-          tplSetId: 'se1jER3qXWToUC5N6Trvt'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '21118'
-      - base_url: http://www.huaiyin.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '80'
-          tplSetId: 'se1jER3qXWToUC5N6Trvt'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '21117'
-      - base_url: http://www.huaiyin.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '80'
-          tplSetId: 'se1jER3qXWToUC5N6Trvt'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '21120'
-      - base_url: http://www.huaiyin.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '80'
-          tplSetId: 'se1jER3qXWToUC5N6Trvt'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '21121'
-      - base_url: http://www.huaiyin.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '80'
-          tplSetId: 'se1jER3qXWToUC5N6Trvt'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '46128'
-    content_selector: "#zoom"
+    discovery_method: listing
+    listing_urls:
+      - "http://www.huaiyin.gov.cn/gongkai/channel_6389a6a5375991828263c1c4/?page1={page1}&perPage1=10"
+      - "http://www.huaiyin.gov.cn/gongkai/channel_6389a6b1375991828263c3c8/"
+      - "http://www.huaiyin.gov.cn/gongkai/channel_huaiyinqu_zwztzlkz_3/?page1={page1}"
+    paginate:
+      page_param: page1
+      start: 1
+      max_pages: 42
+    link_pattern: 'doc_[0-9a-f]+\.html'
+    content_selector: ".con"
     schedule: "5 */8 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 80
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（现栏目全为要闻/动态类，保留率 0/160）
-    enabled: false
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮 + 翻 42 页全覆盖（试采 162 条已过审：126 保留 / 36 归档）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: jinan_fgw
     name: 济南市发展和改革委员会
@@ -682,7 +650,9 @@ sources:
 
   - id: jinan_jnxxq
     name: 济南新旧动能转换起步区管委会
-    # 单元：122860 起步动态 / 40106 通知公告 / 122932 调查征集
+    # 政策栏目（d4 改造，probe14/15/18 实测）：xxgk 组配分类库（pageId 48179）按类目 search
+    # 筛选三单元——QBQ06-03 规范性文件 / QBQ06-04 管委文件 / QBQ06-05 政策解读；
+    # pageSize=50，max_pages 按实测页深（34/99/165+ 条）；正文容器 .bt-content 实测命中。
     group: sd_core_gov
     organization: 济南新旧动能转换起步区管委会
     base_domains: [jnxxq.jinan.gov.cn]
@@ -695,225 +665,188 @@ sources:
       max_pages: 5
       units:
       - base_url: https://jnxxq.jinan.gov.cn
+        max_pages: 2
+        search:
+          xxgkId: QBQ06-03
+          xxgkType: ''
+          className: 政策法规
         params:
           parseType: 'bulidstatic'
           webId: '66'
-          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          tplSetId: cfUHMSJ6T6HMO0R74BhbF
           pageType: 'column'
-          tagId: 'ajax分页'
+          tagId: '组配分类list'
           editType: 'null'
-          pageId: '122860'
+          pageId: '48179'
       - base_url: https://jnxxq.jinan.gov.cn
+        max_pages: 3
+        search:
+          xxgkId: QBQ06-04
+          xxgkType: ''
+          className: 政策法规
         params:
           parseType: 'bulidstatic'
           webId: '66'
-          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          tplSetId: cfUHMSJ6T6HMO0R74BhbF
           pageType: 'column'
-          tagId: 'ajax分页'
+          tagId: '组配分类list'
           editType: 'null'
-          pageId: '40106'
+          pageId: '48179'
       - base_url: https://jnxxq.jinan.gov.cn
+        max_pages: 6
+        search:
+          xxgkId: QBQ06-05
+          xxgkType: ''
+          className: 政策法规
         params:
           parseType: 'bulidstatic'
           webId: '66'
-          tplSetId: 'cfUHMSJ6T6HMO0R74BhbF'
+          tplSetId: cfUHMSJ6T6HMO0R74BhbF
           pageType: 'column'
-          tagId: 'ajax分页'
+          tagId: '组配分类list'
           editType: 'null'
-          pageId: '122932'
-    content_selector: "#zoom"
+          pageId: '48179'
+    content_selector: ".bt-content"
     schedule: "21 */8 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 60
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 2/67）
-    enabled: false
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮（三单元页深 2/3/6 已覆盖全量；试采清单已过审）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: jinan_shizhong
     name: 济南市市中区人民政府
-    # 单元：15756 政务要闻 / 15762 通知公告
+    # 政策栏目（d4 改造，probe8/18/20 实测）：gongkai 树两通道——文件频道（?page1=N&perPage1=10 翻页）
+    # + 政策解读落地区（单页）；正文容器 .con 实测主体完整。
     group: sd_core_gov
     organization: 济南市市中区人民政府
     base_domains: [www.shizhong.gov.cn]
-    allowed_path_prefixes: [/col, /api-gateway/]
+    allowed_path_prefixes: [/gongkai/]
     allow_http: true
     force_ipv4: true
-    discovery_method: jpaas_unit
-    unit_config:
-      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
-      page_size: 50
-      max_pages: 5
-      units:
-      - base_url: http://www.shizhong.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '79'
-          tplSetId: 'ik3DJhu4PUYoSonnmNITw'
-          pageType: 'column'
-          tagId: '当前栏目-list'
-          editType: 'null'
-          pageId: '15756'
-      - base_url: http://www.shizhong.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '79'
-          tplSetId: 'ik3DJhu4PUYoSonnmNITw'
-          pageType: 'column'
-          tagId: '当前栏目-list'
-          editType: 'null'
-          pageId: '15762'
-    content_selector: "#zoom"
+    discovery_method: listing
+    listing_urls:
+      - "http://www.shizhong.gov.cn/gongkai/channel_6389a1293759918282633a78/?page1={page1}&perPage1=10"
+      - "http://www.shizhong.gov.cn/gongkai/channel_6389a1313759918282633c34/"
+    paginate:
+      page_param: page1
+      start: 1
+      max_pages: 42
+    link_pattern: 'doc_[0-9a-f]+\.html'
+    content_selector: ".con"
     schedule: "29 */8 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 60
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（现栏目全为区领导活动/会议类，保留率 0/50）
-    enabled: false
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮 + 翻 42 页全覆盖（试采 162 条已过审：126 保留 / 36 归档）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: jinan_zhangqiu
     name: 济南市章丘区人民政府
-    # 单元：21750 通知公告 / 21752·21753 信息列表 / 21892 网上调查
+    # 政策栏目（d4 改造，probe8/18/20 实测）：gongkai 树两通道——文件频道（?page1=N&perPage1=10 翻页）
+    # + 政策解读落地区（单页）；正文容器 .con 实测主体完整。
     group: sd_core_gov
     organization: 济南市章丘区人民政府
     base_domains: [www.jnzq.gov.cn]
-    allowed_path_prefixes: [/col, /api-gateway/]
+    allowed_path_prefixes: [/gongkai/]
     allow_http: true
     force_ipv4: true
-    discovery_method: jpaas_unit
-    unit_config:
-      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
-      page_size: 50
-      max_pages: 5
-      units:
-      - base_url: http://www.jnzq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '84'
-          tplSetId: 'DgbXss8l8xeyQU593KiTo'
-          pageType: 'column'
-          tagId: '信息列表'
-          editType: 'null'
-          pageId: '21750'
-      - base_url: http://www.jnzq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '84'
-          tplSetId: 'DgbXss8l8xeyQU593KiTo'
-          pageType: 'column'
-          tagId: '信息列表'
-          editType: 'null'
-          pageId: '21752'
-      - base_url: http://www.jnzq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '84'
-          tplSetId: 'DgbXss8l8xeyQU593KiTo'
-          pageType: 'column'
-          tagId: '信息列表'
-          editType: 'null'
-          pageId: '21753'
-      - base_url: http://www.jnzq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '84'
-          tplSetId: 'DgbXss8l8xeyQU593KiTo'
-          pageType: 'column'
-          tagId: '信息列表'
-          editType: 'null'
-          pageId: '21892'
-    content_selector: .art_con
+    discovery_method: listing
+    listing_urls:
+      - "http://www.jnzq.gov.cn/gongkai/channel_6389aee73759918282646510/?page1={page1}&perPage1=10"
+      - "http://www.jnzq.gov.cn/gongkai/channel_6389aef13759918282646690/"
+    paginate:
+      page_param: page1
+      start: 1
+      max_pages: 42
+    link_pattern: 'doc_[0-9a-f]+\.html'
+    content_selector: ".con"
     schedule: "37 */8 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 80
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 6/63）
-    enabled: false
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮 + 翻 42 页全覆盖（试采 162 条已过审：126 保留 / 36 归档）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: jinan_changqing
     name: 济南市长清区人民政府
-    # 单元：21721 公告公示 / 24443 回应关切
+    # 政策栏目（d4 改造，probe8/18/20 实测）：gongkai 树两通道——文件频道（?page1=N&perPage1=10 翻页）
+    # + 政策解读落地区（单页）；正文容器 .con 实测主体完整。
     group: sd_core_gov
     organization: 济南市长清区人民政府
     base_domains: [www.jncq.gov.cn]
-    allowed_path_prefixes: [/col, /api-gateway/]
+    allowed_path_prefixes: [/gongkai/]
     allow_http: true
     force_ipv4: true
-    discovery_method: jpaas_unit
-    unit_config:
-      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
-      page_size: 50
-      max_pages: 5
-      units:
-      - base_url: http://www.jncq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '83'
-          tplSetId: '6bMJbNi2pZtTHOpZi6V0Z'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '21721'
-      - base_url: http://www.jncq.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '83'
-          tplSetId: '6bMJbNi2pZtTHOpZi6V0Z'
-          pageType: 'column'
-          tagId: '当前栏目列表'
-          editType: 'null'
-          pageId: '24443'
-    content_selector: "#zoom"
+    discovery_method: listing
+    listing_urls:
+      - "http://www.jncq.gov.cn/gongkai/channel_6389b6fa375991828265064b/?page1={page1}&perPage1=10"
+      - "http://www.jncq.gov.cn/gongkai/channel_6389b7013759918282650745/"
+    paginate:
+      page_param: page1
+      start: 1
+      max_pages: 42
+    link_pattern: 'doc_[0-9a-f]+\.html'
+    content_selector: ".con"
     schedule: "45 */8 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 60
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 2/55）
-    enabled: false
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮 + 翻 42 页全覆盖（试采 162 条已过审：126 保留 / 36 归档）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: jinan_tianqiao
     name: 济南市天桥区人民政府
-    # 单元：19253 民生问答（低保/营业执照/助学金） / 25954 招商投递 / 24382 行政审批服务
+    # 政策栏目（d4 改造，probe8/18/19/20 实测）：gongkai 树三通道——文件频道（?page1=N&perPage1=10
+    # 翻页）+ 政策解读落地区（单页）+ 民生问答平台（?page1=N，上批保留项所在通道）。
     group: sd_core_gov
     organization: 济南市天桥区人民政府
     base_domains: [www.tianqiao.gov.cn]
-    allowed_path_prefixes: [/col, /api-gateway/]
+    allowed_path_prefixes: [/gongkai/]
     allow_http: true
     force_ipv4: true
-    discovery_method: jpaas_unit
-    unit_config:
-      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
-      page_size: 50
-      max_pages: 5
-      units:
-      - base_url: http://www.tianqiao.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '81'
-          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
-          pageType: 'column'
-          tagId: '内容列表'
-          editType: 'null'
-          pageId: '19253'
-      - base_url: http://www.tianqiao.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '81'
-          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
-          pageType: 'column'
-          tagId: '内容列表'
-          editType: 'null'
-          pageId: '25954'
-      - base_url: http://www.tianqiao.gov.cn
-        params:
-          parseType: 'bulidstatic'
-          webId: '81'
-          tplSetId: '8iFJwfhXibwjJKAzv3eIu'
-          pageType: 'column'
-          tagId: '内容列表'
-          editType: 'null'
-          pageId: '24382'
-    content_selector: "#zoom"
+    discovery_method: listing
+    listing_urls:
+      - "http://www.tianqiao.gov.cn/gongkai/channel_6389a085375991828263217e/?page1={page1}&perPage1=10"
+      - "http://www.tianqiao.gov.cn/gongkai/channel_6389a08a37599182826322b6/"
+      - "http://www.tianqiao.gov.cn/gongkai/channel_tianqiaoqu_zwztzlkz_3/?page1={page1}"
+    paginate:
+      page_param: page1
+      start: 1
+      max_pages: 42
+    link_pattern: 'doc_[0-9a-f]+\.html'
+    content_selector: ".con"
     schedule: "53 */8 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 60
-    # 鲁港通 - 2026-10-14 用户决策：暂停采集，待政策栏目改造（本批保留率 5/39，保留项为民生问答）
-    enabled: false
+    max_pages_per_run: 80
+    # 鲁港通 - 2026-10-15 正式版：80 条/轮 + 翻 42 页全覆盖（试采 162 条已过审：126 保留 / 36 归档）
+    # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：命中即 archived，不进知识库、可随时恢复
+    title_exclude_patterns:
+      - '任免|任命|免去'
+      - '常务会议'
+      - '非物质文化遗产|不可移动文物'
+      - '建制调整'
+    enabled: true
 
   - id: hk_police_so
     name: 香港警务处社团事务处

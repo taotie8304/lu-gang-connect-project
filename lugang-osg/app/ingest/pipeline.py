@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -26,6 +28,7 @@ from app.ingest.discover import (
     parse_sitemap,
 )
 from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf
+from app.ingest.title_filter import first_matching_pattern
 from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
 from app.security.fetcher import (
     FetchAborted,
@@ -65,6 +68,8 @@ class SyncStats:
     # 鲁港通 - 栏目/列表页形态过滤与单轮上限截断的候选数（仅计数，不逐条建 crawl_task）
     skipped_non_article: int = 0
     skipped_limit: int = 0
+    # 鲁港通 - 标题噪声自动归档的新文档数（status=archived，不进知识库）
+    archived_noise: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -157,8 +162,18 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
         # 即网站自身 funclick 的调用形态）；普通 GET 列表页不受影响（缺省 GET、无 paginate）。
         http_method = (cfg.get("method") or "GET").upper()
         paginate = cfg.get("paginate") or {}
+        # 鲁港通 - link_pattern：只收命中文档形态的链接（五区 gongkai doc_<hex>.html），
+        # 栏目/导航/「更多」链接在发现层就挡掉；无效正则记录错误后按不过滤处理。
+        pattern = None
+        raw_pattern = cfg.get("link_pattern")
+        if raw_pattern:
+            try:
+                pattern = re.compile(raw_pattern)
+            except re.error as exc:
+                stats.errors.append(f"link_pattern 无效（忽略）: {exc}")
         for url in cfg.get("listing_urls", []):
-            items.extend(_discover_paged(db, url, lambda c, b: parse_listing(c, b),
+            items.extend(_discover_paged(db, url,
+                                         lambda c, b: parse_listing(c, b, pattern=pattern),
                                          http_method, paginate,
                                          rules, settings, fetcher, sleeper, stats))
     elif method == "js_menu":
@@ -232,14 +247,20 @@ def _discover_paged(db, endpoint, parser, http_method, paginate,
     start = int(paginate.get("start", 1))
     max_pages = int(paginate.get("max_pages", 50))
     out: list[DiscoveredItem] = []
+    seen: set[str] = set()
     page = start
     while page < start + max_pages:
         url = endpoint.replace(placeholder, str(page)) if placeholder in endpoint else endpoint
         page_items = _fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats,
                                       parser, method=http_method)
-        if not page_items:
-            break   # 空页/末页/请求失败 → 停止翻页
-        out.extend(page_items)
+        # 鲁港通 - 跨页去重：gongkai 五区侧栏「最新文件」在每页重复出现，不去重会逐页
+        # 重复抓同一文档白耗配额；个别站翻页越界会回卷首页内容，整页无新链接即判末页
+        # 停止，防翻页永不停止。空页同样在此退出。
+        fresh = [it for it in page_items if it.url not in seen]
+        if not fresh:
+            break
+        seen.update(it.url for it in fresh)
+        out.extend(fresh)
         if placeholder not in endpoint:
             break   # 模板无占位符 → 单页即止，防死循环
         page += 1
@@ -261,13 +282,24 @@ def _build_jpaas_unit_endpoint(unit: dict, unit_cfg: dict) -> str:
     %7BpageNo%7D，须还原为字面量供 _discover_paged 逐页替换（替换后回归纯编码
     形态，与探针 urlencode(json.dumps(...)) 的产物逐字节一致）。pageSize 实测
     上限 99（hy/zq），50 为通用安全值；jndpc/jnxxq 忽略此参数、按站点模板分页。
+
+    鲁港通 - unit.search（起步区 xxgk 类目筛选，probe14/15 实测）：search 为
+    对象（如 {xxgkId: QBQ06-03, xxgkType: "", className: 政策法规}），须序列化
+    成 JSON 字符串再作 paramJson 的字符串字段（双编码，distinctList.js
+    xxgkMorePage 同款）——单编码会被服务端当对象拒掉或忽略筛选。
     """
     from urllib.parse import urlencode
 
     api_path = unit_cfg.get("api_path") or _JPAAS_UNIT_API_PATH
     base_url = (unit.get("base_url") or "").rstrip("/")
     page_size = max(1, int(unit_cfg.get("page_size") or 50))
-    param_json = '{"pageNo": {pageNo}, "pageSize": %d}' % page_size
+    search = unit.get("search")
+    if isinstance(search, dict) and search:
+        inner = json.dumps(search, ensure_ascii=False, separators=(",", ":"))
+        param_json = ('{"pageNo": {pageNo}, "pageSize": %d, "search": %s}'
+                      % (page_size, json.dumps(inner, ensure_ascii=False)))
+    else:
+        param_json = '{"pageNo": {pageNo}, "pageSize": %d}' % page_size
     query = urlencode({**dict(unit.get("params") or {}), "paramJson": param_json})
     query = query.replace("%7BpageNo%7D", "{pageNo}")
     return f"{base_url}{api_path}?{query}"
@@ -442,6 +474,11 @@ def _process_candidates(db, source, run, candidates, rules, settings,
         elif action == "unchanged":
             stats.unchanged_docs += 1
             stats.fetched_ok += 1
+        elif action == "archived_noise":
+            # 鲁港通 - 标题命中排除词的新文档已置 archived：计入已处理页数
+            # （同 skipped_low_content），保证 max_pages_per_run 上限不被绕过
+            stats.archived_noise += 1
+            stats.fetched_ok += 1
         elif action == "skipped_low_content":
             # 鲁港通 - 抽取成功但正文不足（栏目页/导航页）：计入已处理页数，
             # 保证 max_pages_per_run 上限不被噪声页绕过
@@ -457,7 +494,7 @@ def _process_candidates(db, source, run, candidates, rules, settings,
 
 
 def _store_document(db, source, canonical, result: FetchResult, item) -> str:
-    """sha256 版本化入库。返回 new / updated / unchanged / skipped_low_content。"""
+    """sha256 版本化入库。返回 new / archived_noise / updated / unchanged / skipped_low_content。"""
     content_sha = hashlib.sha256(result.content).hexdigest()
 
     doc = db.execute(
@@ -493,17 +530,30 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
         return "skipped_low_content"
 
     if doc is None:
+        # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：列表标题与文章页标题任一命中
+        # 来源配置的 title_exclude_patterns 即置 archived（不进知识库、可随时恢复）。
+        # 只作用于新建文档：已人工恢复（candidate）的存量文档重抓不会被再次归档。
+        noise_hit = None
+        for t in (item.title, extracted.title):
+            noise_hit = first_matching_pattern(t, cfg.get("title_exclude_patterns"))
+            if noise_hit:
+                break
         doc = Document(
             source_id=source.id,
             canonical_url=canonical,
             title=item.title or extracted.title,
             language=extracted.language_hint,
             organization=source.organization,
-            status="candidate",
+            status="archived" if noise_hit else "candidate",
         )
         db.add(doc)
         db.flush()
-        action = "new"
+        if noise_hit:
+            action = "archived_noise"
+            logger.info("%s: 标题命中排除词「%s」自动归档: %s",
+                        source.code, noise_hit, item.title or extracted.title)
+        else:
+            action = "new"
     else:
         action = "updated"
         db.query(DocumentVersion).filter(
