@@ -18,6 +18,8 @@ import { useSystemStore } from '@/web/common/system/useSystemStore';
 import ChatSetting from '@/pageComponents/chat/ChatSetting';
 import AppChatWindow from '@/pageComponents/chat/ChatWindow/AppChatWindow';
 import HomeChatWindow from '@/pageComponents/chat/ChatWindow/HomeChatWindow';
+import BuiltinBrowserPanel from '@/pageComponents/chat/builtinBrowser/panel';
+import { BuiltinBrowserProvider } from '@/pageComponents/chat/builtinBrowser/context';
 import { ChatPageContext, ChatPageContextProvider } from '@/web/core/chat/context/chatPageContext';
 import ChatAllApp from '@/pageComponents/chat/ChatAllApp';
 import { useUserStore } from '@/web/support/user/useUserStore';
@@ -123,6 +125,9 @@ const Chat = () => {
           />
         </PageContainer>
       )}
+
+      {/* 鲁港通 - 办事浏览器右栏面板（内置浏览器 P1） */}
+      <BuiltinBrowserPanel />
     </Flex>
   );
 };
@@ -227,7 +232,10 @@ const ChatContent = (props: ChatPageProps) => {
         showWholeResponse={isRoot ? props.showWholeResponse : false}
       >
         <ChatRecordContextProvider params={chatRecordProviderParams}>
-          <Chat />
+          {/* 鲁港通 - 办事浏览器面板状态（内置浏览器 P1） */}
+          <BuiltinBrowserProvider>
+            <Chat />
+          </BuiltinBrowserProvider>
         </ChatRecordContextProvider>
       </ChatItemContextProvider>
     </ChatContextProvider>

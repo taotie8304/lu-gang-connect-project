@@ -25,6 +25,7 @@ import { getFileUploadId } from '../utils/uploadTask';
 import { isChatFileAllowedBySelectConfig } from '../utils/file';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import PointsBalanceNotice, { PointsBalanceTag } from '@/pageComponents/chat/PointsBalanceNotice';
+import BuiltinBrowserEntryButton from '@/pageComponents/chat/builtinBrowser/entryButton';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
 import MyBox from '@fastgpt/web/components/common/MyBox';
@@ -386,6 +387,9 @@ const ChatInput = ({
         <Flex alignItems={'center'} gap={[0, 1]}>
           {/* Attachment and Voice Group */}
           <Flex alignItems={'center'} h={9}>
+            {/* 鲁港通 - 办事浏览器入口 */}
+            <BuiltinBrowserEntryButton />
+
             {/* file selector button */}
             {canUploadFile && (
               <Flex

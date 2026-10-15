@@ -77,7 +77,8 @@ const nextConfig: NextConfig = {
     '@zilliz/milvus2-sdk-node',
     '@opentelemetry/api-logs',
     '@mariozechner/pi-agent-core',
-    '@mariozechner/pi-ai'
+    '@mariozechner/pi-ai',
+    'wuying-agentbay-sdk'
   ],
   // 优化大库的 barrel exports tree-shaking
   experimental: {
