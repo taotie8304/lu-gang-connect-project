@@ -47,9 +47,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(200).send('success');
     }
 
-    // 金额核对：通知金额与订单金额不一致时拒绝并留痕（验签已过，多为配置错误）
+    // 金额核对：通知金额与订单实付金额（原价 − 代金券抵扣）不一致时拒绝并留痕（验签已过，多为配置错误）
     const notifyAmount = Number(notifyData.total_amount);
-    const billReadPrice = bill.price / PRICE_SCALE;
+    const billReadPrice = (bill.price - (bill.deductAmount ?? 0)) / PRICE_SCALE;
     if (Number.isFinite(notifyAmount) && Math.abs(notifyAmount - billReadPrice) > 0.01) {
       addLog.error('支付宝异步通知金额与订单不一致，拒绝核销', {
         outTradeNo,

@@ -28,6 +28,11 @@ import { getNanoid } from '@fastgpt/global/common/string/tools';
 import { addMonths } from 'date-fns';
 import dayjs from 'dayjs';
 import { incrUserPoints, grantUserPlan } from '@fastgpt/service/support/wallet/points/controller';
+import {
+  lockVoucherForBill,
+  releaseVoucherByBill,
+  finalizeVoucherByBill
+} from '@fastgpt/service/support/wallet/voucher/controller';
 import { alipayPrecreate, alipayQueryOrder } from './alipay';
 
 // 鲁港通 - 4.16.2 使用 OpenTelemetry logger 取代旧 addLog
@@ -44,6 +49,8 @@ type CreateBillParams =
       subMode: `${SubModeEnum}`;
       teamId: string;
       tmbId: string;
+      /** 鲁港通 - 代金券：选用的代金券 ID（可选，单笔最多一张） */
+      voucherId?: string;
     }
   | {
       type: `${BillTypeEnum.extraPoints}`;
@@ -51,14 +58,17 @@ type CreateBillParams =
       month: number;
       teamId: string;
       tmbId: string;
+      /** 鲁港通 - 代金券：选用的代金券 ID（可选，单笔最多一张） */
+      voucherId?: string;
     };
 
 /**
- * 创建支付订单：计价 -> 落库 -> 支付宝预下单 -> 回填收款码。
+ * 创建支付订单：计价 -> 锁券（如有）-> 落库 -> 支付宝预下单 -> 回填收款码。
  * 计价口径与前端价格页完全一致（标准套餐年付 10 个月价；积分包按配置包价格）。
+ * 鲁港通 - 代金券抵扣后实付为 0 时跳过支付宝预下单，直接核销发放（paidDirectly）。
  */
 export const createAlipayBill = async (params: CreateBillParams) => {
-  const { teamId, tmbId, type } = params;
+  const { teamId, tmbId, type, voucherId } = params;
   const subPlans = global.subPlans;
 
   let readPrice: number;
@@ -84,10 +94,10 @@ export const createAlipayBill = async (params: CreateBillParams) => {
     const { extraPoints, month } = params;
     const pkg = getExtraPointsPackage({ subPlans, points: extraPoints, month });
     if (!pkg) {
-      throw new Error('未找到对应的积分套餐，请从购买页的积分包中选择后重试');
+      throw new Error('未找到对应的 Credits 套餐，请从购买页的 Credits 包中选择后重试');
     }
     readPrice = pkg.price;
-    subject = `鲁港通-额外积分包-${extraPoints}分`;
+    subject = `鲁港通-额外 Credits 包-${extraPoints}`;
     metadata.extraPoints = extraPoints;
     metadata.month = month;
     metadata.totalPoints = getExtraPointsGrantPoints(pkg);
@@ -100,6 +110,24 @@ export const createAlipayBill = async (params: CreateBillParams) => {
   }
 
   const orderId = generateOrderId();
+  const priceInternal = Math.round(readPrice * PRICE_SCALE);
+
+  // 鲁港通 - 代金券：先锁券再落库；锁失败（被占用/余额不足）直接抛错终止下单
+  let deductAmount = 0;
+  if (voucherId) {
+    const locked = await lockVoucherForBill({
+      voucherId,
+      tmbId,
+      priceInternal,
+      orderId
+    });
+    deductAmount = locked.deduct;
+  }
+
+  const payAmountInternal = priceInternal - deductAmount;
+  const payAmount = payAmountInternal / PRICE_SCALE;
+
+  // 落库失败时释放已锁定的券，避免券被永久占用
   const [bill] = await MongoBill.create([
     {
       teamId,
@@ -108,25 +136,56 @@ export const createAlipayBill = async (params: CreateBillParams) => {
       status: BillStatusEnum.NOTPAY,
       type,
       payWay: BillPayWayEnum.alipay,
-      price: Math.round(readPrice * PRICE_SCALE),
+      price: priceInternal,
+      ...(voucherId ? { voucherId, deductAmount } : {}),
       metadata,
       createTime: new Date()
     }
-  ]);
-
-  const qrCode = await alipayPrecreate({
-    outTradeNo: orderId,
-    totalAmount: readPrice,
-    subject
+  ]).catch(async (error) => {
+    await releaseVoucherByBill({ voucherId, orderId, deductAmount });
+    throw error;
   });
+
+  // 鲁港通 - 代金券全额抵扣：跳过支付宝预下单，直接核销发放
+  if (payAmountInternal <= 0) {
+    await settleBill(bill);
+    addLog.info('代金券全额抵扣订单直接核销发放', { orderId, teamId, type, voucherId });
+
+    return {
+      billId: String(bill._id),
+      qrCode: '',
+      readPrice: 0,
+      voucherDeduct: deductAmount / PRICE_SCALE,
+      paidDirectly: true,
+      payment: BillPayWayEnum.alipay
+    };
+  }
+
+  let qrCode: string;
+  try {
+    qrCode = await alipayPrecreate({
+      outTradeNo: orderId,
+      totalAmount: payAmount,
+      subject
+    });
+  } catch (error) {
+    // 预下单失败：关闭订单并释放券，前端可提示后重新下单
+    await MongoBill.updateOne(
+      { _id: bill._id, status: BillStatusEnum.NOTPAY },
+      { $set: { status: BillStatusEnum.CLOSED } }
+    );
+    await releaseVoucherByBill({ voucherId, orderId, deductAmount });
+    throw error;
+  }
   await MongoBill.updateOne({ _id: bill._id }, { $set: { qrCode } });
 
-  addLog.info('支付宝订单创建成功', { orderId, teamId, type, readPrice });
+  addLog.info('支付宝订单创建成功', { orderId, teamId, type, readPrice, payAmount, voucherId });
 
   return {
     billId: String(bill._id),
     qrCode,
-    readPrice,
+    readPrice: payAmount,
+    ...(voucherId ? { voucherDeduct: deductAmount / PRICE_SCALE } : {}),
     payment: BillPayWayEnum.alipay
   };
 };
@@ -163,10 +222,18 @@ export const checkBillPayResult = async ({
     return { status: BillStatusEnum.SUCCESS };
   }
   if (tradeStatus === 'TRADE_CLOSED') {
-    await MongoBill.updateOne(
+    const closed = await MongoBill.updateOne(
       { _id: bill._id, status: BillStatusEnum.NOTPAY },
       { $set: { status: BillStatusEnum.CLOSED } }
     );
+    // 鲁港通 - 代金券：订单关闭后释放预扣（条件更新幂等，重复查单不会重复返还）
+    if (closed.modifiedCount === 1) {
+      await releaseVoucherByBill({
+        voucherId: bill.voucherId ? String(bill.voucherId) : undefined,
+        orderId: bill.orderId,
+        deductAmount: bill.deductAmount ?? 0
+      });
+    }
     return { status: BillStatusEnum.CLOSED };
   }
   return { status: BillStatusEnum.NOTPAY };
@@ -175,11 +242,24 @@ export const checkBillPayResult = async ({
 /**
  * 核销订单：状态原子翻转保证幂等（前端轮询与支付宝异步通知并发到达只发放一次），
  * 翻转成功后再执行发放；发放异常记录错误日志，由管理员凭订单号排查补发。
+ * 鲁港通 - 代金券：实付金额 = 订单金额 − 抵扣金额；核销成功后券预扣定案（写入使用记录）。
  */
 export const settleBill = async (
-  bill: Pick<BillSchemaType, '_id' | 'orderId' | 'price' | 'type' | 'metadata' | 'teamId' | 'tmbId'>,
+  bill: Pick<
+    BillSchemaType,
+    | '_id'
+    | 'orderId'
+    | 'price'
+    | 'voucherId'
+    | 'deductAmount'
+    | 'type'
+    | 'metadata'
+    | 'teamId'
+    | 'tmbId'
+  >,
   tradeNo?: string
 ) => {
+  const deductAmount = bill.deductAmount ?? 0;
   const updated = await MongoBill.updateOne(
     { _id: bill._id, status: BillStatusEnum.NOTPAY },
     {
@@ -187,12 +267,25 @@ export const settleBill = async (
         status: BillStatusEnum.SUCCESS,
         tradeNo,
         payTime: new Date(),
-        paidAmount: bill.price
+        paidAmount: bill.price - deductAmount
       }
     }
   );
   if (updated.modifiedCount !== 1) {
     return;
+  }
+
+  // 鲁港通 - 代金券定案：核销成功后把预扣写入使用记录（失败仅告警，券此时保持锁定态可人工恢复）
+  if (bill.voucherId && deductAmount > 0) {
+    try {
+      await finalizeVoucherByBill({
+        voucherId: String(bill.voucherId),
+        orderId: bill.orderId,
+        deductAmount
+      });
+    } catch (error) {
+      addLog.error('订单已核销但代金券定案失败，需人工排查', { orderId: bill.orderId, error });
+    }
   }
 
   addLog.info('支付宝订单核销，开始发放权益', { orderId: bill.orderId });
@@ -313,10 +406,18 @@ export const cancelAlipayBill = async ({
   if (bill.status !== BillStatusEnum.NOTPAY) {
     throw new Error('仅未支付的订单可以取消');
   }
-  await MongoBill.updateOne(
+  const closed = await MongoBill.updateOne(
     { _id: bill._id, status: BillStatusEnum.NOTPAY },
     { $set: { status: BillStatusEnum.CLOSED } }
   );
+  // 鲁港通 - 代金券：取消成功后释放预扣（条件更新幂等，不会重复返还）
+  if (closed.modifiedCount === 1) {
+    await releaseVoucherByBill({
+      voucherId: bill.voucherId ? String(bill.voucherId) : undefined,
+      orderId: bill.orderId,
+      deductAmount: bill.deductAmount ?? 0
+    });
+  }
 };
 
 /**

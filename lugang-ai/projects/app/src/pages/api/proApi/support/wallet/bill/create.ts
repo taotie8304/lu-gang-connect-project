@@ -27,7 +27,9 @@ async function handler(req: ApiRequestProps, _res: ApiResponseType): Promise<Cre
     tmbId,
     ...(props.type === 'standSubPlan'
       ? { type: props.type, level: props.level, subMode: props.subMode }
-      : { type: props.type, extraPoints: props.extraPoints, month: props.month })
+      : { type: props.type, extraPoints: props.extraPoints, month: props.month }),
+    // 鲁港通 - 代金券：透传选用的券 ID（服务端锁券校验，越权/占用/余额不足会终止下单）
+    ...(props.voucherId ? { voucherId: props.voucherId } : {})
   });
 }
 

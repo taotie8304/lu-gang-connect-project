@@ -43,6 +43,10 @@ export type BillSchemaType = {
   payWay: `${BillPayWayEnum}`;
   /** 订单金额，系统内部金额单位（元 × PRICE_SCALE） */
   price: number;
+  /** 鲁港通 - 代金券：本单使用的代金券 ID（Credits 改革批 3） */
+  voucherId?: unknown;
+  /** 鲁港通 - 代金券：抵扣金额（内部单位），实付 = price - deductAmount */
+  deductAmount?: number;
   /** 实际支付金额（内部单位） */
   paidAmount?: number;
   metadata: BillMetadataType;
@@ -87,6 +91,10 @@ const BillSchema = new Schema({
     type: Number,
     required: true
   },
+  voucherId: {
+    type: Schema.Types.ObjectId
+  },
+  deductAmount: Number,
   paidAmount: Number,
   metadata: {
     type: Schema.Types.Mixed,

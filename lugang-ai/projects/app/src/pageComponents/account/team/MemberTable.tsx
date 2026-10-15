@@ -52,6 +52,7 @@ import MyIconButton from '@fastgpt/web/components/common/Icon/button';
 
 const InviteModal = dynamic(() => import('./Invite/InviteModal'));
 const TransferOwnershipModal = dynamic(() => import('./TransferOwnershipModal'));
+const IssueVoucherModal = dynamic(() => import('./IssueVoucherModal'));
 function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
   const { t } = useClientTranslation(['account_team', 'user']);
   const { toast } = useToast();
@@ -124,6 +125,14 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
   }, [refetchMemberList]);
 
   const { isOpen: isOpenInvite, onOpen: onOpenInvite, onClose: onCloseInvite } = useDisclosure();
+
+  // 鲁港通 - 批3：发券入口（工具栏批量发放 + 行内单成员发放）
+  const {
+    isOpen: isOpenIssueVoucher,
+    onOpen: onOpenIssueVoucher,
+    onClose: onCloseIssueVoucher
+  } = useDisclosure();
+  const [voucherMember, setVoucherMember] = useState<{ tmbId: string; memberName: string }>();
 
   const { runAsync: onSyncMember, loading: isSyncing } = useRequest(postSyncMembers, {
     onSuccess: onRefreshMembers,
@@ -231,6 +240,18 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
               onClick={onOpenInvite}
             >
               {t('account_team:user_team_invite_member')}
+            </Button>
+          )}
+          {userInfo?.team.permission.hasManagePer && (
+            <Button
+              w={['100%', 'auto']}
+              variant={'whitePrimary'}
+              size="md"
+              borderRadius={'md'}
+              leftIcon={<MyIcon name="support/account/coupon" w={'16px'} />}
+              onClick={onOpenIssueVoucher}
+            >
+              {t('account_team:issue_voucher_button')}
             </Button>
           )}
           {userInfo?.team.permission.isOwner && !isSyncMode && isWecomTeam && (
@@ -349,6 +370,17 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
                               hoverColor={'blue.500'}
                               onClick={() => handleEditMemberName(member.tmbId, member.memberName)}
                             />
+                            <MyIconButton
+                              icon={'support/account/coupon'}
+                              size="1rem"
+                              hoverColor={'blue.500'}
+                              onClick={() =>
+                                setVoucherMember({
+                                  tmbId: member.tmbId,
+                                  memberName: member.memberName
+                                })
+                              }
+                            />
                             <PopoverConfirm
                               Trigger={
                                 <Box>
@@ -402,6 +434,10 @@ function MemberTable({ Tabs }: { Tabs: React.ReactNode }) {
       </MyBox>
 
       {isOpenInvite && userInfo?.team?.teamId && <InviteModal onClose={onCloseInvite} />}
+      {isOpenIssueVoucher && <IssueVoucherModal onClose={onCloseIssueVoucher} />}
+      {voucherMember && (
+        <IssueVoucherModal member={voucherMember} onClose={() => setVoucherMember(undefined)} />
+      )}
       {isOpenTransferModal && (
         <TransferOwnershipModal
           onClose={onCloseTransferModal}

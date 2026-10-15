@@ -12,7 +12,9 @@ import { formatNumberWithUnit } from '@fastgpt/global/common/string/tools';
 import { formatActivityExpirationTime } from './utils';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constants';
+import { getExtraPointsPackage } from '@fastgpt/global/support/wallet/bill/lugangPrice';
 import type { PricePurchaseIntent } from './purchaseIntent';
+import { useVoucherSelect } from './useVoucherSelect';
 
 const PLAN_CARD_MAX_WIDTH = '483px';
 
@@ -40,16 +42,18 @@ const ExtraPlan = ({
 
   const extraPointsPackages = subPlans?.extraPoints?.packages || [];
   const [selectedPackageIndex, setSelectedPackageIndex] = useState<number>(0);
+  const { selectVoucher, voucherSelectModal } = useVoucherSelect();
 
   const { runAsync: onclickBuyExtraPoints, loading: isLoadingBuyExtraPoints } = useRequest(
-    async ({ points, month }: { points: number; month: number }) => {
+    async ({ points, month, voucherId }: { points: number; month: number; voucherId?: string }) => {
       points = Math.ceil(points);
       month = Math.ceil(month);
 
       const res = await postCreatePayBill({
         type: BillTypeEnum.extraPoints,
         extraPoints: points,
-        month: month
+        month: month,
+        ...(voucherId ? { voucherId } : {})
       });
 
       setQRPayData({
@@ -65,7 +69,7 @@ const ExtraPlan = ({
   );
 
   const submitExtraPointsPurchase = useCallback(
-    (intent: Extract<PricePurchaseIntent, { type: 'extraPoints' }>) => {
+    async (intent: Extract<PricePurchaseIntent, { type: 'extraPoints' }>) => {
       if (!userInfo && onLoginRequired) {
         onLoginRequired(intent);
         return;
@@ -78,9 +82,22 @@ const ExtraPlan = ({
         return;
       }
 
-      void onclickBuyExtraPoints({ points: intent.points, month: intent.month });
+      // 鲁港通 - 批3：下单前选券（取券失败或没有可用券时直接放行，不阻断购买）
+      const pkg = getExtraPointsPackage({
+        subPlans,
+        points: Math.ceil(intent.points),
+        month: Math.ceil(intent.month)
+      });
+      const voucherId = await selectVoucher(pkg?.price ?? 0);
+      if (voucherId === null) return;
+
+      void onclickBuyExtraPoints({
+        points: intent.points,
+        month: intent.month,
+        ...(voucherId ? { voucherId } : {})
+      });
     },
-    [isDisabledBuy, onLoginRequired, onclickBuyExtraPoints, t, toast, userInfo]
+    [isDisabledBuy, onLoginRequired, onclickBuyExtraPoints, selectVoucher, subPlans, t, toast, userInfo]
   );
 
   useEffect(() => {
@@ -337,6 +354,8 @@ const ExtraPlan = ({
           </HStack>
         </Box>
       </Flex>
+
+      {voucherSelectModal}
 
       {!!qrPayData && (
         <QRCodePayModal

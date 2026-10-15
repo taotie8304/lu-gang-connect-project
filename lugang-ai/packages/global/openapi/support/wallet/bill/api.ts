@@ -76,6 +76,14 @@ export const BillItemSchema = z
       example: '68ee0bd23d17260b7829b138',
       description: '使用的优惠券 ID'
     }),
+    voucherId: ObjectIdSchema.optional().meta({
+      example: '68ee0bd23d17260b7829b139',
+      description: '使用的代金券 ID'
+    }),
+    deductAmount: NumSchema.optional().meta({
+      example: 2000000,
+      description: '代金券抵扣金额（系统内部金额单位），实付 = price − deductAmount'
+    }),
     hasInvoice: z.boolean().optional().meta({ example: false, description: '是否已开具发票' }),
     metadata: BillMetadataSchema,
     paidAmount: NumSchema.optional().meta({ example: 99, description: '实际支付金额' }),
@@ -163,6 +171,10 @@ export const CreateStandPlanBillSchema = z
     discountCouponId: ObjectIdSchema.optional().meta({
       example: '68ee0bd23d17260b7829b138',
       description: '优惠券 ID'
+    }),
+    voucherId: ObjectIdSchema.optional().meta({
+      example: '68ee0bd23d17260b7829b139',
+      description: '代金券 ID（可选，单笔订单最多使用一张）'
     })
   })
   .meta({ description: '标准订阅套餐订单创建参数' });
@@ -177,6 +189,10 @@ export const CreateExtractPointsBillSchema = z
     discountCouponId: ObjectIdSchema.optional().meta({
       example: '68ee0bd23d17260b7829b138',
       description: '优惠券 ID，当前额外积分订单暂不使用'
+    }),
+    voucherId: ObjectIdSchema.optional().meta({
+      example: '68ee0bd23d17260b7829b139',
+      description: '代金券 ID（可选，单笔订单最多使用一张）'
     })
   })
   .meta({ description: '额外积分订单创建参数' });
@@ -229,7 +245,18 @@ export const CreateBillResponseSchema = UpdateBillResponseSchema.safeExtend({
     example: '68ee0bd23d17260b7829b137',
     description: '订单 ID，企微支付时为空'
   }),
-  readPrice: NumSchema.min(0).meta({ example: 99, description: '实际支付价格' }),
+  readPrice: NumSchema.min(0).meta({
+    example: 99,
+    description: '应付金额（原价 − 代金券抵扣），全额抵扣时为 0'
+  }),
+  voucherDeduct: NumSchema.min(0).optional().meta({
+    example: 20,
+    description: '本次订单的代金券抵扣金额（元）'
+  }),
+  paidDirectly: z.boolean().optional().meta({
+    example: false,
+    description: '是否代金券全额抵扣、跳过支付直接到账'
+  }),
   payment: z.enum(BillPayWayEnum).meta({ example: BillPayWayEnum.wx, description: '支付方式' })
 }).meta({ description: '创建订单响应' });
 export type CreateBillResponseType = z.infer<typeof CreateBillResponseSchema>;

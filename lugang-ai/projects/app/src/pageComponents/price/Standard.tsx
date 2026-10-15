@@ -26,6 +26,8 @@ import {
   type PricePurchaseIntent
 } from './purchaseIntent';
 import { LUGANG_BUSINESS_EMAIL } from '@/web/common/system/constants';
+import { getStandardPlanReadPrice } from '@fastgpt/global/support/wallet/bill/lugangPrice';
+import { useVoucherSelect } from './useVoucherSelect';
 
 // 鲁港通 - 价格页展示档位：免费版 / 体验版 / 进阶版 / 专业版（定制版无 customFormUrl 时不展示）
 const NEW_PLAN_LEVELS = [
@@ -326,6 +328,7 @@ const Standard = ({
 
   // Pay code
   const [qrPayData, setQRPayData] = useState<QRPayProps>();
+  const { selectVoucher, voucherSelectModal } = useVoucherSelect();
 
   /* Get pay code */
   const { runAsync: onPay, loading: isLoading } = useRequest(postCreatePayBill, {
@@ -344,21 +347,27 @@ const Standard = ({
   });
 
   const submitStandardPurchase = useCallback(
-    ({ packageChange, level, subMode }: Extract<PricePurchaseIntent, { type: 'standard' }>) => {
+    async ({ packageChange, level, subMode }: Extract<PricePurchaseIntent, { type: 'standard' }>) => {
       if (!userInfo && onLoginRequired) {
         onLoginRequired({ type: 'standard', packageChange, level, subMode });
         return;
       }
+
+      // 鲁港通 - 批3：下单前选券（取券失败或没有可用券时直接放行，不阻断购买）
+      const amountYuan = getStandardPlanReadPrice({ subPlans, level, subMode }) ?? 0;
+      const voucherId = await selectVoucher(amountYuan);
+      if (voucherId === null) return;
 
       setPackageChange(packageChange);
       void onPay({
         type: BillTypeEnum.standSubPlan,
         level: level as StandardSubLevelEnum,
         subMode: subMode as SubModeEnum,
-        discountCouponId: matchedCoupon?._id
+        discountCouponId: matchedCoupon?._id,
+        ...(voucherId ? { voucherId } : {})
       });
     },
-    [matchedCoupon?._id, onLoginRequired, onPay, userInfo]
+    [matchedCoupon?._id, onLoginRequired, onPay, selectVoucher, subPlans, userInfo]
   );
 
   useEffect(() => {
@@ -907,6 +916,8 @@ const Standard = ({
           <MyIcon name={'infoRounded'} w={'15px'} />
           <Box>{t('price:plan.activation_rule')}</Box>
         </Flex>
+
+        {voucherSelectModal}
 
         {!!qrPayData && packageChange && (
           <QRCodePayModal

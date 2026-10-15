@@ -39,6 +39,7 @@ import AccountContainer from '@/pageComponents/account/AccountContainer';
 import { useRouter } from 'next/router';
 import TeamSelector from '@/pageComponents/account/TeamSelector';
 import UserPointsCard from '@/pageComponents/account/info/UserPointsCard';
+import DailyCheckinCard from '@/pageComponents/account/info/DailyCheckinCard';
 import { getWorkorderURL } from '@/web/common/workorder/api';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import MyDivider from '@fastgpt/web/components/common/MyDivider';
@@ -95,6 +96,7 @@ const Info = () => {
             <Box ml={'45px'} flex={'1 0 0'} minW={0}>
               <Box maxW={'805px'}>
                 <UserPointsCard />
+                <DailyCheckinCard />
                 {!!standardPlan && <PlanUsage />}
               </Box>
             </Box>
@@ -103,6 +105,7 @@ const Info = () => {
           <>
             <MyInfo onOpenContact={onOpenContact} />
             <UserPointsCard />
+            <DailyCheckinCard />
             {standardPlan && <PlanUsage />}
             <Other onOpenContact={onOpenContact} />
           </>
@@ -469,24 +472,6 @@ const PlanUsage = () => {
     return false;
   }, [teamPlanStatus]);
 
-  const datasetIndexUsageMap = useMemo(() => {
-    if (!teamPlanStatus) {
-      return {
-        total: t('account_info:unlimited'),
-        rate: 0
-      };
-    }
-
-    const rate = teamPlanStatus.datasetMaxSize
-      ? (teamPlanStatus.usedDatasetIndexSize / teamPlanStatus.datasetMaxSize) * 100
-      : 0;
-
-    return {
-      total: teamPlanStatus.datasetMaxSize ?? t('account_info:unlimited'),
-      rate
-    };
-  }, [t, teamPlanStatus]);
-
   const aiPointsUsageMap = useMemo(() => {
     if (!teamPlanStatus) {
       return {
@@ -689,26 +674,7 @@ const PlanUsage = () => {
             </Flex>
           </Box>
 
-          <Box mt="6" width={'100%'} fontSize={'sm'}>
-            <Flex gap={4} alignItems={'center'} mb={2}>
-              <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-                {t('common:support.user.team.Dataset usage')}
-              </Box>
-              <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-                {Math.round(teamPlanStatus?.usedDatasetIndexSize || 0)} /{' '}
-                {datasetIndexUsageMap.total}
-              </Box>
-            </Flex>
-            <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-              <Box
-                borderRadius={'sm'}
-                transition="width 0.3s"
-                w={`${datasetIndexUsageMap.rate}%`}
-                bg={`${datasetIndexUsageMap.rate < 50 ? 'primary' : datasetIndexUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
-              />
-            </Flex>
-          </Box>
-
+          {/* 鲁港通 - 去「知识库容量」：资源用量区仅保留 Credits 使用量，不再展示容量进度 */}
           <MyDivider />
 
           {limitData.map((item) => {

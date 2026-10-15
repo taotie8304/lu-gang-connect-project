@@ -149,7 +149,8 @@ export const RechargeModal = ({
         </Button>
       </Flex>
 
-      <Flex mb={6} gap={8} w={'100%'}>
+      {/* 鲁港通 - 去「知识库容量」：充值弹窗仅保留 Credits 使用量，不再向用户展示容量进度 */}
+      <Flex mb={6} w={'100%'}>
         <Box flex={1}>
           <Flex gap={4} alignItems={'center'} mb={2}>
             <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
@@ -170,34 +171,6 @@ export const RechargeModal = ({
                   ? (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 50
                     ? 'primary'
                     : (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 80
-                      ? 'yellow'
-                      : 'red'
-                  : 'primary'
-              }.500`}
-            />
-          </Flex>
-        </Box>
-        <Box flex={1}>
-          <Flex gap={4} alignItems={'center'} mb={2}>
-            <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-              {t('common:support.user.team.Dataset usage')}
-            </Box>
-            <Box
-              fontSize={'14px'}
-              fontWeight={'medium'}
-            >{`${teamPlanStatus?.usedDatasetIndexSize || 0} / ${teamPlanStatus?.datasetMaxSize ?? t('common:Unlimited')}`}</Box>
-          </Flex>
-          <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-            <Box
-              borderRadius={'sm'}
-              transition="width 0.3s"
-              w={`${teamPlanStatus?.datasetMaxSize ? Math.max((teamPlanStatus.usedDatasetIndexSize / teamPlanStatus.datasetMaxSize) * 100, 0) : 0}%`}
-              bg={`${
-                teamPlanStatus?.datasetMaxSize
-                  ? (teamPlanStatus.usedDatasetIndexSize / teamPlanStatus.datasetMaxSize) * 100 < 50
-                    ? 'primary'
-                    : (teamPlanStatus.usedDatasetIndexSize / teamPlanStatus.datasetMaxSize) * 100 <
-                        80
                       ? 'yellow'
                       : 'red'
                   : 'primary'

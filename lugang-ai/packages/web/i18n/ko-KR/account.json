@@ -17,7 +17,7 @@
   "chat_history_store_duration": "대화 기록 보관 기간",
   "custom_config_details": "커스텀 설정 상세",
   "day": "일",
-  "extra_ai_points": "AI 포인트 계산 기준",
+  "extra_ai_points": "추가 크레딧",
   "extra_dataset_size": "추가 데이터셋 인덱스 용량",
   "generation_time": "생성 시간",
   "has_invoice": "세금계산서 발행 여부",

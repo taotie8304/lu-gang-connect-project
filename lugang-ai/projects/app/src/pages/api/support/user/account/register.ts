@@ -25,6 +25,7 @@ import { TeamDefaultRoleVal } from '@fastgpt/global/support/permission/user/cons
 import { AppReadChatLogPerVal } from '@fastgpt/global/support/permission/app/constant';
 import { sumPer } from '@fastgpt/global/support/permission/utils';
 import { getOrInitUserPoints } from '@fastgpt/service/support/wallet/points/controller';
+import { createRegisterVoucher } from '@fastgpt/service/support/wallet/voucher/controller';
 import { Types } from 'mongoose';
 
 // 鲁港通 - 适配 4.16.2 OpenTelemetry logger：保留 addLog 名称（方法签名 (msg, data) 与原一致）
@@ -217,6 +218,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // 鲁港通 - 个人积分账户：注册即赠送免费档体验积分（与建号同事务，失败整体回滚）
       await getOrInitUserPoints({
+        teamId: String(rootTeamMember.teamId),
+        tmbId: String(tmb._id),
+        session
+      });
+
+      // 鲁港通 - 代金券：注册赠礼（20 元券，与建号同事务，失败整体回滚）
+      await createRegisterVoucher({
         teamId: String(rootTeamMember.teamId),
         tmbId: String(tmb._id),
         session

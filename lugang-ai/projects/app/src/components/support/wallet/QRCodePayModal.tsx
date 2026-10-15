@@ -35,6 +35,8 @@ const QRCodePayModal = ({
   qrCode,
   iframeCode,
   markdown,
+  voucherDeduct,
+  paidDirectly,
   onSuccess,
   discountCouponName,
   onClose
@@ -51,7 +53,8 @@ const QRCodePayModal = ({
 
   // 鲁港通 - N4：支付成功面板状态。检测到成功后不立即回调 onSuccess（否则外层弹窗被关、成功面板来不及展示），
   // 等用户关闭面板时（完成/右上角 X/跳转按钮）再由 handleClose 统一触发
-  const [paySuccess, setPaySuccess] = useState(false);
+  // 鲁港通 - 批3：代金券全额抵扣时（paidDirectly）订单创建即完成核销，直接进入成功面板
+  const [paySuccess, setPaySuccess] = useState(!!paidDirectly);
 
   const isAlipayConfigured = feConfigs.payConfig?.alipay;
   const isWxConfigured = feConfigs.payConfig?.wx;
@@ -243,6 +246,11 @@ const QRCodePayModal = ({
           <Box mt={2} fontSize={'28px'} fontWeight={'600'} color={'primary.600'}>
             ¥{readPrice.toFixed(2)}
           </Box>
+          {voucherDeduct !== undefined && voucherDeduct > 0 && (
+            <Box mt={1} fontSize={'13px'} color={'myGray.600'}>
+              {t('common:voucher_deduct_amount', { amount: voucherDeduct.toFixed(2) })}
+            </Box>
+          )}
           <Box mt={2} fontSize={'14px'} color={'myGray.600'}>
             {t('common:pay_success_tip')}
           </Box>
@@ -290,6 +298,11 @@ const QRCodePayModal = ({
           {discountCouponName && (
             <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
               {t('common:discount_coupon_used') + t(discountCouponName as any)}
+            </Box>
+          )}
+          {voucherDeduct !== undefined && voucherDeduct > 0 && (
+            <Box color={'myGray.900'} fontSize={'14px'} fontWeight={'500'} mb={6}>
+              {t('common:voucher_deduct_amount', { amount: voucherDeduct.toFixed(2) })}
             </Box>
           )}
 

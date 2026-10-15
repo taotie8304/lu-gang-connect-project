@@ -65,7 +65,7 @@ async function handler(req: ApiRequestProps, res: NextApiResponse) {
   const cursor = MongoUsage.find(where).sort({ time: -1 }).limit(50000).cursor();
   const write = responseWriteController({ res, readStream: cursor });
 
-  write(`\uFEFF时间,成员,类型,应用,消耗积分`);
+  write(`\uFEFF时间,成员,类型,应用,消耗 Credits`);
 
   cursor.on('data', (doc) => {
     const usage = doc as unknown as UsageSchemaType;

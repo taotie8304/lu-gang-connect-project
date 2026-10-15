@@ -1,4 +1,4 @@
-// 鲁港通 - 个人积分卡片：账户中心展示个人积分余额与套餐状态，所有成员（含普通用户）可见
+// 鲁港通 - 个人 Credits 卡片：账户中心展示可用 Credits 余额与套餐状态，所有成员（含普通用户）可见
 import React, { useMemo } from 'react';
 import { Box, Button, Flex } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
@@ -53,7 +53,8 @@ const UserPointsCard = () => {
             <Box
               mt={1}
               fontWeight={'bold'}
-              fontSize={'2xl'}
+              fontSize={'3xl'}
+              lineHeight={'shorter'}
               color={pointsDetail && surplusPoints <= 0 ? 'red.600' : 'myGray.900'}
             >
               {pointsDetail ? formatNumber(surplusPoints) : '-'}
