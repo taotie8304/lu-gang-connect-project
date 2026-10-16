@@ -92,7 +92,11 @@ const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname, '../../'),
   outputFileTracingIncludes: {
     // Node 24 resolves @swc/helpers through module-sync, but Next 16.3 does not trace all ESM helpers.
-    '*': ['../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*']
+    '*': [
+      '../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*',
+      // 鲁港通 - playwright-core 启动时动态 require browsers.json，静态追踪收集不到（办事浏览器 SDK 依赖）：
+      '../../node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/browsers.json'
+    ]
   },
   // Exclude build-time-only packages from standalone output file tracing
   outputFileTracingExcludes: {
