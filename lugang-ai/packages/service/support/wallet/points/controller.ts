@@ -54,7 +54,7 @@ export const getOrInitUserPoints = async ({
   }
 };
 
-/** 充值/赠送入账（累计获得与余额同步增加） */
+/** 充值/赠送入账（累计获得与余额同步增加；先幂等初始化账户再纯增量更新，避免同路径双算子冲突） */
 export const incrUserPoints = async ({
   teamId,
   tmbId,
@@ -68,20 +68,11 @@ export const incrUserPoints = async ({
 }) => {
   if (!points) return;
 
-  const freePoints = getFreePointsAmount();
+  await getOrInitUserPoints({ teamId, tmbId, session });
   await MongoUserPoints.updateOne(
     { tmbId },
-    {
-      $setOnInsert: {
-        teamId,
-        tmbId,
-        totalPoints: freePoints,
-        surplusPoints: freePoints,
-        currentSubLevel: StandardSubLevelEnum.free
-      },
-      $inc: { totalPoints: points, surplusPoints: points }
-    },
-    { upsert: true, session }
+    { $inc: { totalPoints: points, surplusPoints: points } },
+    { session }
   );
 };
 

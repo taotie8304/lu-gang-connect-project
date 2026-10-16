@@ -100,7 +100,12 @@ export const checkin = async ({
     throw error;
   }
 
-  await incrUserPoints({ teamId, tmbId, points: reward });
+  try {
+    await incrUserPoints({ teamId, tmbId, points: reward });
+  } catch (error) {
+    console.error('[checkin] 打卡奖励发放失败:', error);
+    throw new Error('打卡奖励发放异常，请刷新页面查看；如仍未到账请联系客服');
+  }
 
   return { streak, reward };
 };

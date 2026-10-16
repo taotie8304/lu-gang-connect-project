@@ -219,6 +219,23 @@ describe('checkin', () => {
     expect(incrUserPointsMock).not.toHaveBeenCalled();
   });
 
+  it('奖励发放失败：给出可操作中文提示，不向用户暴露技术错误', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    incrUserPointsMock.mockRejectedValue(
+      new Error("Updating the path 'totalPoints' would create a conflict at 'totalPoints'")
+    );
+
+    try {
+      await expect(checkin({ teamId: mockTeamId, tmbId: mockTmbId, now: baseNow })).rejects.toThrow(
+        '打卡奖励发放异常，请刷新页面查看；如仍未到账请联系客服'
+      );
+      expect(consoleErrorSpy).toHaveBeenCalled();
+    } finally {
+      consoleErrorSpy.mockRestore();
+    }
+  });
+
   it('跨日判定：北京时间过零点后按新一天续签', async () => {
     // UTC 2026-10-15 16:30 = 北京时间 2026-10-16 00:30
     const crossNow = new Date('2026-10-15T16:30:00.000Z');

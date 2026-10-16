@@ -124,30 +124,50 @@ describe('incrUserPoints', () => {
     delete (global as any).subPlans;
   });
 
-  it('入账时累计获得与余额同步递增', async () => {
+  it('账户已存在：按增量入账，累计获得与余额同步递增', async () => {
+    findOneMock.mockReturnValue(findOneChain({ teamId: mockTeamId, tmbId: mockTmbId }));
     updateOneMock.mockResolvedValue({});
 
     await incrUserPoints({ teamId: mockTeamId, tmbId: mockTmbId, points: 1000 });
 
     expect(updateOneMock).toHaveBeenCalledWith(
       { tmbId: mockTmbId },
-      {
-        $setOnInsert: {
+      { $inc: { totalPoints: 1000, surplusPoints: 1000 } },
+      { session: undefined }
+    );
+  });
+
+  it('账户不存在：先按免费档初始化，再按增量入账', async () => {
+    findOneMock.mockReturnValue(findOneChain(null));
+    const created = { teamId: mockTeamId, tmbId: mockTmbId, totalPoints: 300, surplusPoints: 300 };
+    createMock.mockResolvedValue([{ toObject: () => created }]);
+    updateOneMock.mockResolvedValue({});
+
+    await incrUserPoints({ teamId: mockTeamId, tmbId: mockTmbId, points: 100 });
+
+    expect(createMock).toHaveBeenCalledWith(
+      [
+        {
           teamId: mockTeamId,
           tmbId: mockTmbId,
           totalPoints: 300,
           surplusPoints: 300,
           currentSubLevel: StandardSubLevelEnum.free
-        },
-        $inc: { totalPoints: 1000, surplusPoints: 1000 }
-      },
-      { upsert: true, session: undefined }
+        }
+      ],
+      { session: undefined, ordered: true }
+    );
+    expect(updateOneMock).toHaveBeenCalledWith(
+      { tmbId: mockTmbId },
+      { $inc: { totalPoints: 100, surplusPoints: 100 } },
+      { session: undefined }
     );
   });
 
   it('points 为 0 时跳过写入', async () => {
     await incrUserPoints({ teamId: mockTeamId, tmbId: mockTmbId, points: 0 });
 
+    expect(findOneMock).not.toHaveBeenCalled();
     expect(updateOneMock).not.toHaveBeenCalled();
   });
 });
