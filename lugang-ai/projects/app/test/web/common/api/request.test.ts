@@ -8,6 +8,7 @@ import {
   responseError,
   AUTH_ERROR_EVENT_NAME,
   GET,
+  PATCH,
   POST,
   instance,
   startInterceptors
@@ -228,6 +229,24 @@ describe('request utils', () => {
         expect.objectContaining({
           data: file,
           method: 'POST'
+        })
+      );
+    });
+
+    it('should send PATCH data in the request body instead of query params', async () => {
+      const requestSpy = vi.spyOn(instance, 'request').mockResolvedValue({
+        data: { code: 200, data: { navigated: true }, message: 'success' }
+      });
+
+      await expect(
+        PATCH('/proApi/builtin-browser/session', { url: 'https://www.gov.hk/' })
+      ).resolves.toEqual({ navigated: true });
+
+      expect(requestSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { url: 'https://www.gov.hk/' },
+          params: undefined,
+          method: 'PATCH'
         })
       );
     });

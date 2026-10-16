@@ -259,7 +259,7 @@ function request(
   }
 
   const { id: signId, abortSignal } = checkMaxQuantity({ url, maxQuantity });
-  const shouldSendBody = ['POST', 'PUT'].includes(method) || dataAsBody;
+  const shouldSendBody = ['POST', 'PUT', 'PATCH'].includes(method) || dataAsBody;
   // 共享请求不接管取消语义，避免一个调用方取消所有等待者。
   const deduplicatedRequestKey =
     deduplicate && !cancelToken && !maxQuantity
