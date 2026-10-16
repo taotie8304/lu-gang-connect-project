@@ -4,6 +4,7 @@ import { MongoBuiltinBrowserSessions } from './schema';
 import {
   closeCloudBrowserSession,
   createCloudBrowserSession,
+  navigateCloudBrowserSession,
   refreshCloudBrowserSession,
   resizeCloudBrowserSession
 } from './agentbay';
@@ -12,12 +13,14 @@ import {
   BUILTIN_BROWSER_ALLOWED_USERNAMES,
   BUILTIN_BROWSER_SESSION_MAX_MINUTES
 } from '@fastgpt/global/support/builtinBrowser/constant';
+import { normalizeBuiltinBrowserUrl } from '@fastgpt/global/support/builtinBrowser/url';
 import type {
   BuiltinBrowserCloseReason,
   BuiltinBrowserSessionStatus,
   BuiltinBrowserViewport,
   CloseBuiltinBrowserSessionResponse,
   GetBuiltinBrowserSessionStatusResponse,
+  NavigateBuiltinBrowserSessionResponse,
   OpenBuiltinBrowserSessionResponse,
   ResizeBuiltinBrowserSessionResponse
 } from '@fastgpt/global/support/builtinBrowser/type';
@@ -231,6 +234,29 @@ export const resizeSession = async ({
   }
   const resized = await resizeCloudBrowserSession(doc.cloudSessionId, viewport);
   return { resized };
+};
+
+/** 网址跳转：面板网址栏请求云端浏览器导航到指定网址；
+ * 网址非法 / 无进行中会话 / 已过期 / 云端失败均返回 navigated=false（前端提示，不上抛） */
+export const navigateSession = async ({
+  tmbId,
+  url,
+  now = new Date()
+}: {
+  tmbId: string;
+  url: string;
+  now?: Date;
+}): Promise<NavigateBuiltinBrowserSessionResponse> => {
+  const target = normalizeBuiltinBrowserUrl(url);
+  if (!target) {
+    return { navigated: false };
+  }
+  const doc = await MongoBuiltinBrowserSessions.findOne({ tmbId, status: 'active' }).lean();
+  if (!doc || doc.expiresAt.getTime() <= now.getTime()) {
+    return { navigated: false };
+  }
+  const navigated = await navigateCloudBrowserSession(doc.cloudSessionId, target);
+  return { navigated };
 };
 
 /** 关台（幂等）：无进行中会话返回 closed=false */

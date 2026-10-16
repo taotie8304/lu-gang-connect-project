@@ -69,6 +69,16 @@ export type ResizeBuiltinBrowserSessionResponse = {
   resized: boolean;
 };
 
+/** 网址跳转（PATCH）请求体：用户在面板网址栏输入的网址（服务端归一化校验） */
+export type NavigateBuiltinBrowserSessionRequest = {
+  url: string;
+};
+
+/** 网址跳转（PATCH）响应：navigated=false 表示无进行中会话 / 网址非法 / 云端跳转失败（前端提示） */
+export type NavigateBuiltinBrowserSessionResponse = {
+  navigated: boolean;
+};
+
 /** 关台（DELETE）响应（幂等：无进行中会话时 closed=false） */
 export type CloseBuiltinBrowserSessionResponse = {
   closed: boolean;

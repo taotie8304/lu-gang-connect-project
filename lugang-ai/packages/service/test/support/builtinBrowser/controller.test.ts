@@ -9,7 +9,8 @@ const {
   createCloudSessionMock,
   refreshCloudSessionMock,
   closeCloudSessionMock,
-  resizeCloudSessionMock
+  resizeCloudSessionMock,
+  navigateCloudSessionMock
 } = vi.hoisted(() => ({
   findOneMock: vi.fn(),
   insertOneMock: vi.fn(),
@@ -19,7 +20,8 @@ const {
   createCloudSessionMock: vi.fn(),
   refreshCloudSessionMock: vi.fn(),
   closeCloudSessionMock: vi.fn(),
-  resizeCloudSessionMock: vi.fn()
+  resizeCloudSessionMock: vi.fn(),
+  navigateCloudSessionMock: vi.fn()
 }));
 
 vi.mock('@fastgpt/service/support/builtinBrowser/schema', () => ({
@@ -36,6 +38,7 @@ vi.mock('@fastgpt/service/support/builtinBrowser/agentbay', () => ({
   refreshCloudBrowserSession: refreshCloudSessionMock,
   closeCloudBrowserSession: closeCloudSessionMock,
   resizeCloudBrowserSession: resizeCloudSessionMock,
+  navigateCloudBrowserSession: navigateCloudSessionMock,
   isBuiltinBrowserConfigured: vi.fn().mockReturnValue(true)
 }));
 
@@ -47,6 +50,7 @@ import {
   assertBuiltinBrowserUser,
   closeSession,
   getSessionStatus,
+  navigateSession,
   openSession,
   resizeSession,
   sweepOverdueSessions
@@ -235,9 +239,15 @@ describe('openSession', () => {
   });
 
   it('并发双击撞唯一索引：关闭新建的云端会话并复用胜者', async () => {
-    findOneMock
-      .mockReturnValueOnce(leanChain(null))
-      .mockReturnValueOnce(leanChain(activeDoc({ cloudSessionId: 'cloud-winner', resourceUrl: 'https://viewer.example/w', expiresAt: new Date(now.getTime() + 29 * MINUTE_MS) })));
+    findOneMock.mockReturnValueOnce(leanChain(null)).mockReturnValueOnce(
+      leanChain(
+        activeDoc({
+          cloudSessionId: 'cloud-winner',
+          resourceUrl: 'https://viewer.example/w',
+          expiresAt: new Date(now.getTime() + 29 * MINUTE_MS)
+        })
+      )
+    );
     createCloudSessionMock.mockResolvedValue({
       cloudSessionId: 'cloud-new',
       resourceUrl: 'https://viewer.example/n'
@@ -306,7 +316,9 @@ describe('closeSession', () => {
   });
 
   it('进行中用了 12 分 30 秒：关云端、标记用户关闭，时长取整 13 分钟', async () => {
-    findOneMock.mockReturnValue(leanChain(activeDoc({ openTime: new Date(now.getTime() - 12.5 * MINUTE_MS) })));
+    findOneMock.mockReturnValue(
+      leanChain(activeDoc({ openTime: new Date(now.getTime() - 12.5 * MINUTE_MS) }))
+    );
 
     await expect(closeSession({ tmbId: mockTmbId, now })).resolves.toEqual({
       closed: true,
@@ -332,8 +344,16 @@ describe('sweepOverdueSessions', () => {
   it('扫描到期的进行中会话：逐一关台并标记到期', async () => {
     findMock.mockReturnValue(
       leanChain([
-        activeDoc({ _id: 'doc-1', cloudSessionId: 'cloud-1', expiresAt: new Date(now.getTime() - MINUTE_MS) }),
-        activeDoc({ _id: 'doc-2', cloudSessionId: 'cloud-2', expiresAt: new Date(now.getTime() - 5 * MINUTE_MS) })
+        activeDoc({
+          _id: 'doc-1',
+          cloudSessionId: 'cloud-1',
+          expiresAt: new Date(now.getTime() - MINUTE_MS)
+        }),
+        activeDoc({
+          _id: 'doc-2',
+          cloudSessionId: 'cloud-2',
+          expiresAt: new Date(now.getTime() - 5 * MINUTE_MS)
+        })
       ])
     );
 
@@ -396,9 +416,63 @@ describe('resizeSession', () => {
   });
 });
 
+describe('navigateSession', () => {
+  it('有进行中会话：归一化网址后请求云端跳转，navigated=true', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    navigateCloudSessionMock.mockResolvedValue(true);
+
+    await expect(
+      navigateSession({ tmbId: mockTmbId, url: 'www.immd.gov.hk', now })
+    ).resolves.toEqual({ navigated: true });
+
+    expect(navigateCloudSessionMock).toHaveBeenCalledWith('cloud-1', 'https://www.immd.gov.hk/');
+  });
+
+  it('网址非法：不触碰云端，直接 navigated=false', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+
+    await expect(navigateSession({ tmbId: mockTmbId, url: 'hello', now })).resolves.toEqual({
+      navigated: false
+    });
+    expect(navigateCloudSessionMock).not.toHaveBeenCalled();
+    expect(findOneMock).not.toHaveBeenCalled();
+  });
+
+  it('无进行中会话：navigated=false，不触碰云端', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+
+    await expect(navigateSession({ tmbId: mockTmbId, url: 'www.gov.hk', now })).resolves.toEqual({
+      navigated: false
+    });
+    expect(navigateCloudSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('会话已过期：navigated=false，不触碰云端', async () => {
+    findOneMock.mockReturnValue(
+      leanChain(activeDoc({ expiresAt: new Date(now.getTime() - MINUTE_MS) }))
+    );
+
+    await expect(navigateSession({ tmbId: mockTmbId, url: 'www.gov.hk', now })).resolves.toEqual({
+      navigated: false
+    });
+    expect(navigateCloudSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('云端跳转失败：静默返回 navigated=false，不上抛', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    navigateCloudSessionMock.mockResolvedValue(false);
+
+    await expect(navigateSession({ tmbId: mockTmbId, url: 'www.gov.hk', now })).resolves.toEqual({
+      navigated: false
+    });
+  });
+});
+
 describe('assertBuiltinBrowserUser', () => {
   it('管理员直通：不查库', async () => {
-    await expect(assertBuiltinBrowserUser({ userId: 'u-1', isRoot: true })).resolves.toBeUndefined();
+    await expect(
+      assertBuiltinBrowserUser({ userId: 'u-1', isRoot: true })
+    ).resolves.toBeUndefined();
     expect(userFindByIdMock).not.toHaveBeenCalled();
   });
 
@@ -413,8 +487,8 @@ describe('assertBuiltinBrowserUser', () => {
   it('名单外账号：抛内测中文提示', async () => {
     userFindByIdMock.mockReturnValue(leanChain({ username: 'someone' }));
 
-    await expect(
-      assertBuiltinBrowserUser({ userId: 'u-3', isRoot: false })
-    ).rejects.toThrow('该功能正在内测中，暂未对你开放');
+    await expect(assertBuiltinBrowserUser({ userId: 'u-3', isRoot: false })).rejects.toThrow(
+      '该功能正在内测中，暂未对你开放'
+    );
   });
 });

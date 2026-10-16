@@ -355,6 +355,10 @@ export function PUT<T = undefined>(url: string, data = {}, config: ConfigType = 
   return request(url, data, config, 'PUT');
 }
 
+export function PATCH<T = undefined>(url: string, data = {}, config: ConfigType = {}): Promise<T> {
+  return request(url, data, config, 'PATCH');
+}
+
 export function DELETE<T = undefined>(url: string, data = {}, config: ConfigType = {}): Promise<T> {
   return request(url, data, config, 'DELETE');
 }

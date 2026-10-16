@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
     resourceUrl: 'https://viewer.example/1',
     browser: { initializeAsync: vi.fn() },
     callMcpTool: vi.fn(),
+    command: { executeCommand: vi.fn() },
     delete: vi.fn().mockResolvedValue({ success: true })
   };
   const client = {
@@ -27,6 +28,7 @@ vi.mock('wuying-agentbay-sdk', () => ({
 
 import {
   createCloudBrowserSession,
+  navigateCloudBrowserSession,
   resizeCloudBrowserSession
 } from '@fastgpt/service/support/builtinBrowser/agentbay';
 
@@ -36,15 +38,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.session.browser.initializeAsync.mockResolvedValue(true);
   mocks.session.callMcpTool.mockResolvedValue({ success: true });
+  mocks.session.command.executeCommand.mockResolvedValue({ success: true, stdout: '' });
   mocks.client.create.mockResolvedValue({ success: true, session: mocks.session });
   mocks.client.get.mockResolvedValue({ success: true, session: mocks.session });
 });
 
 describe('createCloudBrowserSession', () => {
   it('开台序列：初始化后先导航到起始页，再按面板尺寸调整窗口', async () => {
-    await expect(
-      createCloudBrowserSession({ width: 479, height: 557 })
-    ).resolves.toEqual({
+    await expect(createCloudBrowserSession({ width: 479, height: 557 })).resolves.toEqual({
       cloudSessionId: 'cloud-s-1',
       resourceUrl: 'https://viewer.example/1'
     });
@@ -54,7 +55,7 @@ describe('createCloudBrowserSession', () => {
     });
     expect(mocks.session.callMcpTool).toHaveBeenNthCalledWith(2, 'browser_resize', {
       width: 479,
-      height: 473
+      height: 561
     });
     expect(mocks.session.callMcpTool.mock.invocationCallOrder[0]).toBeGreaterThan(
       mocks.session.browser.initializeAsync.mock.invocationCallOrder[0]
@@ -66,7 +67,7 @@ describe('createCloudBrowserSession', () => {
 
     expect(mocks.session.callMcpTool).toHaveBeenNthCalledWith(2, 'browser_resize', {
       width: 480,
-      height: 716
+      height: 804
     });
   });
 
@@ -75,7 +76,7 @@ describe('createCloudBrowserSession', () => {
 
     expect(mocks.session.callMcpTool).toHaveBeenNthCalledWith(2, 'browser_resize', {
       width: 479,
-      height: 473
+      height: 561
     });
   });
 
@@ -104,16 +105,14 @@ describe('createCloudBrowserSession', () => {
         : Promise.resolve({ success: true })
     );
 
-    await expect(
-      createCloudBrowserSession({ width: 479, height: 557 })
-    ).resolves.toEqual({
+    await expect(createCloudBrowserSession({ width: 479, height: 557 })).resolves.toEqual({
       cloudSessionId: 'cloud-s-1',
       resourceUrl: 'https://viewer.example/1'
     });
 
     expect(mocks.session.callMcpTool).toHaveBeenNthCalledWith(2, 'browser_resize', {
       width: 479,
-      height: 473
+      height: 561
     });
   });
 
@@ -124,9 +123,7 @@ describe('createCloudBrowserSession', () => {
         : Promise.resolve({ success: true })
     );
 
-    await expect(
-      createCloudBrowserSession({ width: 479, height: 557 })
-    ).resolves.toEqual({
+    await expect(createCloudBrowserSession({ width: 479, height: 557 })).resolves.toEqual({
       cloudSessionId: 'cloud-s-1',
       resourceUrl: 'https://viewer.example/1'
     });
@@ -138,9 +135,7 @@ describe('createCloudBrowserSession', () => {
       errorMessage: 'No open pages available'
     });
 
-    await expect(
-      createCloudBrowserSession({ width: 479, height: 557 })
-    ).resolves.toEqual({
+    await expect(createCloudBrowserSession({ width: 479, height: 557 })).resolves.toEqual({
       cloudSessionId: 'cloud-s-1',
       resourceUrl: 'https://viewer.example/1'
     });
@@ -149,13 +144,13 @@ describe('createCloudBrowserSession', () => {
 
 describe('resizeCloudBrowserSession', () => {
   it('会话存在：按面板尺寸调整窗口并返回 true', async () => {
-    await expect(
-      resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })
-    ).resolves.toBe(true);
+    await expect(resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })).resolves.toBe(
+      true
+    );
 
     expect(mocks.session.callMcpTool).toHaveBeenCalledWith('browser_resize', {
       width: 479,
-      height: 473
+      height: 561
     });
   });
 
@@ -171,8 +166,45 @@ describe('resizeCloudBrowserSession', () => {
   it('工具调用异常：返回 false，不上抛', async () => {
     mocks.session.callMcpTool.mockRejectedValue(new Error('boom'));
 
+    await expect(resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })).resolves.toBe(
+      false
+    );
+  });
+
+  it('工具层返回 success=false：返回 false', async () => {
+    mocks.session.callMcpTool.mockResolvedValue({ success: false });
+
+    await expect(resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })).resolves.toBe(
+      false
+    );
+  });
+});
+
+describe('navigateCloudBrowserSession', () => {
+  it('会话存在：调用浏览器导航工具并返回 true', async () => {
     await expect(
-      resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })
+      navigateCloudBrowserSession('cloud-s-1', 'https://www.immd.gov.hk/')
+    ).resolves.toBe(true);
+
+    expect(mocks.session.callMcpTool).toHaveBeenCalledWith('browser_navigate', {
+      url: 'https://www.immd.gov.hk/'
+    });
+  });
+
+  it('云端会话不存在：返回 false，不调用工具', async () => {
+    mocks.client.get.mockResolvedValue({ success: false, session: undefined });
+
+    await expect(
+      navigateCloudBrowserSession('cloud-gone', 'https://www.immd.gov.hk/')
+    ).resolves.toBe(false);
+    expect(mocks.session.callMcpTool).not.toHaveBeenCalled();
+  });
+
+  it('工具调用异常：返回 false，不上抛', async () => {
+    mocks.session.callMcpTool.mockRejectedValue(new Error('boom'));
+
+    await expect(
+      navigateCloudBrowserSession('cloud-s-1', 'https://www.immd.gov.hk/')
     ).resolves.toBe(false);
   });
 
@@ -180,7 +212,27 @@ describe('resizeCloudBrowserSession', () => {
     mocks.session.callMcpTool.mockResolvedValue({ success: false });
 
     await expect(
-      resizeCloudBrowserSession('cloud-s-1', { width: 479, height: 557 })
+      navigateCloudBrowserSession('cloud-s-1', 'https://www.immd.gov.hk/')
     ).resolves.toBe(false);
+  });
+});
+
+describe('云端看门狗部署（钉窗兜底）', () => {
+  it('开台成功后部署：停旧 → 落盘脚本 → 后台启动', async () => {
+    await createCloudBrowserSession({ width: 479, height: 557 });
+
+    expect(mocks.session.command.executeCommand).toHaveBeenCalledTimes(3);
+    expect(mocks.session.command.executeCommand.mock.calls[0][0]).toContain('[l]ugang-wd');
+    expect(mocks.session.command.executeCommand.mock.calls[1][0]).toContain('base64 -d');
+    expect(mocks.session.command.executeCommand.mock.calls[2][0]).toContain('setsid nohup');
+  });
+
+  it('看门狗部署失败不阻断开台', async () => {
+    mocks.session.command.executeCommand.mockRejectedValue(new Error('cmd failed'));
+
+    await expect(createCloudBrowserSession({ width: 479, height: 557 })).resolves.toEqual({
+      cloudSessionId: 'cloud-s-1',
+      resourceUrl: 'https://viewer.example/1'
+    });
   });
 });

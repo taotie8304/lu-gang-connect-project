@@ -1,8 +1,11 @@
 // 鲁港通 - 办事浏览器右栏面板（内置浏览器 P1）：
 // 聊天页右侧内嵌浏览器画面（PC 端），用户可随时接管键鼠操作；
+// 画面按云端查看器实测几何裁切，只显示浏览器页面本身（豆包式固定画面，不可拖动、不可移动）；
+// 面板左缘可拖拽调宽（宽度本地记忆），网址栏可手动输入网址让云端浏览器跳转；
 // 关闭面板即结束本次使用（释放云端会话）；单次时长上限由服务端控制，临近上限本地提醒
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Box, Button, Flex, Text } from '@chakra-ui/react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
+import { Box, Button, Flex, Input, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import PageContainer from '@/components/PageContainer';
 import MyIcon from '@fastgpt/web/components/common/Icon';
@@ -11,27 +14,58 @@ import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { getErrText } from '@fastgpt/global/common/error/utils';
-import { BUILTIN_BROWSER_REMIND_BEFORE_MINUTES } from '@fastgpt/global/support/builtinBrowser/constant';
+import {
+  BUILTIN_BROWSER_CROP_LEFT_PX,
+  BUILTIN_BROWSER_CROP_TOP_PX,
+  BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
+  BUILTIN_BROWSER_PANEL_MAX_WIDTH,
+  BUILTIN_BROWSER_PANEL_MIN_WIDTH,
+  BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY,
+  BUILTIN_BROWSER_REMIND_BEFORE_MINUTES
+} from '@fastgpt/global/support/builtinBrowser/constant';
 import type { BuiltinBrowserViewport } from '@fastgpt/global/support/builtinBrowser/type';
+import { normalizeBuiltinBrowserUrl } from '@fastgpt/global/support/builtinBrowser/url';
 import {
   deleteBuiltinBrowserSession,
+  patchBuiltinBrowserNavigate,
   postOpenBuiltinBrowserSession,
   putBuiltinBrowserViewport
 } from '@/web/support/builtinBrowser/api';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 
-const PANEL_WIDTH = '480px';
 const MINUTE_MS = 60 * 1000;
 const COUNTDOWN_TICK_MS = 30 * 1000;
 // 鲁港通 - 窗口拉伸/缩放后延迟 600ms 再同步云端视口，避免拖动过程连发请求
 const VIEWPORT_FOLLOW_DEBOUNCE_MS = 600;
+// 鲁港通 - 面板窄于该宽度时头部隐藏剩余时间文案（英文/韩文更长，防挤压标题与按钮）
+const HEADER_HIDE_REMAINING_WIDTH = 420;
+
+const clampPanelWidth = (width: number) =>
+  Math.min(
+    BUILTIN_BROWSER_PANEL_MAX_WIDTH,
+    Math.max(BUILTIN_BROWSER_PANEL_MIN_WIDTH, Math.round(width))
+  );
+
+// 鲁港通 - 面板宽度本地记忆：读取时非法值回落默认，隐私模式下存取异常静默
+const readStoredPanelWidth = () => {
+  if (typeof window === 'undefined') return BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
+  try {
+    const stored = Number.parseInt(
+      window.localStorage.getItem(BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY) ?? '',
+      10
+    );
+    return Number.isFinite(stored) ? clampPanelWidth(stored) : BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
+  } catch {
+    return BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
+  }
+};
 
 type BuiltinBrowserSessionState = {
   resourceUrl: string;
   expiresAt: string;
 };
 
-const BuiltinBrowserPanelBody = () => {
+const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { openConfirm, ConfirmModal } = useConfirm({ type: 'common' });
@@ -41,6 +75,7 @@ const BuiltinBrowserPanelBody = () => {
   const [session, setSession] = useState<BuiltinBrowserSessionState>();
   const [errorMessage, setErrorMessage] = useState('');
   const [remainingMs, setRemainingMs] = useState<number>();
+  const [urlInput, setUrlInput] = useState('');
 
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -56,6 +91,10 @@ const BuiltinBrowserPanelBody = () => {
     manual: true,
     errorToast: ''
   });
+  const { runAsync: navigateSession, loading: isNavigating } = useRequest(
+    patchBuiltinBrowserNavigate,
+    { manual: true, errorToast: '' }
+  );
 
   const isOpen = builtinBrowser?.isOpen ?? false;
 
@@ -144,6 +183,30 @@ const BuiltinBrowserPanelBody = () => {
     };
   }, [status, measureViewport, resizeViewport]);
 
+  // 鲁港通 - 网址栏跳转：先本地归一化校验（与服务端同一工具），失败给可操作提示；
+  // 云端跳转是异步的，面板画面会随远端页面刷新，前端无需重载
+  const handleNavigate = useCallback(async () => {
+    const target = normalizeBuiltinBrowserUrl(urlInput);
+    if (!target) {
+      toast({ title: t('common:builtin_browser_url_invalid'), status: 'warning' });
+      return;
+    }
+
+    try {
+      const res = await navigateSession(target);
+      if (!res.navigated) {
+        toast({ title: t('common:builtin_browser_url_open_failed'), status: 'warning' });
+        return;
+      }
+      setUrlInput(target);
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_url_open_failed') as any),
+        status: 'warning'
+      });
+    }
+  }, [navigateSession, t, toast, urlInput]);
+
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
     const endSession = async () => {
@@ -173,6 +236,7 @@ const BuiltinBrowserPanelBody = () => {
     remainingMs === undefined ? undefined : Math.max(1, Math.ceil(remainingMs / MINUTE_MS));
   const isExpiringSoon =
     remainingMs !== undefined && remainingMs <= BUILTIN_BROWSER_REMIND_BEFORE_MINUTES * MINUTE_MS;
+  const showRemaining = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
 
   return (
     <Flex flexDirection={'column'} h={'100%'} minH={0}>
@@ -190,7 +254,7 @@ const BuiltinBrowserPanelBody = () => {
         <Text fontSize={'sm'} fontWeight={500} color={'myGray.900'} whiteSpace={'nowrap'}>
           {t('common:builtin_browser')}
         </Text>
-        {status === 'active' && remainingMinutes !== undefined && (
+        {status === 'active' && showRemaining && remainingMinutes !== undefined && (
           <Text
             fontSize={'xs'}
             color={isExpiringSoon ? 'orange.500' : 'myGray.500'}
@@ -232,8 +296,43 @@ const BuiltinBrowserPanelBody = () => {
         </MyTooltip>
       </Flex>
 
-      {/* Body */}
-      <Box ref={bodyRef} flex={'1 0 0'} minH={0} position={'relative'} bg={'white'}>
+      {/* 网址栏：输入后回车让云端浏览器跳转；非使用中禁用（保持布局稳定，画面区域尺寸不随状态变化） */}
+      <Flex
+        flexShrink={0}
+        alignItems={'center'}
+        px={3}
+        py={2}
+        borderBottom={'1px solid'}
+        borderBottomColor={'myGray.200'}
+      >
+        <Input
+          size={'sm'}
+          fontSize={'sm'}
+          value={urlInput}
+          onChange={(e) => setUrlInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+            void handleNavigate();
+          }}
+          placeholder={t('common:builtin_browser_url_placeholder')}
+          isDisabled={status !== 'active' || isNavigating}
+          bg={'myGray.100'}
+          borderColor={'transparent'}
+          _hover={{ bg: 'myGray.100' }}
+          _focusVisible={{ bg: 'white', borderColor: 'primary.500' }}
+          _placeholder={{ color: 'myGray.500' }}
+        />
+      </Flex>
+
+      {/* Body：裁切容器，只显示云端浏览器页面本身（裁掉查看器工具栏与窗口外框） */}
+      <Box
+        ref={bodyRef}
+        flex={'1 0 0'}
+        minH={0}
+        position={'relative'}
+        overflow={'hidden'}
+        bg={'white'}
+      >
         {status === 'loading' && (
           <Flex
             h={'100%'}
@@ -273,7 +372,15 @@ const BuiltinBrowserPanelBody = () => {
             key={session.resourceUrl}
             src={session.resourceUrl}
             title={t('common:builtin_browser')}
-            style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+            style={{
+              position: 'absolute',
+              left: -BUILTIN_BROWSER_CROP_LEFT_PX,
+              top: -BUILTIN_BROWSER_CROP_TOP_PX,
+              width: `calc(100% + ${BUILTIN_BROWSER_CROP_LEFT_PX}px)`,
+              height: `calc(100% + ${BUILTIN_BROWSER_CROP_TOP_PX}px)`,
+              border: 'none',
+              display: 'block'
+            }}
             sandbox={
               'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-presentation allow-storage-access-by-user-activation'
             }
@@ -292,25 +399,105 @@ const BuiltinBrowserPanel = () => {
   const isVisible = useBuiltinBrowserVisible();
   const builtinBrowser = useContext(BuiltinBrowserContext);
 
+  const [panelWidth, setPanelWidth] = useState(readStoredPanelWidth);
+  const widthRef = useRef(panelWidth);
+  const dragRef = useRef<{ startX: number; startWidth: number } | undefined>(undefined);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // 鲁港通 - 左缘拖拽调宽：pointer capture 保证指针跨到画面/聊天区仍持续接收事件
+  const handleDragStart = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startWidth: widthRef.current };
+    setIsDragging(true);
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleDragMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const next = clampPanelWidth(drag.startWidth + (drag.startX - e.clientX));
+    widthRef.current = next;
+    setPanelWidth(next);
+  }, []);
+
+  const handleDragEnd = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!dragRef.current) return;
+    dragRef.current = undefined;
+    setIsDragging(false);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    try {
+      window.localStorage.setItem(
+        BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY,
+        String(widthRef.current)
+      );
+    } catch {
+      // 隐私模式等场景无法写入：宽度仅本次会话生效
+    }
+  }, []);
+
+  // 鲁港通 - 拖动期间全局禁用选中并保持调整光标，防画面区域出现文字选择抖动
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const prevCursor = document.body.style.cursor;
+    const prevUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevUserSelect;
+    };
+  }, [isDragging]);
+
   if (!isVisible || !builtinBrowser?.isOpen) return null;
 
   return (
-    <PageContainer
-      flex={`0 0 ${PANEL_WIDTH}`}
-      w={PANEL_WIDTH}
-      maxW={PANEL_WIDTH}
-      pr={0}
-      insertProps={{
-        borderWidth: 0,
-        boxShadow: 'none',
-        bg: 'white',
-        borderLeft: '1px solid',
-        borderLeftColor: 'myGray.200',
-        borderRadius: [0, '0 16px 16px 0']
-      }}
+    <Flex
+      flex={`0 0 ${panelWidth}px`}
+      w={`${panelWidth}px`}
+      maxW={`${panelWidth}px`}
+      h={'100%'}
+      minH={0}
+      position={'relative'}
     >
-      <BuiltinBrowserPanelBody />
-    </PageContainer>
+      <PageContainer
+        flex={'1 1 auto'}
+        pr={0}
+        insertProps={{
+          borderWidth: 0,
+          boxShadow: 'none',
+          bg: 'white',
+          borderLeft: '1px solid',
+          borderLeftColor: 'myGray.200',
+          borderRadius: [0, '0 16px 16px 0']
+        }}
+      >
+        <BuiltinBrowserPanelBody panelWidth={panelWidth} />
+      </PageContainer>
+
+      {/* 鲁港通 - 拖拽手柄：面板左缘 6px 条带；拖动中覆盖全面板遮罩，防云端画面抢指针事件 */}
+      <Box
+        position={'absolute'}
+        left={0}
+        top={0}
+        bottom={0}
+        w={'6px'}
+        zIndex={20}
+        cursor={'col-resize'}
+        _hover={{ bg: 'primary.100' }}
+        onPointerDown={handleDragStart}
+        onPointerMove={handleDragMove}
+        onPointerUp={handleDragEnd}
+        onPointerCancel={handleDragEnd}
+      />
+      {isDragging && (
+        <Box position={'absolute'} inset={0} zIndex={30} cursor={'col-resize'} bg={'transparent'} />
+      )}
+    </Flex>
   );
 };
 

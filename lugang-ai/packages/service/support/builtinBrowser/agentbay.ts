@@ -2,6 +2,7 @@
 // 对外只暴露白牌语义（会话 ID / 画面地址），不向业务层泄露底层服务商细节
 import type { AgentBay } from 'wuying-agentbay-sdk';
 import type { BuiltinBrowserViewport } from '@fastgpt/global/support/builtinBrowser/type';
+import { BUILTIN_BROWSER_HEIGHT_EXTRA_PX } from '@fastgpt/global/support/builtinBrowser/constant';
 
 const NOT_CONFIGURED_MESSAGE = '办事浏览器服务未配置，请联系管理员开通';
 const CLOUD_UNAVAILABLE_MESSAGE = '办事浏览器暂时不可用，请稍后再试';
@@ -19,15 +20,12 @@ const VIEWPORT_WIDTH_MAX = 1600;
 const VIEWPORT_HEIGHT_MIN = 240;
 const VIEWPORT_HEIGHT_MAX = 1400;
 
-/** 云窗口顶部为固定高度的标签栏+地址栏（约 77px），视口过高时底部会被查看器裁切；
- * 84 = UI 余量 77 + 安全边际 7（四角标记探针实测：减 84 后画面完整无裁切） */
-const UI_CHROME_RESERVE_PX = 84;
-
-/** 面板视口（CSS 像素）→ 云端窗口尺寸：取整、减去 UI 余量、夹取到合理范围 */
+/** 面板视口（CSS 像素）→ 云端窗口尺寸：高度加余量让页面底缘落到裁切窗下缘之外
+ *（前端按实测几何裁掉查看器外框，见 global 裁切常数），取整并夹取到合理范围 */
 const toCloudViewport = (viewport?: BuiltinBrowserViewport) => {
   const width = Math.round(viewport?.width ?? DEFAULT_VIEWPORT.width);
   const height =
-    Math.round(viewport?.height ?? DEFAULT_VIEWPORT.height) - UI_CHROME_RESERVE_PX;
+    Math.round(viewport?.height ?? DEFAULT_VIEWPORT.height) + BUILTIN_BROWSER_HEIGHT_EXTRA_PX;
   return {
     width: Math.min(VIEWPORT_WIDTH_MAX, Math.max(VIEWPORT_WIDTH_MIN, width)),
     height: Math.min(VIEWPORT_HEIGHT_MAX, Math.max(VIEWPORT_HEIGHT_MIN, height))
@@ -57,6 +55,41 @@ const getClient = async (): Promise<AgentBay> => {
 
 /** 是否已完成云端服务配置（路由门槛与前端提示用） */
 export const isBuiltinBrowserConfigured = () => Boolean(process.env.AGENTBAY_API_KEY);
+
+/** 鲁港通 - 钉窗看门狗脚本：云端桌面若有 playwright 窗口被移动，0.5 秒内拉回固定位置 (10,10)；
+ * 面板裁切几何（页顶 99 / 左缘 14）依赖窗口位置恒定（纯 bash + wmctrl，base64 落盘规避转义） */
+const WATCHDOG_SCRIPT = [
+  '#!/bin/bash',
+  '# 鲁港通 - 看门狗 v2：全部 playwright 窗口拉回 (10,10)',
+  'while true; do',
+  "  for ID in $(wmctrl -lGx | grep -i playwright | awk '{print $1}'); do",
+  '    wmctrl -i -r "$ID" -e 0,10,10,-1,-1',
+  '  done',
+  '  sleep 0.5',
+  'done',
+  ''
+].join('\n');
+
+/** 幂等部署看门狗：停旧 → base64 落盘 → setsid 后台启动；
+ * 失败静默（钉窗为兜底能力，不阻断开台） */
+const deployWindowWatchdog = async (session: {
+  command: { executeCommand: (cmd: string) => Promise<unknown> };
+}): Promise<void> => {
+  try {
+    const scriptBase64 = Buffer.from(WATCHDOG_SCRIPT, 'utf8').toString('base64');
+    await session.command.executeCommand(
+      'for p in $(ps -eo pid,cmd | awk \'/[l]ugang-wd/ {print $1}\'); do kill "$p" 2>/dev/null; done'
+    );
+    await session.command.executeCommand(
+      `echo '${scriptBase64}' | base64 -d > /tmp/lugang-wd.sh && chmod +x /tmp/lugang-wd.sh`
+    );
+    await session.command.executeCommand(
+      'setsid nohup bash /tmp/lugang-wd.sh </dev/null >/dev/null 2>&1 & echo $! > /tmp/lugang-wd.pid'
+    );
+  } catch {
+    // 静默：部署失败不阻断开台
+  }
+};
 
 /** 开台：创建云端浏览器会话并初始化到可用状态；初始化失败即回收并给通用提示 */
 export const createCloudBrowserSession = async (
@@ -95,6 +128,8 @@ export const createCloudBrowserSession = async (
   // 两步均为尽力而为，失败不阻断开台
   await session.callMcpTool('browser_navigate', { url: START_URL }).catch(() => undefined);
   await session.callMcpTool('browser_resize', toCloudViewport(viewport)).catch(() => undefined);
+  // 鲁港通 - 钉窗兜底（幂等部署，失败静默）
+  await deployWindowWatchdog(session);
 
   return { cloudSessionId: session.sessionId, resourceUrl };
 };
@@ -111,6 +146,24 @@ export const resizeCloudBrowserSession = async (
       return false;
     }
     const result = await got.session.callMcpTool('browser_resize', toCloudViewport(viewport));
+    return result?.success === true;
+  } catch {
+    return false;
+  }
+};
+
+/** 网址跳转：在现有会话内导航到指定网址（调用方须先归一化校验）；失败静默返回 false */
+export const navigateCloudBrowserSession = async (
+  cloudSessionId: string,
+  url: string
+): Promise<boolean> => {
+  try {
+    const ab = await getClient();
+    const got = await ab.get(cloudSessionId);
+    if (!got.success || !got.session) {
+      return false;
+    }
+    const result = await got.session.callMcpTool('browser_navigate', { url });
     return result?.success === true;
   } catch {
     return false;

@@ -1,4 +1,4 @@
-// 鲁港通 - 办事浏览器接口（内置浏览器 P1）：POST 开台 / GET 查询 / PUT 视口跟随 / DELETE 关台；
+// 鲁港通 - 办事浏览器接口（内置浏览器 P1）：POST 开台 / GET 查询 / PUT 视口跟随 / PATCH 网址跳转 / DELETE 关台；
 // 灰度门槛（管理员 + 内测名单）在服务端强制校验
 import type { ApiRequestProps, ApiResponseType } from '@fastgpt/next/type';
 import { NextAPI } from '@/service/middleware/entry';
@@ -8,6 +8,7 @@ import {
   closeSession,
   ensureBuiltinBrowserSweeper,
   getSessionStatus,
+  navigateSession,
   openSession,
   resizeSession
 } from '@fastgpt/service/support/builtinBrowser/controller';
@@ -15,6 +16,7 @@ import type {
   BuiltinBrowserViewport,
   CloseBuiltinBrowserSessionResponse,
   GetBuiltinBrowserSessionStatusResponse,
+  NavigateBuiltinBrowserSessionResponse,
   OpenBuiltinBrowserSessionResponse,
   ResizeBuiltinBrowserSessionResponse
 } from '@fastgpt/global/support/builtinBrowser/type';
@@ -35,6 +37,7 @@ async function handler(
   | OpenBuiltinBrowserSessionResponse
   | GetBuiltinBrowserSessionStatusResponse
   | ResizeBuiltinBrowserSessionResponse
+  | NavigateBuiltinBrowserSessionResponse
   | CloseBuiltinBrowserSessionResponse
 > {
   const { teamId, tmbId, userId, isRoot } = await authCert({ req, authToken: true });
@@ -49,6 +52,10 @@ async function handler(
     const viewport = parseViewport(req.body?.viewport);
     if (!viewport) return { resized: false };
     return resizeSession({ tmbId, viewport });
+  }
+  if (req.method === 'PATCH') {
+    const url = typeof req.body?.url === 'string' ? req.body.url : '';
+    return navigateSession({ tmbId, url });
   }
   if (req.method === 'DELETE') {
     return closeSession({ tmbId });
