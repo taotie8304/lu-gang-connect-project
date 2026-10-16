@@ -164,7 +164,7 @@ const BuiltinBrowserPanelBody = () => {
       customContent: t('common:builtin_browser_close_confirm'),
       confirmText: t('common:builtin_browser_close'),
       onConfirm: endSession
-    });
+    })();
   }, [status, openConfirm, t, closeSession, builtinBrowser]);
 
   if (!isOpen) return null;
