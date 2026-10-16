@@ -403,7 +403,7 @@ describe('assertBuiltinBrowserUser', () => {
   });
 
   it('灰度账号 jinhui：放行', async () => {
-    userFindByIdMock.mockReturnValue(leanChain({ username: 'jinhui' }));
+    userFindByIdMock.mockReturnValue(leanChain({ username: 'jinhui@airscend.com' }));
 
     await expect(
       assertBuiltinBrowserUser({ userId: 'u-2', isRoot: false })
