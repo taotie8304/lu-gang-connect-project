@@ -669,12 +669,12 @@ describe('assertBuiltinBrowserUser', () => {
     expect(userFindByIdMock).not.toHaveBeenCalled();
   });
 
-  it('灰度账号 jinhui：放行', async () => {
+  it('网页端下线后原灰度账号：不再放行', async () => {
     userFindByIdMock.mockReturnValue(leanChain({ username: 'jinhui@airscend.com' }));
 
-    await expect(
-      assertBuiltinBrowserUser({ userId: 'u-2', isRoot: false })
-    ).resolves.toBeUndefined();
+    await expect(assertBuiltinBrowserUser({ userId: 'u-2', isRoot: false })).rejects.toThrow(
+      '该功能正在内测中，暂未对你开放'
+    );
   });
 
   it('名单外账号：抛内测中文提示', async () => {

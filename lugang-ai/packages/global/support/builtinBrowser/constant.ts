@@ -3,8 +3,9 @@
 export const BUILTIN_BROWSER_SESSION_MAX_MINUTES = 30;
 /** 到期提醒阈值（分钟）：剩余不足该值时面板提示 */
 export const BUILTIN_BROWSER_REMIND_BEFORE_MINUTES = 5;
-/** 灰度账号用户名白名单（P1 先测 root + jinhui，稳定后扩；注意为完整登录名） */
-export const BUILTIN_BROWSER_ALLOWED_USERNAMES = ['root', 'jinhui@airscend.com'];
+/** 可用账号用户名白名单（注意为完整登录名）：网页端已于 2026-10-17 对普通用户下线，
+ * 仅管理员保留内部可用；功能代码保留，供后续桌面客户端迁移复用 */
+export const BUILTIN_BROWSER_ALLOWED_USERNAMES = ['root'];
 
 // 鲁港通 - 查看器裁切几何（探针实测 probe24/25/26）：云端页面内容位于查看器坐标 (14, 99) 起，
 // 面板内嵌画面按 CROP_* 偏移裁掉云窗口外框（豆包式固定画面，画面不可拖动、不可移动）
