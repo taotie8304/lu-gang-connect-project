@@ -85,3 +85,39 @@ export type CloseBuiltinBrowserSessionResponse = {
   /** 本次使用时长（分钟，向上取整，最小 1；P2 计费展示用） */
   durationMinutes?: number;
 };
+
+/** 用户可见标签页（隐藏占位标签不下发） */
+export type BuiltinBrowserTab = {
+  index: number;
+  title: string;
+  url: string;
+  current: boolean;
+};
+
+/** 标签列表（GET）/ 新建标签（POST）响应 */
+export type GetBuiltinBrowserTabsResponse = {
+  tabs: BuiltinBrowserTab[];
+};
+export type NewBuiltinBrowserTabResponse = {
+  tabs: BuiltinBrowserTab[];
+};
+
+/** 切换标签（PATCH）请求 / 响应：selected=false 表示无会话 / 索引非法 / 云端失败 */
+export type SelectBuiltinBrowserTabRequest = {
+  index: number;
+};
+export type SelectBuiltinBrowserTabResponse = {
+  selected: boolean;
+  /** 最新标签列表（前端据此对齐页面态） */
+  tabs: BuiltinBrowserTab[];
+};
+
+/** 关闭标签（DELETE）请求 / 响应：closed=false 表示无会话 / 索引非法 / 云端失败 */
+export type CloseBuiltinBrowserTabRequest = {
+  index: number;
+};
+export type CloseBuiltinBrowserTabResponse = {
+  closed: boolean;
+  /** 剩余标签；关掉最后一个用户标签时服务端自动补空白标签 */
+  tabs: BuiltinBrowserTab[];
+};

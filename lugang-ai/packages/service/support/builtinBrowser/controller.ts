@@ -3,10 +3,14 @@
 import { MongoBuiltinBrowserSessions } from './schema';
 import {
   closeCloudBrowserSession,
+  closeCloudBrowserTab,
   createCloudBrowserSession,
+  listCloudBrowserTabs,
   navigateCloudBrowserSession,
+  newCloudBrowserTab,
   refreshCloudBrowserSession,
-  resizeCloudBrowserSession
+  resizeCloudBrowserSession,
+  selectCloudBrowserTab
 } from './agentbay';
 import { MongoUser } from '../user/schema';
 import {
@@ -19,10 +23,14 @@ import type {
   BuiltinBrowserSessionStatus,
   BuiltinBrowserViewport,
   CloseBuiltinBrowserSessionResponse,
+  CloseBuiltinBrowserTabResponse,
   GetBuiltinBrowserSessionStatusResponse,
+  GetBuiltinBrowserTabsResponse,
   NavigateBuiltinBrowserSessionResponse,
+  NewBuiltinBrowserTabResponse,
   OpenBuiltinBrowserSessionResponse,
-  ResizeBuiltinBrowserSessionResponse
+  ResizeBuiltinBrowserSessionResponse,
+  SelectBuiltinBrowserTabResponse
 } from '@fastgpt/global/support/builtinBrowser/type';
 
 const MINUTE_MS = 60 * 1000;
@@ -39,6 +47,20 @@ const END_STATUS_MAP: Record<BuiltinBrowserCloseReason, BuiltinBrowserSessionSta
 /** 剩余分钟（向上取整，最小 1 分钟） */
 const calcRemainingMinutes = (expiresAt: Date, now: Date) =>
   Math.max(1, Math.ceil((expiresAt.getTime() - now.getTime()) / MINUTE_MS));
+
+/** 用户标签索引下限：0 为隐藏占位标签，不对前端开放 */
+const MIN_VISIBLE_TAB_INDEX = 1;
+const isValidTabIndex = (index: number) =>
+  Number.isInteger(index) && index >= MIN_VISIBLE_TAB_INDEX;
+
+/** 查找进行中且未过期的会话；无会话/已过期返回 null（不触发关台，由巡检兜底） */
+const findActiveSession = async (tmbId: string, now: Date) => {
+  const doc = await MongoBuiltinBrowserSessions.findOne({ tmbId, status: 'active' }).lean();
+  if (!doc || doc.expiresAt.getTime() <= now.getTime()) {
+    return null;
+  }
+  return doc;
+};
 
 /** 使用时长（向上取整，最小 1 分钟；不足 1 分钟按 1 分钟计） */
 const calcDurationMinutes = (durationMs: number) => Math.max(1, Math.ceil(durationMs / MINUTE_MS));
@@ -282,6 +304,85 @@ export const closeSession = async ({
     closed: true,
     durationMinutes: calcDurationMinutes(now.getTime() - doc.openTime.getTime())
   };
+};
+
+/** 标签页列表：无进行中会话/云端失败均返回空列表（前端静默） */
+export const getTabsSession = async ({
+  tmbId,
+  now = new Date()
+}: {
+  tmbId: string;
+  now?: Date;
+}): Promise<GetBuiltinBrowserTabsResponse> => {
+  const doc = await findActiveSession(tmbId, now);
+  if (!doc) {
+    return { tabs: [] };
+  }
+  const tabs = await listCloudBrowserTabs(doc.cloudSessionId);
+  return { tabs: tabs ?? [] };
+};
+
+/** 新建标签（云端自动选中空白页）：无会话/失败返回空列表 */
+export const newTabSession = async ({
+  tmbId,
+  now = new Date()
+}: {
+  tmbId: string;
+  now?: Date;
+}): Promise<NewBuiltinBrowserTabResponse> => {
+  const doc = await findActiveSession(tmbId, now);
+  if (!doc) {
+    return { tabs: [] };
+  }
+  const tabs = await newCloudBrowserTab(doc.cloudSessionId);
+  return { tabs: tabs ?? [] };
+};
+
+/** 切换标签：非法索引（含隐藏占位 0）直接拒绝，不触碰云端 */
+export const selectTabSession = async ({
+  tmbId,
+  index,
+  now = new Date()
+}: {
+  tmbId: string;
+  index: number;
+  now?: Date;
+}): Promise<SelectBuiltinBrowserTabResponse> => {
+  if (!isValidTabIndex(index)) {
+    return { selected: false, tabs: [] };
+  }
+  const doc = await findActiveSession(tmbId, now);
+  if (!doc) {
+    return { selected: false, tabs: [] };
+  }
+  const selected = await selectCloudBrowserTab(doc.cloudSessionId, index);
+  const tabs = await listCloudBrowserTabs(doc.cloudSessionId);
+  return { selected, tabs: tabs ?? [] };
+};
+
+/** 关闭标签：关掉最后一个用户标签时自动补一个空白标签，保证面板始终有可输入页面 */
+export const closeTabSession = async ({
+  tmbId,
+  index,
+  now = new Date()
+}: {
+  tmbId: string;
+  index: number;
+  now?: Date;
+}): Promise<CloseBuiltinBrowserTabResponse> => {
+  if (!isValidTabIndex(index)) {
+    return { closed: false, tabs: [] };
+  }
+  const doc = await findActiveSession(tmbId, now);
+  if (!doc) {
+    return { closed: false, tabs: [] };
+  }
+  const closed = await closeCloudBrowserTab(doc.cloudSessionId, index);
+  let tabs = (await listCloudBrowserTabs(doc.cloudSessionId)) ?? [];
+  if (closed && tabs.length === 0) {
+    tabs = (await newCloudBrowserTab(doc.cloudSessionId)) ?? [];
+  }
+  return { closed, tabs };
 };
 
 /** 到期巡检：关掉全部超时未关的云端会话并标记到期，返回处理条数 */

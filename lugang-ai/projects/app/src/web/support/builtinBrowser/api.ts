@@ -3,11 +3,15 @@ import { DELETE, GET, PATCH, POST, PUT } from '@/web/common/api/request';
 import type {
   BuiltinBrowserViewport,
   CloseBuiltinBrowserSessionResponse,
+  CloseBuiltinBrowserTabResponse,
   GetBuiltinBrowserSessionStatusResponse,
+  GetBuiltinBrowserTabsResponse,
   NavigateBuiltinBrowserSessionResponse,
+  NewBuiltinBrowserTabResponse,
   OpenBuiltinBrowserSessionRequest,
   OpenBuiltinBrowserSessionResponse,
-  ResizeBuiltinBrowserSessionResponse
+  ResizeBuiltinBrowserSessionResponse,
+  SelectBuiltinBrowserTabResponse
 } from '@fastgpt/global/support/builtinBrowser/type';
 
 export const postOpenBuiltinBrowserSession = (data?: OpenBuiltinBrowserSessionRequest) =>
@@ -24,3 +28,15 @@ export const getBuiltinBrowserSessionStatus = () =>
 
 export const deleteBuiltinBrowserSession = () =>
   DELETE<CloseBuiltinBrowserSessionResponse>('/proApi/builtin-browser/session');
+
+export const getBuiltinBrowserTabs = () =>
+  GET<GetBuiltinBrowserTabsResponse>('/proApi/builtin-browser/tabs');
+
+export const postNewBuiltinBrowserTab = () =>
+  POST<NewBuiltinBrowserTabResponse>('/proApi/builtin-browser/tabs');
+
+export const patchSelectBuiltinBrowserTab = (index: number) =>
+  PATCH<SelectBuiltinBrowserTabResponse>('/proApi/builtin-browser/tabs', { index });
+
+export const deleteBuiltinBrowserTab = (index: number) =>
+  DELETE<CloseBuiltinBrowserTabResponse>('/proApi/builtin-browser/tabs', { index });

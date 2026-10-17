@@ -18,16 +18,22 @@ import {
   BUILTIN_BROWSER_CROP_LEFT_PX,
   BUILTIN_BROWSER_CROP_TOP_PX,
   BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
-  BUILTIN_BROWSER_PANEL_MAX_WIDTH,
-  BUILTIN_BROWSER_PANEL_MIN_WIDTH,
   BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY,
   BUILTIN_BROWSER_REMIND_BEFORE_MINUTES
 } from '@fastgpt/global/support/builtinBrowser/constant';
-import type { BuiltinBrowserViewport } from '@fastgpt/global/support/builtinBrowser/type';
+import { clampBuiltinBrowserPanelWidth } from '@fastgpt/global/support/builtinBrowser/panelWidth';
+import type {
+  BuiltinBrowserTab,
+  BuiltinBrowserViewport
+} from '@fastgpt/global/support/builtinBrowser/type';
 import { normalizeBuiltinBrowserUrl } from '@fastgpt/global/support/builtinBrowser/url';
 import {
   deleteBuiltinBrowserSession,
+  deleteBuiltinBrowserTab,
+  getBuiltinBrowserTabs,
   patchBuiltinBrowserNavigate,
+  patchSelectBuiltinBrowserTab,
+  postNewBuiltinBrowserTab,
   postOpenBuiltinBrowserSession,
   putBuiltinBrowserViewport
 } from '@/web/support/builtinBrowser/api';
@@ -37,16 +43,12 @@ const MINUTE_MS = 60 * 1000;
 const COUNTDOWN_TICK_MS = 30 * 1000;
 // 鲁港通 - 窗口拉伸/缩放后延迟 600ms 再同步云端视口，避免拖动过程连发请求
 const VIEWPORT_FOLLOW_DEBOUNCE_MS = 600;
+// 鲁港通 - 标签条轮询间隔：云端页面内自行跳转/开关标签时，前端靠轮询对齐
+const TAB_REFRESH_INTERVAL_MS = 3000;
 // 鲁港通 - 面板窄于该宽度时头部隐藏剩余时间文案（英文/韩文更长，防挤压标题与按钮）
 const HEADER_HIDE_REMAINING_WIDTH = 420;
 
-const clampPanelWidth = (width: number) =>
-  Math.min(
-    BUILTIN_BROWSER_PANEL_MAX_WIDTH,
-    Math.max(BUILTIN_BROWSER_PANEL_MIN_WIDTH, Math.round(width))
-  );
-
-// 鲁港通 - 面板宽度本地记忆：读取时非法值回落默认，隐私模式下存取异常静默
+// 鲁港通 - 面板宽度本地记忆：读取时非法值回落默认，并按当前窗口宽度收敛
 const readStoredPanelWidth = () => {
   if (typeof window === 'undefined') return BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
   try {
@@ -54,9 +56,12 @@ const readStoredPanelWidth = () => {
       window.localStorage.getItem(BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY) ?? '',
       10
     );
-    return Number.isFinite(stored) ? clampPanelWidth(stored) : BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
+    return clampBuiltinBrowserPanelWidth(
+      Number.isFinite(stored) ? stored : BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
+      window.innerWidth
+    );
   } catch {
-    return BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
+    return clampBuiltinBrowserPanelWidth(BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH, window.innerWidth);
   }
 };
 
@@ -76,8 +81,12 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [remainingMs, setRemainingMs] = useState<number>();
   const [urlInput, setUrlInput] = useState('');
+  const [tabs, setTabs] = useState<BuiltinBrowserTab[]>([]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const urlEditingRef = useRef(false);
+  const didAutoFocusRef = useRef(false);
 
   const { runAsync: openSession } = useRequest(postOpenBuiltinBrowserSession, {
     manual: true,
@@ -95,6 +104,22 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
     patchBuiltinBrowserNavigate,
     { manual: true, errorToast: '' }
   );
+  const { runAsync: fetchTabs } = useRequest(getBuiltinBrowserTabs, {
+    manual: true,
+    errorToast: ''
+  });
+  const { runAsync: createTab } = useRequest(postNewBuiltinBrowserTab, {
+    manual: true,
+    errorToast: ''
+  });
+  const { runAsync: selectTab } = useRequest(patchSelectBuiltinBrowserTab, {
+    manual: true,
+    errorToast: ''
+  });
+  const { runAsync: closeTab } = useRequest(deleteBuiltinBrowserTab, {
+    manual: true,
+    errorToast: ''
+  });
 
   const isOpen = builtinBrowser?.isOpen ?? false;
 
@@ -131,6 +156,118 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   useEffect(() => {
     void requestOpenSession();
   }, [requestOpenSession]);
+
+  const showTabActionFailed = useCallback(
+    (err?: unknown) => {
+      toast({
+        title: err
+          ? t(getErrText(err, 'common:builtin_browser_tab_action_failed') as any)
+          : t('common:builtin_browser_tab_action_failed'),
+        status: 'warning'
+      });
+    },
+    [t, toast]
+  );
+
+  // 鲁港通 - 标签标题：优先页面标题，空白页给可读占位，无标题时退回域名
+  const tabLabel = useCallback(
+    (tab: BuiltinBrowserTab) => {
+      if (tab.title) return tab.title;
+      if (!tab.url || tab.url === 'about:blank') {
+        return t('common:builtin_browser_tab_untitled');
+      }
+      try {
+        return new URL(tab.url).hostname;
+      } catch {
+        return tab.url;
+      }
+    },
+    [t]
+  );
+
+  const applyTabs = useCallback((nextTabs: BuiltinBrowserTab[]) => {
+    setTabs(nextTabs);
+    if (urlEditingRef.current) return;
+    const current = nextTabs.find((tab) => tab.current);
+    setUrlInput(current && current.url !== 'about:blank' ? current.url : '');
+  }, []);
+
+  const refreshTabs = useCallback(async () => {
+    try {
+      const res = await fetchTabs();
+      applyTabs(res.tabs);
+    } catch {
+      // 轮询失败静默：下一轮自动重试
+    }
+  }, [fetchTabs, applyTabs]);
+
+  // 鲁港通 - 标签轮询：用户在画面内跳转/开关标签时，标签条随时间对齐云端状态
+  useEffect(() => {
+    if (status !== 'active') return;
+
+    const initial = setTimeout(() => void refreshTabs(), 0);
+    const timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refreshTabs();
+    }, TAB_REFRESH_INTERVAL_MS);
+    return () => {
+      clearTimeout(initial);
+      clearInterval(timer);
+    };
+  }, [status, refreshTabs]);
+
+  // 鲁港通 - 空白起始页自动聚焦网址栏，减少「打开后不知道做什么」的停顿
+  useEffect(() => {
+    if (status !== 'active' || didAutoFocusRef.current) return;
+    const current = tabs.find((tab) => tab.current);
+    if (!current) return;
+    didAutoFocusRef.current = true;
+    if (!current.url || current.url === 'about:blank') {
+      urlInputRef.current?.focus();
+    }
+  }, [status, tabs]);
+
+  // 鲁港通 - 新建标签：云端选中新空白页，前端同步标签条并聚焦网址栏
+  const handleNewTab = useCallback(async () => {
+    try {
+      const res = await createTab();
+      urlEditingRef.current = false;
+      applyTabs(res.tabs);
+      urlInputRef.current?.focus();
+    } catch (err) {
+      showTabActionFailed(err);
+    }
+  }, [applyTabs, createTab, showTabActionFailed]);
+
+  const handleSelectTab = useCallback(
+    async (index: number) => {
+      try {
+        const res = await selectTab(index);
+        applyTabs(res.tabs);
+        if (!res.selected) {
+          showTabActionFailed();
+        }
+      } catch (err) {
+        showTabActionFailed(err);
+      }
+    },
+    [applyTabs, selectTab, showTabActionFailed]
+  );
+
+  const handleCloseTab = useCallback(
+    async (index: number) => {
+      try {
+        const res = await closeTab(index);
+        applyTabs(res.tabs);
+        if (!res.closed) {
+          showTabActionFailed();
+        }
+      } catch (err) {
+        showTabActionFailed(err);
+      }
+    },
+    [applyTabs, closeTab, showTabActionFailed]
+  );
 
   const expiresAtMs = session ? new Date(session.expiresAt).getTime() : undefined;
 
@@ -199,13 +336,14 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
         return;
       }
       setUrlInput(target);
+      void refreshTabs();
     } catch (err) {
       toast({
         title: t(getErrText(err, 'common:builtin_browser_url_open_failed') as any),
         status: 'warning'
       });
     }
-  }, [navigateSession, t, toast, urlInput]);
+  }, [navigateSession, refreshTabs, t, toast, urlInput]);
 
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
@@ -296,6 +434,79 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
         </MyTooltip>
       </Flex>
 
+      {/* 标签条：用户标签从云端 index 1 起（0 为隐藏占位），+ 新建空白标签 */}
+      <Flex
+        flexShrink={0}
+        alignItems={'center'}
+        gap={1}
+        px={2}
+        py={1.5}
+        borderBottom={'1px solid'}
+        borderBottomColor={'myGray.200'}
+        overflowX={'auto'}
+        css={{ '&::-webkit-scrollbar': { height: '2px' } }}
+      >
+        {tabs.map((tab) => (
+          <Flex
+            key={tab.index}
+            alignItems={'center'}
+            gap={1}
+            h={'28px'}
+            minW={'96px'}
+            maxW={'180px'}
+            flexShrink={0}
+            px={2}
+            borderRadius={'md'}
+            bg={tab.current ? 'white' : 'myGray.100'}
+            border={'1px solid'}
+            borderColor={tab.current ? 'primary.300' : 'transparent'}
+            cursor={'pointer'}
+            _hover={{ bg: tab.current ? 'white' : 'myGray.200' }}
+            onClick={() => void handleSelectTab(tab.index)}
+          >
+            <Text
+              flex={'1 1 0'}
+              fontSize={'xs'}
+              noOfLines={1}
+              color={tab.current ? 'myGray.900' : 'myGray.600'}
+            >
+              {tabLabel(tab)}
+            </Text>
+            <MyIcon
+              name={'close'}
+              w={'12px'}
+              h={'12px'}
+              flexShrink={0}
+              color={'myGray.400'}
+              _hover={{ color: 'myGray.700' }}
+              aria-label={t('common:builtin_browser_close_tab')}
+              onClick={(e) => {
+                e.stopPropagation();
+                void handleCloseTab(tab.index);
+              }}
+            />
+          </Flex>
+        ))}
+        <MyTooltip label={t('common:builtin_browser_new_tab')}>
+          <Flex
+            alignItems={'center'}
+            justifyContent={'center'}
+            w={'28px'}
+            h={'28px'}
+            flexShrink={0}
+            borderRadius={'md'}
+            color={status === 'active' ? 'myGray.500' : 'myGray.300'}
+            cursor={status === 'active' ? 'pointer' : 'not-allowed'}
+            _hover={status === 'active' ? { bg: 'myGray.100', color: 'myGray.700' } : undefined}
+            onClick={() => {
+              if (status === 'active') void handleNewTab();
+            }}
+          >
+            <MyIcon name={'common/addLight'} w={'14px'} h={'14px'} />
+          </Flex>
+        </MyTooltip>
+      </Flex>
+
       {/* 网址栏：输入后回车让云端浏览器跳转；非使用中禁用（保持布局稳定，画面区域尺寸不随状态变化） */}
       <Flex
         flexShrink={0}
@@ -306,10 +517,17 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
         borderBottomColor={'myGray.200'}
       >
         <Input
+          ref={urlInputRef}
           size={'sm'}
           fontSize={'sm'}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
+          onFocus={() => {
+            urlEditingRef.current = true;
+          }}
+          onBlur={() => {
+            urlEditingRef.current = false;
+          }}
           onKeyDown={(e) => {
             if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
             void handleNavigate();
@@ -416,7 +634,10 @@ const BuiltinBrowserPanel = () => {
   const handleDragMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const next = clampPanelWidth(drag.startWidth + (drag.startX - e.clientX));
+    const next = clampBuiltinBrowserPanelWidth(
+      drag.startWidth + (drag.startX - e.clientX),
+      window.innerWidth
+    );
     widthRef.current = next;
     setPanelWidth(next);
   }, []);
@@ -436,6 +657,21 @@ const BuiltinBrowserPanel = () => {
     } catch {
       // 隐私模式等场景无法写入：宽度仅本次会话生效
     }
+  }, []);
+
+  // 鲁港通 - 窗口宽度变化时收敛面板宽度（上限 = 窗口宽 − 保留区，对齐 Qoder 右栏）
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setPanelWidth((prev) => {
+        const next = clampBuiltinBrowserPanelWidth(prev, window.innerWidth);
+        widthRef.current = next;
+        return next;
+      });
+    };
+
+    handleWindowResize();
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
   }, []);
 
   // 鲁港通 - 拖动期间全局禁用选中并保持调整光标，防画面区域出现文字选择抖动

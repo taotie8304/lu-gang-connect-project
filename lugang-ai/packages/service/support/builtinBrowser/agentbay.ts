@@ -1,16 +1,16 @@
 // 鲁港通 - 办事浏览器云端会话封装（内置浏览器 P1）：唯一接触底层云浏览器 SDK 的模块，
 // 对外只暴露白牌语义（会话 ID / 画面地址），不向业务层泄露底层服务商细节
 import type { AgentBay } from 'wuying-agentbay-sdk';
-import type { BuiltinBrowserViewport } from '@fastgpt/global/support/builtinBrowser/type';
+import type {
+  BuiltinBrowserTab,
+  BuiltinBrowserViewport
+} from '@fastgpt/global/support/builtinBrowser/type';
 import { BUILTIN_BROWSER_HEIGHT_EXTRA_PX } from '@fastgpt/global/support/builtinBrowser/constant';
 
 const NOT_CONFIGURED_MESSAGE = '办事浏览器服务未配置，请联系管理员开通';
 const CLOUD_UNAVAILABLE_MESSAGE = '办事浏览器暂时不可用，请稍后再试';
 
 const CLOUD_LABEL = 'lugang-builtin-browser';
-
-/** 起始页：香港政府一站通（实测自动落到简体「本港居民」主页） */
-const START_URL = 'https://www.gov.hk/';
 
 /** 未传面板尺寸时的默认视口（与右栏面板默认宽 480 一致） */
 const DEFAULT_VIEWPORT = { width: 480, height: 800 };
@@ -20,7 +20,23 @@ const VIEWPORT_WIDTH_MAX = 1600;
 const VIEWPORT_HEIGHT_MIN = 240;
 const VIEWPORT_HEIGHT_MAX = 1400;
 
-/** 面板视口（CSS 像素）→ 云端窗口尺寸：高度加余量让页面底缘落到裁切窗下缘之外
+/** 云窗口外框与页面视口的固定差值（探针 probe32 实测 outer − inner = 10 × 100） */
+const WINDOW_CHROME_WIDTH_PX = 10;
+const WINDOW_CHROME_HEIGHT_PX = 100;
+
+/** 隐藏占位标签：上游 select index 0 判定缺陷，用户标签统一从 1 开始 */
+const HIDDEN_TAB_INDEX = 0;
+const MAX_TAB_INDEX = 32;
+
+/** 云端窗口几何存档：看门狗按此钉住窗口位置与尺寸 */
+const WINDOW_GEOMETRY_FILE = '/tmp/lugang-wd-geom';
+
+const RESIZE_RETRY_DELAY_MS = 400;
+const VIEWPORT_TOLERANCE_PX = 1;
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 面板视口（CSS 像素）→ 云端页面视口：高度加余量让页面底缘落到裁切窗下缘之外
  *（前端按实测几何裁掉查看器外框，见 global 裁切常数），取整并夹取到合理范围 */
 const toCloudViewport = (viewport?: BuiltinBrowserViewport) => {
   const width = Math.round(viewport?.width ?? DEFAULT_VIEWPORT.width);
@@ -30,6 +46,21 @@ const toCloudViewport = (viewport?: BuiltinBrowserViewport) => {
     width: Math.min(VIEWPORT_WIDTH_MAX, Math.max(VIEWPORT_WIDTH_MIN, width)),
     height: Math.min(VIEWPORT_HEIGHT_MAX, Math.max(VIEWPORT_HEIGHT_MIN, height))
   };
+};
+
+/** 云端页面视口 → 云窗口外框：窗口比页面多出固定外框，面板加宽时窗口同步加宽，
+ * 避免「页面变了窗口没变」导致画面右侧/底部露出桌面背景 */
+const toCloudWindowSize = (viewport: { width: number; height: number }) => ({
+  width: viewport.width + WINDOW_CHROME_WIDTH_PX,
+  height: viewport.height + WINDOW_CHROME_HEIGHT_PX
+});
+
+type CloudSessionLike = {
+  callMcpTool: (
+    toolName: string,
+    args?: Record<string, unknown>
+  ) => Promise<{ success?: boolean; data?: unknown } | undefined>;
+  command: { executeCommand: (cmd: string) => Promise<unknown> };
 };
 
 let clientPromise: Promise<AgentBay> | null = null;
@@ -56,15 +87,18 @@ const getClient = async (): Promise<AgentBay> => {
 /** 是否已完成云端服务配置（路由门槛与前端提示用） */
 export const isBuiltinBrowserConfigured = () => Boolean(process.env.AGENTBAY_API_KEY);
 
-/** 鲁港通 - 钉窗看门狗脚本：云端桌面若有 playwright 窗口被移动，0.5 秒内拉回固定位置 (10,10)；
- * 面板裁切几何（页顶 99 / 左缘 14）依赖窗口位置恒定（纯 bash + wmctrl，base64 落盘规避转义） */
+/** 鲁港通 - 钉窗看门狗脚本 v3：按几何存档把 playwright 窗口钉在 (10,10) 与指定尺寸；
+ * 页面视口由 browser_resize 单独控制，两者同步后画面才能始终贴合面板
+ *（纯 bash + wmctrl，base64 落盘规避转义） */
 const WATCHDOG_SCRIPT = [
   '#!/bin/bash',
-  '# 鲁港通 - 看门狗 v2：全部 playwright 窗口拉回 (10,10)',
+  '# 鲁港通 - 看门狗 v3：按 /tmp/lugang-wd-geom 钉住 playwright 窗口位置与尺寸',
   'while true; do',
-  "  for ID in $(wmctrl -lGx | grep -i playwright | awk '{print $1}'); do",
-  '    wmctrl -i -r "$ID" -e 0,10,10,-1,-1',
-  '  done',
+  `  if read -r W H < ${WINDOW_GEOMETRY_FILE} 2>/dev/null && [ -n "$W" ] && [ -n "$H" ]; then`,
+  "    for ID in $(wmctrl -lGx | grep -i playwright | awk '{print $1}'); do",
+  '      wmctrl -i -r "$ID" -e 0,10,10,"$W","$H"',
+  '    done',
+  '  fi',
   '  sleep 0.5',
   'done',
   ''
@@ -72,9 +106,7 @@ const WATCHDOG_SCRIPT = [
 
 /** 幂等部署看门狗：停旧 → base64 落盘 → setsid 后台启动；
  * 失败静默（钉窗为兜底能力，不阻断开台） */
-const deployWindowWatchdog = async (session: {
-  command: { executeCommand: (cmd: string) => Promise<unknown> };
-}): Promise<void> => {
+const deployWindowWatchdog = async (session: CloudSessionLike): Promise<void> => {
   try {
     const scriptBase64 = Buffer.from(WATCHDOG_SCRIPT, 'utf8').toString('base64');
     await session.command.executeCommand(
@@ -91,7 +123,76 @@ const deployWindowWatchdog = async (session: {
   }
 };
 
-/** 开台：创建云端浏览器会话并初始化到可用状态；初始化失败即回收并给通用提示 */
+/** 同步云窗口外框：先更新看门狗几何存档，再立即应用到现有窗口；
+ * 失败静默（看门狗与请求时校验仍会兜底） */
+const syncWindowGeometry = async (
+  session: CloudSessionLike,
+  viewport: { width: number; height: number }
+): Promise<void> => {
+  try {
+    const windowSize = toCloudWindowSize(viewport);
+    await session.command.executeCommand(
+      `printf '%s %s\\n' ${windowSize.width} ${windowSize.height} > ${WINDOW_GEOMETRY_FILE}.tmp && mv ${WINDOW_GEOMETRY_FILE}.tmp ${WINDOW_GEOMETRY_FILE}`
+    );
+    await session.command.executeCommand(
+      `for ID in $(wmctrl -lGx | grep -i playwright | awk '{print $1}'); do wmctrl -i -r "$ID" -e 0,10,10,${windowSize.width},${windowSize.height}; done`
+    );
+  } catch {
+    // 静默：窗口贴合为兜底能力，不阻断 resize
+  }
+};
+
+/** 读取云端页面实际视口：校验 resize 是否真正生效（工具返回成功但页面尺寸未跟上） */
+const readPageViewport = async (
+  session: CloudSessionLike
+): Promise<{ width: number; height: number } | null> => {
+  try {
+    const result = await session.callMcpTool('browser_evaluate', {
+      function: '() => JSON.stringify({ width: window.innerWidth, height: window.innerHeight })'
+    });
+    if (result?.success !== true) return null;
+    const match = String(result.data ?? '').match(
+      /\{\s*"width"\s*:\s*(\d+)\s*,\s*"height"\s*:\s*(\d+)\s*\}/
+    );
+    if (!match) return null;
+    return { width: Number(match[1]), height: Number(match[2]) };
+  } catch {
+    return null;
+  }
+};
+
+const viewportMatches = (
+  actual: { width: number; height: number },
+  target: { width: number; height: number }
+) =>
+  Math.abs(actual.width - target.width) <= VIEWPORT_TOLERANCE_PX &&
+  Math.abs(actual.height - target.height) <= VIEWPORT_TOLERANCE_PX;
+
+/** 应用页面视口：resize → 校验实际视口，不一致或失败补一次；随后同步窗口外框。
+ * 校验工具不可用时以 resize 结果为准；全部失败静默返回 false */
+const applyViewport = async (
+  session: CloudSessionLike,
+  target: { width: number; height: number }
+): Promise<boolean> => {
+  const resize = () =>
+    session
+      .callMcpTool('browser_resize', target)
+      .then((result) => result?.success === true)
+      .catch(() => false);
+
+  let resized = await resize();
+  let actual = await readPageViewport(session);
+  if (!resized || (actual && !viewportMatches(actual, target))) {
+    await delay(RESIZE_RETRY_DELAY_MS);
+    resized = await resize();
+    actual = await readPageViewport(session);
+  }
+
+  await syncWindowGeometry(session, target);
+  return actual ? viewportMatches(actual, target) : resized;
+};
+
+/** 开台：创建云端浏览器会话并初始化到空白可用状态；初始化失败即回收并给通用提示 */
 export const createCloudBrowserSession = async (
   viewport?: BuiltinBrowserViewport
 ): Promise<{
@@ -124,17 +225,20 @@ export const createCloudBrowserSession = async (
     throw new Error(CLOUD_UNAVAILABLE_MESSAGE);
   }
 
-  // 鲁港通 - 全新会话直接调整窗口会报「无打开页面」，须先导航到起始页，再按面板尺寸适配；
-  // 两步均为尽力而为，失败不阻断开台
-  await session.callMcpTool('browser_navigate', { url: START_URL }).catch(() => undefined);
-  await session.callMcpTool('browser_resize', toCloudViewport(viewport)).catch(() => undefined);
+  // 鲁港通 - 空白起始页：连续两次新建标签，第 0 个作为隐藏占位（上游无法切到 index 0），
+  // 第 1 个是用户可用的空白标签；用户自行输入网址，打开更快
+  await session.callMcpTool('browser_tabs', { action: 'new' }).catch(() => undefined);
+  await session.callMcpTool('browser_tabs', { action: 'new' }).catch(() => undefined);
+  // 鲁港通 - 页面视口 + 云窗口外框一起适配面板尺寸（失败不阻断开台）
+  await applyViewport(session, toCloudViewport(viewport));
   // 鲁港通 - 钉窗兜底（幂等部署，失败静默）
   await deployWindowWatchdog(session);
 
   return { cloudSessionId: session.sessionId, resourceUrl };
 };
 
-/** 视口跟随：把进行中会话的云窗口调整到与面板一致；失败静默返回 false，不上抛 */
+/** 视口跟随：把页面视口与云窗口外框一起调整到与面板一致；
+ * 失败静默返回 false，不上抛 */
 export const resizeCloudBrowserSession = async (
   cloudSessionId: string,
   viewport: BuiltinBrowserViewport
@@ -145,8 +249,7 @@ export const resizeCloudBrowserSession = async (
     if (!got.success || !got.session) {
       return false;
     }
-    const result = await got.session.callMcpTool('browser_resize', toCloudViewport(viewport));
-    return result?.success === true;
+    return await applyViewport(got.session, toCloudViewport(viewport));
   } catch {
     return false;
   }
@@ -164,6 +267,95 @@ export const navigateCloudBrowserSession = async (
       return false;
     }
     const result = await got.session.callMcpTool('browser_navigate', { url });
+    return result?.success === true;
+  } catch {
+    return false;
+  }
+};
+
+/** 解析 browser_tabs 返回的 Markdown 文本（list / new 通用） */
+export const parseCloudBrowserTabs = (text: string): BuiltinBrowserTab[] => {
+  const tabs: BuiltinBrowserTab[] = [];
+  for (const line of text.split('\n')) {
+    const match = line.match(/^-\s+(\d+):\s*(\(current\))?\s*\[(.*?)\]\s*\((.*)\)\s*$/);
+    if (!match) continue;
+    tabs.push({
+      index: Number(match[1]),
+      current: Boolean(match[2]),
+      title: match[3].trim(),
+      url: match[4].trim()
+    });
+  }
+  return tabs;
+};
+
+/** 只保留用户标签（隐藏占位 index 0 不下发前端） */
+const toVisibleTabs = (text: string) =>
+  parseCloudBrowserTabs(text).filter((tab) => tab.index > HIDDEN_TAB_INDEX);
+
+const isValidTabIndex = (index: number) =>
+  Number.isInteger(index) && index > HIDDEN_TAB_INDEX && index <= MAX_TAB_INDEX;
+
+/** 标签页列表：无会话/云端失败返回 null（调用方按空列表处理） */
+export const listCloudBrowserTabs = async (
+  cloudSessionId: string
+): Promise<BuiltinBrowserTab[] | null> => {
+  try {
+    const ab = await getClient();
+    const got = await ab.get(cloudSessionId);
+    if (!got.success || !got.session) return null;
+    const result = await got.session.callMcpTool('browser_tabs', { action: 'list' });
+    if (result?.success !== true) return null;
+    return toVisibleTabs(String(result.data ?? ''));
+  } catch {
+    return null;
+  }
+};
+
+/** 新建标签（自动选中空白页）：返回最新用户标签；失败返回 null */
+export const newCloudBrowserTab = async (
+  cloudSessionId: string
+): Promise<BuiltinBrowserTab[] | null> => {
+  try {
+    const ab = await getClient();
+    const got = await ab.get(cloudSessionId);
+    if (!got.success || !got.session) return null;
+    const result = await got.session.callMcpTool('browser_tabs', { action: 'new' });
+    if (result?.success !== true) return null;
+    return toVisibleTabs(String(result.data ?? ''));
+  } catch {
+    return null;
+  }
+};
+
+/** 切换标签：仅允许用户标签（index ≥ 1，绕开上游 index 0 缺陷）；失败返回 false */
+export const selectCloudBrowserTab = async (
+  cloudSessionId: string,
+  index: number
+): Promise<boolean> => {
+  if (!isValidTabIndex(index)) return false;
+  try {
+    const ab = await getClient();
+    const got = await ab.get(cloudSessionId);
+    if (!got.success || !got.session) return false;
+    const result = await got.session.callMcpTool('browser_tabs', { action: 'select', index });
+    return result?.success === true;
+  } catch {
+    return false;
+  }
+};
+
+/** 关闭标签：仅允许用户标签（index ≥ 1）；失败返回 false */
+export const closeCloudBrowserTab = async (
+  cloudSessionId: string,
+  index: number
+): Promise<boolean> => {
+  if (!isValidTabIndex(index)) return false;
+  try {
+    const ab = await getClient();
+    const got = await ab.get(cloudSessionId);
+    if (!got.success || !got.session) return false;
+    const result = await got.session.callMcpTool('browser_tabs', { action: 'close', index });
     return result?.success === true;
   } catch {
     return false;

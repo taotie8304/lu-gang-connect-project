@@ -13,9 +13,12 @@ export const BUILTIN_BROWSER_CROP_LEFT_PX = 14;
 /** 云端窗口高度 = 面板高度 + 该余量：页面底缘落到裁切窗下缘之外，防底缘露缝或被裁（实测 4 最优） */
 export const BUILTIN_BROWSER_HEIGHT_EXTRA_PX = 4;
 
-/** 面板宽度：默认 / 拖拽下限 / 拖拽上限（CSS 像素） */
+/** 面板宽度：默认 / 拖拽下限 / 拖拽上限（CSS 像素）
+ * 上限与云端视口上限 1600 对齐；实际可拖到的宽度还受窗口宽度约束（见 panelWidth.ts） */
 export const BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH = 480;
 export const BUILTIN_BROWSER_PANEL_MIN_WIDTH = 360;
-export const BUILTIN_BROWSER_PANEL_MAX_WIDTH = 960;
+export const BUILTIN_BROWSER_PANEL_MAX_WIDTH = 1600;
+/** 窗口右侧保留区（侧栏 + 最小聊天区，Qoder 实测 1713 窗口面板可到 1308 = 1713 − 405） */
+export const BUILTIN_BROWSER_PANEL_RESERVED_WIDTH = 405;
 /** 面板宽度记忆的本地存储键 */
 export const BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY = 'lugang_builtin_browser_panel_width';

@@ -10,7 +10,11 @@ const {
   refreshCloudSessionMock,
   closeCloudSessionMock,
   resizeCloudSessionMock,
-  navigateCloudSessionMock
+  navigateCloudSessionMock,
+  listTabsMock,
+  newTabMock,
+  selectTabMock,
+  closeTabMock
 } = vi.hoisted(() => ({
   findOneMock: vi.fn(),
   insertOneMock: vi.fn(),
@@ -21,7 +25,11 @@ const {
   refreshCloudSessionMock: vi.fn(),
   closeCloudSessionMock: vi.fn(),
   resizeCloudSessionMock: vi.fn(),
-  navigateCloudSessionMock: vi.fn()
+  navigateCloudSessionMock: vi.fn(),
+  listTabsMock: vi.fn(),
+  newTabMock: vi.fn(),
+  selectTabMock: vi.fn(),
+  closeTabMock: vi.fn()
 }));
 
 vi.mock('@fastgpt/service/support/builtinBrowser/schema', () => ({
@@ -39,6 +47,10 @@ vi.mock('@fastgpt/service/support/builtinBrowser/agentbay', () => ({
   closeCloudBrowserSession: closeCloudSessionMock,
   resizeCloudBrowserSession: resizeCloudSessionMock,
   navigateCloudBrowserSession: navigateCloudSessionMock,
+  listCloudBrowserTabs: listTabsMock,
+  newCloudBrowserTab: newTabMock,
+  selectCloudBrowserTab: selectTabMock,
+  closeCloudBrowserTab: closeTabMock,
   isBuiltinBrowserConfigured: vi.fn().mockReturnValue(true)
 }));
 
@@ -49,10 +61,14 @@ vi.mock('@fastgpt/service/support/user/schema', () => ({
 import {
   assertBuiltinBrowserUser,
   closeSession,
+  closeTabSession,
   getSessionStatus,
+  getTabsSession,
   navigateSession,
+  newTabSession,
   openSession,
   resizeSession,
+  selectTabSession,
   sweepOverdueSessions
 } from '@fastgpt/service/support/builtinBrowser/controller';
 
@@ -63,6 +79,16 @@ const MINUTE_MS = 60 * 1000;
 const MAX_MS = 30 * MINUTE_MS;
 
 const now = new Date('2026-10-15T02:00:00.000Z');
+
+const visibleTabs = [
+  {
+    index: 1,
+    title: '主页 | 入境事务处',
+    url: 'https://www.immd.gov.hk/hks/index.html',
+    current: true
+  },
+  { index: 2, title: '', url: 'about:blank', current: false }
+];
 
 /** 构造 findOne({...}).lean() 链式 mock */
 const leanChain = (doc: unknown) => ({
@@ -87,6 +113,10 @@ beforeEach(() => {
   updateOneMock.mockResolvedValue({});
   closeCloudSessionMock.mockResolvedValue(undefined);
   resizeCloudSessionMock.mockResolvedValue(true);
+  listTabsMock.mockResolvedValue(visibleTabs);
+  newTabMock.mockResolvedValue(visibleTabs);
+  selectTabMock.mockResolvedValue(true);
+  closeTabMock.mockResolvedValue(true);
 });
 
 describe('openSession', () => {
@@ -390,7 +420,6 @@ describe('resizeSession', () => {
     await expect(
       resizeSession({ tmbId: mockTmbId, viewport: { width: 500, height: 600 }, now })
     ).resolves.toEqual({ resized: false });
-
     expect(resizeCloudSessionMock).not.toHaveBeenCalled();
   });
 
@@ -402,7 +431,6 @@ describe('resizeSession', () => {
     await expect(
       resizeSession({ tmbId: mockTmbId, viewport: { width: 500, height: 600 }, now })
     ).resolves.toEqual({ resized: false });
-
     expect(resizeCloudSessionMock).not.toHaveBeenCalled();
   });
 
@@ -465,6 +493,140 @@ describe('navigateSession', () => {
     await expect(navigateSession({ tmbId: mockTmbId, url: 'www.gov.hk', now })).resolves.toEqual({
       navigated: false
     });
+  });
+});
+
+describe('标签页', () => {
+  it('getTabsSession：无进行中会话返回空列表，不触碰云端', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+
+    await expect(getTabsSession({ tmbId: mockTmbId, now })).resolves.toEqual({ tabs: [] });
+    expect(listTabsMock).not.toHaveBeenCalled();
+  });
+
+  it('getTabsSession：返回当前会话的用户标签', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+
+    await expect(getTabsSession({ tmbId: mockTmbId, now })).resolves.toEqual({
+      tabs: visibleTabs
+    });
+    expect(listTabsMock).toHaveBeenCalledWith('cloud-1');
+  });
+
+  it('getTabsSession：会话已过期返回空列表，不触碰云端', async () => {
+    findOneMock.mockReturnValue(
+      leanChain(activeDoc({ expiresAt: new Date(now.getTime() - MINUTE_MS) }))
+    );
+
+    await expect(getTabsSession({ tmbId: mockTmbId, now })).resolves.toEqual({ tabs: [] });
+    expect(listTabsMock).not.toHaveBeenCalled();
+  });
+
+  it('getTabsSession：云端列表失败返回空列表（前端静默）', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    listTabsMock.mockResolvedValue(null);
+
+    await expect(getTabsSession({ tmbId: mockTmbId, now })).resolves.toEqual({ tabs: [] });
+  });
+
+  it('newTabSession：无进行中会话返回空列表，不触碰云端', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+
+    await expect(newTabSession({ tmbId: mockTmbId, now })).resolves.toEqual({ tabs: [] });
+    expect(newTabMock).not.toHaveBeenCalled();
+  });
+
+  it('newTabSession：新建后返回用户标签', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+
+    await expect(newTabSession({ tmbId: mockTmbId, now })).resolves.toEqual({
+      tabs: visibleTabs
+    });
+    expect(newTabMock).toHaveBeenCalledWith('cloud-1');
+  });
+
+  it('selectTabSession：非法索引直接拒绝，不触碰云端', async () => {
+    await expect(selectTabSession({ tmbId: mockTmbId, index: 0, now })).resolves.toEqual({
+      selected: false,
+      tabs: []
+    });
+    expect(findOneMock).not.toHaveBeenCalled();
+    expect(selectTabMock).not.toHaveBeenCalled();
+  });
+
+  it('selectTabSession：切换成功并返回最新标签', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+
+    await expect(selectTabSession({ tmbId: mockTmbId, index: 2, now })).resolves.toEqual({
+      selected: true,
+      tabs: visibleTabs
+    });
+    expect(selectTabMock).toHaveBeenCalledWith('cloud-1', 2);
+    expect(listTabsMock).toHaveBeenCalledWith('cloud-1');
+  });
+
+  it('selectTabSession：云端切换失败仍返回最新标签（对齐页面态）', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    selectTabMock.mockResolvedValue(false);
+
+    await expect(selectTabSession({ tmbId: mockTmbId, index: 2, now })).resolves.toEqual({
+      selected: false,
+      tabs: visibleTabs
+    });
+  });
+
+  it('closeTabSession：非法索引直接拒绝，不触碰云端', async () => {
+    await expect(closeTabSession({ tmbId: mockTmbId, index: 0, now })).resolves.toEqual({
+      closed: false,
+      tabs: []
+    });
+    expect(findOneMock).not.toHaveBeenCalled();
+    expect(closeTabMock).not.toHaveBeenCalled();
+  });
+
+  it('closeTabSession：关掉用户标签后返回剩余标签', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    listTabsMock.mockResolvedValue([
+      { index: 1, title: '主页 | 入境事务处', url: 'https://www.immd.gov.hk/hks/index.html', current: true }
+    ]);
+
+    await expect(closeTabSession({ tmbId: mockTmbId, index: 2, now })).resolves.toEqual({
+      closed: true,
+      tabs: [
+        {
+          index: 1,
+          title: '主页 | 入境事务处',
+          url: 'https://www.immd.gov.hk/hks/index.html',
+          current: true
+        }
+      ]
+    });
+    expect(closeTabMock).toHaveBeenCalledWith('cloud-1', 2);
+    expect(newTabMock).not.toHaveBeenCalled();
+  });
+
+  it('closeTabSession：关掉最后一个用户标签后自动补一个空白标签', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+    listTabsMock.mockResolvedValue([]);
+    newTabMock.mockResolvedValue([
+      { index: 1, title: '', url: 'about:blank', current: true }
+    ]);
+
+    await expect(closeTabSession({ tmbId: mockTmbId, index: 1, now })).resolves.toEqual({
+      closed: true,
+      tabs: [{ index: 1, title: '', url: 'about:blank', current: true }]
+    });
+    expect(newTabMock).toHaveBeenCalledWith('cloud-1');
+  });
+
+  it('closeTabSession：无进行中会话返回空列表，不触碰云端', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+
+    await expect(closeTabSession({ tmbId: mockTmbId, index: 1, now })).resolves.toEqual({
+      closed: false,
+      tabs: []
+    });
+    expect(closeTabMock).not.toHaveBeenCalled();
   });
 });
 
