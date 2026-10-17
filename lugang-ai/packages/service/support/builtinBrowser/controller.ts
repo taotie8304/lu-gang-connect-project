@@ -9,6 +9,7 @@ import {
   navigateCloudBrowserSession,
   newCloudBrowserTab,
   refreshCloudBrowserSession,
+  reloadCloudBrowserSession,
   resizeCloudBrowserSession,
   selectCloudBrowserTab
 } from './agentbay';
@@ -29,6 +30,7 @@ import type {
   NavigateBuiltinBrowserSessionResponse,
   NewBuiltinBrowserTabResponse,
   OpenBuiltinBrowserSessionResponse,
+  ReloadBuiltinBrowserSessionResponse,
   ResizeBuiltinBrowserSessionResponse,
   SelectBuiltinBrowserTabResponse
 } from '@fastgpt/global/support/builtinBrowser/type';
@@ -279,6 +281,22 @@ export const navigateSession = async ({
   }
   const navigated = await navigateCloudBrowserSession(doc.cloudSessionId, target);
   return { navigated };
+};
+
+/** 网页原地刷新：在当前标签重新打开同一网址，不重建查看器；无会话/已过期/云端失败均返回 reloaded=false */
+export const reloadSession = async ({
+  tmbId,
+  now = new Date()
+}: {
+  tmbId: string;
+  now?: Date;
+}): Promise<ReloadBuiltinBrowserSessionResponse> => {
+  const doc = await findActiveSession(tmbId, now);
+  if (!doc) {
+    return { reloaded: false };
+  }
+  const reloaded = await reloadCloudBrowserSession(doc.cloudSessionId);
+  return { reloaded };
 };
 
 /** 关台（幂等）：无进行中会话返回 closed=false */

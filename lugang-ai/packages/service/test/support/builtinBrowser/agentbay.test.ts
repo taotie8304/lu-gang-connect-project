@@ -33,6 +33,7 @@ import {
   navigateCloudBrowserSession,
   newCloudBrowserTab,
   parseCloudBrowserTabs,
+  reloadCloudBrowserSession,
   resizeCloudBrowserSession,
   selectCloudBrowserTab
 } from '@fastgpt/service/support/builtinBrowser/agentbay';
@@ -381,7 +382,6 @@ describe('标签页解析与操作', () => {
       }
     ]);
   });
-
   it('无法解析或空列表：返回空数组', () => {
     expect(parseCloudBrowserTabs('No open tabs.')).toEqual([]);
     expect(parseCloudBrowserTabs('')).toEqual([]);
@@ -461,5 +461,92 @@ describe('标签页解析与操作', () => {
     mocks.session.callMcpTool.mockClear();
     await expect(closeCloudBrowserTab('cloud-s-1', 0)).resolves.toBe(false);
     expect(mocks.session.callMcpTool).not.toHaveBeenCalled();
+  });
+});
+
+describe('网页原地刷新（A3）', () => {
+  it('有当前用户标签：重新导航到该标签网址', async () => {
+    await expect(reloadCloudBrowserSession('cloud-s-1')).resolves.toBe(true);
+
+    expect(mocks.session.callMcpTool).toHaveBeenCalledWith('browser_navigate', {
+      url: 'https://www.immd.gov.hk/hks/index.html'
+    });
+  });
+
+  it('当前为空白页：不发起导航，直接返回 true', async () => {
+    mocks.session.callMcpTool.mockImplementation((name: string) => {
+      if (name === 'browser_tabs') {
+        return Promise.resolve({
+          success: true,
+          data: '- 0: [新标签页] (about:blank)\n- 1: (current) [] (about:blank)\n'
+        });
+      }
+      return Promise.resolve({ success: true });
+    });
+
+    await expect(reloadCloudBrowserSession('cloud-s-1')).resolves.toBe(true);
+    expect(mocks.session.callMcpTool).not.toHaveBeenCalledWith(
+      'browser_navigate',
+      expect.anything()
+    );
+  });
+
+  it('标签列表不可用：返回 false', async () => {
+    mocks.session.callMcpTool.mockResolvedValue({ success: false });
+
+    await expect(reloadCloudBrowserSession('cloud-s-1')).resolves.toBe(false);
+  });
+});
+
+describe('云端调用超时与慢日志（A1 卡死缓解）', () => {
+  it('工具调用超时：返回 null，不无限挂起', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.session.callMcpTool.mockImplementation(() => new Promise(() => undefined));
+
+      const promise = listCloudBrowserTabs('cloud-s-1');
+      await vi.advanceTimersByTimeAsync(12_000);
+      await expect(promise).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('会话查询超时：返回 null，不无限挂起', async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.client.get.mockImplementation(() => new Promise(() => undefined));
+
+      const promise = listCloudBrowserTabs('cloud-s-1');
+      await vi.advanceTimersByTimeAsync(12_000);
+      await expect(promise).resolves.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('云端调用超过 2 秒打慢日志', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      mocks.session.callMcpTool.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        return { success: true, data: TABS_TEXT };
+      });
+
+      const promise = listCloudBrowserTabs('cloud-s-1');
+      await vi.advanceTimersByTimeAsync(2500);
+      await promise;
+
+      expect(
+        warn.mock.calls.some(
+          ([message]) =>
+            String(message).includes('slow cloud call') && String(message).includes('browser_tabs')
+        )
+      ).toBe(true);
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

@@ -79,6 +79,11 @@ export type NavigateBuiltinBrowserSessionResponse = {
   navigated: boolean;
 };
 
+/** 网页原地刷新（POST）响应：reloaded=false 表示无进行中会话 / 云端失败（前端提示） */
+export type ReloadBuiltinBrowserSessionResponse = {
+  reloaded: boolean;
+};
+
 /** 关台（DELETE）响应（幂等：无进行中会话时 closed=false） */
 export type CloseBuiltinBrowserSessionResponse = {
   closed: boolean;

@@ -34,7 +34,45 @@ const WINDOW_GEOMETRY_FILE = '/tmp/lugang-wd-geom';
 const RESIZE_RETRY_DELAY_MS = 400;
 const VIEWPORT_TOLERANCE_PX = 1;
 
+/** 鲁港通 - 云端调用超时与慢日志阈值（A1 卡死缓解）：
+ * 慢调用不再无限挂起请求线程，超时后调用方立即按失败处理 */
+const CLOUD_CALL_TIMEOUT_MS = 12_000;
+const CLOUD_CALL_SLOW_MS = 2_000;
+const WATCHDOG_COMMAND_TIMEOUT_MS = 8_000;
+
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 云端调用超时 + 慢日志：超时按失败上抛（底层请求可能仍在继续，但不阻塞调用方） */
+const withCloudTimeout = async <T>(
+  label: string,
+  task: () => Promise<T>,
+  timeoutMs = CLOUD_CALL_TIMEOUT_MS
+): Promise<T> => {
+  const startedAt = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      task(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`云端调用超时（${label}），请稍后重试`)),
+          timeoutMs
+        );
+      })
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    const elapsed = Date.now() - startedAt;
+    if (elapsed >= CLOUD_CALL_SLOW_MS) {
+      console.warn(`[builtin-browser] slow cloud call: ${label} ${elapsed}ms`);
+    }
+  }
+};
+
+/** 开台分阶段耗时日志：线上定位「打开慢」卡在哪一步 */
+const logOpenStage = (stage: string, startedAt: number) => {
+  console.log(`[builtin-browser] open stage ${stage} ${Date.now() - startedAt}ms`);
+};
 
 /** 面板视口（CSS 像素）→ 云端页面视口：高度加余量让页面底缘落到裁切窗下缘之外
  *（前端按实测几何裁掉查看器外框，见 global 裁切常数），取整并夹取到合理范围 */
@@ -62,6 +100,31 @@ type CloudSessionLike = {
   ) => Promise<{ success?: boolean; data?: unknown } | undefined>;
   command: { executeCommand: (cmd: string) => Promise<unknown> };
 };
+
+/** 带超时的会话查询：失败/超时返回 null（调用方按云端不可用处理） */
+const getCloudSession = async (ab: AgentBay, cloudSessionId: string) => {
+  try {
+    const got = await withCloudTimeout(`ab.get ${cloudSessionId}`, () => ab.get(cloudSessionId));
+    return got.success && got.session ? got.session : null;
+  } catch {
+    return null;
+  }
+};
+
+/** 带超时的 MCP 工具调用：统一超时与慢日志口径 */
+const callCloudTool = (
+  session: CloudSessionLike,
+  toolName: string,
+  args?: Record<string, unknown>
+) => withCloudTimeout(`callMcpTool ${toolName}`, () => session.callMcpTool(toolName, args));
+
+/** 带超时的云端命令（看门狗/几何同步等兜底能力，失败静默由调用方处理） */
+const runCloudCommand = (session: CloudSessionLike, label: string, command: string) =>
+  withCloudTimeout(
+    `executeCommand ${label}`,
+    () => session.command.executeCommand(command),
+    WATCHDOG_COMMAND_TIMEOUT_MS
+  );
 
 let clientPromise: Promise<AgentBay> | null = null;
 
@@ -109,13 +172,19 @@ const WATCHDOG_SCRIPT = [
 const deployWindowWatchdog = async (session: CloudSessionLike): Promise<void> => {
   try {
     const scriptBase64 = Buffer.from(WATCHDOG_SCRIPT, 'utf8').toString('base64');
-    await session.command.executeCommand(
+    await runCloudCommand(
+      session,
+      'watchdog-stop',
       'for p in $(ps -eo pid,cmd | awk \'/[l]ugang-wd/ {print $1}\'); do kill "$p" 2>/dev/null; done'
     );
-    await session.command.executeCommand(
+    await runCloudCommand(
+      session,
+      'watchdog-deploy',
       `echo '${scriptBase64}' | base64 -d > /tmp/lugang-wd.sh && chmod +x /tmp/lugang-wd.sh`
     );
-    await session.command.executeCommand(
+    await runCloudCommand(
+      session,
+      'watchdog-start',
       'setsid nohup bash /tmp/lugang-wd.sh </dev/null >/dev/null 2>&1 & echo $! > /tmp/lugang-wd.pid'
     );
   } catch {
@@ -131,10 +200,14 @@ const syncWindowGeometry = async (
 ): Promise<void> => {
   try {
     const windowSize = toCloudWindowSize(viewport);
-    await session.command.executeCommand(
+    await runCloudCommand(
+      session,
+      'geom-store',
       `printf '%s %s\\n' ${windowSize.width} ${windowSize.height} > ${WINDOW_GEOMETRY_FILE}.tmp && mv ${WINDOW_GEOMETRY_FILE}.tmp ${WINDOW_GEOMETRY_FILE}`
     );
-    await session.command.executeCommand(
+    await runCloudCommand(
+      session,
+      'geom-apply',
       `for ID in $(wmctrl -lGx | grep -i playwright | awk '{print $1}'); do wmctrl -i -r "$ID" -e 0,10,10,${windowSize.width},${windowSize.height}; done`
     );
   } catch {
@@ -147,7 +220,7 @@ const readPageViewport = async (
   session: CloudSessionLike
 ): Promise<{ width: number; height: number } | null> => {
   try {
-    const result = await session.callMcpTool('browser_evaluate', {
+    const result = await callCloudTool(session, 'browser_evaluate', {
       function: '() => JSON.stringify({ width: window.innerWidth, height: window.innerHeight })'
     });
     if (result?.success !== true) return null;
@@ -175,8 +248,7 @@ const applyViewport = async (
   target: { width: number; height: number }
 ): Promise<boolean> => {
   const resize = () =>
-    session
-      .callMcpTool('browser_resize', target)
+    callCloudTool(session, 'browser_resize', target)
       .then((result) => result?.success === true)
       .catch(() => false);
 
@@ -199,6 +271,7 @@ export const createCloudBrowserSession = async (
   cloudSessionId: string;
   resourceUrl: string;
 }> => {
+  const startedAt = Date.now();
   const ab = await getClient();
   const { CreateSessionParamsClass } = await import('wuying-agentbay-sdk');
 
@@ -216,6 +289,7 @@ export const createCloudBrowserSession = async (
   if (!created.success || !created.session) {
     throw new Error(CLOUD_UNAVAILABLE_MESSAGE);
   }
+  logOpenStage('created', startedAt);
 
   const session = created.session;
   const initialized = await session.browser.initializeAsync({}).catch(() => false);
@@ -224,15 +298,20 @@ export const createCloudBrowserSession = async (
     await closeCloudBrowserSession(session.sessionId);
     throw new Error(CLOUD_UNAVAILABLE_MESSAGE);
   }
+  logOpenStage('initialized', startedAt);
 
   // 鲁港通 - 空白起始页：连续两次新建标签，第 0 个作为隐藏占位（上游无法切到 index 0），
   // 第 1 个是用户可用的空白标签；用户自行输入网址，打开更快
-  await session.callMcpTool('browser_tabs', { action: 'new' }).catch(() => undefined);
-  await session.callMcpTool('browser_tabs', { action: 'new' }).catch(() => undefined);
-  // 鲁港通 - 页面视口 + 云窗口外框一起适配面板尺寸（失败不阻断开台）
-  await applyViewport(session, toCloudViewport(viewport));
-  // 鲁港通 - 钉窗兜底（幂等部署，失败静默）
-  await deployWindowWatchdog(session);
+  await callCloudTool(session, 'browser_tabs', { action: 'new' }).catch(() => undefined);
+  await callCloudTool(session, 'browser_tabs', { action: 'new' }).catch(() => undefined);
+  logOpenStage('tabs-ready', startedAt);
+
+  // 鲁港通 - 视口适配与看门狗互不依赖，并行执行缩短开台等待（失败均静默）
+  await Promise.all([
+    applyViewport(session, toCloudViewport(viewport)),
+    deployWindowWatchdog(session)
+  ]);
+  logOpenStage('viewport-watchdog', startedAt);
 
   return { cloudSessionId: session.sessionId, resourceUrl };
 };
@@ -245,11 +324,11 @@ export const resizeCloudBrowserSession = async (
 ): Promise<boolean> => {
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) {
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) {
       return false;
     }
-    return await applyViewport(got.session, toCloudViewport(viewport));
+    return await applyViewport(session, toCloudViewport(viewport));
   } catch {
     return false;
   }
@@ -262,11 +341,11 @@ export const navigateCloudBrowserSession = async (
 ): Promise<boolean> => {
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) {
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) {
       return false;
     }
-    const result = await got.session.callMcpTool('browser_navigate', { url });
+    const result = await callCloudTool(session, 'browser_navigate', { url });
     return result?.success === true;
   } catch {
     return false;
@@ -302,9 +381,9 @@ export const listCloudBrowserTabs = async (
 ): Promise<BuiltinBrowserTab[] | null> => {
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) return null;
-    const result = await got.session.callMcpTool('browser_tabs', { action: 'list' });
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) return null;
+    const result = await callCloudTool(session, 'browser_tabs', { action: 'list' });
     if (result?.success !== true) return null;
     return toVisibleTabs(String(result.data ?? ''));
   } catch {
@@ -318,9 +397,9 @@ export const newCloudBrowserTab = async (
 ): Promise<BuiltinBrowserTab[] | null> => {
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) return null;
-    const result = await got.session.callMcpTool('browser_tabs', { action: 'new' });
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) return null;
+    const result = await callCloudTool(session, 'browser_tabs', { action: 'new' });
     if (result?.success !== true) return null;
     return toVisibleTabs(String(result.data ?? ''));
   } catch {
@@ -336,9 +415,9 @@ export const selectCloudBrowserTab = async (
   if (!isValidTabIndex(index)) return false;
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) return false;
-    const result = await got.session.callMcpTool('browser_tabs', { action: 'select', index });
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) return false;
+    const result = await callCloudTool(session, 'browser_tabs', { action: 'select', index });
     return result?.success === true;
   } catch {
     return false;
@@ -353,10 +432,29 @@ export const closeCloudBrowserTab = async (
   if (!isValidTabIndex(index)) return false;
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (!got.success || !got.session) return false;
-    const result = await got.session.callMcpTool('browser_tabs', { action: 'close', index });
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) return false;
+    const result = await callCloudTool(session, 'browser_tabs', { action: 'close', index });
     return result?.success === true;
+  } catch {
+    return false;
+  }
+};
+
+/** 网页原地刷新：重新导航到当前用户标签网址，不再重连查看器；空白页直接视为成功 */
+export const reloadCloudBrowserSession = async (cloudSessionId: string): Promise<boolean> => {
+  try {
+    const ab = await getClient();
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (!session) return false;
+    const listed = await callCloudTool(session, 'browser_tabs', { action: 'list' });
+    if (listed?.success !== true) return false;
+    const current = toVisibleTabs(String(listed.data ?? '')).find((tab) => tab.current);
+    if (!current) return false;
+    // 鲁港通 - 空白页没有可刷新内容，直接返回成功，避免多余导航
+    if (!current.url || current.url === 'about:blank') return true;
+    const navigated = await callCloudTool(session, 'browser_navigate', { url: current.url });
+    return navigated?.success === true;
   } catch {
     return false;
   }
@@ -367,7 +465,8 @@ export const refreshCloudBrowserSession = async (
   cloudSessionId: string
 ): Promise<{ resourceUrl: string } | null> => {
   const ab = await getClient();
-  const got = await ab.get(cloudSessionId);
+  // 鲁港通 - 此处超时/网络异常须上抛：调用方据此沿用旧地址，不能误判为「已回收」
+  const got = await withCloudTimeout(`ab.get ${cloudSessionId}`, () => ab.get(cloudSessionId));
   if (!got.success || !got.session || !got.session.resourceUrl) {
     return null;
   }
@@ -378,9 +477,9 @@ export const refreshCloudBrowserSession = async (
 export const closeCloudBrowserSession = async (cloudSessionId: string): Promise<void> => {
   try {
     const ab = await getClient();
-    const got = await ab.get(cloudSessionId);
-    if (got.success && got.session) {
-      await got.session.delete();
+    const session = await getCloudSession(ab, cloudSessionId);
+    if (session) {
+      await withCloudTimeout(`session.delete ${cloudSessionId}`, () => session.delete());
     }
   } catch {
     // 忽略：关台失败不影响用户侧体验

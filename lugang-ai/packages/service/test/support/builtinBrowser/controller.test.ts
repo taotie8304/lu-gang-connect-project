@@ -11,6 +11,7 @@ const {
   closeCloudSessionMock,
   resizeCloudSessionMock,
   navigateCloudSessionMock,
+  reloadCloudSessionMock,
   listTabsMock,
   newTabMock,
   selectTabMock,
@@ -26,6 +27,7 @@ const {
   closeCloudSessionMock: vi.fn(),
   resizeCloudSessionMock: vi.fn(),
   navigateCloudSessionMock: vi.fn(),
+  reloadCloudSessionMock: vi.fn(),
   listTabsMock: vi.fn(),
   newTabMock: vi.fn(),
   selectTabMock: vi.fn(),
@@ -47,6 +49,7 @@ vi.mock('@fastgpt/service/support/builtinBrowser/agentbay', () => ({
   closeCloudBrowserSession: closeCloudSessionMock,
   resizeCloudBrowserSession: resizeCloudSessionMock,
   navigateCloudBrowserSession: navigateCloudSessionMock,
+  reloadCloudBrowserSession: reloadCloudSessionMock,
   listCloudBrowserTabs: listTabsMock,
   newCloudBrowserTab: newTabMock,
   selectCloudBrowserTab: selectTabMock,
@@ -67,6 +70,7 @@ import {
   navigateSession,
   newTabSession,
   openSession,
+  reloadSession,
   resizeSession,
   selectTabSession,
   sweepOverdueSessions
@@ -113,6 +117,8 @@ beforeEach(() => {
   updateOneMock.mockResolvedValue({});
   closeCloudSessionMock.mockResolvedValue(undefined);
   resizeCloudSessionMock.mockResolvedValue(true);
+  navigateCloudSessionMock.mockResolvedValue(true);
+  reloadCloudSessionMock.mockResolvedValue(true);
   listTabsMock.mockResolvedValue(visibleTabs);
   newTabMock.mockResolvedValue(visibleTabs);
   selectTabMock.mockResolvedValue(true);
@@ -493,6 +499,31 @@ describe('navigateSession', () => {
     await expect(navigateSession({ tmbId: mockTmbId, url: 'www.gov.hk', now })).resolves.toEqual({
       navigated: false
     });
+  });
+});
+
+describe('reloadSession', () => {
+  it('有进行中会话：请求云端原地刷新当前网页，reloaded=true', async () => {
+    findOneMock.mockReturnValue(leanChain(activeDoc()));
+
+    await expect(reloadSession({ tmbId: mockTmbId, now })).resolves.toEqual({ reloaded: true });
+    expect(reloadCloudSessionMock).toHaveBeenCalledWith('cloud-1');
+  });
+
+  it('无进行中会话：reloaded=false，不触碰云端', async () => {
+    findOneMock.mockReturnValue(leanChain(null));
+
+    await expect(reloadSession({ tmbId: mockTmbId, now })).resolves.toEqual({ reloaded: false });
+    expect(reloadCloudSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('会话已过期：reloaded=false，不触碰云端', async () => {
+    findOneMock.mockReturnValue(
+      leanChain(activeDoc({ expiresAt: new Date(now.getTime() - MINUTE_MS) }))
+    );
+
+    await expect(reloadSession({ tmbId: mockTmbId, now })).resolves.toEqual({ reloaded: false });
+    expect(reloadCloudSessionMock).not.toHaveBeenCalled();
   });
 });
 

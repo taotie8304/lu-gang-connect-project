@@ -35,16 +35,18 @@ import {
   patchSelectBuiltinBrowserTab,
   postNewBuiltinBrowserTab,
   postOpenBuiltinBrowserSession,
+  postReloadBuiltinBrowserSession,
   putBuiltinBrowserViewport
 } from '@/web/support/builtinBrowser/api';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
+import { createTabRefreshScheduler } from './polling';
 
 const MINUTE_MS = 60 * 1000;
 const COUNTDOWN_TICK_MS = 30 * 1000;
 // 鲁港通 - 窗口拉伸/缩放后延迟 600ms 再同步云端视口，避免拖动过程连发请求
 const VIEWPORT_FOLLOW_DEBOUNCE_MS = 600;
-// 鲁港通 - 标签条轮询间隔：云端页面内自行跳转/开关标签时，前端靠轮询对齐
-const TAB_REFRESH_INTERVAL_MS = 3000;
+// 鲁港通 - 开台超过 5 秒追加「首次准备较慢」提示，避免用户误以为卡死
+const LOADING_SLOW_HINT_MS = 5 * 1000;
 // 鲁港通 - 面板窄于该宽度时头部隐藏剩余时间文案（英文/韩文更长，防挤压标题与按钮）
 const HEADER_HIDE_REMAINING_WIDTH = 420;
 
@@ -70,7 +72,13 @@ type BuiltinBrowserSessionState = {
   expiresAt: string;
 };
 
-const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
+const BuiltinBrowserPanelBody = ({
+  panelWidth,
+  isResizing
+}: {
+  panelWidth: number;
+  isResizing: boolean;
+}) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { openConfirm, ConfirmModal } = useConfirm({ type: 'common' });
@@ -82,11 +90,21 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   const [remainingMs, setRemainingMs] = useState<number>();
   const [urlInput, setUrlInput] = useState('');
   const [tabs, setTabs] = useState<BuiltinBrowserTab[]>([]);
+  const [loadingSlow, setLoadingSlow] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
   const urlEditingRef = useRef(false);
-  const didAutoFocusRef = useRef(false);
+  // 鲁港通 - 开台期间输入的网址先排队，会话就绪后自动打开
+  const pendingNavigateRef = useRef<string>();
+  const isResizingRef = useRef(isResizing);
+  const freezeRef = useRef<{ width: number; height: number; panelWidth: number } | null>(null);
+  const [frozenFrame, setFrozenFrame] = useState<{
+    width: number;
+    height: number;
+    panelWidth: number;
+  } | null>(null);
+  const tabsSchedulerRef = useRef<ReturnType<typeof createTabRefreshScheduler>>();
 
   const { runAsync: openSession } = useRequest(postOpenBuiltinBrowserSession, {
     manual: true,
@@ -120,6 +138,10 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
     manual: true,
     errorToast: ''
   });
+  const { runAsync: reloadPage, loading: isReloading } = useRequest(
+    postReloadBuiltinBrowserSession,
+    { manual: true, errorToast: '' }
+  );
 
   const isOpen = builtinBrowser?.isOpen ?? false;
 
@@ -148,6 +170,7 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   // 鲁港通 - 刷新/重试入口（事件处理器）：先回到加载态再重新请求
   const loadSession = useCallback(() => {
     setStatus('loading');
+    setLoadingSlow(false);
     setErrorMessage('');
     return requestOpenSession();
   }, [requestOpenSession]);
@@ -187,45 +210,65 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
 
   const applyTabs = useCallback((nextTabs: BuiltinBrowserTab[]) => {
     setTabs(nextTabs);
-    if (urlEditingRef.current) return;
+    // 鲁港通 - 用户正在输入或首跳排队中：不覆盖网址栏，避免排队的目标被轮询清掉
+    if (urlEditingRef.current || pendingNavigateRef.current) return;
     const current = nextTabs.find((tab) => tab.current);
     setUrlInput(current && current.url !== 'about:blank' ? current.url : '');
   }, []);
 
-  const refreshTabs = useCallback(async () => {
+  const refreshTabs = useCallback(async (): Promise<boolean> => {
     try {
       const res = await fetchTabs();
       applyTabs(res.tabs);
+      return true;
     } catch {
-      // 轮询失败静默：下一轮自动重试
+      // 轮询失败由调度器退避重试
+      return false;
     }
   }, [fetchTabs, applyTabs]);
 
-  // 鲁港通 - 标签轮询：用户在画面内跳转/开关标签时，标签条随时间对齐云端状态
+  // 鲁港通 - 标签轮询：单飞 + 失败退避 + 页面隐藏暂停，避免慢调用堆叠占满连接池拖死整页
   useEffect(() => {
     if (status !== 'active') return;
 
-    const initial = setTimeout(() => void refreshTabs(), 0);
-    const timer = setInterval(() => {
-      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-      void refreshTabs();
-    }, TAB_REFRESH_INTERVAL_MS);
+    const scheduler = createTabRefreshScheduler({
+      refresh: refreshTabs,
+      isPaused: () => typeof document !== 'undefined' && document.visibilityState === 'hidden',
+      onSlow: (elapsedMs) => {
+        console.warn(`[builtin-browser] slow tabs refresh ${elapsedMs}ms`);
+      }
+    });
+    tabsSchedulerRef.current = scheduler;
+    scheduler.start();
+
+    // 页面回到前台时立即对齐一次，不必等下一个轮询周期
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void scheduler.trigger();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
-      clearTimeout(initial);
-      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      scheduler.stop();
+      if (tabsSchedulerRef.current === scheduler) {
+        tabsSchedulerRef.current = undefined;
+      }
     };
   }, [status, refreshTabs]);
 
-  // 鲁港通 - 空白起始页自动聚焦网址栏，减少「打开后不知道做什么」的停顿
+  // 鲁港通 - 面板一打开就聚焦网址栏：开台等待期间即可输入网址，就绪后自动打开
   useEffect(() => {
-    if (status !== 'active' || didAutoFocusRef.current) return;
-    const current = tabs.find((tab) => tab.current);
-    if (!current) return;
-    didAutoFocusRef.current = true;
-    if (!current.url || current.url === 'about:blank') {
-      urlInputRef.current?.focus();
-    }
-  }, [status, tabs]);
+    urlInputRef.current?.focus();
+  }, []);
+
+  // 鲁港通 - 开台超过 5 秒追加分步提示，让用户知道仍在准备而非卡死
+  useEffect(() => {
+    if (status !== 'loading') return;
+    const timer = setTimeout(() => setLoadingSlow(true), LOADING_SLOW_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [status]);
 
   // 鲁港通 - 新建标签：云端选中新空白页，前端同步标签条并聚焦网址栏
   const handleNewTab = useCallback(async () => {
@@ -306,8 +349,12 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
       const height = el.clientHeight;
       if (width === lastSize.width && height === lastSize.height) return;
       lastSize = { width, height };
+      // 鲁港通 - 拖拽调宽/冻结期间不连发云端 resize：松手后由冻结逻辑按最终尺寸统一贴合
+      if (isResizingRef.current || freezeRef.current) return;
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
+        // 兜底复查：拖动中即使首个尺寸事件早于冻结状态落定，也不在拖动期间请求云端
+        if (isResizingRef.current || freezeRef.current) return;
         const viewport = measureViewport();
         if (viewport) void resizeViewport(viewport).catch(() => undefined);
       }, VIEWPORT_FOLLOW_DEBOUNCE_MS);
@@ -320,30 +367,130 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
     };
   }, [status, measureViewport, resizeViewport]);
 
-  // 鲁港通 - 网址栏跳转：先本地归一化校验（与服务端同一工具），失败给可操作提示；
+  // 鲁港通 - 拖拽调宽期间冻结画面：保留拖拽前的画面像素尺寸并横向拉伸填充面板，
+  // 云端画面尺寸不变，查看器不会露出深色底；松手后按最终尺寸贴合云端，完成再解除冻结
+  useEffect(() => {
+    isResizingRef.current = isResizing;
+    if (isResizing) {
+      const el = bodyRef.current;
+      if (!freezeRef.current && el && el.clientWidth && el.clientHeight) {
+        const frame = { width: el.clientWidth, height: el.clientHeight, panelWidth };
+        freezeRef.current = frame;
+        setFrozenFrame(frame);
+      }
+      return;
+    }
+    if (!freezeRef.current) return;
+
+    let cancelled = false;
+    const viewport = measureViewport();
+    const sizeChanged =
+      !viewport ||
+      viewport.width !== freezeRef.current.width ||
+      viewport.height !== freezeRef.current.height;
+
+    void (async () => {
+      // 点击手柄未拖动时尺寸未变：无需再请求云端
+      if (sizeChanged && viewport) {
+        await resizeViewport(viewport).catch(() => undefined);
+      }
+      if (cancelled) return;
+      freezeRef.current = null;
+      setFrozenFrame(null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isResizing, panelWidth, measureViewport, resizeViewport]);
+
+  // 鲁港通 - 重新贴合画面：画面与面板出现错位/深色底时的手动自愈入口
+  const handleRefit = useCallback(async () => {
+    const viewport = measureViewport();
+    if (!viewport) return;
+    try {
+      const res = await resizeViewport(viewport);
+      if (!res.resized) {
+        toast({ title: t('common:builtin_browser_refit_failed'), status: 'warning' });
+      }
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_refit_failed') as any),
+        status: 'warning'
+      });
+    }
+  }, [measureViewport, resizeViewport, t, toast]);
+
+  // 鲁港通 - 网址跳转共用逻辑：当前会话直接跳转，排队首跳就绪后也走这里；
   // 云端跳转是异步的，面板画面会随远端页面刷新，前端无需重载
+  const navigateTo = useCallback(
+    async (target: string) => {
+      try {
+        const res = await navigateSession(target);
+        if (!res.navigated) {
+          toast({ title: t('common:builtin_browser_url_open_failed'), status: 'warning' });
+          return;
+        }
+        setUrlInput(target);
+        void tabsSchedulerRef.current?.trigger();
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_url_open_failed') as any),
+          status: 'warning'
+        });
+      }
+    },
+    [navigateSession, t, toast]
+  );
+
+  // 鲁港通 - 开台期间排队的网址：会话就绪后自动打开，用户不必等加载完再输入一次
+  useEffect(() => {
+    if (status !== 'active') return;
+    const pending = pendingNavigateRef.current;
+    if (!pending) return;
+    void navigateTo(pending).finally(() => {
+      if (pendingNavigateRef.current === pending) {
+        pendingNavigateRef.current = undefined;
+      }
+    });
+  }, [status, navigateTo]);
+
+  // 鲁港通 - 网址栏跳转：先本地归一化校验（与服务端同一工具），失败给可操作提示；
+  // 加载中回车则先排队，浏览器就绪后自动打开
   const handleNavigate = useCallback(async () => {
     const target = normalizeBuiltinBrowserUrl(urlInput);
     if (!target) {
       toast({ title: t('common:builtin_browser_url_invalid'), status: 'warning' });
       return;
     }
+    if (status !== 'active') {
+      pendingNavigateRef.current = target;
+      setUrlInput(target);
+      toast({ title: t('common:builtin_browser_url_queued'), status: 'info' });
+      return;
+    }
+    await navigateTo(target);
+  }, [status, urlInput, navigateTo, t, toast]);
 
+  // 鲁港通 - 刷新网页：只重新加载当前页面，不重连查看器；失败时兜底重连一次会话
+  const handleReload = useCallback(async () => {
+    if (isReloading) return;
     try {
-      const res = await navigateSession(target);
-      if (!res.navigated) {
-        toast({ title: t('common:builtin_browser_url_open_failed'), status: 'warning' });
+      const res = await reloadPage();
+      if (!res.reloaded) {
+        toast({ title: t('common:builtin_browser_reload_failed'), status: 'warning' });
+        // 会话可能已被云端回收：复用开台入口恢复画面，避免刷新按钮失效
+        void loadSession();
         return;
       }
-      setUrlInput(target);
-      void refreshTabs();
+      void tabsSchedulerRef.current?.trigger();
     } catch (err) {
       toast({
-        title: t(getErrText(err, 'common:builtin_browser_url_open_failed') as any),
+        title: t(getErrText(err, 'common:builtin_browser_reload_failed') as any),
         status: 'warning'
       });
     }
-  }, [navigateSession, refreshTabs, t, toast, urlInput]);
+  }, [isReloading, reloadPage, loadSession, t, toast]);
 
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
@@ -375,6 +522,8 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
   const isExpiringSoon =
     remainingMs !== undefined && remainingMs <= BUILTIN_BROWSER_REMIND_BEFORE_MINUTES * MINUTE_MS;
   const showRemaining = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
+  const frozenScaleX =
+    frozenFrame && frozenFrame.panelWidth > 0 ? panelWidth / frozenFrame.panelWidth : 1;
 
   return (
     <Flex flexDirection={'column'} h={'100%'} minH={0}>
@@ -409,15 +558,29 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
         <Box flex={'1 1 0'} />
 
         {status === 'active' && (
+          <MyTooltip label={t('common:builtin_browser_refit')}>
+            <MyIcon
+              name={'core/modules/fitView'}
+              w={'16px'}
+              h={'16px'}
+              color={'myGray.500'}
+              cursor={'pointer'}
+              _hover={{ color: 'myGray.700' }}
+              onClick={() => void handleRefit()}
+            />
+          </MyTooltip>
+        )}
+        {status === 'active' && (
           <MyTooltip label={t('common:builtin_browser_refresh')}>
             <MyIcon
               name={'common/refresh'}
               w={'16px'}
               h={'16px'}
               color={'myGray.500'}
-              cursor={'pointer'}
-              _hover={{ color: 'myGray.700' }}
-              onClick={() => void loadSession()}
+              cursor={isReloading ? 'not-allowed' : 'pointer'}
+              opacity={isReloading ? 0.5 : 1}
+              _hover={isReloading ? undefined : { color: 'myGray.700' }}
+              onClick={() => void handleReload()}
             />
           </MyTooltip>
         )}
@@ -507,7 +670,7 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
         </MyTooltip>
       </Flex>
 
-      {/* 网址栏：输入后回车让云端浏览器跳转；非使用中禁用（保持布局稳定，画面区域尺寸不随状态变化） */}
+      {/* 网址栏：输入后回车让云端浏览器跳转；开台等待期间也可输入，就绪后自动打开 */}
       <Flex
         flexShrink={0}
         alignItems={'center'}
@@ -533,7 +696,7 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
             void handleNavigate();
           }}
           placeholder={t('common:builtin_browser_url_placeholder')}
-          isDisabled={status !== 'active' || isNavigating}
+          isDisabled={status === 'error' || isNavigating}
           bg={'myGray.100'}
           borderColor={'transparent'}
           _hover={{ bg: 'myGray.100' }}
@@ -563,6 +726,11 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
             <Text fontSize={'sm'} color={'myGray.500'}>
               {t('common:builtin_browser_loading')}
             </Text>
+            {loadingSlow && (
+              <Text fontSize={'xs'} color={'myGray.400'} textAlign={'center'} px={6}>
+                {t('common:builtin_browser_loading_slow')}
+              </Text>
+            )}
           </Flex>
         )}
 
@@ -592,10 +760,19 @@ const BuiltinBrowserPanelBody = ({ panelWidth }: { panelWidth: number }) => {
             title={t('common:builtin_browser')}
             style={{
               position: 'absolute',
-              left: -BUILTIN_BROWSER_CROP_LEFT_PX,
+              // 鲁港通 - 冻结期按拖拽前像素尺寸渲染并横向缩放，画面铺满新宽度且不触发查看器重排
+              left: frozenFrame
+                ? -BUILTIN_BROWSER_CROP_LEFT_PX * frozenScaleX
+                : -BUILTIN_BROWSER_CROP_LEFT_PX,
               top: -BUILTIN_BROWSER_CROP_TOP_PX,
-              width: `calc(100% + ${BUILTIN_BROWSER_CROP_LEFT_PX}px)`,
-              height: `calc(100% + ${BUILTIN_BROWSER_CROP_TOP_PX}px)`,
+              width: frozenFrame
+                ? frozenFrame.width + BUILTIN_BROWSER_CROP_LEFT_PX
+                : `calc(100% + ${BUILTIN_BROWSER_CROP_LEFT_PX}px)`,
+              height: frozenFrame
+                ? frozenFrame.height + BUILTIN_BROWSER_CROP_TOP_PX
+                : `calc(100% + ${BUILTIN_BROWSER_CROP_TOP_PX}px)`,
+              transform: frozenFrame ? `scaleX(${frozenScaleX})` : undefined,
+              transformOrigin: 'left top',
               border: 'none',
               display: 'block'
             }}
@@ -712,7 +889,7 @@ const BuiltinBrowserPanel = () => {
           borderRadius: [0, '0 16px 16px 0']
         }}
       >
-        <BuiltinBrowserPanelBody panelWidth={panelWidth} />
+        <BuiltinBrowserPanelBody panelWidth={panelWidth} isResizing={isDragging} />
       </PageContainer>
 
       {/* 鲁港通 - 拖拽手柄：面板左缘 6px 条带；拖动中覆盖全面板遮罩，防云端画面抢指针事件 */}
