@@ -11,7 +11,11 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
-    include: ['packages/**/*.test.ts', 'projects/app/test/**/*.test.ts'],
+    include: [
+      'packages/**/*.test.ts',
+      'projects/app/test/**/*.test.ts',
+      'projects/desktop/test/**/*.test.ts'
+    ],
     testTimeout: 20000
   }
 });

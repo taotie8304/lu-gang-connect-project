@@ -2,6 +2,7 @@ packages:
   - packages/*
 
   - projects/app
+  - projects/desktop
   - projects/code-sandbox
   - projects/marketplace
   - projects/mcp_server
@@ -111,6 +112,7 @@ onlyBuiltDependencies:
   - bufferutil
   - canvas
   - core-js
+  - electron
   - esbuild
   - mongodb-memory-server
   - msgpackr-extract

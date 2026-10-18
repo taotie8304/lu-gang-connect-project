@@ -1,0 +1,26 @@
+{
+  "name": "@lugang/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "鲁港通 Windows 桌面客户端（P1）",
+  "main": "dist/main/index.cjs",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "pnpm build && electron .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "cd ../.. && vitest run --config vitest.simple.config.mts projects/desktop",
+    "dist": "pnpm build && electron-builder --win --x64"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "electron": "44.9.0",
+    "electron-builder": "26.15.3",
+    "electron-log": "5.4.4",
+    "electron-updater": "6.8.9",
+    "esbuild": "^0.25.11",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "zod": "catalog:"
+  }
+}
