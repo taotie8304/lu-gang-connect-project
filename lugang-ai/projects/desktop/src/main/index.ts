@@ -11,7 +11,8 @@ import { createMainWindow } from './window';
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
 
-log.initialize();
+// 鲁港通 - 关闭 electron-log 的渲染进程注入：否则其 preload 会进入标签页分区，向第三方页面暴露 __electronLog
+log.initialize({ preload: false });
 log.transports.file.maxSize = 5 * 1024 * 1024;
 
 process.on('uncaughtException', (error) => {
