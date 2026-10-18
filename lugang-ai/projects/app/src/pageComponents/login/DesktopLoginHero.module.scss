@@ -1,0 +1,73 @@
+@keyframes lugangSweep {
+  0% {
+    transform: translateX(-10%) rotate(-14deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.75;
+  }
+  55% {
+    opacity: 0.28;
+  }
+  80% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(105%) rotate(-14deg);
+    opacity: 0;
+  }
+}
+
+@keyframes lugangPulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes lugangTwinkle {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+.sweep {
+  animation: lugangSweep 18s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.pulse {
+  animation: lugangPulse 9s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+.pulseDelay {
+  animation-delay: -4.5s;
+}
+
+.twinkle {
+  animation: lugangTwinkle 5s ease-in-out infinite;
+}
+
+.twinkleSlow {
+  animation: lugangTwinkle 9s ease-in-out infinite;
+  animation-delay: -3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sweep,
+  .pulse,
+  .twinkle,
+  .twinkleSlow {
+    animation: none;
+  }
+}

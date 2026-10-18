@@ -319,6 +319,7 @@
   "confirm_input_delete_placeholder": "{{confirmText}}을(를) 입력하세요",
   "confirm_input_delete_tip": "확인을 위해 <bold>{{confirmText}}</bold>를 입력해 주세요",
   "confirm_logout": "로그아웃하시겠습니까?",
+  "confirm_logout_desktop": "로그아웃하시겠습니까? 내장 브라우저가 닫히고 로컬 세션이 지워집니다.",
   "confirm_move": "여기로 이동",
   "confirm_update": "업데이트 확인",
   "contact_business": "영업팀 문의",

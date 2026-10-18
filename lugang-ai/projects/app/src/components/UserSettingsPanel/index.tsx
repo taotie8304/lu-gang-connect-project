@@ -18,6 +18,9 @@ import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import Badge from '@/components/Badge';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
+import { performLogout } from '@/web/support/user/logout';
+import { useChatStore } from '@/web/core/chat/context/useChatStore';
+import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
 import { getTicketUnreadCount } from '@/web/support/ticket/api';
 import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
@@ -42,7 +45,11 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   const { t } = useClientTranslation();
   const router = useRouter();
   const { setUserInfo } = useUserStore();
-  const { openConfirm, ConfirmModal } = useConfirm({ content: t('common:confirm_logout') });
+  const { resetChatCache } = useChatStore();
+  const isDesktop = isDesktopBridgeAvailable();
+  const { openConfirm, ConfirmModal } = useConfirm({
+    content: isDesktop ? t('common:confirm_logout_desktop') : t('common:confirm_logout')
+  });
   const { currentLang, onChangeLanguage } = useChatLanguageSwitch('account');
 
   // 鲁港通 - 修改密码/辅助使用弹窗、语言子列表展开状态
@@ -67,11 +74,18 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     if (isOpen) refreshTicketUnread();
   }, [isOpen, refreshTicketUnread]);
 
+  // 鲁港通 - 桌面客户端退出时先关闭内置浏览器，避免下一位登录者看到上一位的网页会话
   const handleLogout = useCallback(() => {
-    setUserInfo(null);
-    clearToken();
-    router.replace('/login');
-  }, [setUserInfo, router]);
+    performLogout({
+      closeBrowserPanel: isDesktop
+        ? () => window.lugangDesktop?.closePanel()
+        : undefined,
+      resetChatCache,
+      clearUserInfo: () => setUserInfo(null),
+      clearToken,
+      redirectToLogin: () => router.replace('/login')
+    });
+  }, [isDesktop, resetChatCache, setUserInfo, router]);
 
   // 鲁港通 - 批2-C：产品反馈升级为站内工单系统，点击直达「我的工单」页（不再走邮箱）。
   const handleTicketFeedback = useCallback(() => {

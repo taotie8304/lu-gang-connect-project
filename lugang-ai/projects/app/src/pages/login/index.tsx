@@ -1,10 +1,13 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useSyncExternalStore } from 'react';
 import { useRouter } from 'next/router';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { clearToken } from '@/web/support/user/auth';
 import { useMount } from 'ahooks';
 // 鲁港通 - N1：登录页改用带水墨画背景+宣传文字的官网首页版本（官方 LoginModal 保留给 chat 页登录门）
 import LoginHeroModal from '@/pageComponents/login/LoginHeroModal';
+// 鲁港通 - 第 2 批：桌面客户端使用专属登录页（水墨长卷 + 玉版宣科技卡）
+import DesktopLoginHero from '@/pageComponents/login/DesktopLoginHero';
+import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
 import { postAcceptInvitationLink } from '@/web/support/user/team/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useTranslation } from 'next-i18next';
@@ -13,6 +16,11 @@ import { subRoute } from '@fastgpt/web/common/system/utils';
 import { validateRedirectUrl } from '@/web/common/utils/uri';
 import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 import { useLoginRedirectAfterLogin } from '@/web/support/user/loginRedirect';
+
+// 鲁港通 - 桌面桥状态只读一次即可：服务端快照固定 false，水合后切换到客户端真实状态
+const subscribeDesktopBridge = () => () => {};
+const getDesktopSnapshot = () => isDesktopBridgeAvailable();
+const getDesktopServerSnapshot = () => false;
 
 // 鲁港通 - 默认 AI 助手应用 ID：普通用户登录后直达该应用对话，不再经过工作台
 const Login = ({ defaultAppId }: { defaultAppId: string }) => {
@@ -25,6 +33,11 @@ const Login = ({ defaultAppId }: { defaultAppId: string }) => {
   const { toast } = useToast();
   const { setUserInfo } = useUserStore();
   const resolveLoginRedirect = useLoginRedirectAfterLogin();
+  const isDesktop = useSyncExternalStore(
+    subscribeDesktopBridge,
+    getDesktopSnapshot,
+    getDesktopServerSnapshot
+  );
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponseType) => {
@@ -80,7 +93,11 @@ const Login = ({ defaultAppId }: { defaultAppId: string }) => {
     router.prefetch('/dashboard/agent');
   });
 
-  return <LoginHeroModal onSuccess={loginSuccess} />;
+  return isDesktop ? (
+    <DesktopLoginHero onSuccess={loginSuccess} />
+  ) : (
+    <LoginHeroModal onSuccess={loginSuccess} />
+  );
 };
 
 export async function getServerSideProps(context: any) {

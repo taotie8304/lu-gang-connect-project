@@ -321,6 +321,7 @@
   "confirm_input_delete_placeholder": "请输入: {{confirmText}}",
   "confirm_input_delete_tip": "请输入 <bold>{{confirmText}}</bold> 确认",
   "confirm_logout": "确认退出登录?",
+  "confirm_logout_desktop": "确认退出登录？退出后将关闭内置浏览器并清除本机会话。",
   "confirm_move": "移动到这",
   "confirm_update": "确认更新",
   "contact_business": "联系商务",
