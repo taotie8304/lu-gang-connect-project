@@ -6,6 +6,7 @@
   "main": "dist/main/index.cjs",
   "type": "module",
   "scripts": {
+    "prebuild": "node node_modules/electron/install.js",
     "build": "node build.mjs",
     "dev": "pnpm build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
