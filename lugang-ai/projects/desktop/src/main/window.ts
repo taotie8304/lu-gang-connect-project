@@ -73,10 +73,12 @@ export const createMainWindow = ({
 
   // 鲁港通 - 主窗口只对应用源开放剪贴板读写（聊天页复制/粘贴），其余权限一律拒绝
   window.webContents.session.setPermissionRequestHandler(
-    (_webContents, permission, callback, details) => {
+    (webContents, permission, callback, details) => {
+      // 鲁港通 - 缺失 requestingUrl 时回退到发起请求的 WebContents 自身地址，
+      // 否则外部弹窗的请求会被误判为主窗口应用源
       const requestingOrigin =
         (details && 'requestingUrl' in details ? details.requestingUrl : undefined) ??
-        window.webContents.getURL();
+        webContents.getURL();
       callback(decideMainWindowPermission({ permission, requestingOrigin, appOrigin }));
     }
   );
@@ -87,7 +89,12 @@ export const createMainWindow = ({
 
   installNavigationGuard({
     target: window.webContents,
-    decide: (url) => {
+    decide: (url, { isMainFrame }) => {
+      // 鲁港通 - will-redirect 也覆盖子帧（第三方 iframe）：只做协议校验，
+      // 不拦截内嵌内容，也绝不因第三方跳转弹系统浏览器
+      if (!isMainFrame) {
+        return isManualBrowserNavigationAllowed(url) ? { type: 'allow' } : { type: 'prevent' };
+      }
       const decision = decideMainWindowNavigation({
         currentUrl: window.webContents.getURL(),
         targetUrl: url,
@@ -113,10 +120,12 @@ export const createMainWindow = ({
       return { action: 'deny' };
     }
     if (decision.type === 'block') return { action: 'deny' };
-    // 鲁港通 - 放行目标用受控弹窗承载 OAuth 等 window.opener 型流程，不注入主窗口 preload
+    // 鲁港通 - 放行目标用受控弹窗承载 OAuth 等 window.opener 型流程，不注入主窗口 preload；
+    // parent 绑定主窗口，弹窗随主窗口关闭，不会残留为独立进程窗口
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
+        parent: window,
         autoHideMenuBar: true,
         webPreferences: {
           sandbox: true,

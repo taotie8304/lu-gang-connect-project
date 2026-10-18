@@ -331,7 +331,8 @@ export class BrowserManager {
       this.closeTabInternal(webContents.id);
       if (this.panelOpen && this.tabs.size === 0) this.createTab();
     });
-    // 鲁港通 - 标签页导航与 302 重定向同受守卫：只允许 http(s)，about:blank 起始页放行
+    // 鲁港通 - 标签页导航与 302 重定向同受守卫：只允许 http(s)，about:blank 起始页放行；
+    // 主帧与子帧同一口径（协议校验），标签页内不做系统浏览器外开
     installNavigationGuard({
       target: webContents,
       decide: (url) =>
