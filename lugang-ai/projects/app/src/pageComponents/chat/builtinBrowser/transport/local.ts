@@ -47,7 +47,7 @@ export const createLocalTransport = (bridge: DesktopBridge): BuiltinBrowserTrans
       try {
         await bridge.closePanel();
       } catch {
-        // 关闭失败不阻塞面板收起
+        // 鲁港通 - 关闭失败不阻塞面板收起
       }
     },
     reload: async () => {
