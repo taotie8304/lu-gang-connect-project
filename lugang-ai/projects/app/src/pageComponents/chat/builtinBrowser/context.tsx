@@ -64,7 +64,7 @@ export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) =>
         const res = await getBuiltinBrowserSessionStatus();
         if (!cancelled && res.active) setIsOpen(true);
       } catch {
-        // 查询失败静默：用户点入口按钮时会重新打开
+        // 鲁港通 - 查询失败静默：用户点入口按钮时会重新打开
       }
     };
 
