@@ -1,7 +1,7 @@
 // 鲁港通 - 标签顺序纯状态机：所有操作返回新状态，便于单测与撤销
 export type TabOrderState = { order: number[]; activeId: number | null };
 
-// 鲁港通 - 与 packages/global 的 BUILTIN_BROWSER_MAX_TABS 保持一致（P2 抽取共享内核时合并）
+// 鲁港通 - 与云端面板的 10 个标签上限保持一致（P2 抽取共享内核时统一为常量）
 export const MAX_TABS = 10;
 
 export const addTabToOrder = (
