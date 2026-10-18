@@ -1,4 +1,4 @@
-// 鲁港通 - 主窗口导航策略：站内放行；登录页临时放行外站（OAuth）；其余交系统浏览器
+// 鲁港通 - 主窗口导航策略：站内放行；登录页首跳外站与登录域内同源跳转放行（OAuth）；其余交系统浏览器
 export type NavigationDecision =
   | { type: 'allow' }
   | { type: 'external'; url: string }
@@ -23,13 +23,25 @@ export const decideMainWindowNavigation = ({
 }): NavigationDecision => {
   const target = parseUrl(targetUrl);
   if (!target) return { type: 'block' };
-  if (target.origin === appOrigin) return { type: 'allow' };
+
+  // 鲁港通 - appOrigin 可能来自 resolveAppUrl 的 href（带尾斜杠等），先归一化为 origin 再比较
+  const appOriginNormalized = parseUrl(appOrigin)?.origin ?? appOrigin;
+  if (target.origin === appOriginNormalized) return { type: 'allow' };
   if (target.protocol !== 'http:' && target.protocol !== 'https:') return { type: 'block' };
 
   const current = parseUrl(currentUrl);
-  const isLoginFlow =
-    !!current && current.origin === appOrigin && current.pathname.startsWith('/login');
-  if (isLoginFlow) return { type: 'allow' };
+  if (current) {
+    // 鲁港通 - /login 必须按路径边界匹配，避免 /loginfoo 之类被误判为登录页
+    const isLoginPage =
+      current.origin === appOriginNormalized &&
+      (current.pathname === '/login' || current.pathname.startsWith('/login/'));
+    if (isLoginPage) return { type: 'allow' };
+    // 鲁港通 - 已处于登录所需第三方域（SSO/OAuth）时，仅放行与该域同源的后续跳转，
+    // 让登录流程在主窗口内完成，同时不放宽到任意站点
+    if (current.origin !== appOriginNormalized && target.origin === current.origin) {
+      return { type: 'allow' };
+    }
+  }
 
   return { type: 'external', url: target.href };
 };

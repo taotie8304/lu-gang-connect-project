@@ -48,6 +48,86 @@ describe('decideMainWindowNavigation', () => {
     ).toEqual({ type: 'allow' });
   });
 
+  it('appOrigin 带尾斜杠（resolveAppUrl 的 href 形式）仍识别站内地址', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'https://www.airscend.com/chat?appId=1',
+        appOrigin: 'https://www.airscend.com/'
+      })
+    ).toEqual({ type: 'allow' });
+  });
+
+  it('appOrigin 带尾斜杠时登录页首跳外域仍放行', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://www.airscend.com/login?redirect=%2Fchat',
+        targetUrl: 'https://accounts.google.com/o/oauth2/auth',
+        appOrigin: 'https://www.airscend.com/'
+      })
+    ).toEqual({ type: 'allow' });
+  });
+
+  it('登录页子路径同样放行首跳外域', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://www.airscend.com/login/oauth',
+        targetUrl: 'https://accounts.google.com/o/oauth2/auth',
+        appOrigin
+      })
+    ).toEqual({ type: 'allow' });
+  });
+
+  it('仅路径前缀形似登录页（/loginfoo）不放行外站', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://www.airscend.com/loginfoo',
+        targetUrl: 'https://accounts.google.com/o/oauth2/auth',
+        appOrigin
+      })
+    ).toEqual({ type: 'external', url: 'https://accounts.google.com/o/oauth2/auth' });
+  });
+
+  it('登录所需第三方域内的后续同源跳转继续放行', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://accounts.google.com/o/oauth2/auth',
+        targetUrl: 'https://accounts.google.com/v3/signin/identifier',
+        appOrigin
+      })
+    ).toEqual({ type: 'allow' });
+  });
+
+  it('登录所需第三方域跳往其他站点仍交系统浏览器', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://accounts.google.com/o/oauth2/auth',
+        targetUrl: 'https://evil.example.com/',
+        appOrigin
+      })
+    ).toEqual({ type: 'external', url: 'https://evil.example.com/' });
+  });
+
+  it('登录所需第三方域内也不放行非 http(s) 目标', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://accounts.google.com/o/oauth2/auth',
+        targetUrl: 'file:///c:/secret.txt',
+        appOrigin
+      })
+    ).toEqual({ type: 'block' });
+  });
+
+  it('登录完成后回到应用站点放行', () => {
+    expect(
+      decideMainWindowNavigation({
+        currentUrl: 'https://accounts.google.com/o/oauth2/auth',
+        targetUrl: 'https://www.airscend.com/login?code=abc',
+        appOrigin
+      })
+    ).toEqual({ type: 'allow' });
+  });
+
   it('登录页也不放行非 http(s)', () => {
     expect(
       decideMainWindowNavigation({
