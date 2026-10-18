@@ -69,6 +69,6 @@ export const saveWindowState = (userDataDir: string, state: WindowState) => {
       'utf8'
     );
   } catch {
-    // 写入失败不影响使用，下次启动回落默认尺寸
+    // 鲁港通 - 写入失败不影响使用，下次启动回落默认尺寸
   }
 };
