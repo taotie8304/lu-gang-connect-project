@@ -1,9 +1,14 @@
-// 鲁港通 - 自动更新：打包后静默检查，下载完成由用户确认重启安装
+// 鲁港通 - 自动更新：打包后静默检查，下载完成由用户确认后标记退出再安装
 import { app, dialog, type BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { autoUpdater } from 'electron-updater';
 
-export const setupAutoUpdate = (window: BrowserWindow) => {
+type SetupAutoUpdateOptions = {
+  window: BrowserWindow;
+  onBeforeQuit: () => void;
+};
+
+export const setupAutoUpdate = ({ window, onBeforeQuit }: SetupAutoUpdateOptions) => {
   if (!app.isPackaged) return;
 
   autoUpdater.logger = {
@@ -26,7 +31,11 @@ export const setupAutoUpdate = (window: BrowserWindow) => {
       cancelId: 0,
       noLink: true
     });
-    if (response === 1) autoUpdater.quitAndInstall();
+    if (response === 1) {
+      // 鲁港通 - 先标记退出，否则关闭到托盘的拦截会阻止更新安装
+      onBeforeQuit();
+      autoUpdater.quitAndInstall();
+    }
   });
 
   autoUpdater.on('error', (error) => {

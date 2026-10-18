@@ -25,3 +25,5 @@ export const BUILTIN_BROWSER_PANEL_MAX_WIDTH = 1600;
 export const BUILTIN_BROWSER_PANEL_RESERVED_WIDTH = 405;
 /** 面板宽度记忆的本地存储键 */
 export const BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY = 'lugang_builtin_browser_panel_width';
+/** 面板左缘拖拽热区宽度（CSS 像素）：手柄须完全落在原生 WebContentsView 之外才能被命中 */
+export const BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX = 16;

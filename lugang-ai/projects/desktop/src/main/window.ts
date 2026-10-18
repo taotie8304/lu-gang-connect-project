@@ -22,13 +22,17 @@ type CreateMainWindowOptions = {
   preloadPath: string;
   rendererDir: string;
   userDataDir: string;
+  shouldHideOnClose: () => boolean;
+  onHideToTray: () => void;
 };
 
 export const createMainWindow = ({
   appUrl,
   preloadPath,
   rendererDir,
-  userDataDir
+  userDataDir,
+  shouldHideOnClose,
+  onHideToTray
 }: CreateMainWindowOptions) => {
   const appOrigin = new URL(appUrl).origin;
   const stored = loadWindowState(userDataDir);
@@ -70,6 +74,9 @@ export const createMainWindow = ({
   window.webContents.setUserAgent(
     stripElectronFromUserAgent(window.webContents.getUserAgent())
   );
+  // 鲁港通 - 双保险：应用菜单已移除，窗口自身也不显示菜单栏
+  window.setAutoHideMenuBar(true);
+  window.setMenuBarVisibility(false);
 
   // 鲁港通 - 主窗口只对应用源开放剪贴板读写（聊天页复制/粘贴），其余权限一律拒绝
   window.webContents.session.setPermissionRequestHandler(
@@ -172,9 +179,15 @@ export const createMainWindow = ({
   window.on('move', scheduleSave);
   window.on('maximize', scheduleSave);
   window.on('unmaximize', scheduleSave);
-  window.on('close', () => {
+  window.on('close', (event) => {
     if (saveTimer) clearTimeout(saveTimer);
     persist();
+    if (shouldHideOnClose()) {
+      // 鲁港通 - 点 X 收进系统托盘，应用与内置浏览器会话保持运行
+      event.preventDefault();
+      window.hide();
+      onHideToTray();
+    }
   });
 
   window.once('ready-to-show', () => {

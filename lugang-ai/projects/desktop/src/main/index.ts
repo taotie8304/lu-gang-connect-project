@@ -1,9 +1,11 @@
 // 鲁港通 - 桌面客户端主进程入口
-import { app, BrowserWindow, dialog } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import log from 'electron-log/main';
 import { join } from 'node:path';
 import { BrowserManager } from './browser/manager';
 import { registerIpc } from './ipc';
+import { decideWindowCloseAction } from './lifecycle';
+import { createTray, type TrayController } from './tray';
 import { setupAutoUpdate } from './update';
 import { resolveAppUrl } from '../shared/url';
 import { createMainWindow } from './window';
@@ -23,16 +25,36 @@ process.on('unhandledRejection', (reason) => {
 });
 
 let mainWindow: BrowserWindow | undefined;
+let tray: TrayController | undefined;
+let isQuitting = false;
+
+const markQuitting = () => {
+  isQuitting = true;
+};
+
+const quitApp = () => {
+  markQuitting();
+  app.quit();
+};
+
+const focusMainWindow = () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+};
 
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
+  app.on('second-instance', focusMainWindow);
+
+  app.on('before-quit', markQuitting);
+
+  app.on('will-quit', () => {
+    tray?.destroy();
+    tray = undefined;
   });
 
   app.on('certificate-error', (event, _webContents, _url, _error, _certificate, callback) => {
@@ -50,8 +72,10 @@ if (!gotLock) {
 
   app
     .whenReady()
-    .then(() => {
+    .then(async () => {
       app.setAppUserModelId('com.airscend.lugang');
+      // 鲁港通 - 客户端不保留原生菜单栏（File/Edit/View/Window）
+      Menu.setApplicationMenu(null);
 
       const appUrl = resolveAppUrl(process.env.LUGANG_WEB_URL);
       const userDataDir = app.getPath('userData');
@@ -61,7 +85,10 @@ if (!gotLock) {
         appUrl,
         preloadPath: join(__dirname, '../preload/index.cjs'),
         rendererDir,
-        userDataDir
+        userDataDir,
+        shouldHideOnClose: () =>
+          decideWindowCloseAction({ isQuitting, hasTray: Boolean(tray) }) === 'hide-to-tray',
+        onHideToTray: () => tray?.notifyHidden()
       });
 
       const browser = new BrowserManager({
@@ -72,7 +99,14 @@ if (!gotLock) {
       });
 
       registerIpc({ mainWindow, appUrl, appVersion: app.getVersion(), browser });
-      setupAutoUpdate(mainWindow);
+      setupAutoUpdate({ window: mainWindow, onBeforeQuit: markQuitting });
+
+      // 鲁港通 - 托盘创建失败时回落为普通关闭，避免窗口藏起来后找不回
+      try {
+        tray = await createTray({ window: mainWindow, onQuit: quitApp });
+      } catch (error) {
+        log.warn('[lugang-desktop] tray unavailable, close will quit', error);
+      }
 
       if (process.env.LUGANG_DEVTOOLS === '1') {
         mainWindow.webContents.openDevTools({ mode: 'detach' });

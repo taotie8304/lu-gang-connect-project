@@ -19,6 +19,7 @@ import {
   BUILTIN_BROWSER_CROP_TOP_PX,
   BUILTIN_BROWSER_MAX_TABS,
   BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
+  BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX,
   BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY,
   BUILTIN_BROWSER_REMIND_BEFORE_MINUTES
 } from '@fastgpt/global/support/builtinBrowser/constant';
@@ -976,27 +977,41 @@ const BuiltinBrowserPanel = () => {
           bg: 'white',
           borderLeft: '1px solid',
           borderLeftColor: 'myGray.200',
-          borderRadius: [0, '0 16px 16px 0']
+          borderRadius: [0, '0 16px 16px 0'],
+          // 鲁港通 - 左侧留出拖拽 gutter：原生 WebContentsView 从 body 起算，手柄才不会被盖住
+          pl: `${BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX}px`
         }}
       >
         <BuiltinBrowserPanelBody panelWidth={panelWidth} isResizing={isDragging} />
       </PageContainer>
 
-      {/* 鲁港通 - 拖拽手柄：面板左缘 6px 条带；拖动中覆盖全面板遮罩，防云端画面抢指针事件 */}
+      {/* 鲁港通 - 拖拽手柄：面板左缘 16px 条带（含视觉握把）；拖动中覆盖全面板遮罩，防云端画面抢指针事件 */}
       <Box
         position={'absolute'}
         left={0}
         top={0}
         bottom={0}
-        w={'6px'}
+        w={`${BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX}px`}
         zIndex={20}
         cursor={'col-resize'}
-        _hover={{ bg: 'primary.100' }}
+        style={{ touchAction: 'none' }}
+        _hover={{ bg: 'primary.50' }}
         onPointerDown={handleDragStart}
         onPointerMove={handleDragMove}
         onPointerUp={handleDragEnd}
         onPointerCancel={handleDragEnd}
-      />
+      >
+        <Box
+          position={'absolute'}
+          left={'50%'}
+          top={'50%'}
+          transform={'translate(-50%, -50%)'}
+          w={'2px'}
+          h={'32px'}
+          borderRadius={'full'}
+          bg={'myGray.200'}
+        />
+      </Box>
       {isDragging && (
         <Box position={'absolute'} inset={0} zIndex={30} cursor={'col-resize'} bg={'transparent'} />
       )}
