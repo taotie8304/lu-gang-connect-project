@@ -23,5 +23,44 @@
     "typescript": "catalog:",
     "vitest": "catalog:",
     "zod": "catalog:"
+  },
+  "build": {
+    "appId": "com.airscend.lugang",
+    "productName": "鲁港通",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "鲁港通"
+    },
+    "artifactName": "lugang-desktop-${version}-setup.${ext}",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://www.airscend.com/desktop/updates/"
+      }
+    ]
   }
 }
