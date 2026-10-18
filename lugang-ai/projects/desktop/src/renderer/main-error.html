@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>无法连接鲁港通</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family:
+          'Microsoft YaHei', 'PingFang SC', system-ui, -apple-system, sans-serif;
+        background: #f7f8fa;
+        color: #1f2937;
+      }
+      main {
+        text-align: center;
+        padding: 32px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 12px;
+      }
+      p {
+        font-size: 14px;
+        color: #6b7280;
+        margin: 0 0 24px;
+      }
+      button {
+        font-size: 14px;
+        padding: 8px 20px;
+        border: 0;
+        border-radius: 8px;
+        background: #2563eb;
+        color: #fff;
+        cursor: pointer;
+      }
+      button:hover {
+        background: #1d4ed8;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>无法连接到鲁港通</h1>
+      <p>请检查网络连接后重试。如仍无法打开，请联系管理员。</p>
+      <button id="retry" type="button">重试</button>
+    </main>
+    <script>
+      document.getElementById('retry').addEventListener('click', function () {
+        if (window.lugangDesktop) window.lugangDesktop.retryLoad();
+      });
+    </script>
+  </body>
+</html>
