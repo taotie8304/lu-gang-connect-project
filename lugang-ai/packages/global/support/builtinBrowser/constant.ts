@@ -1,4 +1,6 @@
 // 鲁港通 - 办事浏览器常量（内置浏览器 P1）
+// 鲁港通 - 面板标签页上限（云端与桌面端一致）
+export const BUILTIN_BROWSER_MAX_TABS = 10;
 /** 单次会话时长上限（分钟）：到期自动关台，可重开 */
 export const BUILTIN_BROWSER_SESSION_MAX_MINUTES = 30;
 /** 到期提醒阈值（分钟）：剩余不足该值时面板提示 */

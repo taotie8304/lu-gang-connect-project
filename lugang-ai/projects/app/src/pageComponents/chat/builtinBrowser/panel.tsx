@@ -3,7 +3,7 @@
 // 画面按云端查看器实测几何裁切，只显示浏览器页面本身（豆包式固定画面，不可拖动、不可移动）；
 // 面板左缘可拖拽调宽（宽度本地记忆），网址栏可手动输入网址让云端浏览器跳转；
 // 关闭面板即结束本次使用（释放云端会话）；单次时长上限由服务端控制，临近上限本地提醒
-import { useCallback, useContext, useEffect, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { Box, Button, Flex, Input, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
@@ -17,6 +17,7 @@ import { getErrText } from '@fastgpt/global/common/error/utils';
 import {
   BUILTIN_BROWSER_CROP_LEFT_PX,
   BUILTIN_BROWSER_CROP_TOP_PX,
+  BUILTIN_BROWSER_MAX_TABS,
   BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
   BUILTIN_BROWSER_PANEL_WIDTH_STORAGE_KEY,
   BUILTIN_BROWSER_REMIND_BEFORE_MINUTES
@@ -27,17 +28,8 @@ import type {
   BuiltinBrowserViewport
 } from '@fastgpt/global/support/builtinBrowser/type';
 import { normalizeBuiltinBrowserUrl } from '@fastgpt/global/support/builtinBrowser/url';
-import {
-  deleteBuiltinBrowserSession,
-  deleteBuiltinBrowserTab,
-  getBuiltinBrowserTabs,
-  patchBuiltinBrowserNavigate,
-  patchSelectBuiltinBrowserTab,
-  postNewBuiltinBrowserTab,
-  postOpenBuiltinBrowserSession,
-  postReloadBuiltinBrowserSession,
-  putBuiltinBrowserViewport
-} from '@/web/support/builtinBrowser/api';
+import { createBuiltinBrowserTransport } from './transport';
+import { usePageOverlayOpen } from './usePageOverlayOpen';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 import { createTabRefreshScheduler } from './polling';
 
@@ -106,42 +98,48 @@ const BuiltinBrowserPanelBody = ({
   } | null>(null);
   const tabsSchedulerRef = useRef<ReturnType<typeof createTabRefreshScheduler>>();
 
-  const { runAsync: openSession } = useRequest(postOpenBuiltinBrowserSession, {
+  // 鲁港通 - 桌面桥可用时走本地浏览器，否则保持云端 AgentBay
+  const transport = useMemo(() => createBuiltinBrowserTransport(), []);
+  const isNative = transport.usesNativeView;
+  const hasPageOverlay = usePageOverlayOpen();
+  const tabsFull = tabs.length >= BUILTIN_BROWSER_MAX_TABS;
+
+  const { runAsync: openSession } = useRequest(transport.open, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: closeSession } = useRequest(deleteBuiltinBrowserSession, {
+  const { runAsync: closeSession } = useRequest(transport.close, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: resizeViewport } = useRequest(putBuiltinBrowserViewport, {
+  const { runAsync: resizeViewport } = useRequest(transport.resize, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: navigateSession, loading: isNavigating } = useRequest(
-    patchBuiltinBrowserNavigate,
-    { manual: true, errorToast: '' }
-  );
-  const { runAsync: fetchTabs } = useRequest(getBuiltinBrowserTabs, {
+  const { runAsync: navigateSession, loading: isNavigating } = useRequest(transport.navigate, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: createTab } = useRequest(postNewBuiltinBrowserTab, {
+  const { runAsync: fetchTabs } = useRequest(transport.listTabs, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: selectTab } = useRequest(patchSelectBuiltinBrowserTab, {
+  const { runAsync: createTab } = useRequest(transport.createTab, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: closeTab } = useRequest(deleteBuiltinBrowserTab, {
+  const { runAsync: selectTab } = useRequest(transport.switchTab, {
     manual: true,
     errorToast: ''
   });
-  const { runAsync: reloadPage, loading: isReloading } = useRequest(
-    postReloadBuiltinBrowserSession,
-    { manual: true, errorToast: '' }
-  );
+  const { runAsync: closeTab } = useRequest(transport.closeTab, {
+    manual: true,
+    errorToast: ''
+  });
+  const { runAsync: reloadPage, loading: isReloading } = useRequest(transport.reload, {
+    manual: true,
+    errorToast: ''
+  });
 
   const isOpen = builtinBrowser?.isOpen ?? false;
 
@@ -152,12 +150,14 @@ const BuiltinBrowserPanelBody = ({
     return { width: el.clientWidth, height: el.clientHeight };
   }, []);
 
-  // 鲁港通 - 开台/复用请求：携带当前面板视口，让云端画面与面板尺寸一致；面板每次打开均为新挂载（初始态即 loading），此处不再重置状态
+  // 鲁港通 - 开台/复用请求：云端携带面板视口；本地仅打开原生面板
   const requestOpenSession = useCallback(
     () =>
-      openSession({ viewport: measureViewport() })
+      openSession(measureViewport())
         .then((res) => {
-          setSession({ resourceUrl: res.resourceUrl, expiresAt: res.expiresAt });
+          if (res.resourceUrl && res.expiresAt) {
+            setSession({ resourceUrl: res.resourceUrl, expiresAt: res.expiresAt });
+          }
           setStatus('active');
         })
         .catch((err) => {
@@ -218,8 +218,7 @@ const BuiltinBrowserPanelBody = ({
 
   const refreshTabs = useCallback(async (): Promise<boolean> => {
     try {
-      const res = await fetchTabs();
-      applyTabs(res.tabs);
+      applyTabs(await fetchTabs());
       return true;
     } catch {
       // 轮询失败由调度器退避重试
@@ -229,7 +228,7 @@ const BuiltinBrowserPanelBody = ({
 
   // 鲁港通 - 标签轮询：单飞 + 失败退避 + 页面隐藏暂停，避免慢调用堆叠占满连接池拖死整页
   useEffect(() => {
-    if (status !== 'active') return;
+    if (status !== 'active' || transport.subscribe) return;
 
     const scheduler = createTabRefreshScheduler({
       refresh: refreshTabs,
@@ -256,7 +255,15 @@ const BuiltinBrowserPanelBody = ({
         tabsSchedulerRef.current = undefined;
       }
     };
-  }, [status, refreshTabs]);
+  }, [status, refreshTabs, transport]);
+
+  // 鲁港通 - 本地浏览器由主进程推送状态：订阅后先拉一次，保证首屏标签可用
+  useEffect(() => {
+    if (status !== 'active' || !transport.subscribe) return;
+    const unsubscribe = transport.subscribe((nextTabs) => applyTabs(nextTabs));
+    void refreshTabs();
+    return unsubscribe;
+  }, [status, transport, applyTabs, refreshTabs]);
 
   // 鲁港通 - 面板一打开就聚焦网址栏：开台等待期间即可输入网址，就绪后自动打开
   useEffect(() => {
@@ -272,15 +279,15 @@ const BuiltinBrowserPanelBody = ({
 
   // 鲁港通 - 新建标签：云端选中新空白页，前端同步标签条并聚焦网址栏
   const handleNewTab = useCallback(async () => {
+    if (tabsFull) return;
     try {
-      const res = await createTab();
+      applyTabs(await createTab());
       urlEditingRef.current = false;
-      applyTabs(res.tabs);
       urlInputRef.current?.focus();
     } catch (err) {
       showTabActionFailed(err);
     }
-  }, [applyTabs, createTab, showTabActionFailed]);
+  }, [applyTabs, createTab, showTabActionFailed, tabsFull]);
 
   const handleSelectTab = useCallback(
     async (index: number) => {
@@ -335,9 +342,56 @@ const BuiltinBrowserPanelBody = ({
     return () => clearInterval(timer);
   }, [status, expiresAtMs, builtinBrowser, t, toast]);
 
+  // 鲁港通 - 本地浏览器：把面板 Body 的 CSS 矩形同步给主进程，主进程换算 DIP 后贴合视图
+  useEffect(() => {
+    if (status !== 'active' || !transport.usesNativeView) return;
+    const el = bodyRef.current;
+    if (!el) return;
+
+    let frame: number | undefined;
+    const sync = () => {
+      if (frame !== undefined) return;
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        const rect = el.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        transport.syncBounds?.({
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height
+        });
+      });
+    };
+
+    const observer = new ResizeObserver(sync);
+    observer.observe(el);
+    window.addEventListener('resize', sync);
+    sync();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', sync);
+      if (frame !== undefined) cancelAnimationFrame(frame);
+    };
+  }, [status, transport]);
+
+  // 鲁港通 - 拖拽/模态层/面板收起时隐藏原生视图，避免遮挡应用 UI
+  useEffect(() => {
+    if (!transport.usesNativeView) return;
+    transport.setViewVisible?.(status === 'active' && !isResizing && !hasPageOverlay);
+  }, [transport, status, isResizing, hasPageOverlay]);
+
+  useEffect(() => {
+    if (!transport.usesNativeView) return;
+    return () => {
+      transport.setViewVisible?.(false);
+    };
+  }, [transport]);
+
   // 鲁港通 - 尺寸即时跟随：窗口拉伸/缩放后防抖同步云端视口，让画面持续贴合面板
   useEffect(() => {
-    if (status !== 'active') return;
+    if (status !== 'active' || transport.usesNativeView) return;
     const el = bodyRef.current;
     if (!el || typeof ResizeObserver === 'undefined') return;
 
@@ -365,11 +419,12 @@ const BuiltinBrowserPanelBody = ({
       if (timer) clearTimeout(timer);
       observer.disconnect();
     };
-  }, [status, measureViewport, resizeViewport]);
+  }, [status, measureViewport, resizeViewport, transport.usesNativeView]);
 
   // 鲁港通 - 拖拽调宽期间冻结画面：保留拖拽前的画面像素尺寸并横向拉伸填充面板，
   // 云端画面尺寸不变，查看器不会露出深色底；松手后按最终尺寸贴合云端，完成再解除冻结
   useEffect(() => {
+    if (transport.usesNativeView) return;
     isResizingRef.current = isResizing;
     if (isResizing) {
       const el = bodyRef.current;
@@ -402,15 +457,15 @@ const BuiltinBrowserPanelBody = ({
     return () => {
       cancelled = true;
     };
-  }, [isResizing, panelWidth, measureViewport, resizeViewport]);
+  }, [isResizing, panelWidth, measureViewport, resizeViewport, transport.usesNativeView]);
 
   // 鲁港通 - 重新贴合画面：画面与面板出现错位/深色底时的手动自愈入口
   const handleRefit = useCallback(async () => {
     const viewport = measureViewport();
     if (!viewport) return;
     try {
-      const res = await resizeViewport(viewport);
-      if (!res.resized) {
+      const resized = await resizeViewport(viewport);
+      if (!resized) {
         toast({ title: t('common:builtin_browser_refit_failed'), status: 'warning' });
       }
     } catch (err) {
@@ -426,8 +481,8 @@ const BuiltinBrowserPanelBody = ({
   const navigateTo = useCallback(
     async (target: string) => {
       try {
-        const res = await navigateSession(target);
-        if (!res.navigated) {
+        const navigated = await navigateSession(target);
+        if (!navigated) {
           toast({ title: t('common:builtin_browser_url_open_failed'), status: 'warning' });
           return;
         }
@@ -476,11 +531,11 @@ const BuiltinBrowserPanelBody = ({
   const handleReload = useCallback(async () => {
     if (isReloading) return;
     try {
-      const res = await reloadPage();
-      if (!res.reloaded) {
+      const reloaded = await reloadPage();
+      if (!reloaded) {
         toast({ title: t('common:builtin_browser_reload_failed'), status: 'warning' });
-        // 会话可能已被云端回收：复用开台入口恢复画面，避免刷新按钮失效
-        void loadSession();
+        // 云端会话可能已被回收：复用开台入口恢复画面；本地由错误页提供重试
+        if (!transport.usesNativeView) void loadSession();
         return;
       }
       void tabsSchedulerRef.current?.trigger();
@@ -490,7 +545,7 @@ const BuiltinBrowserPanelBody = ({
         status: 'warning'
       });
     }
-  }, [isReloading, reloadPage, loadSession, t, toast]);
+  }, [isReloading, reloadPage, loadSession, t, toast, transport.usesNativeView]);
 
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
@@ -509,11 +564,15 @@ const BuiltinBrowserPanelBody = ({
     }
 
     openConfirm({
-      customContent: t('common:builtin_browser_close_confirm'),
+      customContent: t(
+        isNative
+          ? 'common:builtin_browser_close_confirm_local'
+          : 'common:builtin_browser_close_confirm'
+      ),
       confirmText: t('common:builtin_browser_close'),
       onConfirm: endSession
     })();
-  }, [status, openConfirm, t, closeSession, builtinBrowser]);
+  }, [status, openConfirm, t, closeSession, builtinBrowser, isNative]);
 
   if (!isOpen) return null;
 
@@ -541,7 +600,20 @@ const BuiltinBrowserPanelBody = ({
         <Text fontSize={'sm'} fontWeight={500} color={'myGray.900'} whiteSpace={'nowrap'}>
           {t('common:builtin_browser')}
         </Text>
-        {status === 'active' && showRemaining && remainingMinutes !== undefined && (
+        {isNative && status === 'active' && (
+          <Text
+            fontSize={'xs'}
+            px={1.5}
+            py={0.5}
+            borderRadius={'sm'}
+            bg={'green.50'}
+            color={'green.600'}
+            whiteSpace={'nowrap'}
+          >
+            {t('common:builtin_browser_local')}
+          </Text>
+        )}
+        {!isNative && status === 'active' && showRemaining && remainingMinutes !== undefined && (
           <Text
             fontSize={'xs'}
             color={isExpiringSoon ? 'orange.500' : 'myGray.500'}
@@ -557,7 +629,7 @@ const BuiltinBrowserPanelBody = ({
         )}
         <Box flex={'1 1 0'} />
 
-        {status === 'active' && (
+        {!isNative && status === 'active' && (
           <MyTooltip label={t('common:builtin_browser_refit')}>
             <MyIcon
               name={'core/modules/fitView'}
@@ -658,11 +730,15 @@ const BuiltinBrowserPanelBody = ({
             h={'28px'}
             flexShrink={0}
             borderRadius={'md'}
-            color={status === 'active' ? 'myGray.500' : 'myGray.300'}
-            cursor={status === 'active' ? 'pointer' : 'not-allowed'}
-            _hover={status === 'active' ? { bg: 'myGray.100', color: 'myGray.700' } : undefined}
+            color={status === 'active' && !tabsFull ? 'myGray.500' : 'myGray.300'}
+            cursor={status === 'active' && !tabsFull ? 'pointer' : 'not-allowed'}
+            _hover={
+              status === 'active' && !tabsFull
+                ? { bg: 'myGray.100', color: 'myGray.700' }
+                : undefined
+            }
             onClick={() => {
-              if (status === 'active') void handleNewTab();
+              if (status === 'active' && !tabsFull) void handleNewTab();
             }}
           >
             <MyIcon name={'common/addLight'} w={'14px'} h={'14px'} />
@@ -753,7 +829,7 @@ const BuiltinBrowserPanelBody = ({
           </Flex>
         )}
 
-        {status === 'active' && session && (
+        {!isNative && status === 'active' && session && (
           <iframe
             key={session.resourceUrl}
             src={session.resourceUrl}
@@ -782,6 +858,20 @@ const BuiltinBrowserPanelBody = ({
             referrerPolicy={'no-referrer'}
             allow={'clipboard-read; clipboard-write'}
           />
+        )}
+
+        {isNative && status === 'active' && (
+          <Flex
+            h={'100%'}
+            alignItems={'center'}
+            justifyContent={'center'}
+            bg={'white'}
+            color={'myGray.500'}
+          >
+            {isResizing && (
+              <Text fontSize={'sm'}>{t('common:builtin_browser_resizing')}</Text>
+            )}
+          </Flex>
         )}
       </Box>
 
