@@ -534,7 +534,7 @@ const BuiltinBrowserPanelBody = ({
       const reloaded = await reloadPage();
       if (!reloaded) {
         toast({ title: t('common:builtin_browser_reload_failed'), status: 'warning' });
-        // 云端会话可能已被回收：复用开台入口恢复画面；本地由错误页提供重试
+        // 鲁港通 - 云端会话可能已被回收：复用开台入口恢复画面；本地由错误页提供重试
         if (!transport.usesNativeView) void loadSession();
         return;
       }
