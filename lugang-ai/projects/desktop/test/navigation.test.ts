@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   decideMainWindowNavigation,
+  decideMainWindowWindowOpen,
+  isManualBrowserNavigationAllowed,
   isManualBrowserUrlAllowed,
   parseManualBrowserUrl
 } from '../src/main/navigation';
@@ -143,6 +145,81 @@ describe('decideMainWindowNavigation', () => {
       decideMainWindowNavigation({
         currentUrl: 'https://www.airscend.com/chat',
         targetUrl: 'http://[bad',
+        appOrigin
+      })
+    ).toEqual({ type: 'block' });
+  });
+});
+
+describe('手动浏览器导航守卫', () => {
+  it('about:blank 允许（新建标签起始页）', () => {
+    expect(isManualBrowserNavigationAllowed('about:blank')).toBe(true);
+  });
+
+  it('http(s) 允许', () => {
+    expect(isManualBrowserNavigationAllowed('https://www.gov.hk')).toBe(true);
+    expect(isManualBrowserNavigationAllowed('http://192.168.1.1')).toBe(true);
+  });
+
+  it('file 与 javascript 拒绝', () => {
+    expect(isManualBrowserNavigationAllowed('file:///c:/a.html')).toBe(false);
+    expect(isManualBrowserNavigationAllowed('javascript:alert(1)')).toBe(false);
+  });
+});
+
+describe('decideMainWindowWindowOpen', () => {
+  it('同源打开走受控弹窗', () => {
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'https://www.airscend.com/pay/callback',
+        appOrigin
+      })
+    ).toEqual({ type: 'popup' });
+  });
+
+  it('登录页外域首跳走受控弹窗（OAuth）', () => {
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/login?redirect=%2Fchat',
+        targetUrl: 'https://accounts.google.com/o/oauth2/auth',
+        appOrigin
+      })
+    ).toEqual({ type: 'popup' });
+  });
+
+  it('普通站外 http(s) 交系统浏览器', () => {
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'https://data.gov.hk/',
+        appOrigin
+      })
+    ).toEqual({ type: 'external', url: 'https://data.gov.hk/' });
+  });
+
+  it('mailto 与 file 阻止', () => {
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'mailto:a@b.com',
+        appOrigin
+      })
+    ).toEqual({ type: 'block' });
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'file:///c:/secret.txt',
+        appOrigin
+      })
+    ).toEqual({ type: 'block' });
+  });
+
+  it('about:blank 阻止', () => {
+    expect(
+      decideMainWindowWindowOpen({
+        currentUrl: 'https://www.airscend.com/chat',
+        targetUrl: 'about:blank',
         appOrigin
       })
     ).toEqual({ type: 'block' });

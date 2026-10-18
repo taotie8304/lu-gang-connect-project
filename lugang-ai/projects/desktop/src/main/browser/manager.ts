@@ -4,7 +4,8 @@ import { join } from 'node:path';
 import { cssRectToDip, type DipRect } from '../bounds';
 import { IPC_CHANNELS, type DesktopBrowserState } from '../../shared/ipc';
 import type { CssRect } from '../../shared/geometry';
-import { isManualBrowserUrlAllowed, parseManualBrowserUrl } from '../navigation';
+import { isManualBrowserNavigationAllowed, parseManualBrowserUrl } from '../navigation';
+import { installNavigationGuard } from '../navigationGuard';
 import { stripElectronFromUserAgent } from '../../shared/ua';
 import {
   MAX_TABS,
@@ -330,9 +331,11 @@ export class BrowserManager {
       this.closeTabInternal(webContents.id);
       if (this.panelOpen && this.tabs.size === 0) this.createTab();
     });
-    webContents.on('will-navigate', (event, url) => {
-      if (url === 'about:blank') return;
-      if (!isManualBrowserUrlAllowed(url)) event.preventDefault();
+    // 鲁港通 - 标签页导航与 302 重定向同受守卫：只允许 http(s)，about:blank 起始页放行
+    installNavigationGuard({
+      target: webContents,
+      decide: (url) =>
+        isManualBrowserNavigationAllowed(url) ? { type: 'allow' } : { type: 'prevent' }
     });
     webContents.setWindowOpenHandler(({ url }) => {
       const target = parseManualBrowserUrl(url);

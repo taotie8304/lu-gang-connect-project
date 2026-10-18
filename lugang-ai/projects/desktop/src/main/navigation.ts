@@ -51,6 +51,32 @@ export const isManualBrowserUrlAllowed = (targetUrl: string): boolean => {
   return !!target && (target.protocol === 'http:' || target.protocol === 'https:');
 };
 
+// 鲁港通 - 标签页与弹窗导航守卫的统一判定：about:blank 是新建标签的占位页，其余只允许 http(s)
+export const isManualBrowserNavigationAllowed = (targetUrl: string): boolean =>
+  targetUrl === 'about:blank' || isManualBrowserUrlAllowed(targetUrl);
+
+export type WindowOpenDecision =
+  | { type: 'external'; url: string }
+  | { type: 'popup' }
+  | { type: 'block' };
+
+// 鲁港通 - window.open 分流：放行目标以受控弹窗承载（保住 window.opener 与聊天状态），
+// 站外 http(s) 交系统浏览器，非 http(s) 直接阻止
+export const decideMainWindowWindowOpen = ({
+  currentUrl,
+  targetUrl,
+  appOrigin
+}: {
+  currentUrl: string;
+  targetUrl: string;
+  appOrigin: string;
+}): WindowOpenDecision => {
+  const decision = decideMainWindowNavigation({ currentUrl, targetUrl, appOrigin });
+  if (decision.type === 'external') return { type: 'external', url: decision.url };
+  if (decision.type === 'block') return { type: 'block' };
+  return { type: 'popup' };
+};
+
 // 鲁港通 - 标签页网址允许 localhost/内网 IP，与主窗口的应用地址校验区分
 export const parseManualBrowserUrl = (input: string): string | null => {
   const raw = input.trim();

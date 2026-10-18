@@ -2,7 +2,13 @@
 import { BrowserWindow, screen, shell } from 'electron';
 import { join } from 'node:path';
 import { stripElectronFromUserAgent } from '../shared/ua';
-import { decideMainWindowNavigation } from './navigation';
+import {
+  decideMainWindowNavigation,
+  decideMainWindowWindowOpen,
+  isManualBrowserNavigationAllowed
+} from './navigation';
+import { installNavigationGuard } from './navigationGuard';
+import { decideMainWindowPermission } from './mainWindowPermissions';
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -65,35 +71,71 @@ export const createMainWindow = ({
     stripElectronFromUserAgent(window.webContents.getUserAgent())
   );
 
-  // 鲁港通 - 主窗口只承载聊天页，不申请任何系统权限；本地浏览器视图走独立分区
-  window.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => {
-    callback(false);
-  });
-  window.webContents.session.setPermissionCheckHandler(() => false);
+  // 鲁港通 - 主窗口只对应用源开放剪贴板读写（聊天页复制/粘贴），其余权限一律拒绝
+  window.webContents.session.setPermissionRequestHandler(
+    (_webContents, permission, callback, details) => {
+      const requestingOrigin =
+        (details && 'requestingUrl' in details ? details.requestingUrl : undefined) ??
+        window.webContents.getURL();
+      callback(decideMainWindowPermission({ permission, requestingOrigin, appOrigin }));
+    }
+  );
+  window.webContents.session.setPermissionCheckHandler(
+    (_webContents, permission, requestingOrigin) =>
+      decideMainWindowPermission({ permission, requestingOrigin: requestingOrigin ?? '', appOrigin })
+  );
 
-  window.webContents.on('will-navigate', (event, targetUrl) => {
-    const decision = decideMainWindowNavigation({
-      currentUrl: window.webContents.getURL(),
-      targetUrl,
-      appOrigin
-    });
-    if (decision.type === 'allow') return;
-    event.preventDefault();
-    if (decision.type === 'external') void shell.openExternal(decision.url);
+  installNavigationGuard({
+    target: window.webContents,
+    decide: (url) => {
+      const decision = decideMainWindowNavigation({
+        currentUrl: window.webContents.getURL(),
+        targetUrl: url,
+        appOrigin
+      });
+      if (decision.type === 'allow') return { type: 'allow' };
+      if (decision.type === 'external') {
+        return { type: 'prevent', openExternal: decision.url };
+      }
+      return { type: 'prevent' };
+    },
+    openExternal: (url) => void shell.openExternal(url)
   });
 
   window.webContents.setWindowOpenHandler(({ url }) => {
-    const decision = decideMainWindowNavigation({
+    const decision = decideMainWindowWindowOpen({
       currentUrl: window.webContents.getURL(),
       targetUrl: url,
       appOrigin
     });
     if (decision.type === 'external') {
       void shell.openExternal(decision.url);
-    } else if (decision.type === 'allow') {
-      void window.loadURL(url);
+      return { action: 'deny' };
     }
-    return { action: 'deny' };
+    if (decision.type === 'block') return { action: 'deny' };
+    // 鲁港通 - 放行目标用受控弹窗承载 OAuth 等 window.opener 型流程，不注入主窗口 preload
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        autoHideMenuBar: true,
+        webPreferences: {
+          sandbox: true,
+          contextIsolation: true,
+          nodeIntegration: false,
+          webviewTag: false
+        }
+      }
+    };
+  });
+
+  window.webContents.on('did-create-window', (child) => {
+    child.setMenuBarVisibility(false);
+    child.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    installNavigationGuard({
+      target: child.webContents,
+      decide: (url) =>
+        isManualBrowserNavigationAllowed(url) ? { type: 'allow' } : { type: 'prevent' }
+    });
   });
 
   window.webContents.on(
