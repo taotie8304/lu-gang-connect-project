@@ -25,7 +25,7 @@ export const resolveAppUrl = (raw?: string): string => {
     const url = new URL(candidate);
     if (url.protocol === 'http:' || url.protocol === 'https:') return url.href;
   } catch {
-    // 非法值回落到线上地址
+    // 鲁港通 - 非法值回落到线上地址
   }
   return DEFAULT_APP_URL;
 };
