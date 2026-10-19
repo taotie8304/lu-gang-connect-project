@@ -15,6 +15,7 @@ import {
   DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESUME_TTL_MS,
+  DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS,
   DESKTOP_COMMAND_MAX_BYTES
 } from './constant';
 import {
@@ -482,11 +483,13 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
-    // 提交类点击会等待用户在原生确认框里做决定，等待上限需要覆盖 5 分钟确认窗口
+    // 提交类点击等待用户在原生确认框做决定，上传等待用户在原生文件框选文件，都需要覆盖人工操作窗口
     const timeoutMs =
       action === 'click'
         ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS)
-        : resultTimeoutMs;
+        : action === 'upload'
+          ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS)
+          : resultTimeoutMs;
     const result: DesktopCommandResult | undefined = await store.waitForResult({
       commandId: envelope.id,
       timeoutMs
@@ -592,5 +595,6 @@ export const createDesktopBrowserOperationExecutor = ({
 export {
   DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESUME_TTL_MS,
-  DESKTOP_BROWSER_RESULT_TIMEOUT_MS
+  DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
+  DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS
 } from './constant';

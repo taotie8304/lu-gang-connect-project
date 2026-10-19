@@ -573,6 +573,16 @@ describe('desktop browser operation executor', () => {
     expect(clickWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
   });
 
+  it('waits long enough for the user to pick a file when uploading', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'upload', target: '上传附件' });
+
+    const uploadWait = (store.waitForResult as any).mock.calls[0];
+    expect(uploadWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+  });
+
   it('waits on the server before reading the page again', async () => {
     const store = createFakeStore();
     const sleep = vi.fn(async () => {});
