@@ -33,6 +33,8 @@ import { createBuiltinBrowserTransport } from './transport';
 import { usePageOverlayOpen } from './usePageOverlayOpen';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 import { createTabRefreshScheduler } from './polling';
+import { resolveBuiltinBrowserAiBadge } from './aiStatus';
+import type { DesktopAiState } from './desktopBridge';
 
 const MINUTE_MS = 60 * 1000;
 const COUNTDOWN_TICK_MS = 30 * 1000;
@@ -84,6 +86,8 @@ const BuiltinBrowserPanelBody = ({
   const [urlInput, setUrlInput] = useState('');
   const [tabs, setTabs] = useState<BuiltinBrowserTab[]>([]);
   const [loadingSlow, setLoadingSlow] = useState(false);
+  const [aiState, setAiState] = useState<DesktopAiState>();
+  const [isStoppingAi, setIsStoppingAi] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -262,9 +266,41 @@ const BuiltinBrowserPanelBody = ({
   useEffect(() => {
     if (status !== 'active' || !transport.subscribe) return;
     const unsubscribe = transport.subscribe((nextTabs) => applyTabs(nextTabs));
-    void refreshTabs();
-    return unsubscribe;
+    // 鲁港通 - 首屏标签补齐延后一拍，避免在 effect 内同步触发状态更新
+    const timer = setTimeout(() => void refreshTabs(), 0);
+    return () => {
+      clearTimeout(timer);
+      unsubscribe();
+    };
   }, [status, transport, applyTabs, refreshTabs]);
+
+  // 鲁港通 - 桌面模式订阅 AI 工作状态：面板头部据此显示「AI 正在操作」与停止按钮
+  useEffect(() => {
+    if (!isNative || typeof window === 'undefined') return;
+    const ai = window.lugangDesktop?.ai;
+    if (!ai) return;
+
+    let cancelled = false;
+    void ai
+      .getState()
+      .then((state) => {
+        if (!cancelled) setAiState(state);
+      })
+      .catch(() => undefined);
+    const unsubscribe = ai.onStateChange((state) => setAiState(state));
+
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [isNative]);
+
+  // 鲁港通 - 打开面板补一次设备同步：应用启动时网络未就绪导致注册失败，重开面板即可恢复接收指令
+  useEffect(() => {
+    if (!isNative || typeof window === 'undefined') return;
+    const session = window.lugangDesktop?.session;
+    void session?.sync().catch(() => undefined);
+  }, [isNative]);
 
   // 鲁港通 - 面板一打开就聚焦网址栏：开台等待期间即可输入网址，就绪后自动打开
   useEffect(() => {
@@ -548,6 +584,25 @@ const BuiltinBrowserPanelBody = ({
     }
   }, [isReloading, reloadPage, loadSession, t, toast, transport.usesNativeView]);
 
+  // 鲁港通 - 停止 AI：主进程先终止在途动作并立即回传停止结果，用户不必等当前指令跑完
+  const handleStopAi = useCallback(async () => {
+    if (isStoppingAi) return;
+    const ai = window.lugangDesktop?.ai;
+    if (!ai) return;
+
+    setIsStoppingAi(true);
+    try {
+      setAiState(await ai.stop());
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_ai_stop_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setIsStoppingAi(false);
+    }
+  }, [isStoppingAi, t, toast]);
+
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
     const endSession = async () => {
@@ -582,8 +637,12 @@ const BuiltinBrowserPanelBody = ({
   const isExpiringSoon =
     remainingMs !== undefined && remainingMs <= BUILTIN_BROWSER_REMIND_BEFORE_MINUTES * MINUTE_MS;
   const showRemaining = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
+  // 鲁港通 - 窄面板只留状态圆点，给停止按钮和标题让位（悬停仍可看到完整状态）
+  const showAiBadgeLabel = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
   const frozenScaleX =
     frozenFrame && frozenFrame.panelWidth > 0 ? panelWidth / frozenFrame.panelWidth : 1;
+  const aiBadge =
+    isNative && status === 'active' ? resolveBuiltinBrowserAiBadge(aiState) : undefined;
 
   return (
     <Flex flexDirection={'column'} h={'100%'} minH={0}>
@@ -601,7 +660,7 @@ const BuiltinBrowserPanelBody = ({
         <Text fontSize={'sm'} fontWeight={500} color={'myGray.900'} whiteSpace={'nowrap'}>
           {t('common:builtin_browser')}
         </Text>
-        {isNative && status === 'active' && (
+        {isNative && status === 'active' && !aiBadge && (
           <Text
             fontSize={'xs'}
             px={1.5}
@@ -628,7 +687,47 @@ const BuiltinBrowserPanelBody = ({
             )}
           </Text>
         )}
+        {aiBadge && (
+          <MyTooltip label={aiBadge.message || t(aiBadge.labelKey as any)}>
+            <Flex
+              alignItems={'center'}
+              gap={1}
+              px={1.5}
+              py={0.5}
+              borderRadius={'sm'}
+              bg={aiBadge.running ? 'blue.50' : 'orange.50'}
+              color={aiBadge.running ? 'blue.600' : 'orange.600'}
+              whiteSpace={'nowrap'}
+            >
+              <Box
+                w={'6px'}
+                h={'6px'}
+                borderRadius={'full'}
+                bg={aiBadge.running ? 'blue.500' : 'orange.500'}
+              />
+              {showAiBadgeLabel && (
+                <Text fontSize={'xs'}>{t(aiBadge.labelKey as any)}</Text>
+              )}
+            </Flex>
+          </MyTooltip>
+        )}
         <Box flex={'1 1 0'} />
+
+        {/* 鲁港通 - AI 运行中给出显眼的停止入口，点击立即终止本次自动操作 */}
+        {aiBadge?.running && (
+          <Button
+            size={'xs'}
+            h={'24px'}
+            px={2}
+            fontSize={'xs'}
+            colorScheme={'red'}
+            isLoading={isStoppingAi}
+            loadingText={t('common:builtin_browser_ai_stopping')}
+            onClick={() => void handleStopAi()}
+          >
+            {t('common:builtin_browser_ai_stop')}
+          </Button>
+        )}
 
         {!isNative && status === 'active' && (
           <MyTooltip label={t('common:builtin_browser_refit')}>

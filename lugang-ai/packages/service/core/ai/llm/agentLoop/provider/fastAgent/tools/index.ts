@@ -8,6 +8,7 @@ export type AgentLoopToolCatalog = {
   sandboxTools?: ChatCompletionTool[];
   readFileTool?: ChatCompletionTool;
   datasetSearchTool?: ChatCompletionTool;
+  browserOperationTool?: ChatCompletionTool;
 };
 
 /**
@@ -27,6 +28,7 @@ export const normalizeToolCatalog = (catalog: AgentLoopToolCatalog): AgentLoopTo
       catalog.updatePlanTool,
       catalog.readFileTool,
       catalog.datasetSearchTool,
+      catalog.browserOperationTool,
       ...(catalog.sandboxTools ?? [])
     ]
       .map(getToolName)
@@ -57,6 +59,7 @@ export const getToolsForFastAgentLoop = ({
     ...(normalized.updatePlanTool ? [normalized.updatePlanTool] : []),
     ...(normalized.sandboxTools ?? []),
     ...(normalized.readFileTool ? [normalized.readFileTool] : []),
-    ...(normalized.datasetSearchTool ? [normalized.datasetSearchTool] : [])
+    ...(normalized.datasetSearchTool ? [normalized.datasetSearchTool] : []),
+    ...(normalized.browserOperationTool ? [normalized.browserOperationTool] : [])
   ];
 };

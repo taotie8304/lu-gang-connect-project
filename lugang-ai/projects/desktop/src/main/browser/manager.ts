@@ -35,6 +35,23 @@ export type BrowserManagerOptions = {
   rendererDir: string;
   permissionStorePath: string;
   partition?: string;
+  events?: BrowserManagerEvents;
+};
+
+export type BrowserTabClosedEvent = {
+  id: number;
+  url: string;
+  active: boolean;
+  reason: 'user' | 'crashed';
+};
+
+export type BrowserManagerEvents = {
+  onTabClosed?: (event: BrowserTabClosedEvent) => void;
+  onPanelClosed?: () => void;
+};
+
+export type BrowserDebuggerSession = {
+  sendCommand(method: string, params?: Record<string, unknown>): Promise<unknown>;
 };
 
 const PERMISSION_LABELS: Record<string, string> = {
@@ -70,6 +87,7 @@ export class BrowserManager {
   private readonly tabPreloadPath: string;
   private readonly rendererDir: string;
   private readonly permissionStorePath: string;
+  private readonly events: BrowserManagerEvents;
   private readonly tabs = new Map<number, TabEntry>();
   private readonly permissions: Record<string, PermissionDecision>;
   private readonly permissionPrompts = new Set<string>();
@@ -86,6 +104,7 @@ export class BrowserManager {
     this.tabPreloadPath = options.tabPreloadPath;
     this.rendererDir = options.rendererDir;
     this.permissionStorePath = options.permissionStorePath;
+    this.events = options.events ?? {};
     this.permissions = loadPermissionStore(options.permissionStorePath);
 
     const browserSession = session.fromPartition(this.partition);
@@ -114,6 +133,7 @@ export class BrowserManager {
   };
 
   closePanel = (): DesktopBrowserState => {
+    const hadContent = this.panelOpen || this.tabs.size > 0;
     if (!this.destroyed) {
       this.panelOpen = false;
       this.viewVisible = false;
@@ -121,6 +141,7 @@ export class BrowserManager {
       this.order = { order: [], activeId: null };
       this.emitState();
     }
+    if (hadContent && !this.destroyed) this.notifyPanelClosed();
     return this.getState();
   };
 
@@ -185,11 +206,19 @@ export class BrowserManager {
   };
 
   closeTab = (id: number): DesktopBrowserState => {
-    if (!this.tabs.has(id)) return this.getState();
+    const entry = this.tabs.get(id);
+    if (!entry) return this.getState();
+    const event: BrowserTabClosedEvent = {
+      id,
+      url: entry.url,
+      active: this.order.activeId === id,
+      reason: 'user'
+    };
     this.closeTabInternal(id);
     if (!this.destroyed && this.panelOpen && this.tabs.size === 0) this.createTab();
     this.applyVisibility();
     this.emitState();
+    this.notifyTabClosed(event);
     return this.getState();
   };
 
@@ -272,6 +301,22 @@ export class BrowserManager {
       this.order.activeId !== null && !!this.tabs.get(this.order.activeId)?.loading
   });
 
+  // 鲁港通 - AI 操作时按需挂上调试器；每次取当前活动标签，重开后自动切换新页面
+  getActiveDebuggerSession = (): BrowserDebuggerSession | null => {
+    const entry = this.getActiveEntry();
+    if (!entry) return null;
+    const contents = entry.view.webContents;
+    if (contents.isDestroyed()) return null;
+    try {
+      if (!contents.debugger.isAttached()) contents.debugger.attach('1.3');
+    } catch {
+      return null;
+    }
+    return {
+      sendCommand: (method, params) => contents.debugger.sendCommand(method, params)
+    };
+  };
+
   destroy = () => {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -327,9 +372,17 @@ export class BrowserManager {
       }
     );
     webContents.on('render-process-gone', () => {
-      if (!this.tabs.has(webContents.id)) return;
+      const entry = this.tabs.get(webContents.id);
+      if (!entry) return;
+      const event: BrowserTabClosedEvent = {
+        id: webContents.id,
+        url: entry.url,
+        active: this.order.activeId === webContents.id,
+        reason: 'crashed'
+      };
       this.closeTabInternal(webContents.id);
       if (this.panelOpen && this.tabs.size === 0) this.createTab();
+      this.notifyTabClosed(event);
     });
     // 鲁港通 - 标签页导航与 302 重定向同受守卫：只允许 http(s)，about:blank 起始页放行；
     // 主帧与子帧同一口径（协议校验），标签页内不做系统浏览器外开
@@ -352,6 +405,10 @@ export class BrowserManager {
     this.tabs.delete(id);
     try {
       if (!this.window.isDestroyed()) this.window.contentView.removeChildView(entry.view);
+      const contents = entry.view.webContents;
+      if (!contents.isDestroyed() && contents.debugger.isAttached()) {
+        contents.debugger.detach();
+      }
       entry.view.webContents.close();
     } catch {
       // 鲁港通 - 窗口销毁过程中忽略移除异常
@@ -359,6 +416,22 @@ export class BrowserManager {
     if (!this.destroyed) {
       this.applyVisibility();
       this.emitState();
+    }
+  };
+
+  private notifyTabClosed = (event: BrowserTabClosedEvent) => {
+    try {
+      this.events.onTabClosed?.(event);
+    } catch {
+      // 鲁港通 - 事件回调异常不影响标签关闭本身
+    }
+  };
+
+  private notifyPanelClosed = () => {
+    try {
+      this.events.onPanelClosed?.();
+    } catch {
+      // 鲁港通 - 事件回调异常不影响面板关闭本身
     }
   };
 

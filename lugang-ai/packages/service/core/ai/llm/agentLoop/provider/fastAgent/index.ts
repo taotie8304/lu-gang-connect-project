@@ -12,6 +12,7 @@ import { createSetPlanAgentTool, createUpdatePlanAgentTool } from '../../domain/
 import { createReadFilesTool } from '../../domain/systemTool/readFile';
 import { createAgentLoopSandboxTools } from '../../domain/systemTool/sandbox';
 import { createDatasetSearchTool } from '../../domain/systemTool/datasetSearch';
+import { createBrowserOperationTool } from '../../domain/systemTool/browserOperation';
 import { AgentUsageModuleName } from '../../domain/usage';
 
 export type FastAgentProviderState = {
@@ -104,6 +105,9 @@ export const runFastAgentLoop = async <TChildrenResponse = unknown>({
         : {}),
       ...(runtime.systemTools?.datasetSearch?.enabled
         ? { datasetSearchTool: createDatasetSearchTool() }
+        : {}),
+      ...(runtime.systemTools?.browserOperation?.enabled
+        ? { browserOperationTool: createBrowserOperationTool() }
         : {})
     },
     executeTool: runtime.executeTool,
@@ -117,6 +121,7 @@ export const runFastAgentLoop = async <TChildrenResponse = unknown>({
     executeReadFileTool: runtime.systemTools?.readFile?.execute,
     executeDatasetSearchTool: runtime.systemTools?.datasetSearch?.execute,
     datasetSearchCurrentInputFiles: runtime.systemTools?.datasetSearch?.currentInputFiles,
+    executeBrowserOperationTool: runtime.systemTools?.browserOperation?.execute,
     usagePush: runtime.usagePush,
     emitEvent: runtime.emitEvent
   };

@@ -2,6 +2,7 @@ import type { AgentLoopSystemTools } from '../../../../../../ai/llm/agentLoop/in
 import type { SandboxClient } from '../../../../../../ai/sandbox/interface/runtime';
 import type { AgentLoopDatasetSearchExecutor } from '../../../../../../ai/llm/agentLoop/interface';
 import type { AgentLoopReadFileExecutor } from '../../../../../../ai/llm/agentLoop/interface';
+import type { AgentLoopBrowserOperationExecutor } from '../../../../../../ai/llm/agentLoop/interface';
 
 export type CreateAgentLoopCoreSystemToolsParams = {
   planEnabled: boolean;
@@ -17,6 +18,10 @@ export type CreateAgentLoopCoreSystemToolsParams = {
     execute: AgentLoopDatasetSearchExecutor;
     currentInputFiles?: string[];
   };
+  browserOperation?: {
+    enabled: boolean;
+    execute: AgentLoopBrowserOperationExecutor;
+  };
 };
 
 /**
@@ -30,7 +35,8 @@ export const createAgentLoopCoreSystemTools = ({
   askEnabled,
   sandboxClient,
   readFile,
-  datasetSearch
+  datasetSearch,
+  browserOperation
 }: CreateAgentLoopCoreSystemToolsParams): AgentLoopSystemTools => ({
   plan: {
     enabled: planEnabled
@@ -61,6 +67,14 @@ export const createAgentLoopCoreSystemTools = ({
           enabled: true,
           execute: datasetSearch.execute,
           currentInputFiles: datasetSearch.currentInputFiles
+        }
+      }
+    : {}),
+  ...(browserOperation?.enabled
+    ? {
+        browserOperation: {
+          enabled: true,
+          execute: browserOperation.execute
         }
       }
     : {})

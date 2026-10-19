@@ -5,6 +5,7 @@ import type {
 } from '@fastgpt/global/core/ai/llm/type';
 import type { SandboxClient } from '../../../sandbox/interface/runtime';
 import type { AgentLoopDatasetSearchExecutor } from './systemTool/datasetSearch';
+import type { AgentLoopBrowserOperationExecutor } from './systemTool/browserOperation';
 import type { AgentLoopUsage } from './usage';
 
 export type AgentLoopToolCatalog = {
@@ -65,5 +66,9 @@ export type AgentLoopSystemTools = {
     enabled: boolean;
     execute: AgentLoopDatasetSearchExecutor;
     currentInputFiles?: string[];
+  };
+  browserOperation?: {
+    enabled: boolean;
+    execute: AgentLoopBrowserOperationExecutor;
   };
 };

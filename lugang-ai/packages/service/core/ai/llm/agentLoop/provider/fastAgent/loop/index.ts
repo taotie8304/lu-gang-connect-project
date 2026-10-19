@@ -203,6 +203,7 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
   const updatePlanToolName = runtime.toolCatalog.updatePlanTool?.function.name;
   const readFileToolName = runtime.toolCatalog.readFileTool?.function.name;
   const datasetSearchToolName = runtime.toolCatalog.datasetSearchTool?.function.name;
+  const browserOperationToolName = runtime.toolCatalog.browserOperationTool?.function.name;
   const sandboxToolNames = new Set(
     (runtime.toolCatalog.sandboxTools ?? []).map((tool) => tool.function.name)
   );
@@ -216,6 +217,7 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
       updatePlanToolName,
       readFileToolName,
       datasetSearchToolName,
+      browserOperationToolName,
       ...sandboxToolNames
     ].filter(Boolean)
   );
@@ -496,6 +498,25 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
           skipResponseCompress: true,
           errorMessage: datasetResult.error ? getErrText(datasetResult.error) : undefined,
           metadata: datasetResult.metadata
+        });
+      }
+
+      if (call.function.name === browserOperationToolName) {
+        if (!runtime.executeBrowserOperationTool) {
+          const response = 'Browser operation executor is not available.';
+          return createToolResponse(response, { skipResponseCompress: true });
+        }
+
+        const browserResult = await runtime.executeBrowserOperationTool({
+          call,
+          messages
+        });
+
+        return createToolResponse(browserResult.response, {
+          usages: browserResult.usages,
+          skipResponseCompress: true,
+          errorMessage: browserResult.error ? getErrText(browserResult.error) : undefined,
+          metadata: browserResult.metadata
         });
       }
 

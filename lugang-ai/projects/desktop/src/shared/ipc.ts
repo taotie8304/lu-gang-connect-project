@@ -18,7 +18,13 @@ export const IPC_CHANNELS = {
   tabList: 'lugang:tab-list',
   tabRetry: 'lugang:tab-retry',
   stateChanged: 'lugang:state-changed',
-  retryLoad: 'lugang:retry-load'
+  retryLoad: 'lugang:retry-load',
+  aiStatus: 'lugang:ai-status',
+  aiStop: 'lugang:ai-stop',
+  aiExecute: 'lugang:ai-execute',
+  aiStatusChanged: 'lugang:ai-status-changed',
+  sessionSync: 'lugang:session-sync',
+  sessionLogout: 'lugang:session-logout'
 } as const;
 
 export type DesktopTab = { id: number; title: string; url: string; current: boolean };
@@ -31,5 +37,42 @@ export type DesktopBrowserState = {
 };
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
+
+export type DesktopAiStatus = 'idle' | 'running' | 'stopped';
+
+export type DesktopAiState = {
+  status: DesktopAiStatus;
+  reopens: number;
+  stopReason?: string;
+  message?: string;
+  sessionUrl?: string;
+};
+
+export type DesktopAiCommand = {
+  action: string;
+  [key: string]: unknown;
+};
+
+export type DesktopAiExecuteRequest = {
+  command: DesktopAiCommand;
+  resume?: boolean;
+  commandId?: string;
+};
+
+export type DesktopAiExecuteResponse = {
+  result: {
+    ok: boolean;
+    code?: string;
+    message?: string;
+    changed?: boolean;
+    stopped?: boolean;
+  };
+  state: DesktopAiState;
+};
+
+/** 会话同步结果：只有 registered=true 表示设备已拿到令牌并开始接收指令 */
+export type DesktopSessionSyncResponse = {
+  registered: boolean;
+};
 
 export type { CssRect };

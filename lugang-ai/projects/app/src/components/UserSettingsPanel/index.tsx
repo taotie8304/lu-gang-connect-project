@@ -74,11 +74,14 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     if (isOpen) refreshTicketUnread();
   }, [isOpen, refreshTicketUnread]);
 
-  // 鲁港通 - 桌面客户端退出时先关闭内置浏览器，避免下一位登录者看到上一位的网页会话
+  // 鲁港通 - 桌面客户端退出时先关闭内置浏览器并撤销设备注册，避免下一位登录者看到上一位的网页会话
   const handleLogout = useCallback(() => {
     performLogout({
       closeBrowserPanel: isDesktop
         ? () => window.lugangDesktop?.closePanel()
+        : undefined,
+      clearDesktopSession: isDesktop
+        ? () => window.lugangDesktop?.session?.logout()
         : undefined,
       resetChatCache,
       clearUserInfo: () => setUserInfo(null),

@@ -8,6 +8,7 @@ import {
 import { z } from 'zod';
 import { IPC_CHANNELS } from '../shared/ipc';
 import {
+  aiExecuteSchema,
   booleanSchema,
   createTabSchema,
   cssRectSchema,
@@ -16,18 +17,30 @@ import {
 } from './ipcSchemas';
 import type { CssRect } from '../shared/geometry';
 import type { BrowserManager } from './browser/manager';
+import type { AiController } from './ai/controller';
+import type { DeviceChannel } from './ai/deviceChannel';
+import type { AiCommand } from './ai/protocol';
 
 type RegisterIpcOptions = {
   mainWindow: BrowserWindow;
   appUrl: string;
   appVersion: string;
   browser: BrowserManager;
+  ai: AiController;
+  deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
 };
 
 const INVALID_PAYLOAD = '请求参数无效，请刷新页面后重试';
 const INVALID_SENDER = '请求来源无效';
 
-export const registerIpc = ({ mainWindow, appUrl, appVersion, browser }: RegisterIpcOptions) => {
+export const registerIpc = ({
+  mainWindow,
+  appUrl,
+  appVersion,
+  browser,
+  ai,
+  deviceChannel
+}: RegisterIpcOptions) => {
   const appOrigin = new URL(appUrl).origin;
 
   const isMainSender = (event: IpcMainEvent | IpcMainInvokeEvent): boolean => {
@@ -88,6 +101,36 @@ export const registerIpc = ({ mainWindow, appUrl, appVersion, browser }: Registe
   handle(IPC_CHANNELS.tabSwitch, (payload) => browser.selectTab(payload as number), tabIdSchema);
   handle(IPC_CHANNELS.tabClose, (payload) => browser.closeTab(payload as number), tabIdSchema);
   handle(IPC_CHANNELS.tabList, () => browser.getState());
+
+  handle(IPC_CHANNELS.aiStatus, () => ai.getState());
+  handle(IPC_CHANNELS.aiStop, () => deviceChannel.stopAi());
+  handle(
+    IPC_CHANNELS.aiExecute,
+    async (payload) => {
+      const request = payload as {
+        command: AiCommand;
+        resume?: boolean;
+        commandId?: string;
+      };
+      const result = await ai.execute(request.command, {
+        resume: request.resume,
+        commandId: request.commandId
+      });
+      return { result, state: ai.getState() };
+    },
+    aiExecuteSchema
+  );
+
+  // 鲁港通 - 网页端只能触发会话同步与退出清理，设备令牌始终留在主进程
+  handle(IPC_CHANNELS.sessionSync, () => deviceChannel.syncSession());
+  handle(IPC_CHANNELS.sessionLogout, () => deviceChannel.clearSession());
+
+  // 鲁港通 - 控制器状态变化实时推送给网页端，停止按钮与工作状态依赖此通道
+  const unsubscribe = ai.subscribe((state) => {
+    if (mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send(IPC_CHANNELS.aiStatusChanged, state);
+  });
+  mainWindow.on('closed', unsubscribe);
 
   listen(IPC_CHANNELS.setBounds, (payload) => browser.setBounds(payload as CssRect), cssRectSchema);
   listen(IPC_CHANNELS.setVisible, (payload) => browser.setVisible(payload as boolean), booleanSchema);

@@ -4,6 +4,7 @@ import { createPlanAgentTools } from '../../../domain/systemTool/plan';
 import { createReadFilesTool } from '../../../domain/systemTool/readFile';
 import { createAgentLoopSandboxTools } from '../../../domain/systemTool/sandbox';
 import { createDatasetSearchTool } from '../../../domain/systemTool/datasetSearch';
+import { createBrowserOperationTool } from '../../../domain/systemTool/browserOperation';
 import type { AgentLoopRuntime } from '../../../domain';
 
 const getPiAgentSystemTools = <TChildrenResponse = unknown>(
@@ -17,7 +18,8 @@ const getPiAgentSystemTools = <TChildrenResponse = unknown>(
   ...(runtime.systemTools?.readFile?.enabled
     ? [createReadFilesTool({ maxFileAmount: runtime.systemTools.readFile.maxFileAmount })]
     : []),
-  ...(runtime.systemTools?.datasetSearch?.enabled ? [createDatasetSearchTool()] : [])
+  ...(runtime.systemTools?.datasetSearch?.enabled ? [createDatasetSearchTool()] : []),
+  ...(runtime.systemTools?.browserOperation?.enabled ? [createBrowserOperationTool()] : [])
 ];
 
 /** 过滤与系统工具重名的业务工具，避免 pi-agent-core 注册重复名称。 */

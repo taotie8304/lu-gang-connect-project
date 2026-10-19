@@ -1,0 +1,512 @@
+import { describe, expect, it, vi } from 'vitest';
+import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
+import {
+  BROWSER_OPERATION_TOOL_NAME,
+  BrowserOperationArgsSchema,
+  createBrowserOperationTool,
+  parseBrowserOperationArgs
+} from '@fastgpt/service/core/ai/llm/agentLoop/domain/systemTool/browserOperation';
+import {
+  createDesktopBrowserOperationExecutor,
+  isDesktopBrowserEnabledForUser,
+  isDesktopBrowserUrlAllowed
+} from '@fastgpt/service/support/desktopCommand/browserOperation';
+import { DESKTOP_BROWSER_RESUME_TTL_MS } from '@fastgpt/service/support/desktopCommand/constant';
+import type { DesktopBrowserSnapshot } from '@fastgpt/global/support/desktopCommand/type';
+import { createTestStore } from './desktopTestStore';
+
+const deviceId = 'device_12345678';
+const commandId = '0f0f0f0f-1111-4222-8333-444444444444';
+const identity = {
+  tmbId: 'tmb-1',
+  uid: 'user-uid-1',
+  username: 'jinhui',
+  contact: 'jinhui@airscend.com'
+};
+
+const snapshot: DesktopBrowserSnapshot = {
+  url: 'https://www.immd.gov.hk/hkt/contact.html',
+  title: '聯絡我們',
+  text: '查詢表格與辦事指南',
+  scroll: {
+    x: 0,
+    y: 120,
+    viewportWidth: 800,
+    viewportHeight: 600,
+    pageHeight: 2400
+  },
+  elements: [
+    {
+      ref: 'e12',
+      role: 'textbox',
+      name: '姓名',
+      tag: 'input',
+      placeholder: '請輸入姓名',
+      inViewport: true
+    }
+  ]
+};
+
+const userMessage = (content: string): ChatCompletionMessageParam =>
+  ({ role: 'user', content }) as ChatCompletionMessageParam;
+
+const callTool = (args: Record<string, unknown>) =>
+  ({
+    call: {
+      id: 'call_1',
+      type: 'function',
+      function: {
+        name: BROWSER_OPERATION_TOOL_NAME,
+        arguments: JSON.stringify(args)
+      }
+    },
+    messages: [userMessage('帮我填写姓名')]
+  }) as any;
+
+const createFakeStore = () => ({
+  getDeviceByOwner: vi.fn(async () => deviceId as string | undefined),
+  isDeviceOnline: vi.fn(async () => true),
+  enqueue: vi.fn(async ({ command }: { command: Record<string, unknown> }) => ({
+    id: commandId,
+    createdAt: 1,
+    command
+  })),
+  waitForResult: vi.fn(async () => ({ ok: true, changed: true, snapshot }) as any),
+  saveBrowserResume: vi.fn(async () => {}),
+  getBrowserResume: vi.fn(async () => undefined as any)
+});
+
+type FakeStore = ReturnType<typeof createFakeStore>;
+
+const createExecutor = ({
+  store,
+  audit = vi.fn(async () => {}),
+  isStopped = () => false,
+  messages = [userMessage('帮我填写姓名')],
+  sleep = vi.fn(async () => {})
+}: {
+  store: FakeStore;
+  audit?: (record: any) => Promise<void>;
+  isStopped?: () => boolean;
+  messages?: ChatCompletionMessageParam[];
+  sleep?: (ms: number) => Promise<void>;
+} = {} as any) => {
+  const executor = createDesktopBrowserOperationExecutor({
+    store: store as any,
+    identity,
+    chatId: 'chat-1',
+    isStopped,
+    audit,
+    sleep,
+    now: () => 1_700_000_000_000
+  });
+
+  return async (args: Record<string, unknown>) => executor(callToolWithMessages(args, messages));
+};
+
+const callToolWithMessages = (args: Record<string, unknown>, messages: ChatCompletionMessageParam[]) =>
+  ({
+    call: {
+      id: 'call_1',
+      type: 'function',
+      function: {
+        name: BROWSER_OPERATION_TOOL_NAME,
+        arguments: JSON.stringify(args)
+      }
+    },
+    messages
+  }) as any;
+
+describe('browser operation tool schema', () => {
+  it('exposes a single browser_operation tool with the supported actions', () => {
+    const tool = createBrowserOperationTool();
+
+    expect(tool.function.name).toBe(BROWSER_OPERATION_TOOL_NAME);
+    expect(tool.function.description).toContain('桌面客户端');
+    expect((tool.function.parameters as any).properties.action.enum).toEqual([
+      'read',
+      'navigate',
+      'click',
+      'type',
+      'select',
+      'scroll',
+      'wait'
+    ]);
+  });
+
+  it('parses navigate and locator based actions', () => {
+    expect(
+      parseBrowserOperationArgs(JSON.stringify({ action: 'navigate', url: 'https://www.gov.hk' }))
+    ).toEqual({
+      success: true,
+      args: { action: 'navigate', url: 'https://www.gov.hk' }
+    });
+
+    expect(
+      parseBrowserOperationArgs(JSON.stringify({ action: 'click', ref: 'e12' }))
+    ).toMatchObject({ success: true, args: { action: 'click', ref: 'e12' } });
+  });
+
+  it('rejects a locator action without ref or target', () => {
+    const result = parseBrowserOperationArgs(JSON.stringify({ action: 'click' }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('需要提供元素引用或元素描述');
+    }
+  });
+
+  it('rejects unsupported actions with a Chinese message', () => {
+    const result = parseBrowserOperationArgs(JSON.stringify({ action: 'submit' }));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toContain('不支持');
+      expect(result.error).toContain('read');
+    }
+  });
+
+  it('rejects an oversized text input', () => {
+    const parsed = BrowserOperationArgsSchema.safeParse({
+      action: 'type',
+      ref: 'e12',
+      text: 'x'.repeat(2001)
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it('rejects a wait outside one to ten seconds', () => {
+    expect(BrowserOperationArgsSchema.safeParse({ action: 'wait', seconds: 0 }).success).toBe(false);
+    expect(BrowserOperationArgsSchema.safeParse({ action: 'wait', seconds: 11 }).success).toBe(false);
+    expect(BrowserOperationArgsSchema.safeParse({ action: 'wait', seconds: 3 }).success).toBe(true);
+  });
+});
+
+describe('desktop browser grey list', () => {
+  it('stays disabled by default and for explicit off values', () => {
+    expect(isDesktopBrowserEnabledForUser(identity, undefined)).toBe(false);
+    expect(isDesktopBrowserEnabledForUser(identity, '')).toBe(false);
+    expect(isDesktopBrowserEnabledForUser(identity, 'off')).toBe(false);
+    expect(isDesktopBrowserEnabledForUser(identity, 'false')).toBe(false);
+  });
+
+  it('enables everyone with all or star', () => {
+    expect(isDesktopBrowserEnabledForUser(identity, 'all')).toBe(true);
+    expect(isDesktopBrowserEnabledForUser(identity, '*')).toBe(true);
+  });
+
+  it('matches a comma separated list by email, username, tmbId or uid', () => {
+    expect(isDesktopBrowserEnabledForUser(identity, 'JINHUI@airscend.com')).toBe(true);
+    expect(isDesktopBrowserEnabledForUser(identity, 'someone@example.com, jinhui')).toBe(true);
+    expect(isDesktopBrowserEnabledForUser(identity, 'tmb-1')).toBe(true);
+    expect(isDesktopBrowserEnabledForUser(identity, 'user-uid-1')).toBe(true);
+    expect(isDesktopBrowserEnabledForUser(identity, 'root')).toBe(false);
+  });
+
+  it('always enables the root account', () => {
+    expect(
+      isDesktopBrowserEnabledForUser({ ...identity, username: 'root' }, 'jinhui@airscend.com')
+    ).toBe(true);
+  });
+
+  it('rejects users outside the list', () => {
+    expect(isDesktopBrowserEnabledForUser(identity, 'other@example.com')).toBe(false);
+  });
+});
+
+describe('desktop browser url allowlist', () => {
+  it('allows government host suffixes', () => {
+    expect(isDesktopBrowserUrlAllowed('https://www.gov.hk/en/residents/')).toBe(true);
+    expect(isDesktopBrowserUrlAllowed('https://www.immd.gov.hk/hkt/contact.html')).toBe(true);
+    expect(isDesktopBrowserUrlAllowed('http://www.gov.cn/zhengce/')).toBe(true);
+  });
+
+  it('rejects lookalike hosts, other domains and non-http protocols', () => {
+    expect(isDesktopBrowserUrlAllowed('https://gov.hk.evil.com/')).toBe(false);
+    expect(isDesktopBrowserUrlAllowed('https://example.com/')).toBe(false);
+    expect(isDesktopBrowserUrlAllowed('javascript:alert(1)')).toBe(false);
+    expect(isDesktopBrowserUrlAllowed('not a url')).toBe(false);
+  });
+
+  it('honours an explicit host list for local test pages', () => {
+    expect(isDesktopBrowserUrlAllowed('http://127.0.0.1:3100/form', ['.gov.hk', '127.0.0.1'])).toBe(
+      true
+    );
+  });
+});
+
+describe('desktop command store waiting and resume state', () => {
+  it('polls until a result arrives and returns undefined on timeout', async () => {
+    const { store, now } = createTestStore();
+    const envelope = await store.enqueue({ deviceId, command: { action: 'read' } });
+    let saved = false;
+    const originalSleep = (store as any).sleep as (ms: number) => Promise<void>;
+    (store as any).sleep = async (ms: number) => {
+      await originalSleep(ms);
+      if (!saved) {
+        saved = true;
+        await store.saveResult({
+          commandId: envelope.id,
+          result: { ok: true, changed: true, snapshot }
+        });
+      }
+    };
+
+    await expect(
+      store.waitForResult({ commandId: envelope.id, timeoutMs: 5_000 })
+    ).resolves.toMatchObject({ ok: true, changed: true });
+    await expect(store.waitForResult({ commandId: 'missing', timeoutMs: 1_000 })).resolves.toBeUndefined();
+    expect(now()).toBeGreaterThan(1_000);
+  });
+
+  it('saves browser resume state per member and chat with a ten minute ttl', async () => {
+    const { store, redis, advance } = createTestStore();
+    const resume = {
+      goal: '填写姓名',
+      url: 'https://www.immd.gov.hk/hkt/contact.html',
+      updatedAt: 1_000
+    };
+
+    await store.saveBrowserResume({ tmbId: 'tmb-1', chatId: 'chat-1', resume });
+
+    await expect(
+      store.getBrowserResume({ tmbId: 'tmb-1', chatId: 'chat-1' })
+    ).resolves.toEqual(resume);
+    await expect(
+      store.getBrowserResume({ tmbId: 'tmb-1', chatId: 'chat-2' })
+    ).resolves.toBeUndefined();
+    expect(redis.setCalls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: expect.stringContaining('browser-resume'),
+          ttlMs: DESKTOP_BROWSER_RESUME_TTL_MS
+        })
+      ])
+    );
+
+    advance(DESKTOP_BROWSER_RESUME_TTL_MS);
+    await expect(
+      store.getBrowserResume({ tmbId: 'tmb-1', chatId: 'chat-1' })
+    ).resolves.toBeUndefined();
+  });
+});
+
+describe('desktop browser operation executor', () => {
+  it('asks the user to open the desktop client when no device is registered', async () => {
+    const store = createFakeStore();
+    store.getDeviceByOwner.mockResolvedValue(undefined);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('桌面客户端');
+    expect(result.response).toContain('登录');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'read', ok: false, code: 'device_missing' })
+    );
+  });
+
+  it('reports an offline device instead of retrying forever', async () => {
+    const store = createFakeStore();
+    store.isDeviceOnline.mockResolvedValue(false);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('不在线');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('rejects a navigate outside the allowlist before touching the device', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'navigate', url: 'https://example.com/login' });
+
+    expect(result.response).toContain('允许');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('sends a click command and returns the fresh snapshot', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e12', expect: '已提交' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'click', ref: 'e12', expect: '已提交' }
+    });
+    expect(store.waitForResult).toHaveBeenCalledWith(
+      expect.objectContaining({ commandId })
+    );
+    expect(result.response).toContain('操作已执行');
+    expect(result.response).toContain('https://www.immd.gov.hk/hkt/contact.html');
+    expect(result.response).toContain('[e12]');
+    expect(result.response).toContain('姓名');
+  });
+
+  it('types text without writing the input into the audit record', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'type', ref: 'e12', text: '张三' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'type', ref: 'e12', text: '张三' }
+    });
+    expect(result.response).toContain('操作已执行');
+    const record = audit.mock.calls[0][0] as any;
+    expect(record).toMatchObject({
+      tmbId: 'tmb-1',
+      uid: 'user-uid-1',
+      chatId: 'chat-1',
+      deviceId,
+      action: 'type',
+      ok: true,
+      url: snapshot.url
+    });
+    expect(record).not.toHaveProperty('text');
+    expect(JSON.stringify(record)).not.toContain('张三');
+  });
+
+  it('refuses password or verification code targets before enqueueing', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'type', target: '登录密码', text: 'secret' });
+
+    expect(result.response).toContain('密码');
+    expect(result.response).toContain('本人');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'type', ok: false, code: 'sensitive_blocked' })
+    );
+  });
+
+  it('waits on the server before reading the page again', async () => {
+    const store = createFakeStore();
+    const sleep = vi.fn(async () => {});
+    const execute = createExecutor({ store, sleep });
+
+    const result = await execute({ action: 'wait', seconds: 3 });
+
+    expect(sleep).toHaveBeenCalledWith(3_000);
+    expect(store.enqueue).toHaveBeenCalledWith({ deviceId, command: { action: 'read' } });
+    expect(result.response).toContain('操作已执行');
+  });
+
+  it('reports a timeout when the device never returns a result', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue(undefined as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('没有返回结果');
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'read', ok: false, code: 'timeout' })
+    );
+  });
+
+  it('does not enqueue when the user already pressed stop', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store, isStopped: () => true });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('停止');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('maps a failed desktop result to actionable Chinese guidance', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'not_found',
+      message: 'element missing',
+      snapshot
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e99' });
+
+    expect(result.response).toContain('找不到目标元素');
+    expect(result.response).toContain('重新读取页面');
+    expect(result.response).toContain('[e12]');
+  });
+
+  it('saves the resume url and goal after a successful action', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'read' });
+
+    expect(store.saveBrowserResume).toHaveBeenCalledWith({
+      tmbId: 'tmb-1',
+      chatId: 'chat-1',
+      resume: {
+        goal: '帮我填写姓名',
+        url: snapshot.url,
+        updatedAt: 1_700_000_000_000
+      }
+    });
+  });
+
+  it('reminds the model of the previous task when the user sends a new message', async () => {
+    const store = createFakeStore();
+    store.getBrowserResume.mockResolvedValue({
+      goal: '上一轮：填写申请表',
+      url: 'https://www.immd.gov.hk/hkt/apply.html',
+      updatedAt: 1
+    } as any);
+    const execute = createExecutor({ store, messages: [userMessage('继续')] });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('上一轮浏览器任务');
+    expect(result.response).toContain('上一轮：填写申请表');
+    expect(result.response).toContain('https://www.immd.gov.hk/hkt/apply.html');
+    expect(store.saveBrowserResume).toHaveBeenCalledWith(
+      expect.objectContaining({
+        resume: expect.objectContaining({
+          goal: '上一轮：填写申请表',
+          url: snapshot.url
+        })
+      })
+    );
+  });
+
+  it('does not repeat the resume hint for the same task', async () => {
+    const store = createFakeStore();
+    store.getBrowserResume.mockResolvedValue({
+      goal: '帮我填写姓名',
+      url: snapshot.url,
+      updatedAt: 1
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).not.toContain('上一轮浏览器任务');
+  });
+
+  it('keeps working when the audit writer fails', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {
+      throw new Error('mongo down');
+    });
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('操作已执行');
+  });
+});

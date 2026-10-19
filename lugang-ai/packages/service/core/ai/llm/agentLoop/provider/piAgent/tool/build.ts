@@ -24,6 +24,7 @@ import {
   createDatasetSearchTool,
   patchDatasetSearchParams
 } from '../../../domain/systemTool/datasetSearch';
+import { createBrowserOperationTool } from '../../../domain/systemTool/browserOperation';
 import {
   normalizeAgentLoopUsages,
   type AgentLoopEvent,
@@ -335,6 +336,47 @@ export const buildPiAgentTools = async <TChildrenResponse = unknown>({
               usages: readFileResult.usages,
               errorMessage: readFileResult.error ? getErrText(readFileResult.error) : undefined,
               metadata: readFileResult.metadata
+            };
+          }
+        });
+        return { content: [{ type: 'text' as const, text: result.response }], details: {} };
+      }
+    });
+  }
+
+  if (runtime.systemTools?.browserOperation?.enabled) {
+    const browserOperationTool = createBrowserOperationTool();
+    tools.push({
+      name: browserOperationTool.function.name,
+      label: browserOperationTool.function.name,
+      description: browserOperationTool.function.description || '',
+      parameters: Type.Unsafe<any>(
+        (browserOperationTool.function.parameters as Record<string, unknown>) ?? {}
+      ),
+      execute: async (callId: string, args: unknown) => {
+        const call = createToolCall({
+          id: callId,
+          name: browserOperationTool.function.name,
+          args: normalizeToolArgs(args)
+        });
+        const result = await executeOrdinaryTool({
+          call,
+          execute: async () => {
+            const executeBrowserOperation = runtime.systemTools?.browserOperation?.execute;
+            if (!executeBrowserOperation) {
+              const response = 'Browser operation executor is not available.';
+              return { response, assistantMessages: [], usages: [], errorMessage: response };
+            }
+            const browserResult = await executeBrowserOperation({
+              call,
+              messages: [...getMessages()]
+            });
+            return {
+              response: browserResult.response,
+              assistantMessages: [],
+              usages: browserResult.usages,
+              errorMessage: browserResult.error ? getErrText(browserResult.error) : undefined,
+              metadata: browserResult.metadata
             };
           }
         });

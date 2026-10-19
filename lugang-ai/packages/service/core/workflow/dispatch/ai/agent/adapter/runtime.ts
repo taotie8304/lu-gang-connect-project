@@ -16,6 +16,10 @@ import {
   getAgentLoopCoreSystemToolInfo
 } from '../../agentLoopCore/interface';
 import { createWorkflowAgentToolProvider } from '../toolProvider';
+import {
+  createDesktopBrowserOperationExecutor,
+  isDesktopBrowserEnabledForUser
+} from '../../../../../../support/desktopCommand/browserOperation';
 
 type WorkflowAgentLoopRuntimeContext = ToolDispatchContext & {
   node: {
@@ -102,6 +106,14 @@ export const createWorkflowAgentLoopRuntime = ({
     context,
     executeToolFactory
   });
+  // 浏览器操作只对桌面客户端灰度成员开放；未开启时模型完全看不到该工具。
+  const browserOperationIdentity = {
+    tmbId: context.runningUserInfo.tmbId,
+    uid: context.uid,
+    username: context.runningUserInfo.username,
+    contact: context.runningUserInfo.contact
+  };
+  const browserOperationEnabled = isDesktopBrowserEnabledForUser(browserOperationIdentity);
 
   return {
     artifacts,
@@ -146,6 +158,16 @@ export const createWorkflowAgentLoopRuntime = ({
               enabled: true,
               maxFileAmount: toolProvider.readFileMaxFileAmount,
               execute: toolProvider.readFileExecutor
+            }
+          : undefined,
+        browserOperation: browserOperationEnabled
+          ? {
+              enabled: true,
+              execute: createDesktopBrowserOperationExecutor({
+                identity: browserOperationIdentity,
+                chatId: context.chatId,
+                isStopped: context.checkIsStopping
+              })
             }
           : undefined
       },

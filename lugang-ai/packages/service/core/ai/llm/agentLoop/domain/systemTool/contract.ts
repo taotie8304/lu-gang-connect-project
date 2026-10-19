@@ -5,6 +5,17 @@ export {
   type AgentAskPayload
 } from './ask';
 export {
+  BROWSER_OPERATION_ACTIONS,
+  BROWSER_OPERATION_TOOL_NAME,
+  BrowserOperationArgsSchema,
+  createBrowserOperationTool,
+  parseBrowserOperationArgs,
+  type AgentLoopBrowserOperationExecuteParams,
+  type AgentLoopBrowserOperationExecutionResult,
+  type AgentLoopBrowserOperationExecutor,
+  type BrowserOperationArgs
+} from './browserOperation';
+export {
   DATASET_SEARCH_TOOL_NAME,
   type AgentLoopDatasetSearchExecutor,
   type AgentLoopDatasetSearchExecutionResult,

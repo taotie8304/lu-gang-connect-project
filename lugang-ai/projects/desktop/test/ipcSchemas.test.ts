@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  aiExecuteSchema,
   booleanSchema,
   createTabSchema,
   cssRectSchema,
@@ -70,5 +71,38 @@ describe('createTabSchema', () => {
 
   it('拒绝空网址', () => {
     expect(createTabSchema.safeParse({ url: '' }).success).toBe(false);
+  });
+});
+
+describe('aiExecuteSchema', () => {
+  it('接受受控动作与可选续跑标记', () => {
+    expect(
+      aiExecuteSchema.parse({
+        command: { action: 'click', ref: 'e1' },
+        resume: true,
+        commandId: 'cmd-1'
+      })
+    ).toEqual({
+      command: { action: 'click', ref: 'e1' },
+      resume: true,
+      commandId: 'cmd-1'
+    });
+  });
+
+  it('拒绝提交类越权动作', () => {
+    expect(aiExecuteSchema.safeParse({ command: { action: 'submit' } }).success).toBe(false);
+  });
+
+  it('拒绝没有定位信息的点击', () => {
+    expect(aiExecuteSchema.safeParse({ command: { action: 'click' } }).success).toBe(false);
+  });
+
+  it('拒绝超长命令标识', () => {
+    expect(
+      aiExecuteSchema.safeParse({
+        command: { action: 'read' },
+        commandId: 'c'.repeat(65)
+      }).success
+    ).toBe(false);
   });
 });

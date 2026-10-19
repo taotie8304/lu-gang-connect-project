@@ -2,7 +2,11 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import {
   IPC_CHANNELS,
+  type DesktopAiExecuteRequest,
+  type DesktopAiExecuteResponse,
+  type DesktopAiState,
   type DesktopBrowserState,
+  type DesktopSessionSyncResponse,
   type DesktopVersionInfo
 } from '../shared/ipc';
 import type { CssRect } from '../shared/geometry';
@@ -38,6 +42,25 @@ const api = {
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.stateChanged, listener);
     };
+  },
+  ai: {
+    getState: () => ipcRenderer.invoke(IPC_CHANNELS.aiStatus) as Promise<DesktopAiState>,
+    stop: () => ipcRenderer.invoke(IPC_CHANNELS.aiStop) as Promise<DesktopAiState>,
+    execute: (request: DesktopAiExecuteRequest) =>
+      ipcRenderer.invoke(IPC_CHANNELS.aiExecute, request) as Promise<DesktopAiExecuteResponse>,
+    onStateChange: (callback: (state: DesktopAiState) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: DesktopAiState) =>
+        callback(state);
+      ipcRenderer.on(IPC_CHANNELS.aiStatusChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.aiStatusChanged, listener);
+      };
+    }
+  },
+  session: {
+    sync: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.sessionSync) as Promise<DesktopSessionSyncResponse>,
+    logout: () => ipcRenderer.invoke(IPC_CHANNELS.sessionLogout) as Promise<void>
   },
   retryLoad: () => ipcRenderer.send(IPC_CHANNELS.retryLoad)
 };

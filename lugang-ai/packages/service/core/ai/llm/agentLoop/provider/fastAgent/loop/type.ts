@@ -9,6 +9,7 @@ import type { CreateLLMResponseProps } from '../../../../request';
 import type { SandboxClient } from '../../../../../sandbox/interface/runtime';
 import type { AgentLoopToolCatalog } from '../tools';
 import type { AgentLoopDatasetSearchExecutor } from '../../../domain/systemTool/datasetSearch';
+import type { AgentLoopBrowserOperationExecutor } from '../../../domain/systemTool/browserOperation';
 import type {
   AgentLoopChildrenInteractiveParams,
   AgentLoopEvent,
@@ -63,6 +64,7 @@ export type AgentLoopRuntime<TChildrenResponse = unknown> = {
   executeReadFileTool?: AgentLoopReadFileExecutor;
   executeDatasetSearchTool?: AgentLoopDatasetSearchExecutor;
   datasetSearchCurrentInputFiles?: string[];
+  executeBrowserOperationTool?: AgentLoopBrowserOperationExecutor;
   usagePush?: (usages: AgentLoopUsage[]) => void;
   emitEvent?: (event: AgentLoopEvent) => void;
 };

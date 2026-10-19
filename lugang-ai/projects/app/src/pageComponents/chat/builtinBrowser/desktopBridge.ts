@@ -12,6 +12,42 @@ export type DesktopBrowserState = {
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
 
+export type DesktopAiStatus = 'idle' | 'running' | 'stopped';
+
+export type DesktopAiState = {
+  status: DesktopAiStatus;
+  reopens: number;
+  stopReason?: string;
+  message?: string;
+  sessionUrl?: string;
+};
+
+export type DesktopAiCommand = {
+  action: string;
+  [key: string]: unknown;
+};
+
+export type DesktopAiExecuteRequest = {
+  command: DesktopAiCommand;
+  resume?: boolean;
+  commandId?: string;
+};
+
+export type DesktopAiExecuteResponse = {
+  result: {
+    ok: boolean;
+    code?: string;
+    message?: string;
+    changed?: boolean;
+    stopped?: boolean;
+  };
+  state: DesktopAiState;
+};
+
+export type DesktopSessionSyncResponse = {
+  registered: boolean;
+};
+
 export type DesktopBridge = {
   isAvailable(): boolean;
   getVersion(): Promise<DesktopVersionInfo>;
@@ -31,6 +67,16 @@ export type DesktopBridge = {
     list(): Promise<DesktopBrowserState>;
   };
   onStateChange(callback: (state: DesktopBrowserState) => void): () => void;
+  ai: {
+    getState(): Promise<DesktopAiState>;
+    stop(): Promise<DesktopAiState>;
+    execute(request: DesktopAiExecuteRequest): Promise<DesktopAiExecuteResponse>;
+    onStateChange(callback: (state: DesktopAiState) => void): () => void;
+  };
+  session: {
+    sync(): Promise<DesktopSessionSyncResponse>;
+    logout(): Promise<void>;
+  };
   retryLoad(): void;
 };
 
