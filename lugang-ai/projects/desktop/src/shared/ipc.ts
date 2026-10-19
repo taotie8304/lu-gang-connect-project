@@ -24,7 +24,8 @@ export const IPC_CHANNELS = {
   aiExecute: 'lugang:ai-execute',
   aiStatusChanged: 'lugang:ai-status-changed',
   sessionSync: 'lugang:session-sync',
-  sessionLogout: 'lugang:session-logout'
+  sessionLogout: 'lugang:session-logout',
+  confirmDecision: 'lugang:confirm-decision'
 } as const;
 
 export type DesktopTab = { id: number; title: string; url: string; current: boolean };

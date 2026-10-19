@@ -7,6 +7,9 @@ import {
   AiExecutor,
   type AiActionErrorCode,
   type AiCommandResult,
+  type AiConfirmer,
+  type AiFileGenerator,
+  type AiFilePicker,
   type AiPageDriver
 } from './executor';
 import {
@@ -38,6 +41,9 @@ export type AiControllerOptions = {
   driver: AiPageDriver;
   allowedHosts: string[];
   audit?: (record: AiAuditRecord) => Promise<void> | void;
+  generateFile?: AiFileGenerator;
+  pickFile?: AiFilePicker;
+  confirm?: AiConfirmer;
   now?: () => number;
   idleMs?: number;
 };
@@ -57,7 +63,12 @@ export type AiTabClosedEvent = {
 const SECURITY_STOP_REASONS: Partial<Record<AiActionErrorCode, AiStopReason>> = {
   sensitive_blocked: 'sensitive_blocked',
   high_risk_blocked: 'high_risk_blocked',
-  not_allowed: 'domain_not_allowed'
+  not_allowed: 'domain_not_allowed',
+  cancelled_by_user: 'cancelled_by_user',
+  handed_over: 'handed_over',
+  confirmation_declined: 'confirmation_declined',
+  confirmation_timeout: 'confirmation_timeout',
+  confirmation_unavailable: 'confirmation_unavailable'
 };
 
 const MAX_REMEMBERED_FIELDS = 20;
@@ -87,7 +98,10 @@ export class AiController {
     this.idleMs = options.idleMs ?? AI_SESSION_IDLE_MS;
     this.executor = new AiExecutor({
       driver: options.driver,
-      allowedHosts: options.allowedHosts
+      allowedHosts: options.allowedHosts,
+      generateFile: options.generateFile,
+      pickFile: options.pickFile,
+      confirm: options.confirm
     });
   }
 
@@ -120,6 +134,7 @@ export class AiController {
     const commandId = options.commandId ?? randomUUID();
 
     if (command.action === 'stop') {
+      this.executor.cancelConfirmation();
       this.guard = recordAiUserStop(this.guard);
       this.sessionActiveUntil = 0;
       this.typedFields.clear();
@@ -151,6 +166,7 @@ export class AiController {
   };
 
   stop = (): DesktopAiState => {
+    this.executor.cancelConfirmation();
     this.guard = recordAiUserStop(this.guard);
     this.sessionActiveUntil = 0;
     this.typedFields.clear();
@@ -207,7 +223,22 @@ export class AiController {
       if (command.action === 'type' && command.target) {
         this.rememberField(command.target, command.text);
       }
+      // 鲁港通 - 提交成功后本轮自动操作结束，不自动继续点击后续按钮
+      if (command.action === 'click' && result.confirmation?.decision === 'allow') {
+        this.guard = stopAiSession(this.guard, 'submitted');
+        this.sessionActiveUntil = 0;
+        return { ...result, stopped: true, message: this.guard.stopMessage };
+      }
       return result;
+    }
+
+    if (
+      result.confirmation?.decision === 'allow' &&
+      (result.code === 'verification_failed' || result.code === 'page_error')
+    ) {
+      this.guard = stopAiSession(this.guard, 'submission_unconfirmed');
+      this.sessionActiveUntil = 0;
+      return { ...result, stopped: true, message: this.guard.stopMessage };
     }
 
     const securityReason = result.code ? SECURITY_STOP_REASONS[result.code] : undefined;
@@ -310,6 +341,7 @@ export class AiController {
       url: this.sessionUrl ?? result.snapshot?.url,
       target: 'target' in command ? command.target : undefined,
       durationMs,
+      confirmation: result.confirmation,
       now: new Date(this.now())
     });
     try {

@@ -317,6 +317,65 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
+  it('passes generated file and confirmation details through unchanged', async () => {
+    const file = {
+      name: '香港慈善组织申请说明.docx',
+      format: 'docx',
+      folder: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件'
+    };
+    const confirmation = { required: true, decision: 'allow', label: '提交申请' };
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, changed: true, file, confirmation }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, changed: true, file, confirmation }
+    });
+  });
+
+  it('rejects an unknown confirmation decision', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, confirmation: { required: true, decision: 'approve' } }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects a generated file result without a file name', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, file: { name: '', folder: 'C:\\tmp' } }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
   it('rejects a snapshot with too many elements', async () => {
     const req = {
       method: 'POST',

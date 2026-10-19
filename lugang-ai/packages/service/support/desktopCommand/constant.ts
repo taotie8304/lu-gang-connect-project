@@ -24,5 +24,11 @@ export const DESKTOP_COMMAND_MAX_BYTES = 32 * 1024;
 export const DESKTOP_BROWSER_RESULT_TIMEOUT_MS = 30_000;
 export const DESKTOP_BROWSER_RESULT_POLL_MS = 500;
 
+/** 提交前原生确认框的最长等待时间：超时自动取消，不提交 */
+export const DESKTOP_BROWSER_CONFIRM_TIMEOUT_MS = 5 * 60 * 1000;
+/** 点击可能等待用户确认，结果等待上限需覆盖确认窗口并留出操作余量 */
+export const DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS =
+  DESKTOP_BROWSER_CONFIRM_TIMEOUT_MS + DESKTOP_BROWSER_RESULT_TIMEOUT_MS;
+
 /** 会话级浏览器续跑状态保留 10 分钟，与设计文档一致 */
 export const DESKTOP_BROWSER_RESUME_TTL_MS = 10 * 60 * 1000;

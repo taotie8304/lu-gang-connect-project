@@ -5,6 +5,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type AiAuditOutcome = 'ok' | 'failed' | 'blocked' | 'stopped';
 
+export type AiAuditConfirmation = {
+  required: true;
+  decision: 'allow' | 'handoff' | 'cancel' | 'timeout' | 'unavailable';
+  label: string;
+};
+
 export type AiAuditRecord = {
   time: string;
   commandId: string;
@@ -16,6 +22,7 @@ export type AiAuditRecord = {
   target?: string;
   durationMs?: number;
   reopen?: boolean;
+  confirmation?: AiAuditConfirmation;
 };
 
 const parseHttpUrl = (input?: string): URL | null => {
@@ -38,6 +45,7 @@ export const buildAiAuditRecord = ({
   target,
   durationMs,
   reopen,
+  confirmation,
   now = new Date()
 }: {
   commandId: string;
@@ -48,6 +56,7 @@ export const buildAiAuditRecord = ({
   target?: string;
   durationMs?: number;
   reopen?: boolean;
+  confirmation?: AiAuditConfirmation;
   now?: Date;
 }): AiAuditRecord => {
   const parsed = parseHttpUrl(url);
@@ -60,7 +69,17 @@ export const buildAiAuditRecord = ({
     ...(parsed ? { host: parsed.hostname, path: parsed.pathname } : {}),
     ...(target ? { target: target.slice(0, 200) } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
-    ...(reopen ? { reopen } : {})
+    ...(reopen ? { reopen } : {}),
+    // 鲁港通 - 只记录确认决策与动作名称，不记录文件内容或本机路径
+    ...(confirmation
+      ? {
+          confirmation: {
+            required: true as const,
+            decision: confirmation.decision,
+            label: confirmation.label.slice(0, 200)
+          }
+        }
+      : {})
   };
 };
 

@@ -84,8 +84,20 @@ export const isSensitiveElement = (element: AiElementView): boolean => {
   );
 };
 
-const HIGH_RISK_PATTERN =
-  /提交|确认提交|支付|付款|购买|下单|转账|汇款|发布|删除|注销|立即购买|settle|submit|pay\s*now|purchase|publish|delete|transfer/i;
+const PAYMENT_PATTERN =
+  /支付|付款|支付密码|购买|下单|转账|汇款|充值|提现|结算|立即购买|settle|submit\s*payment|pay\s*now|purchase|checkout|transfer|payment/i;
+
+const CONFIRMABLE_PATTERN =
+  /提交|确认提交|发布|删除|注销|撤销|submit|publish|delete|unregister|deactivate/i;
+
+export const isPaymentActionLabel = (label?: string): boolean =>
+  PAYMENT_PATTERN.test(label ?? '');
+
+export const isConfirmableActionLabel = (label?: string): boolean => {
+  const text = label ?? '';
+  if (isPaymentActionLabel(text)) return false;
+  return CONFIRMABLE_PATTERN.test(text);
+};
 
 export const isHighRiskActionLabel = (label?: string): boolean =>
-  HIGH_RISK_PATTERN.test(label ?? '');
+  isPaymentActionLabel(label) || isConfirmableActionLabel(label);

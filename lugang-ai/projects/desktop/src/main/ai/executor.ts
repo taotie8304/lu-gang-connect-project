@@ -1,6 +1,11 @@
 // 鲁港通 - AI 指令执行器：定位、动作前安全拦截、动作后页面校验
 import { isAiHostAllowed, isAiUrlAllowed } from './allowlist';
-import { isHighRiskActionLabel, isSensitiveElement, matchAiTarget } from './matcher';
+import {
+  isConfirmableActionLabel,
+  isPaymentActionLabel,
+  isSensitiveElement,
+  matchAiTarget
+} from './matcher';
 import { AI_STOP_MESSAGES } from './policy';
 import type { AiCommand } from './protocol';
 import {
@@ -22,7 +27,65 @@ export type AiActionErrorCode =
   | 'not_editable'
   | 'option_not_found'
   | 'verification_failed'
+  | 'file_generation_failed'
+  | 'cancelled_by_user'
+  | 'not_file_input'
+  | 'upload_failed'
+  | 'confirmation_unavailable'
+  | 'handed_over'
+  | 'confirmation_declined'
+  | 'confirmation_timeout'
   | 'page_error';
+
+export type AiFileFormat = 'docx' | 'xlsx' | 'pdf';
+
+export type AiFileGeneratorInput = {
+  format: AiFileFormat;
+  fileName: string;
+  title?: string;
+  content?: string;
+  rows?: string[][];
+};
+
+export type AiGeneratedFile = {
+  name: string;
+  format: AiFileFormat;
+  folder: string;
+  path: string;
+};
+
+export type AiFileGenerator = (input: AiFileGeneratorInput) => Promise<AiGeneratedFile>;
+
+export type AiFilePicker = () => Promise<string | null>;
+
+export type AiFileInputState = {
+  found: boolean;
+  isFile?: boolean;
+  multiple?: boolean;
+  accept?: string;
+  count?: number;
+  names?: string[];
+};
+
+export type AiConfirmationDecision = 'allow' | 'handoff' | 'cancel' | 'timeout';
+
+export type AiConfirmer = ((request: {
+  host: string;
+  label: string;
+  url?: string;
+}) => Promise<AiConfirmationDecision>) & { cancel?: () => void };
+
+export type AiConfirmationInfo = {
+  required: true;
+  decision: AiConfirmationDecision | 'unavailable';
+  label: string;
+};
+
+export type AiFileResult = {
+  name: string;
+  format?: AiFileFormat | 'other';
+  folder?: string;
+};
 
 export type AiCommandResult = {
   ok: boolean;
@@ -31,6 +94,8 @@ export type AiCommandResult = {
   snapshot?: AiPageSnapshot;
   changed?: boolean;
   stopped?: boolean;
+  file?: AiFileResult;
+  confirmation?: AiConfirmationInfo;
 };
 
 export type AiResolvedElement = {
@@ -76,6 +141,8 @@ export type AiPageDriver = {
   clickAt(x: number, y: number): Promise<void>;
   insertText(text: string): Promise<void>;
   navigate(url: string): Promise<void>;
+  fileInput(ref: string): Promise<AiFileInputState>;
+  setFileInputFiles(ref: string, files: string[]): Promise<boolean>;
   settle(): Promise<void>;
 };
 
@@ -92,6 +159,15 @@ type SnapshotResult = { snapshot: AiPageSnapshot } | { result: AiCommandResult }
 
 const targetLabel = (request: { ref?: string; target?: string }): string =>
   request.target?.trim() || request.ref?.trim() || '目标元素';
+
+const baseName = (filePath: string): string => filePath.split(/[\\/]/).pop() || filePath;
+
+const actionLabel = (element: AiPageElement): string => {
+  const parts = [element.name, element.text, element.value]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return [...new Set(parts)].join(' ');
+};
 
 const notFound = (request: { ref?: string; target?: string }, snapshot?: AiPageSnapshot) => ({
   ok: false as const,
@@ -123,11 +199,27 @@ const parseHttpUrl = (input: string): URL | null => {
 export class AiExecutor {
   private readonly driver: AiPageDriver;
   private readonly allowedHosts: string[];
+  private readonly generateFile?: AiFileGenerator;
+  private readonly pickFile?: AiFilePicker;
+  private readonly confirm?: AiConfirmer;
 
-  constructor(options: { driver: AiPageDriver; allowedHosts: string[] }) {
+  constructor(options: {
+    driver: AiPageDriver;
+    allowedHosts: string[];
+    generateFile?: AiFileGenerator;
+    pickFile?: AiFilePicker;
+    confirm?: AiConfirmer;
+  }) {
     this.driver = options.driver;
     this.allowedHosts = options.allowedHosts;
+    this.generateFile = options.generateFile;
+    this.pickFile = options.pickFile;
+    this.confirm = options.confirm;
   }
+
+  cancelConfirmation = (): void => {
+    this.confirm?.cancel?.();
+  };
 
   async execute(command: AiCommand): Promise<AiCommandResult> {
     if (command.action === 'stop') return { ok: true, stopped: true };
@@ -144,6 +236,7 @@ export class AiExecutor {
 
   private async run(command: Exclude<AiCommand, { action: 'stop' }>): Promise<AiCommandResult> {
     if (command.action === 'navigate') return this.navigate(command.url);
+    if (command.action === 'generate_file') return this.generateFileLocally(command);
 
     if (command.action === 'read') {
       const read = await this.readSnapshot({ fullText: command.fullText === true });
@@ -155,6 +248,7 @@ export class AiExecutor {
     if ('result' in initial) return initial.result;
 
     if (command.action === 'scroll') return this.scroll(command, initial.snapshot);
+    if (command.action === 'upload') return this.upload(command, initial.snapshot);
 
     const located = await this.locate(command, initial.snapshot);
     if (!located.ok) return located.result;
@@ -169,8 +263,8 @@ export class AiExecutor {
       };
     }
     if (command.action === 'click') {
-      const label = [element.name, element.text, element.value].filter(Boolean).join(' ');
-      if (isHighRiskActionLabel(label)) {
+      const label = actionLabel(element);
+      if (isPaymentActionLabel(label)) {
         return {
           ok: false,
           code: 'high_risk_blocked',
@@ -178,12 +272,213 @@ export class AiExecutor {
           snapshot: located.snapshot
         };
       }
+      if (isConfirmableActionLabel(label)) {
+        return this.confirmedClick(command, element, resolved, located.snapshot, label.trim());
+      }
       return this.click(command, element, resolved, located.snapshot);
     }
     if (command.action === 'type') {
       return this.typeInto(command.text, command.expect, element, located.snapshot);
     }
     return this.select(command.option, element, located.snapshot);
+  }
+
+  private async generateFileLocally(
+    command: Extract<AiCommand, { action: 'generate_file' }>
+  ): Promise<AiCommandResult> {
+    if (!this.generateFile) {
+      return {
+        ok: false,
+        code: 'file_generation_failed',
+        message: '当前客户端版本不支持本地生成文件，请升级到最新版本后重试。'
+      };
+    }
+    const input: AiFileGeneratorInput = {
+      format: command.format,
+      fileName: command.fileName
+    };
+    if (command.title) input.title = command.title;
+    if (command.content) input.content = command.content;
+    if (command.rows?.length) input.rows = command.rows;
+
+    try {
+      const generated = await this.generateFile(input);
+      return {
+        ok: true,
+        file: {
+          name: generated.name,
+          format: generated.format,
+          folder: generated.folder
+        }
+      };
+    } catch {
+      return {
+        ok: false,
+        code: 'file_generation_failed',
+        message: '文件没有生成成功，请重新生成一次；如果仍然失败，请手动准备文件后再上传。'
+      };
+    }
+  }
+
+  private async upload(
+    command: Extract<AiCommand, { action: 'upload' }>,
+    initial: AiPageSnapshot
+  ): Promise<AiCommandResult> {
+    const located = await this.locateFileInput(command, initial);
+    if (!located.ok) return located.result;
+    const { element, snapshot } = located;
+
+    const state = await this.driver.fileInput(element.ref);
+    if (!state.found) return notFound(command, snapshot);
+    if (!state.isFile) {
+      return {
+        ok: false,
+        code: 'not_file_input',
+        message: `「${element.name || element.ref}」不是文件上传入口。请重新读取页面后选择正确的上传按钮。`,
+        snapshot
+      };
+    }
+    if (!this.pickFile) {
+      return {
+        ok: false,
+        code: 'upload_failed',
+        message: '当前客户端版本不支持选择本机文件，请升级到最新版本后重试，或手动选择文件上传。',
+        snapshot
+      };
+    }
+
+    const picked = await this.pickFile();
+    if (!picked) {
+      return {
+        ok: false,
+        code: 'cancelled_by_user',
+        message: AI_STOP_MESSAGES.cancelled_by_user,
+        snapshot
+      };
+    }
+
+    const attached = await this.driver.setFileInputFiles(element.ref, [picked]);
+    await this.driver.settle();
+    const afterState = await this.driver.fileInput(element.ref);
+    if (
+      !attached ||
+      !afterState.found ||
+      !afterState.isFile ||
+      (afterState.count ?? 0) < 1
+    ) {
+      return {
+        ok: false,
+        code: 'upload_failed',
+        message: '文件没有成功附加到页面上。请手动选择文件上传，完成后告诉我继续。',
+        snapshot
+      };
+    }
+
+    const after = await this.readSnapshot();
+    if ('result' in after) return after.result;
+    return {
+      ok: true,
+      changed: snapshotChanged(snapshot, after.snapshot),
+      snapshot: after.snapshot,
+      file: { name: baseName(picked) }
+    };
+  }
+
+  private async locateFileInput(
+    request: { ref?: string; target?: string },
+    initial: AiPageSnapshot
+  ): Promise<
+    | { ok: true; element: AiPageElement; snapshot: AiPageSnapshot }
+    | { ok: false; result: AiCommandResult }
+  > {
+    let snapshot = initial;
+    let match = matchAiTarget(snapshot.elements, request);
+    if (match.kind === 'not_found') {
+      const refreshed = await this.refreshSnapshot();
+      if ('result' in refreshed) return { ok: false, result: refreshed.result };
+      snapshot = refreshed.snapshot;
+      match = matchAiTarget(snapshot.elements, request);
+    }
+    if (match.kind === 'not_found') return { ok: false, result: notFound(request, snapshot) };
+    if (match.kind === 'ambiguous') {
+      return { ok: false, result: ambiguous(request, snapshot) };
+    }
+    // 鲁港通 - 文件入口常被页面隐藏，不能再按可见矩形定位
+    return { ok: true, element: match.element, snapshot };
+  }
+
+  private async confirmedClick(
+    command: Extract<AiCommand, { action: 'click' }>,
+    element: AiPageElement,
+    resolved: AiResolvedElement,
+    before: AiPageSnapshot,
+    label: string
+  ): Promise<AiCommandResult> {
+    const host = parseHttpUrl(before.url)?.hostname ?? '';
+    if (!this.confirm) {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: AI_STOP_MESSAGES.confirmation_unavailable,
+        snapshot: before,
+        confirmation: { required: true, decision: 'unavailable', label }
+      };
+    }
+
+    let decision: AiConfirmationDecision;
+    try {
+      decision = await this.confirm({ host, label, url: before.url });
+    } catch {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: AI_STOP_MESSAGES.confirmation_unavailable,
+        snapshot: before,
+        confirmation: { required: true, decision: 'unavailable', label }
+      };
+    }
+
+    const confirmation: AiConfirmationInfo = { required: true, decision, label };
+    if (decision === 'handoff') {
+      return {
+        ok: false,
+        code: 'handed_over',
+        message: AI_STOP_MESSAGES.handed_over,
+        snapshot: before,
+        confirmation
+      };
+    }
+    if (decision === 'cancel') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: AI_STOP_MESSAGES.confirmation_declined,
+        snapshot: before,
+        confirmation
+      };
+    }
+    if (decision === 'timeout') {
+      return {
+        ok: false,
+        code: 'confirmation_timeout',
+        message: AI_STOP_MESSAGES.confirmation_timeout,
+        snapshot: before,
+        confirmation
+      };
+    }
+    // 鲁港通 - 用户确认只对当前这一步有效，点击后不再询问后续按钮
+    try {
+      const result = await this.click(command, element, resolved, before);
+      return { ...result, confirmation };
+    } catch {
+      // 点击可能已经发出，必须保留确认记录，交由控制器停止并提示用户核对
+      return {
+        ok: false,
+        code: 'page_error',
+        message: AI_STOP_MESSAGES.submission_unconfirmed,
+        confirmation
+      };
+    }
   }
 
   private async navigate(rawUrl: string): Promise<AiCommandResult> {

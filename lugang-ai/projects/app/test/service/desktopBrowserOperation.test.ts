@@ -130,8 +130,76 @@ describe('browser operation tool schema', () => {
       'type',
       'select',
       'scroll',
+      'upload',
+      'generate_file',
       'wait'
     ]);
+  });
+
+  it('describes local file generation and user-picked uploads', () => {
+    const tool = createBrowserOperationTool();
+    const parameters = tool.function.parameters as any;
+
+    expect(parameters.properties.format.enum).toEqual(['docx', 'xlsx', 'pdf']);
+    expect(parameters.properties.fileName).toBeDefined();
+    expect(parameters.properties.content).toBeDefined();
+    expect(parameters.properties.rows).toBeDefined();
+    expect(tool.function.description).toContain('生成');
+    expect(tool.function.description).toContain('文件选择');
+    expect(tool.function.description).toContain('确认');
+  });
+
+  it('parses generate_file and upload actions', () => {
+    expect(
+      parseBrowserOperationArgs({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: '申请书',
+        title: '申请书',
+        content: '申请正文'
+      })
+    ).toMatchObject({ success: true, args: { action: 'generate_file', format: 'docx' } });
+
+    expect(parseBrowserOperationArgs({ action: 'upload', ref: 'e20' })).toMatchObject({
+      success: true,
+      args: { action: 'upload', ref: 'e20' }
+    });
+  });
+
+  it('requires content for generate_file and a locator for upload', () => {
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'generate_file',
+        format: 'pdf',
+        fileName: '空白文件'
+      }).success
+    ).toBe(false);
+    expect(BrowserOperationArgsSchema.safeParse({ action: 'upload' }).success).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'upload',
+        target: '上传附件'
+      }).success
+    ).toBe(true);
+  });
+
+  it('rejects oversized generated file content and rows', () => {
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: '超长文件',
+        content: 'x'.repeat(8001)
+      }).success
+    ).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'generate_file',
+        format: 'xlsx',
+        fileName: '超长表格',
+        rows: Array.from({ length: 201 }, () => ['a'])
+      }).success
+    ).toBe(false);
   });
 
   it('parses navigate and locator based actions', () => {
@@ -388,6 +456,121 @@ describe('desktop browser operation executor', () => {
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'type', ok: false, code: 'sensitive_blocked' })
     );
+  });
+
+  it('refuses bank card targets before enqueueing', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'type', target: '银行卡号', text: '6222' });
+
+    expect(result.response).toContain('本人');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('generates a local file without writing its content into the audit log', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      file: {
+        name: '香港慈善组织申请说明.docx',
+        format: 'docx',
+        folder: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件'
+      }
+    } as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '香港慈善组织申请说明',
+      content: '这是一段不能写进审计正文'
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: expect.objectContaining({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: '香港慈善组织申请说明'
+      })
+    });
+    expect(result.response).toContain('香港慈善组织申请说明.docx');
+    expect(result.response).toContain('鲁港通生成文件');
+    expect(result.response).toContain('只保存在你的电脑上');
+    const record = audit.mock.calls[0][0] as any;
+    expect(record).toMatchObject({ action: 'generate_file', ok: true });
+    expect(JSON.stringify(record)).not.toContain('不能写进审计正文');
+  });
+
+  it('reports the file the user picked for upload', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      changed: true,
+      file: { name: '申请书.docx' },
+      snapshot
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'upload', target: '上传附件' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'upload', target: '上传附件' }
+    });
+    expect(result.response).toContain('申请书.docx');
+    expect(result.response).toContain('已附加');
+    expect(result.response).toContain('[e12]');
+  });
+
+  it('records the confirmation decision without the action label', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      snapshot,
+      confirmation: { required: true, decision: 'allow', label: '提交申请' }
+    } as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('已提交');
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'click', ok: true, confirmation: 'allow' })
+    );
+    expect(JSON.stringify(audit.mock.calls[0][0])).not.toContain('提交申请');
+  });
+
+  it('hands the page back to the user without retrying', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'handed_over',
+      stopped: true,
+      confirmation: { required: true, decision: 'handoff', label: '提交申请' }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('交还');
+    expect(result.response).toContain('不要重试');
+    expect(result.response).not.toContain('重新读取页面');
+  });
+
+  it('waits long enough for native confirmation when clicking', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'read' });
+    await execute({ action: 'click', ref: 'e12' });
+
+    const [readWait, clickWait] = (store.waitForResult as any).mock.calls;
+    expect(readWait[0].timeoutMs).toBeLessThanOrEqual(60_000);
+    expect(clickWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
   });
 
   it('waits on the server before reading the page again', async () => {

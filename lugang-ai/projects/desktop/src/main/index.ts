@@ -14,8 +14,11 @@ import { createMainWindow } from './window';
 import { parseAiAllowedHosts } from './ai/allowlist';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
+import { createAiConfirmer } from './ai/confirmDialog';
 import { AiController } from './ai/controller';
 import { createDeviceChannel, type DeviceChannel } from './ai/deviceChannel';
+import { createFileGenerator } from './ai/fileGenerator';
+import { createFilePicker } from './ai/filePicker';
 
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
@@ -129,11 +132,31 @@ if (!gotLock) {
         }
       });
       const aiAudit = createAiAuditStore(join(userDataDir, 'ai-audit'));
+      // 鲁港通 - 生成文件只记录本机路径用于上传默认定位，不进入 IPC 结果或审计
+      const generateFile = createFileGenerator();
+      let lastGeneratedPath: string | undefined;
       const ai = new AiController({
         browser,
         driver: aiDriver,
         allowedHosts,
-        audit: (record) => aiAudit.append(record)
+        audit: (record) => aiAudit.append(record),
+        generateFile: async (input) => {
+          const file = await generateFile(input);
+          lastGeneratedPath = file.path;
+          return file;
+        },
+        pickFile: createFilePicker({
+          showOpenDialog: (options) =>
+            mainWindow && !mainWindow.isDestroyed()
+              ? dialog.showOpenDialog(mainWindow, options)
+              : dialog.showOpenDialog(options),
+          getDefaultPath: () => lastGeneratedPath
+        }),
+        confirm: createAiConfirmer({
+          getParentWindow: () => mainWindow,
+          preloadPath: join(__dirname, '../preload/confirm.cjs'),
+          rendererDir
+        })
       });
       aiController = ai;
 

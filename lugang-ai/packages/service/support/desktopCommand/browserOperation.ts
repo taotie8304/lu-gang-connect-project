@@ -12,8 +12,10 @@ import type {
   DesktopCommandResult
 } from '@fastgpt/global/support/desktopCommand/type';
 import {
+  DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
-  DESKTOP_BROWSER_RESUME_TTL_MS
+  DESKTOP_BROWSER_RESUME_TTL_MS,
+  DESKTOP_COMMAND_MAX_BYTES
 } from './constant';
 import {
   desktopCommandStore,
@@ -52,6 +54,8 @@ export type DesktopBrowserAuditRecord = {
   code?: string;
   changed?: boolean;
   stopped?: boolean;
+  /** 提交前确认结果，只记决定不记文案 */
+  confirmation?: string;
   createdAt: number;
 };
 
@@ -68,7 +72,7 @@ type ExecutorResult = {
 };
 
 const SENSITIVE_TARGET_PATTERN =
-  /密码|密碼|口令|验证码|驗證碼|动态码|動態碼|安全码|安全碼|password|passcode|passwd|otp|one[- ]?time|cvv|cvc|\bpin\b/i;
+  /密码|密碼|口令|验证码|驗證碼|动态码|動態碼|安全码|安全碼|银行卡|銀行卡|信用卡|借记卡|借記卡|password|passcode|passwd|otp|one[- ]?time|cvv|cvc|bank\s*card|card\s*number|\bpin\b/i;
 
 const CONTINUATION_PATTERN =
   /^(继续|繼續|接着|接著|往下|继续吧|繼續吧|继续填写|繼續填寫|continue|go on|keep going)[。.!！?？\s]*$/i;
@@ -213,7 +217,7 @@ const formatSnapshot = (snapshot: DesktopBrowserSnapshot): string => {
   return lines.join('\n');
 };
 
-const guidanceForCode = (code?: string): string => {
+const guidanceForCode = (code?: string): string | undefined => {
   switch (code) {
     case 'not_found':
       return '找不到目标元素。页面可能已经变化，请先重新读取页面，再决定下一步操作。';
@@ -224,11 +228,27 @@ const guidanceForCode = (code?: string): string => {
     case 'page_error':
       return '页面加载失败或已被关闭。桌面客户端会尝试恢复；如果仍未恢复，请让用户重新打开页面。';
     case 'sensitive_blocked':
-      return '该操作涉及密码、验证码或支付等敏感信息，必须由用户本人手动完成。';
+      return '该操作涉及密码、验证码、银行卡或支付信息，必须由用户本人手动完成。';
     case 'high_risk_blocked':
-      return '该操作可能触发支付或最终提交，已被安全策略拦截。请让用户本人确认后手动操作。';
+      return '该操作涉及支付、转账或购买，属于资金类操作，必须由用户本人手动完成。';
+    case 'cancelled_by_user':
+      return '用户取消了文件选择，本次没有上传。请不要重试；等用户准备好文件并明确要求后再继续。';
+    case 'not_file_input':
+      return '目标不是文件上传入口。请先重新读取页面，选择正确的上传按钮。';
+    case 'upload_failed':
+      return '文件没有成功附加到页面。请让用户手动选择文件上传，不要在没有文件的情况下提交。';
+    case 'file_generation_failed':
+      return '文件没有生成成功。请调整文件名或内容后重新生成；如果仍然失败，请让用户自行准备文件。';
+    case 'confirmation_unavailable':
+      return '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
+    case 'handed_over':
+      return '用户选择了自己提交，页面已交还给你本人，AI 不会重试或再次提交。请不要重试；等用户反馈结果后再继续。';
+    case 'confirmation_declined':
+      return '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
+    case 'confirmation_timeout':
+      return '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
     default:
-      return '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。';
+      return undefined;
   }
 };
 
@@ -295,7 +315,8 @@ export const createDesktopBrowserOperationExecutor = ({
       ok,
       code,
       changed,
-      stopped
+      stopped,
+      confirmation
     }: {
       response: string;
       action: string;
@@ -305,6 +326,7 @@ export const createDesktopBrowserOperationExecutor = ({
       code?: string;
       changed?: boolean;
       stopped?: boolean;
+      confirmation?: string;
     }): Promise<ExecutorResult> => {
       try {
         await audit({
@@ -318,6 +340,7 @@ export const createDesktopBrowserOperationExecutor = ({
           code,
           changed,
           stopped,
+          confirmation,
           createdAt: now()
         });
       } catch {
@@ -366,7 +389,7 @@ export const createDesktopBrowserOperationExecutor = ({
     if (target && SENSITIVE_TARGET_PATTERN.test(target)) {
       return finish({
         response:
-          '为保护你的账号安全，密码、验证码和支付信息必须由你本人手动输入。请你在页面中自行填写后再继续。',
+          '为保护你的账号安全，密码、验证码、银行卡和支付信息必须由你本人手动输入。请你在页面中自行填写后再继续。',
         action,
         url: requestUrl,
         ok: false,
@@ -432,6 +455,19 @@ export const createDesktopBrowserOperationExecutor = ({
       command = args;
     }
 
+    // 鲁港通 - 指令通道限制 32KB：超限时提前给出可操作提示，避免通用入队错误
+    if (Buffer.byteLength(JSON.stringify(command), 'utf8') > DESKTOP_COMMAND_MAX_BYTES) {
+      return finish({
+        response:
+          '本次操作携带的内容过多，无法发送到桌面客户端。请缩短文件正文或减少表格行数后重试（正文最多 8000 字，表格最多 200 行）。',
+        action,
+        deviceId,
+        url: requestUrl,
+        ok: false,
+        code: 'command_too_large'
+      });
+    }
+
     let envelope: DesktopCommandEnvelope;
     try {
       envelope = await store.enqueue({ deviceId, command });
@@ -446,14 +482,19 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
+    // 提交类点击会等待用户在原生确认框里做决定，等待上限需要覆盖 5 分钟确认窗口
+    const timeoutMs =
+      action === 'click'
+        ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS)
+        : resultTimeoutMs;
     const result: DesktopCommandResult | undefined = await store.waitForResult({
       commandId: envelope.id,
-      timeoutMs: resultTimeoutMs
+      timeoutMs
     });
 
     if (!result) {
       return finish({
-        response: `桌面客户端在 ${Math.round(resultTimeoutMs / 1000)} 秒内没有返回结果。请确认客户端仍在前台运行，然后重试。`,
+        response: `桌面客户端在 ${Math.round(timeoutMs / 1000)} 秒内没有返回结果。请确认客户端仍在前台运行，然后重试。`,
         action,
         deviceId,
         url: requestUrl,
@@ -473,9 +514,11 @@ export const createDesktopBrowserOperationExecutor = ({
     const prefix = hint ? `${hint}\n\n` : '';
 
     if (!result.ok) {
-      const guidance = result.stopped
-        ? '操作已被桌面客户端停止。请先重新读取页面，确认当前状态。'
-        : guidanceForCode(result.code);
+      const guidance =
+        guidanceForCode(result.code) ??
+        (result.stopped
+          ? '操作已被桌面客户端停止。请先重新读取页面，确认当前状态。'
+          : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
       const message = `${prefix}${guidance}${snapshotBlock}`;
 
       return finish({
@@ -486,15 +529,28 @@ export const createDesktopBrowserOperationExecutor = ({
         ok: false,
         code: result.code || (result.stopped ? 'stopped' : 'failed'),
         changed: result.changed,
-        stopped: result.stopped
+        stopped: result.stopped,
+        confirmation: result.confirmation?.decision
       });
     }
 
+    const fileNote =
+      result.file && action === 'generate_file'
+        ? `文件已生成：${result.file.name}${result.file.folder ? `，保存在「${result.file.folder}」` : ''}。文件只保存在你的电脑上，不会上传到服务器，也不会进入知识库。请让用户确认内容后再用于上传。`
+        : result.file && action === 'upload'
+          ? `文件「${result.file.name}」已附加到页面。请让用户核对页面显示的文件是否正确。`
+          : '';
+    const confirmationNote =
+      result.confirmation?.required && result.confirmation.decision === 'allow'
+        ? '你已确认，页面已提交并执行。本轮操作到此结束，不要再次提交。'
+        : '';
+    const successLead =
+      fileNote || (confirmationNote ? `操作已执行。${confirmationNote}` : '操作已执行。');
     const changedNote =
       result.changed === false
         ? '\n页面没有检测到明显变化。如果操作没有生效，请先重新读取页面确认状态。'
         : '';
-    const response = `${prefix}操作已执行。${changedNote}${snapshotBlock}`;
+    const response = `${prefix}${successLead}${changedNote}${snapshotBlock}`;
 
     const continuation = isContinuationMessage(currentGoal);
     const goal = continuation
@@ -527,9 +583,14 @@ export const createDesktopBrowserOperationExecutor = ({
       url: resultUrl || resume?.url,
       ok: true,
       changed: result.changed,
-      stopped: result.stopped
+      stopped: result.stopped,
+      confirmation: result.confirmation?.decision
     });
   };
 };
 
-export { DESKTOP_BROWSER_RESUME_TTL_MS, DESKTOP_BROWSER_RESULT_TIMEOUT_MS };
+export {
+  DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
+  DESKTOP_BROWSER_RESUME_TTL_MS,
+  DESKTOP_BROWSER_RESULT_TIMEOUT_MS
+} from './constant';

@@ -1,5 +1,11 @@
-import { describe, expect, it } from 'vitest';
-import { AiExecutor, type AiPageDriver } from '../src/main/ai/executor';
+import { describe, expect, it, vi } from 'vitest';
+import {
+  AiExecutor,
+  type AiConfirmer,
+  type AiFileGenerator,
+  type AiFileInputState,
+  type AiPageDriver
+} from '../src/main/ai/executor';
 import type { AiPageElement, AiPageSnapshot } from '../src/main/ai/snapshot';
 import type {
   AiPrepareInputResult,
@@ -37,10 +43,21 @@ type DriverOptions = {
   select?: (ref: string, option: string) => AiSelectOptionResult;
   scrollResult?: AiScrollResult;
   insert?: (text: string) => void;
+  fileInputState?: AiFileInputState;
+  fileStateAfterSet?: AiFileInputState;
+  setFilesResult?: boolean;
+  uploadSnapshot?: AiPageSnapshot;
 };
 
 const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
   let current = structuredClone(initial);
+  let fileState: AiFileInputState = options.fileInputState ?? {
+    found: true,
+    isFile: true,
+    multiple: false,
+    count: 0,
+    names: []
+  };
   const queue = [...(options.snapshots ?? [])];
   let activeRef: string | null = null;
   const calls = {
@@ -52,6 +69,8 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
     clickAt: [] as Array<[number, number]>,
     insertText: [] as string[],
     navigate: [] as string[],
+    fileInput: [] as string[],
+    setFiles: [] as Array<[string, string[]]>,
     settle: 0
   };
 
@@ -118,6 +137,21 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
         options.navigateSnapshot ?? makeSnapshot([], { url: url.split('?')[0] })
       );
     },
+    fileInput: async (ref) => {
+      calls.fileInput.push(ref);
+      return { ...fileState };
+    },
+    setFileInputFiles: async (ref, files) => {
+      calls.setFiles.push([ref, files]);
+      if (options.setFilesResult === false) return false;
+      fileState = options.fileStateAfterSet ?? {
+        ...fileState,
+        count: files.length,
+        names: files.map((file) => file.split(/[\\/]/).pop() ?? file)
+      };
+      if (options.uploadSnapshot) current = structuredClone(options.uploadSnapshot);
+      return true;
+    },
     settle: async () => {
       calls.settle += 1;
     }
@@ -127,8 +161,14 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
 };
 
 const allowedHosts = ['.gov.hk', '.gov.cn'];
-const createExecutor = (driver: AiPageDriver) =>
-  new AiExecutor({ driver, allowedHosts });
+const createExecutor = (
+  driver: AiPageDriver,
+  extras: {
+    generateFile?: AiFileGenerator;
+    pickFile?: () => Promise<string | null>;
+    confirm?: AiConfirmer;
+  } = {}
+) => new AiExecutor({ driver, allowedHosts, ...extras });
 
 describe('AI 页面执行器', () => {
   it('点击目标并返回操作后的页面快照', async () => {
@@ -239,7 +279,7 @@ describe('AI 页面执行器', () => {
     expect(calls.clickAt).toHaveLength(0);
   });
 
-  it('提交、支付、发布、删除类按钮硬拦截', async () => {
+  it('支付、转账、购买类按钮永久硬拦截', async () => {
     const { driver, calls } = createDriver(
       makeSnapshot([makeElement({ ref: 'e1', name: '确认支付', text: '确认支付' })])
     );
@@ -247,7 +287,7 @@ describe('AI 页面执行器', () => {
 
     expect(result.ok).toBe(false);
     expect(result.code).toBe('high_risk_blocked');
-    expect(result.message).toContain('本人确认');
+    expect(result.message).toContain('本人完成');
     expect(calls.clickAt).toHaveLength(0);
   });
 
@@ -481,5 +521,276 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('page_error');
     expect(result.message).toContain('页面');
+  });
+
+  it('生成文件不读取页面，只返回文件名和保存位置', async () => {
+    const { driver, calls } = createDriver(makeSnapshot([]));
+    const generateFile = vi.fn<AiFileGenerator>(async (input) => ({
+      name: `${input.fileName}.${input.format}`,
+      format: input.format,
+      folder: '下载 / 鲁港通生成文件',
+      path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请书.docx'
+    }));
+
+    const result = await createExecutor(driver, { generateFile }).execute({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '申请书',
+      title: '慈善组织申请书',
+      content: '申请人：张三'
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.file).toEqual({
+      name: '申请书.docx',
+      format: 'docx',
+      folder: '下载 / 鲁港通生成文件'
+    });
+    expect(JSON.stringify(result)).not.toContain('C:\\');
+    expect(generateFile).toHaveBeenCalledWith(
+      expect.objectContaining({
+        format: 'docx',
+        fileName: '申请书',
+        title: '慈善组织申请书',
+        content: '申请人：张三'
+      })
+    );
+    expect(calls.snapshots).toHaveLength(0);
+  });
+
+  it('生成文件失败时给出可操作提示', async () => {
+    const { driver } = createDriver(makeSnapshot([]));
+    const result = await createExecutor(driver, {
+      generateFile: async () => {
+        throw new Error('disk full');
+      }
+    }).execute({
+      action: 'generate_file',
+      format: 'pdf',
+      fileName: '申请说明',
+      content: '正文'
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('file_generation_failed');
+    expect(result.message).toContain('重新');
+  });
+
+  it('客户端未接入文件生成时不假装成功', async () => {
+    const { driver } = createDriver(makeSnapshot([]));
+    const result = await createExecutor(driver).execute({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '名单',
+      rows: [['姓名'], ['张三']]
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('file_generation_failed');
+    expect(result.message).toContain('升级');
+  });
+
+  it('用户亲手选文件后附加到上传入口，只回传文件名', async () => {
+    const page = makeSnapshot([
+      makeElement({ ref: 'e1', name: '上传附件', tag: 'input', type: 'file' })
+    ]);
+    const { driver, calls } = createDriver(page, {
+      fileInputState: { found: true, isFile: true, multiple: false, count: 0, names: [] },
+      uploadSnapshot: makeSnapshot(
+        [makeElement({ ref: 'e1', name: '上传附件', tag: 'input', type: 'file' })],
+        { text: '已选择：申请书.docx' }
+      )
+    });
+    const pickFile = vi.fn(async () => 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请书.docx');
+
+    const result = await createExecutor(driver, { pickFile }).execute({
+      action: 'upload',
+      target: '上传附件'
+    });
+
+    expect(result.ok).toBe(true);
+    expect(pickFile).toHaveBeenCalledTimes(1);
+    expect(calls.setFiles).toEqual([
+      ['e1', ['C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请书.docx']]
+    ]);
+    expect(result.file).toEqual({ name: '申请书.docx' });
+    expect(JSON.stringify(result)).not.toContain('C:\\');
+  });
+
+  it('用户取消选文件时停止上传并说明', async () => {
+    const page = makeSnapshot([
+      makeElement({ ref: 'e1', name: '上传附件', tag: 'input', type: 'file' })
+    ]);
+    const { driver, calls } = createDriver(page);
+    const result = await createExecutor(driver, {
+      pickFile: async () => null
+    }).execute({ action: 'upload', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('cancelled_by_user');
+    expect(result.message).toContain('取消');
+    expect(calls.setFiles).toHaveLength(0);
+  });
+
+  it('目标不是文件入口时拒绝上传', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '下一步', text: '下一步' })]),
+      { fileInputState: { found: true, isFile: false } }
+    );
+    const pickFile = vi.fn(async () => 'C:\\x.docx');
+
+    const result = await createExecutor(driver, { pickFile }).execute({
+      action: 'upload',
+      ref: 'e1'
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('not_file_input');
+    expect(pickFile).not.toHaveBeenCalled();
+    expect(calls.setFiles).toHaveLength(0);
+  });
+
+  it('文件没有附加到页面时返回上传失败', async () => {
+    const page = makeSnapshot([
+      makeElement({ ref: 'e1', name: '上传附件', tag: 'input', type: 'file' })
+    ]);
+    const { driver } = createDriver(page, {
+      fileStateAfterSet: { found: true, isFile: true, count: 0, names: [] }
+    });
+    const result = await createExecutor(driver, {
+      pickFile: async () => 'C:\\x.docx'
+    }).execute({ action: 'upload', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('upload_failed');
+    expect(result.message).toContain('手动');
+  });
+
+  it('提交类按钮经用户确认后才点击一次', async () => {
+    const afterClick = makeSnapshot([], { text: '提交成功' });
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })]),
+      { afterClick }
+    );
+    const confirm = vi.fn<AiConfirmer>(async () => 'allow');
+
+    const result = await createExecutor(driver, { confirm }).execute({
+      action: 'click',
+      ref: 'e1'
+    });
+
+    expect(confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ host: 'www.gov.hk', label: '提交申请' })
+    );
+    expect(calls.clickAt).toHaveLength(1);
+    expect(result.ok).toBe(true);
+    expect(result.confirmation).toEqual({
+      required: true,
+      decision: 'allow',
+      label: '提交申请'
+    });
+  });
+
+  it('用户选择自己提交时交还页面，不点击', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })])
+    );
+    const result = await createExecutor(driver, {
+      confirm: async () => 'handoff'
+    }).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('handed_over');
+    expect(result.message).toContain('提交');
+    expect(result.confirmation?.decision).toBe('handoff');
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('用户在确认框取消时绝不点击', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '发布文章', text: '发布文章' })])
+    );
+    const result = await createExecutor(driver, {
+      confirm: async () => 'cancel'
+    }).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('confirmation_declined');
+    expect(result.confirmation?.decision).toBe('cancel');
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('确认超时按取消处理', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '删除记录', text: '删除记录' })])
+    );
+    const result = await createExecutor(driver, {
+      confirm: async () => 'timeout'
+    }).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('confirmation_timeout');
+    expect(result.message).toContain('超时');
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('客户端无法弹出确认框时不直接提交', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })])
+    );
+    const result = await createExecutor(driver).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('confirmation_unavailable');
+    expect(result.message).toContain('手动');
+    expect(result.confirmation?.decision).toBe('unavailable');
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('支付类动作不弹确认框，直接硬拦截', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '立即购买', text: '立即购买' })])
+    );
+    const confirm = vi.fn<AiConfirmer>(async () => 'allow');
+    const result = await createExecutor(driver, { confirm }).execute({
+      action: 'click',
+      ref: 'e1'
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('high_risk_blocked');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('普通按钮不弹确认框', async () => {
+    const { driver } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '下一步', text: '下一步' })])
+    );
+    const confirm = vi.fn<AiConfirmer>(async () => 'allow');
+    const result = await createExecutor(driver, { confirm }).execute({
+      action: 'click',
+      ref: 'e1'
+    });
+
+    expect(result.ok).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(result.confirmation).toBeUndefined();
+  });
+
+  it('确认通过但页面未显示成功结果时保留确认记录', async () => {
+    const afterClick = makeSnapshot([], { text: '系统繁忙，请重试' });
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })]),
+      { afterClick }
+    );
+    const result = await createExecutor(driver, {
+      confirm: async () => 'allow'
+    }).execute({ action: 'click', ref: 'e1', expect: '提交成功' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('verification_failed');
+    expect(result.confirmation?.decision).toBe('allow');
+    expect(calls.clickAt).toHaveLength(1);
   });
 });

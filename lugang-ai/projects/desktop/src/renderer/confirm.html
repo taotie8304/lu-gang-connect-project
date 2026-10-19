@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>提交前确认</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        font-family:
+          'Microsoft YaHei', 'PingFang SC', system-ui, -apple-system, sans-serif;
+        background: #f7f8fa;
+        color: #1f2937;
+      }
+      main {
+        flex: 1;
+        padding: 22px 24px 12px;
+        overflow-y: auto;
+      }
+      h1 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        margin: 0 0 6px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #f59e0b;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .lead {
+        font-size: 13px;
+        color: #6b7280;
+        margin: 0 0 16px;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .card-label {
+        font-size: 12px;
+        color: #9ca3af;
+        margin: 0 0 4px;
+      }
+      .site {
+        font-size: 15px;
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .url {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 4px;
+        word-break: break-all;
+        max-height: 34px;
+        overflow: hidden;
+      }
+      .action {
+        font-size: 15px;
+        font-weight: 600;
+        line-height: 1.5;
+        word-break: break-word;
+      }
+      .note {
+        font-size: 12px;
+        color: #6b7280;
+        line-height: 1.5;
+        margin: 0;
+      }
+      footer {
+        padding: 12px 24px 18px;
+        background: #f7f8fa;
+        border-top: 1px solid #eceef2;
+      }
+      .countdown {
+        font-size: 12px;
+        color: #9ca3af;
+        margin: 0 0 10px;
+        text-align: right;
+      }
+      .buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 9px 16px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+      }
+      #cancel {
+        background: #fff;
+        border-color: #d1d5db;
+        color: #374151;
+      }
+      #cancel:hover {
+        background: #f3f4f6;
+      }
+      #handoff {
+        background: #fff;
+        border-color: #d1d5db;
+        color: #374151;
+        margin-left: auto;
+      }
+      #handoff:hover {
+        background: #f3f4f6;
+      }
+      #allow {
+        background: #2563eb;
+        color: #fff;
+      }
+      #allow:hover {
+        background: #1d4ed8;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><span class="badge" aria-hidden="true">!</span>提交前确认</h1>
+      <p class="lead">鲁港通准备在该网站上执行以下操作，请核对后再选择。</p>
+      <section class="card">
+        <p class="card-label">网站</p>
+        <div class="site" id="host">—</div>
+        <div class="url" id="url" hidden></div>
+      </section>
+      <section class="card">
+        <p class="card-label">操作</p>
+        <div class="action" id="label">—</div>
+      </section>
+      <p class="note">
+        确认提交只对当前这一步有效，AI 完成后会立即停止，不会继续点击后续按钮。
+      </p>
+    </main>
+    <footer>
+      <p class="countdown" id="countdown" aria-live="polite"></p>
+      <div class="buttons">
+        <button id="cancel" type="button">取消</button>
+        <button id="handoff" type="button">我自己提交</button>
+        <button id="allow" type="button">确认由 AI 提交</button>
+      </div>
+    </footer>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var host = params.get('host') || '';
+        var label = params.get('label') || '';
+        var url = params.get('url') || '';
+        var timeoutMs = Number(params.get('timeoutMs')) || 300000;
+
+        document.getElementById('host').textContent = host || '当前页面';
+        document.getElementById('label').textContent = label || '提交当前操作';
+        if (url) {
+          var urlNode = document.getElementById('url');
+          urlNode.textContent = url;
+          urlNode.hidden = false;
+        }
+
+        var decided = false;
+        function decide(decision) {
+          if (decided) return;
+          decided = true;
+          if (window.lugangConfirm) window.lugangConfirm.decide(decision);
+        }
+
+        document.getElementById('allow').addEventListener('click', function () {
+          decide('allow');
+        });
+        document.getElementById('handoff').addEventListener('click', function () {
+          decide('handoff');
+        });
+        document.getElementById('cancel').addEventListener('click', function () {
+          decide('cancel');
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') decide('cancel');
+        });
+
+        var deadline = Date.now() + timeoutMs;
+        var countdown = document.getElementById('countdown');
+        function tick() {
+          var left = Math.max(0, deadline - Date.now());
+          var total = Math.ceil(left / 1000);
+          var minutes = Math.floor(total / 60);
+          var seconds = total % 60;
+          countdown.textContent =
+            (left > 0 ? '如 ' : '已超时，即将关闭') +
+            (left > 0
+              ? minutes + ':' + (seconds < 10 ? '0' + seconds : seconds) + ' 内未操作，将自动取消'
+              : '');
+          if (left <= 0) {
+            ['allow', 'handoff', 'cancel'].forEach(function (id) {
+              document.getElementById(id).disabled = true;
+            });
+            return;
+          }
+          window.setTimeout(tick, 1000);
+        }
+        tick();
+        document.getElementById('cancel').focus();
+      })();
+    </script>
+  </body>
+</html>

@@ -8,7 +8,14 @@ export type AiStopReason =
   | 'page_closed_twice'
   | 'sensitive_blocked'
   | 'high_risk_blocked'
-  | 'domain_not_allowed';
+  | 'domain_not_allowed'
+  | 'cancelled_by_user'
+  | 'handed_over'
+  | 'confirmation_declined'
+  | 'confirmation_timeout'
+  | 'confirmation_unavailable'
+  | 'submission_unconfirmed'
+  | 'submitted';
 
 export type AiSessionGuard = {
   failures: number;
@@ -25,8 +32,18 @@ export const AI_STOP_MESSAGES: Record<AiStopReason, string> = {
   page_closed_twice:
     '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。',
   sensitive_blocked: '密码、验证码、银行卡等敏感信息需要你亲自填写，我不能代为输入。',
-  high_risk_blocked: '提交、支付、发布、删除等操作需要你本人确认，我不能直接点击。',
-  domain_not_allowed: '该网站不在允许自动操作的范围内，需要你亲自处理。'
+  high_risk_blocked: '支付、转账、购买等资金操作不能由我代为进行，需要你本人完成。',
+  domain_not_allowed: '该网站不在允许自动操作的范围内，需要你亲自处理。',
+  cancelled_by_user: '你取消了选择文件，我已停止上传操作。需要继续时请告诉我。',
+  handed_over: '已把页面交还给你手动提交，我不会再继续操作。你完成提交后如果需要我继续，请告诉我。',
+  confirmation_declined: '你取消了本次提交，页面没有提交任何内容。需要继续时请告诉我。',
+  confirmation_timeout:
+    '等待提交确认超时，已自动取消本次提交，页面没有提交任何内容。需要继续时请告诉我。',
+  confirmation_unavailable:
+    '当前客户端无法弹出提交确认框，需要你手动完成本次提交。升级到最新版本后，我可以协助后续步骤。',
+  submission_unconfirmed:
+    '已按你的确认点击提交，但页面没有显示提交成功，请手动核对页面。为避免重复提交，我已停止，不会再点一次。',
+  submitted: '已按你的确认完成提交，本轮自动操作到此结束。后续步骤需要继续时请告诉我。'
 };
 
 export const createAiSessionGuard = (): AiSessionGuard => ({

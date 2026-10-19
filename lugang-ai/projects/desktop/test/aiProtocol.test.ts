@@ -38,4 +38,71 @@ describe('AI 指令协议', () => {
     expect(parseAiCommand(null)).toBeNull();
     expect(parseAiCommand('read')).toBeNull();
   });
+
+  it('接受生成 Word、Excel、PDF 文件指令', () => {
+    const word = parseAiCommand({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '慈善组织申请书',
+      title: '慈善组织申请书',
+      content: '申请人：张三\n申请事项：成立慈善组织'
+    });
+    expect(word?.action).toBe('generate_file');
+
+    const excel = parseAiCommand({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '人员名单',
+      rows: [
+        ['姓名', '证件号码'],
+        ['张三', 'A1234567']
+      ]
+    });
+    expect(excel?.action).toBe('generate_file');
+
+    const pdf = parseAiCommand({
+      action: 'generate_file',
+      format: 'pdf',
+      fileName: '申请说明',
+      content: '申请说明正文'
+    });
+    expect(pdf?.action).toBe('generate_file');
+  });
+
+  it('拒绝不支持的格式与超长内容', () => {
+    expect(
+      parseAiCommand({ action: 'generate_file', format: 'exe', fileName: 'x', content: 'y' })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: 'x',
+        content: 'x'.repeat(20001)
+      })
+    ).toBeNull();
+    expect(parseAiCommand({ action: 'generate_file', format: 'docx', fileName: '' })).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'xlsx',
+        fileName: 'x',
+        rows: Array.from({ length: 2001 }, () => ['x'])
+      })
+    ).toBeNull();
+  });
+
+  it('上传指令必须给出元素定位信息，且不能携带本地路径', () => {
+    const upload = parseAiCommand({ action: 'upload', target: '上传附件' });
+    expect(upload?.action).toBe('upload');
+    expect(parseAiCommand({ action: 'upload', ref: 'e9' })?.action).toBe('upload');
+    expect(parseAiCommand({ action: 'upload' })).toBeNull();
+    expect(
+      parseAiCommand({ action: 'upload', ref: 'e9', path: 'C:\\Windows\\System32\\x.txt' })
+    ).not.toBeNull();
+    expect(
+      (parseAiCommand({ action: 'upload', ref: 'e9', path: 'C:\\x.txt' }) as { path?: string })
+        ?.path
+    ).toBeUndefined();
+  });
 });

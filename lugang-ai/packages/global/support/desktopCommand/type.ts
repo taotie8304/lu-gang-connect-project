@@ -57,6 +57,20 @@ export type DesktopBrowserResumeState = {
   updatedAt: number;
 };
 
+/** 本地生成或用户选择的文件：只回传文件名与所在目录，不回传内容 */
+export type DesktopCommandFileResult = {
+  name: string;
+  format?: 'docx' | 'xlsx' | 'pdf' | 'other';
+  folder?: string;
+};
+
+/** 提交前原生确认结果：只回传决定，不回传页面细节 */
+export type DesktopCommandConfirmationResult = {
+  required: boolean;
+  decision: 'allow' | 'handoff' | 'cancel' | 'timeout' | 'unavailable';
+  label?: string;
+};
+
 export type DesktopCommandResult = {
   ok: boolean;
   code?: string;
@@ -65,6 +79,10 @@ export type DesktopCommandResult = {
   stopped?: boolean;
   /** 浏览器操作类指令执行后的最新页面快照 */
   snapshot?: DesktopBrowserSnapshot;
+  /** generate_file / upload 的结果 */
+  file?: DesktopCommandFileResult;
+  /** 点击提交类按钮时的确认结果 */
+  confirmation?: DesktopCommandConfirmationResult;
 };
 
 /** 设备注册（POST）：deviceId 由客户端生成并在本机持久化 */

@@ -18,11 +18,17 @@ export const BROWSER_OPERATION_ACTIONS = [
   'type',
   'select',
   'scroll',
+  'upload',
+  'generate_file',
   'wait'
 ] as const;
 
 const refSchema = z.string().trim().min(1).max(32);
 const targetSchema = z.string().trim().min(1).max(200);
+const MAX_GENERATED_FILE_CHARS = 8000;
+const MAX_GENERATED_FILE_ROWS = 200;
+const MAX_GENERATED_FILE_COLUMNS = 12;
+const MAX_GENERATED_CELL_CHARS = 200;
 
 const locateSchema = {
   ref: refSchema.optional(),
@@ -72,6 +78,39 @@ const scrollAction = z.object({
   amount: z.number().int().min(1).max(5000).optional()
 });
 
+const uploadAction = requiresLocator({
+  action: z.literal('upload'),
+  ...locateSchema
+});
+
+const generatedRowsSchema = z
+  .array(z.array(z.string().max(MAX_GENERATED_CELL_CHARS)).max(MAX_GENERATED_FILE_COLUMNS))
+  .max(MAX_GENERATED_FILE_ROWS);
+
+const countRowsChars = (rows: string[][] | undefined): number =>
+  (rows ?? []).reduce(
+    (total, row) => total + row.reduce((rowTotal, cell) => rowTotal + cell.length, 0),
+    0
+  );
+
+const generateFileAction = z
+  .object({
+    action: z.literal('generate_file'),
+    format: z.enum(['docx', 'xlsx', 'pdf']),
+    fileName: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(200).optional(),
+    content: z.string().max(MAX_GENERATED_FILE_CHARS).optional(),
+    rows: generatedRowsSchema.optional()
+  })
+  .refine((value) => Boolean(value.content?.trim() || value.title?.trim() || value.rows?.length), {
+    message: '需要提供文件内容'
+  })
+  .refine(
+    (value) =>
+      (value.content?.length ?? 0) + countRowsChars(value.rows) <= MAX_GENERATED_FILE_CHARS,
+    { message: `文件内容合计不能超过 ${MAX_GENERATED_FILE_CHARS} 字，请精简后再生成` }
+  );
+
 const waitAction = z.object({
   action: z.literal('wait'),
   seconds: z.number().int().min(1).max(10)
@@ -84,6 +123,8 @@ export const BrowserOperationArgsSchema = z.discriminatedUnion('action', [
   typeAction,
   selectAction,
   scrollAction,
+  uploadAction,
+  generateFileAction,
   waitAction
 ]);
 
@@ -114,7 +155,7 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
   function: {
     name: BROWSER_OPERATION_TOOL_NAME,
     description:
-      '操作桌面客户端中打开的浏览器页面，帮助用户在线办理政府事务。仅在桌面客户端内可用，且只能访问政府官方网站。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read；不要填写密码、验证码、支付信息，也不要发起支付或最终提交。',
+      '操作桌面客户端中打开的浏览器页面，帮助用户在线办理政府事务。仅在桌面客户端内可用，且只能访问政府官方网站。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read。可以生成 Word/Excel/PDF 文件（generate_file，文件只保存在用户电脑上）；遇到上传入口时用 upload，桌面客户端会弹出文件选择框让用户亲自选择文件，你不能指定本机路径。点击提交、发布、删除、注销等按钮时，桌面客户端会自动弹出原生确认框，由用户决定是否提交、自己提交或取消；不要绕过确认，也不要重复提交。不要填写密码、验证码、银行卡或支付信息，也不要发起支付、转账或购买。',
     parameters: {
       type: 'object',
       properties: {
@@ -156,6 +197,32 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
           type: 'number',
           description: 'scroll 的像素距离，1 到 5000'
         },
+        format: {
+          type: 'string',
+          enum: ['docx', 'xlsx', 'pdf'],
+          description: 'generate_file 要生成的文件格式'
+        },
+        fileName: {
+          type: 'string',
+          description: 'generate_file 的文件名（不含扩展名），最多 80 字'
+        },
+        title: {
+          type: 'string',
+          description: 'generate_file 的文档标题'
+        },
+        content: {
+          type: 'string',
+          description: 'generate_file 的正文，最多 8000 字'
+        },
+        rows: {
+          type: 'array',
+          description:
+            'generate_file 生成 Excel 时的表格内容，最多 200 行、12 列，每个单元格最多 200 字',
+          items: {
+            type: 'array',
+            items: { type: 'string' }
+          }
+        },
         seconds: {
           type: 'number',
           description: 'wait 的等待秒数，1 到 10'
@@ -188,7 +255,7 @@ export const parseBrowserOperationArgs = (raw: unknown): BrowserOperationParseRe
   if (!isSupportedAction(action)) {
     return {
       success: false,
-      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/wait。`
+      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/upload/generate_file/wait。`
     };
   }
 

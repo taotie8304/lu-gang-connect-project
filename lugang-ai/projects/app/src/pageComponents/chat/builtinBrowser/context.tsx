@@ -12,7 +12,12 @@ import {
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { getBuiltinBrowserSessionStatus } from '@/web/support/builtinBrowser/api';
 import { isPhoneUserAgent } from './device';
-import { isDesktopBridgeAvailable } from './desktopBridge';
+import {
+  isDesktopBridgeAvailable,
+  type DesktopAiState,
+  type DesktopBrowserState
+} from './desktopBridge';
+import { shouldAutoOpenPanel } from './panelSync';
 import { canUseBuiltinBrowser } from './visibility';
 
 type BuiltinBrowserContextType = {
@@ -71,6 +76,32 @@ export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) =>
     void restore();
     return () => {
       cancelled = true;
+    };
+  }, [isVisible, isDesktop]);
+
+  // 鲁港通 - 订阅原生面板与 AI 状态：AI 自动打开面板时网页外壳同步铺开
+  useEffect(() => {
+    if (!isVisible || !isDesktop) return;
+    const bridge = window.lugangDesktop;
+    if (!bridge) return;
+
+    let cancelled = false;
+    const sync = (input: { browser?: DesktopBrowserState; ai?: DesktopAiState }) => {
+      if (cancelled) return;
+      setIsOpen((prev) => shouldAutoOpenPanel({ isOpen: prev, ...input }) || prev);
+    };
+
+    const unsubscribeBrowser = bridge.onStateChange((state) => sync({ browser: state }));
+    const unsubscribeAi = bridge.ai.onStateChange((state) => sync({ ai: state }));
+    void bridge.ai
+      .getState()
+      .then((state) => sync({ ai: state }))
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+      unsubscribeBrowser();
+      unsubscribeAi();
     };
   }, [isVisible, isDesktop]);
 

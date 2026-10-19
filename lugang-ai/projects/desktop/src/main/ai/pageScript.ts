@@ -33,6 +33,10 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     var ownStyle = styleOf(el);
     return !(ownStyle && ownStyle.opacity !== '' && Number(ownStyle.opacity) === 0);
   };
+  var isFileInput = function (el) {
+    return !!el && el.tagName && el.tagName.toLowerCase() === 'input' &&
+      String(el.getAttribute('type') || '').toLowerCase() === 'file';
+  };
   var inViewport = function (el) {
     var rect = el.getBoundingClientRect();
     var height = globalThis.innerHeight || 0;
@@ -91,6 +95,7 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     if (tag === 'input') {
       if (type === 'checkbox') return 'checkbox';
       if (type === 'radio') return 'radio';
+      if (type === 'file') return 'button';
       if (type === 'button' || type === 'submit' || type === 'reset') return 'button';
       return 'textbox';
     }
@@ -124,7 +129,8 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
       var text = textOf(el);
       if (text) item.text = clip(text, 100);
     }
-    if (!sensitive && 'value' in el && el.value != null) {
+    // 鲁港通 - 文件入口的 value 会带本机伪装路径，快照一律不返回
+    if (!sensitive && type !== 'file' && 'value' in el && el.value != null) {
       item.value = clip(el.value, 200);
     }
     if (tag === 'a') {
@@ -152,7 +158,8 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     var list = [];
     for (var j = 0; j < nodes.length && list.length < maxElements; j++) {
       var el = nodes[j];
-      if (!isVisible(el)) continue;
+      // 鲁港通 - 文件入口通常被样式隐藏，但仍是可上传的有效入口
+      if (!isFileInput(el) && !isVisible(el)) continue;
       var ref = 'e' + (list.length + 1);
       el.setAttribute(REF_ATTR, ref);
       list.push(describe(el, ref));
@@ -198,7 +205,8 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
         height: Math.round(rect.height)
       }
     };
-    if (!isSensitive(el) && 'value' in el && el.value != null) result.value = clip(el.value, 500);
+    var inputType = (el.getAttribute('type') || '').toLowerCase();
+    if (!isSensitive(el) && inputType !== 'file' && 'value' in el && el.value != null) result.value = clip(el.value, 500);
     else if (el.isContentEditable) result.value = clip(textOf(el), 500);
     if (typeof el.checked === 'boolean') result.checked = el.checked;
     return result;
@@ -260,6 +268,22 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     el.dispatchEvent(new Event('change', { bubbles: true }));
     return { ok: true, value: el.value, text: labels[foundIndex] };
   };
+  var fileInput = function (ref) {
+    var el = findByRef(ref);
+    if (!el || !el.isConnected) return { found: false };
+    if (!isFileInput(el)) return { found: true, isFile: false };
+    var files = el.files ? Array.prototype.slice.call(el.files) : [];
+    return {
+      found: true,
+      isFile: true,
+      multiple: !!el.multiple,
+      accept: clip(el.getAttribute('accept') || '', 200),
+      count: files.length,
+      names: files.slice(0, 5).map(function (file) {
+        return clip(file && file.name, 120);
+      })
+    };
+  };
   var scrollState = function () {
     var doc = document.documentElement;
     return {
@@ -284,6 +308,7 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     resolve: resolve,
     prepareInput: prepareInput,
     selectOption: selectOption,
+    fileInput: fileInput,
     scroll: scroll
   };
 })()`;
@@ -313,6 +338,9 @@ export const buildAiPrepareInputExpression = (ref: string): string =>
 
 export const buildAiSelectExpression = (ref: string, option: string): string =>
   wrap(`globalThis.__lugangAi.selectOption(${JSON.stringify(ref)}, ${JSON.stringify(option)})`);
+
+export const buildAiFileStateExpression = (ref: string): string =>
+  wrap(`globalThis.__lugangAi.fileInput(${JSON.stringify(ref)})`);
 
 export const buildAiScrollExpression = (direction: string, amount?: number): string =>
   wrap(

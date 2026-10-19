@@ -31,6 +31,24 @@ describe('AI 操作审计', () => {
     expect(record.time).toBe('2026-10-19T08:00:00.000Z');
   });
 
+  it('记录提交确认结果但只保留决策与动作名称', () => {
+    const record = buildAiAuditRecord({
+      commandId: 'cmd-3',
+      action: 'click',
+      outcome: 'stopped',
+      url: 'https://www.gov.hk/sc/forms/apply',
+      target: '提交申请',
+      confirmation: { required: true, decision: 'allow', label: '提交申请' }
+    });
+
+    expect(record.confirmation).toEqual({
+      required: true,
+      decision: 'allow',
+      label: '提交申请'
+    });
+    expect(JSON.stringify(record)).not.toContain('文件内容');
+  });
+
   it('非法网址只记录无敏感信息的占位', () => {
     const record = buildAiAuditRecord({
       commandId: 'cmd-2',

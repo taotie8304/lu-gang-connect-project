@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  buildAiFileStateExpression,
   buildAiPrepareInputExpression,
   buildAiResolveExpression,
   buildAiScrollExpression,
@@ -45,6 +46,8 @@ const installPage = () => {
     </select>
     <textarea id="notes" aria-label="备注" placeholder="补充说明">已填写内容</textarea>
     <div style="display:none"><button id="hiddenBtn" type="button">隐藏按钮</button></div>
+    <label for="resume">上传附件</label>
+    <input id="resume" name="resume" type="file" accept=".doc,.docx,.pdf" multiple style="display:none" />
   `;
 
   const byId = (id: string) => document.getElementById(id)!;
@@ -112,6 +115,68 @@ describe('AI 页面脚本', () => {
     );
     expect(snapshot.elements.some((item) => item.name === '隐藏按钮')).toBe(false);
     expect(snapshot.scroll.viewportHeight).toBeGreaterThan(0);
+  });
+
+  it('快照包含隐藏的文件上传入口，但不返回本机路径', () => {
+    const snapshot = evalInPage<{
+      elements: Array<{
+        ref: string;
+        name: string;
+        type?: string;
+        value?: string;
+      }>;
+    }>(buildAiSnapshotExpression());
+
+    const file = snapshot.elements.find((item) => item.type === 'file');
+    expect(file).toBeTruthy();
+    expect(file?.name).toBe('上传附件');
+    expect(file?.value).toBeUndefined();
+  });
+
+  it('读取文件入口是否支持多选、允许格式与已选文件', () => {
+    const snapshot = evalInPage<{ elements: Array<{ ref: string; type?: string }> }>(
+      buildAiSnapshotExpression()
+    );
+    const file = snapshot.elements.find((item) => item.type === 'file')!;
+
+    const initial = evalInPage<{
+      found: boolean;
+      isFile: boolean;
+      multiple: boolean;
+      accept: string;
+      count: number;
+      names: string[];
+    }>(buildAiFileStateExpression(file.ref));
+    expect(initial).toMatchObject({
+      found: true,
+      isFile: true,
+      multiple: true,
+      accept: '.doc,.docx,.pdf',
+      count: 0,
+      names: []
+    });
+
+    const input = document.getElementById('resume') as HTMLInputElement;
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      value: [{ name: '申请书.docx' }]
+    });
+    const after = evalInPage<{ count: number; names: string[] }>(
+      buildAiFileStateExpression(file.ref)
+    );
+    expect(after.count).toBe(1);
+    expect(after.names).toEqual(['申请书.docx']);
+  });
+
+  it('文件入口不能作为文字输入目标', () => {
+    const snapshot = evalInPage<{ elements: Array<{ ref: string; type?: string }> }>(
+      buildAiSnapshotExpression()
+    );
+    const file = snapshot.elements.find((item) => item.type === 'file')!;
+    const rejected = evalInPage<{ ok: boolean; reason: string }>(
+      buildAiPrepareInputExpression(file.ref)
+    );
+    expect(rejected).toMatchObject({ ok: false, reason: 'not_editable' });
   });
 
   it('快照不返回密码值', () => {

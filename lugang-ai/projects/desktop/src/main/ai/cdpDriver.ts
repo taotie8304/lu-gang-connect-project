@@ -1,5 +1,6 @@
 // 鲁港通 - CDP 页面驱动：把受控动作翻译成 Chrome DevTools Protocol 指令
 import type {
+  AiFileInputState,
   AiPageDriver,
   AiPrepareInputResult,
   AiResolvedElement,
@@ -7,6 +8,7 @@ import type {
   AiSelectOptionResult
 } from './executor';
 import {
+  buildAiFileStateExpression,
   buildAiPrepareInputExpression,
   buildAiResolveExpression,
   buildAiScrollExpression,
@@ -217,6 +219,47 @@ export class CdpPageDriver implements AiPageDriver {
   async navigate(url: string): Promise<void> {
     await this.navigateUrl(url);
     await this.settle();
+  }
+
+  async fileInput(ref: string): Promise<AiFileInputState> {
+    const raw = await this.evaluate<unknown>(buildAiFileStateExpression(ref));
+    const record =
+      typeof raw === 'object' && raw !== null && !Array.isArray(raw)
+        ? (raw as Record<string, unknown>)
+        : {};
+    if (record.found !== true) return { found: false };
+    return {
+      found: true,
+      isFile: record.isFile === true,
+      ...(typeof record.multiple === 'boolean' ? { multiple: record.multiple } : {}),
+      ...(typeof record.accept === 'string' ? { accept: record.accept } : {}),
+      ...(typeof record.count === 'number' ? { count: record.count } : {}),
+      ...(Array.isArray(record.names)
+        ? {
+            names: record.names.filter(
+              (item): item is string => typeof item === 'string'
+            )
+          }
+        : {})
+    };
+  }
+
+  async setFileInputFiles(ref: string, files: string[]): Promise<boolean> {
+    if (!/^e\d{1,4}$/.test(ref) || files.length === 0) return false;
+    const session = this.requireSession();
+    const documentPayload = (await session.sendCommand('DOM.getDocument', {
+      depth: 1
+    })) as { root?: { nodeId?: unknown } } | undefined;
+    const rootId = documentPayload?.root?.nodeId;
+    if (typeof rootId !== 'number' || rootId <= 0) return false;
+    const query = (await session.sendCommand('DOM.querySelector', {
+      nodeId: rootId,
+      selector: `[data-lugang-ai-ref="${ref}"]`
+    })) as { nodeId?: unknown } | undefined;
+    const nodeId = query?.nodeId;
+    if (typeof nodeId !== 'number' || nodeId <= 0) return false;
+    await session.sendCommand('DOM.setFileInputFiles', { nodeId, files });
+    return true;
   }
 
   async settle(): Promise<void> {

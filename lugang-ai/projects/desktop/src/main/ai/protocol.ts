@@ -1,4 +1,4 @@
-// 鲁港通 - AI 指令协议：桌面端只接受受控动作，拒绝提交/支付类动作
+// 鲁港通 - AI 指令协议：桌面端只接受受控动作，上传与生成文件不允许携带本机路径
 import { z } from 'zod';
 
 const refSchema = z.string().trim().min(1).max(32);
@@ -57,6 +57,28 @@ const stopCommand = z.object({
   action: z.literal('stop')
 });
 
+const generateFileCommand = z
+  .object({
+    action: z.literal('generate_file'),
+    format: z.enum(['docx', 'xlsx', 'pdf']),
+    fileName: z.string().trim().min(1).max(80),
+    title: z.string().trim().max(200).optional(),
+    content: z.string().max(20000).optional(),
+    rows: z
+      .array(z.array(z.string().max(500)).max(12))
+      .max(1000)
+      .optional()
+  })
+  .refine(
+    (value) => Boolean(value.content?.trim() || value.title?.trim() || value.rows?.length),
+    { message: '需要提供文件内容' }
+  );
+
+const uploadCommand = requiresLocator({
+  action: z.literal('upload'),
+  ...locateSchema
+});
+
 export const aiCommandSchema = z.discriminatedUnion('action', [
   readCommand,
   navigateCommand,
@@ -64,6 +86,8 @@ export const aiCommandSchema = z.discriminatedUnion('action', [
   typeCommand,
   selectCommand,
   scrollCommand,
+  uploadCommand,
+  generateFileCommand,
   stopCommand
 ]);
 

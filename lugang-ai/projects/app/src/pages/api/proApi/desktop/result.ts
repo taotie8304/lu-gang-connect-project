@@ -51,6 +51,18 @@ const snapshotSchema = z.object({
   elementsTruncated: z.boolean().optional()
 });
 
+const fileResultSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  format: z.enum(['docx', 'xlsx', 'pdf', 'other']).optional(),
+  folder: z.string().max(300).optional()
+});
+
+const confirmationSchema = z.object({
+  required: z.boolean(),
+  decision: z.enum(['allow', 'handoff', 'cancel', 'timeout', 'unavailable']),
+  label: z.string().max(200).optional()
+});
+
 const bodySchema = z.object({
   deviceId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/, '设备标识格式不正确'),
   commandId: z.uuid('指令标识格式不正确'),
@@ -60,7 +72,9 @@ const bodySchema = z.object({
     message: z.string().trim().max(500).optional(),
     changed: z.boolean().optional(),
     stopped: z.boolean().optional(),
-    snapshot: snapshotSchema.optional()
+    snapshot: snapshotSchema.optional(),
+    file: fileResultSchema.optional(),
+    confirmation: confirmationSchema.optional()
   })
 });
 

@@ -191,4 +191,72 @@ describe('CDP 页面驱动', () => {
       options: ['香港岛', '九龙']
     });
   });
+
+  it('读取文件入口状态', async () => {
+    const { driver, calls } = createDriver(() => ({
+      result: {
+        value: {
+          found: true,
+          isFile: true,
+          multiple: true,
+          accept: '.docx,.pdf',
+          count: 1,
+          names: ['申请书.docx']
+        }
+      }
+    }));
+
+    const state = await driver.fileInput('e3');
+    expect(state).toMatchObject({
+      found: true,
+      isFile: true,
+      multiple: true,
+      accept: '.docx,.pdf',
+      count: 1,
+      names: ['申请书.docx']
+    });
+    expect(String(calls[0].params?.expression)).toContain('__lugangAi.fileInput');
+    expect(String(calls[0].params?.expression)).toContain('"e3"');
+  });
+
+  it('通过 DOM.setFileInputFiles 给文件入口设置本机文件', async () => {
+    const { driver, calls } = createDriver((method) => {
+      if (method === 'DOM.getDocument') return { root: { nodeId: 7 } };
+      if (method === 'DOM.querySelector') return { nodeId: 42 };
+      return {};
+    });
+
+    const ok = await driver.setFileInputFiles('e5', ['C:\\Users\\tester\\申请书.docx']);
+    expect(ok).toBe(true);
+    expect(calls.map((call) => call.method)).toEqual([
+      'DOM.getDocument',
+      'DOM.querySelector',
+      'DOM.setFileInputFiles'
+    ]);
+    expect(calls[1].params).toMatchObject({
+      nodeId: 7,
+      selector: '[data-lugang-ai-ref="e5"]'
+    });
+    expect(calls[2].params).toMatchObject({
+      nodeId: 42,
+      files: ['C:\\Users\\tester\\申请书.docx']
+    });
+  });
+
+  it('文件入口引用失效时不设置文件', async () => {
+    const { driver, calls } = createDriver((method) => {
+      if (method === 'DOM.getDocument') return { root: { nodeId: 7 } };
+      if (method === 'DOM.querySelector') return { nodeId: 0 };
+      return {};
+    });
+
+    expect(await driver.setFileInputFiles('e9', ['C:\\x.docx'])).toBe(false);
+    expect(calls.some((call) => call.method === 'DOM.setFileInputFiles')).toBe(false);
+  });
+
+  it('非法文件入口引用不查询页面', async () => {
+    const { driver, calls } = createDriver();
+    expect(await driver.setFileInputFiles('bad"ref', ['C:\\x.docx'])).toBe(false);
+    expect(calls).toHaveLength(0);
+  });
 });

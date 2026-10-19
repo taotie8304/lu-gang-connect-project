@@ -4,7 +4,12 @@ import {
   AiController,
   type AiControllerBrowser
 } from '../src/main/ai/controller';
-import type { AiPageDriver } from '../src/main/ai/executor';
+import type {
+  AiConfirmationDecision,
+  AiConfirmer,
+  AiFileGenerator,
+  AiPageDriver
+} from '../src/main/ai/executor';
 import type { AiAuditRecord } from '../src/main/ai/audit';
 import type { AiPageElement, AiPageSnapshot } from '../src/main/ai/snapshot';
 import type { DesktopBrowserState } from '../src/shared/ipc';
@@ -12,7 +17,10 @@ import type { DesktopBrowserState } from '../src/shared/ipc';
 const PAGE_URL = 'https://www.gov.hk/en/residents/form';
 const ALLOWED = ['.gov.hk'];
 
-const makeSnapshot = (elements: Partial<AiPageElement>[] = []): AiPageSnapshot => ({
+const makeSnapshot = (
+  elements: Partial<AiPageElement>[] = [],
+  overrides: Partial<AiPageSnapshot> = {}
+): AiPageSnapshot => ({
   url: PAGE_URL,
   title: '测试表单',
   text: '请填写申请信息',
@@ -23,7 +31,8 @@ const makeSnapshot = (elements: Partial<AiPageElement>[] = []): AiPageSnapshot =
     name: '',
     tag: 'input',
     ...element
-  }))
+  })),
+  ...overrides
 });
 
 const textField = (name: string, extra: Partial<AiPageElement> = {}): Partial<AiPageElement> => ({
@@ -60,7 +69,7 @@ const createBrowser = (): AiControllerBrowser & {
   };
 };
 
-const createDriver = (initial: AiPageSnapshot) => {
+const createDriver = (initial: AiPageSnapshot, options: { afterClick?: AiPageSnapshot } = {}) => {
   let current = initial;
   const driver: AiPageDriver = {
     snapshot: vi.fn(async () => current),
@@ -76,7 +85,16 @@ const createDriver = (initial: AiPageSnapshot) => {
       after: current.scroll,
       changed: false
     })),
-    clickAt: vi.fn(async () => undefined),
+    fileInput: vi.fn(async () => ({
+      found: true,
+      isFile: true,
+      count: 0,
+      names: []
+    })),
+    setFileInputFiles: vi.fn(async () => true),
+    clickAt: vi.fn(async () => {
+      if (options.afterClick) current = options.afterClick;
+    }),
     insertText: vi.fn(async () => undefined),
     navigate: vi.fn(async () => undefined),
     settle: vi.fn(async () => undefined)
@@ -95,16 +113,23 @@ const createController = (
     elements?: Partial<AiPageElement>[];
     now?: () => number;
     audit?: (record: AiAuditRecord) => Promise<void> | void;
+    confirm?: AiConfirmer;
+    generateFile?: AiFileGenerator;
+    afterClick?: AiPageSnapshot;
   } = {}
 ) => {
   const browser = createBrowser();
-  const harness = createDriver(makeSnapshot(options.elements ?? []));
+  const harness = createDriver(makeSnapshot(options.elements ?? []), {
+    afterClick: options.afterClick
+  });
   const controller = new AiController({
     browser,
     driver: harness.driver,
     allowedHosts: ALLOWED,
     now: options.now,
-    audit: options.audit
+    audit: options.audit,
+    confirm: options.confirm,
+    generateFile: options.generateFile
   });
   return { browser, controller, ...harness };
 };
@@ -177,8 +202,101 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
     expect(controller.getState().message).toContain('不能代为输入');
   });
 
-  it('高风险按钮被拦截时立即停止整个会话', async () => {
+  it('支付类按钮被拦截时立即停止整个会话', async () => {
+    const confirm = vi.fn<AiConfirmer>(async () => 'allow');
     const { controller } = createController({
+      elements: [{ role: 'button', name: '确认支付', tag: 'button' }],
+      confirm
+    });
+
+    const result = await controller.execute({ action: 'click', target: '确认支付' });
+
+    expect(result.ok).toBe(false);
+    expect(result.stopped).toBe(true);
+    expect(controller.getState().stopReason).toBe('high_risk_blocked');
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('提交申请经用户确认后只执行一次并停止会话', async () => {
+    const records: AiAuditRecord[] = [];
+    const confirm = vi.fn<AiConfirmer>(async () => 'allow');
+    const { controller, driver } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm,
+      afterClick: makeSnapshot([], {}),
+      audit: (record) => {
+        records.push(record);
+      }
+    });
+
+    const result = await controller.execute(
+      { action: 'click', target: '提交申请' },
+      { commandId: 'cmd-submit' }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.stopped).toBe(true);
+    expect(driver.clickAt).toHaveBeenCalledTimes(1);
+    expect(controller.getState()).toMatchObject({
+      status: 'stopped',
+      stopReason: 'submitted'
+    });
+    expect(controller.getState().message).toContain('结束');
+    expect(records[0]).toMatchObject({
+      commandId: 'cmd-submit',
+      action: 'click',
+      outcome: 'stopped',
+      target: '提交申请',
+      confirmation: { required: true, decision: 'allow', label: '提交申请' }
+    });
+
+    const next = await controller.execute({ action: 'click', target: '下一步' });
+    expect(next.stopped).toBe(true);
+    expect(driver.clickAt).toHaveBeenCalledTimes(1);
+  });
+
+  it('用户选择自己提交后停止并交还页面', async () => {
+    const { controller, driver } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm: async () => 'handoff'
+    });
+
+    const result = await controller.execute({ action: 'click', target: '提交申请' });
+
+    expect(result.ok).toBe(false);
+    expect(result.stopped).toBe(true);
+    expect(controller.getState().stopReason).toBe('handed_over');
+    expect(driver.clickAt).not.toHaveBeenCalled();
+  });
+
+  it('用户在确认框取消或超时后停止会话', async () => {
+    const cancelHarness = createController({
+      elements: [{ role: 'button', name: 'publish', tag: 'button', text: '发布文章' }],
+      confirm: async () => 'cancel'
+    });
+    const cancelled = await cancelHarness.controller.execute({
+      action: 'click',
+      target: '发布文章'
+    });
+    expect(cancelled.ok).toBe(false);
+    expect(cancelHarness.controller.getState().stopReason).toBe('confirmation_declined');
+    expect(cancelHarness.driver.clickAt).not.toHaveBeenCalled();
+
+    const timeoutHarness = createController({
+      elements: [{ role: 'button', name: '删除记录', tag: 'button' }],
+      confirm: async () => 'timeout'
+    });
+    const timeout = await timeoutHarness.controller.execute({
+      action: 'click',
+      target: '删除记录'
+    });
+    expect(timeout.ok).toBe(false);
+    expect(timeoutHarness.controller.getState().stopReason).toBe('confirmation_timeout');
+    expect(timeoutHarness.driver.clickAt).not.toHaveBeenCalled();
+  });
+
+  it('客户端无法弹出确认框时停止而不是直接提交', async () => {
+    const { controller, driver } = createController({
       elements: [{ role: 'button', name: '提交申请', tag: 'button' }]
     });
 
@@ -186,7 +304,57 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
 
     expect(result.ok).toBe(false);
     expect(result.stopped).toBe(true);
-    expect(controller.getState().stopReason).toBe('high_risk_blocked');
+    expect(controller.getState().stopReason).toBe('confirmation_unavailable');
+    expect(driver.clickAt).not.toHaveBeenCalled();
+  });
+
+  it('确认后点击未显示成功结果时停止并交用户核对', async () => {
+    const { controller, driver } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm: async () => 'allow',
+      afterClick: makeSnapshot([], { text: '系统繁忙' })
+    });
+
+    const result = await controller.execute({
+      action: 'click',
+      target: '提交申请',
+      expect: '提交成功'
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.stopped).toBe(true);
+    expect(controller.getState().stopReason).toBe('submission_unconfirmed');
+    expect(result.message).toContain('提交成功');
+    expect(driver.clickAt).toHaveBeenCalledTimes(1);
+  });
+
+  it('生成文件审计只记动作与结果，不记文件名或内容', async () => {
+    const records: AiAuditRecord[] = [];
+    const { controller } = createController({
+      generateFile: async (input) => ({
+        name: `${input.fileName}.${input.format}`,
+        format: input.format,
+        folder: '下载 / 鲁港通生成文件',
+        path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\机密申请书.docx'
+      }),
+      audit: (record) => {
+        records.push(record);
+      }
+    });
+
+    const result = await controller.execute({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '机密申请书',
+      content: '身份证号 123456'
+    });
+
+    expect(result.ok).toBe(true);
+    expect(records).toHaveLength(1);
+    expect(records[0].action).toBe('generate_file');
+    expect(JSON.stringify(records[0])).not.toContain('机密申请书');
+    expect(JSON.stringify(records[0])).not.toContain('123456');
+    expect(JSON.stringify(records[0])).not.toContain('C:\\');
   });
 
   it('页面被关闭后自动重开一次并恢复已填写的非敏感内容', async () => {
@@ -331,5 +499,32 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
 
     const reopen = records.find((record) => record.action === 'reopen');
     expect(reopen).toMatchObject({ outcome: 'ok', reopen: true, host: 'www.gov.hk' });
+  });
+
+  it('用户停止时取消等待中的提交确认', async () => {
+    let settle: (decision: AiConfirmationDecision) => void = () => undefined;
+    const confirm = Object.assign(
+      vi.fn(
+        () =>
+          new Promise<AiConfirmationDecision>((resolve) => {
+            settle = resolve;
+          })
+      ),
+      { cancel: vi.fn(() => settle('cancel')) }
+    );
+    const { controller, driver } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm
+    });
+
+    const pending = controller.execute({ action: 'click', target: '提交申请' });
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    controller.stop();
+    const result = await pending;
+
+    expect(confirm.cancel).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('confirmation_declined');
+    expect(driver.clickAt).not.toHaveBeenCalled();
   });
 });

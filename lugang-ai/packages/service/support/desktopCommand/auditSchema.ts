@@ -18,6 +18,8 @@ export type DesktopBrowserAuditSchemaType = {
   code?: string;
   changed?: boolean;
   stopped?: boolean;
+  /** 提交前确认结果（allow / handoff / cancel / timeout / unavailable），不记录确认文案 */
+  confirmation?: string;
   createTime: Date;
 };
 
@@ -45,6 +47,7 @@ const DesktopBrowserAuditSchema = new Schema({
   code: String,
   changed: Boolean,
   stopped: Boolean,
+  confirmation: String,
   createTime: {
     type: Date,
     required: true

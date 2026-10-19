@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isConfirmableActionLabel,
   isHighRiskActionLabel,
+  isPaymentActionLabel,
   isSensitiveElement,
   matchAiTarget,
   type AiElementView
@@ -81,5 +83,29 @@ describe('AI 敏感与高风险识别', () => {
     expect(isHighRiskActionLabel('删除记录')).toBe(true);
     expect(isHighRiskActionLabel('下一步')).toBe(false);
     expect(isHighRiskActionLabel('搜索')).toBe(false);
+  });
+
+  it('资金类动作永久硬拦截，不属于可确认范围', () => {
+    expect(isPaymentActionLabel('确认支付')).toBe(true);
+    expect(isPaymentActionLabel('立即购买')).toBe(true);
+    expect(isPaymentActionLabel('转账')).toBe(true);
+    expect(isPaymentActionLabel('提交订单并支付')).toBe(true);
+    expect(isPaymentActionLabel('提交申请')).toBe(false);
+    expect(isPaymentActionLabel('发布文章')).toBe(false);
+  });
+
+  it('提交、发布、删除、注销可由用户确认后执行', () => {
+    expect(isConfirmableActionLabel('提交申请')).toBe(true);
+    expect(isConfirmableActionLabel('确认提交')).toBe(true);
+    expect(isConfirmableActionLabel('发布文章')).toBe(true);
+    expect(isConfirmableActionLabel('删除记录')).toBe(true);
+    expect(isConfirmableActionLabel('注销账号')).toBe(true);
+    expect(isConfirmableActionLabel('下一步')).toBe(false);
+    expect(isConfirmableActionLabel('搜索')).toBe(false);
+  });
+
+  it('同时含资金与提交字样时按资金类硬拦截', () => {
+    expect(isConfirmableActionLabel('提交订单并支付')).toBe(false);
+    expect(isConfirmableActionLabel('确认付款')).toBe(false);
   });
 });

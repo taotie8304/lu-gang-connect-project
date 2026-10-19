@@ -14,6 +14,7 @@ export const writeDesktopBrowserAudit = async (record: DesktopBrowserAuditRecord
     code: record.code,
     changed: record.changed,
     stopped: record.stopped,
+    confirmation: record.confirmation,
     createTime: new Date(record.createdAt)
   });
 };
