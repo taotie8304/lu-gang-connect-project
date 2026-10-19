@@ -602,6 +602,53 @@ describe('runToolCall compression node responses', () => {
     expect(sandboxFlowResponse.flowUsages).toEqual([]);
   });
 
+  it('injects browser operation for eligible desktop users on tool call nodes', async () => {
+    const previous = process.env.LUGANG_DESKTOP_AI_BROWSER;
+    delete process.env.LUGANG_DESKTOP_AI_BROWSER;
+    runAgentLoopMock.mockImplementation(async (options) => {
+      expect(options.runtime.systemTools.browserOperation).toEqual(
+        expect.objectContaining({
+          enabled: true
+        })
+      );
+
+      return createLoopResult();
+    });
+
+    try {
+      await runToolCall(
+        createProps({
+          runningUserInfo: {
+            ...createProps().runningUserInfo,
+            username: 'root'
+          }
+        })
+      );
+    } finally {
+      if (previous === undefined) delete process.env.LUGANG_DESKTOP_AI_BROWSER;
+      else process.env.LUGANG_DESKTOP_AI_BROWSER = previous;
+    }
+    expect(runAgentLoopMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not inject browser operation for users outside the desktop allowlist', async () => {
+    const previous = process.env.LUGANG_DESKTOP_AI_BROWSER;
+    delete process.env.LUGANG_DESKTOP_AI_BROWSER;
+    runAgentLoopMock.mockImplementation(async (options) => {
+      expect(options.runtime.systemTools.browserOperation).toBeUndefined();
+
+      return createLoopResult();
+    });
+
+    try {
+      await runToolCall(createProps());
+    } finally {
+      if (previous === undefined) delete process.env.LUGANG_DESKTOP_AI_BROWSER;
+      else process.env.LUGANG_DESKTOP_AI_BROWSER = previous;
+    }
+    expect(runAgentLoopMock).toHaveBeenCalledTimes(1);
+  });
+
   it('passes known and dynamically generated URLs directly to read_files', async () => {
     dispatchWorkflowReadFilesMock.mockResolvedValue({
       response: JSON.stringify([

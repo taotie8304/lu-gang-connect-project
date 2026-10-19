@@ -19,6 +19,10 @@ import {
   type AgentLoopCoreToolRunFlowResponse
 } from '../agentLoopCore/interface';
 import { createToolCallToolProvider } from './toolProvider';
+import {
+  createDesktopBrowserOperationExecutor,
+  isDesktopBrowserEnabledForUser
+} from '../../../../../support/desktopCommand/browserOperation';
 
 type ResponseType = {
   requestIds: string[];
@@ -99,6 +103,14 @@ export const runToolCall = async (props: DispatchToolModuleProps): Promise<Respo
   const loopMessages = toolProvider.finalMessages.filter(
     (message) => message.role !== ChatCompletionRequestMessageRoleEnum.System
   );
+  // 浏览器操作只对桌面客户端灰度成员开放；ToolCall 节点与 Agent 节点共用同一套注入规则。
+  const browserOperationIdentity = {
+    tmbId: workflowProps.runningUserInfo.tmbId,
+    uid: workflowProps.uid,
+    username: workflowProps.runningUserInfo.username,
+    contact: workflowProps.runningUserInfo.contact
+  };
+  const browserOperationEnabled = isDesktopBrowserEnabledForUser(browserOperationIdentity);
 
   const { summary: outputSummary } =
     await runAgentLoopCoreWithSummary<WorkflowInteractiveResponseType>({
@@ -149,6 +161,16 @@ export const runToolCall = async (props: DispatchToolModuleProps): Promise<Respo
                 enabled: true,
                 currentInputFiles: fileUrlList,
                 execute: toolProvider.datasetSearchExecutor
+              }
+            : undefined,
+          browserOperation: browserOperationEnabled
+            ? {
+                enabled: true,
+                execute: createDesktopBrowserOperationExecutor({
+                  identity: browserOperationIdentity,
+                  chatId: workflowProps.chatId,
+                  isStopped: checkIsStopping
+                })
               }
             : undefined
         },
