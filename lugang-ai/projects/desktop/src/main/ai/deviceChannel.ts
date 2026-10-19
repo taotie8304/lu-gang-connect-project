@@ -49,6 +49,13 @@ const DEFAULT_POLL_TIMEOUT_MS = 25_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+// 鲁港通 - NextAPI 成功响应统一包裹为 { code, data }，设备通道需取内层数据
+const unwrapApiData = (value: unknown): unknown => {
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  return typeof record.code === 'number' && 'data' in record ? record.data : value;
+};
+
 const parseEnvelope = (value: unknown): DeviceCommandEnvelope | undefined => {
   if (!value || typeof value !== 'object') return undefined;
   const record = value as Record<string, unknown>;
@@ -179,7 +186,7 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
           continue;
         }
 
-        const data = (await response.json()) as { command?: unknown };
+        const data = unwrapApiData(await response.json()) as { command?: unknown };
         const envelope = parseEnvelope(data?.command);
         if (envelope) {
           await handleEnvelope(envelope, token);
@@ -211,7 +218,7 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
 
     if (!response.ok) return false;
 
-    const data = (await response.json()) as { token?: unknown };
+    const data = unwrapApiData(await response.json()) as { token?: unknown };
     if (typeof data?.token !== 'string' || !data.token) return false;
 
     tokenStore.save(data.token);

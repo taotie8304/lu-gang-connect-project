@@ -18,6 +18,10 @@ const jsonResponse = (body: unknown, init?: { status?: number }) =>
     json: async () => body
   }) as Response;
 
+// 鲁港通 - 生产环境 NextAPI 成功响应统一包裹为 { code, data }
+const apiResponse = (data: unknown, init?: { status?: number }) =>
+  jsonResponse({ code: init?.status ?? 200, statusText: 'success', data }, init);
+
 const createTokenStore = (
   initial?: string
 ): DeviceChannelTokenStore & { token: string | undefined; cleared: number } => {
@@ -104,8 +108,8 @@ describe('桌面设备通道 · 注册与令牌', () => {
     const harness = createChannel({
       cookie: 'session-cookie-value',
       responses: [
-        jsonResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
-        jsonResponse({ command: null })
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({ command: null })
       ]
     });
 
@@ -160,9 +164,9 @@ describe('桌面设备通道 · 注册与令牌', () => {
     const harness = createChannel({
       cookie: 'session-cookie-value',
       responses: [
-        jsonResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
         jsonResponse({ error: 'unAuthorization' }, { status: 401 }),
-        jsonResponse({ command: null })
+        apiResponse({ command: null })
       ]
     });
 
@@ -179,16 +183,16 @@ describe('桌面设备通道 · 指令执行', () => {
     const harness = createChannel({
       cookie: 'session-cookie-value',
       responses: [
-        jsonResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
-        jsonResponse({
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({
           command: {
             id: COMMAND_ID,
             createdAt: 1_700_000_000_000,
             command: { action: 'click', target: '下一步' }
           }
         }),
-        jsonResponse({ accepted: true }),
-        jsonResponse({ command: null })
+        apiResponse({ accepted: true }),
+        apiResponse({ command: null })
       ]
     });
 
@@ -218,16 +222,16 @@ describe('桌面设备通道 · 指令执行', () => {
     const harness = createChannel({
       cookie: 'session-cookie-value',
       responses: [
-        jsonResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
-        jsonResponse({
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({
           command: {
             id: COMMAND_ID,
             createdAt: 1_700_000_000_000,
             command: { action: 'submit' }
           }
         }),
-        jsonResponse({ accepted: true }),
-        jsonResponse({ command: null })
+        apiResponse({ accepted: true }),
+        apiResponse({ command: null })
       ]
     });
 
@@ -251,16 +255,16 @@ describe('桌面设备通道 · 用户停止', () => {
     const harness = createChannel({
       cookie: 'session-cookie-value',
       responses: [
-        jsonResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
-        jsonResponse({
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({
           command: {
             id: COMMAND_ID,
             createdAt: 1_700_000_000_000,
             command: { action: 'read' }
           }
         }),
-        jsonResponse({ accepted: true }),
-        jsonResponse({ command: null })
+        apiResponse({ accepted: true }),
+        apiResponse({ command: null })
       ],
       execute: () => executing
     });
@@ -307,10 +311,10 @@ describe('桌面设备通道 · 退出清理', () => {
     const harness = createChannel({
       token: 'lgd_saved-token',
       route: (url) => {
-        if (url.endsWith('/api/proApi/desktop/revoke')) return jsonResponse({ revoked: true });
+        if (url.endsWith('/api/proApi/desktop/revoke')) return apiResponse({ revoked: true });
         if (url.includes('/api/proApi/desktop/commands?')) {
           commandCalls += 1;
-          return jsonResponse({ command: null });
+          return apiResponse({ command: null });
         }
         return undefined;
       }
