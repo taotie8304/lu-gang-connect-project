@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { ERROR_ENUM } from '@fastgpt/global/common/error/errorCode';
 import {
+  DESKTOP_BUSY_LONG_TTL_MS,
+  DESKTOP_BUSY_TTL_MS,
   DESKTOP_HEARTBEAT_TTL_SECONDS,
   DESKTOP_QUEUE_TTL_MS,
   DESKTOP_RESULT_TTL_SECONDS,
   DESKTOP_TOKEN_PREFIX,
-  DESKTOP_TOKEN_TTL_MS
+  DESKTOP_TOKEN_TTL_MS,
+  getDesktopCommandBusyTtlMs
 } from '@fastgpt/service/support/desktopCommand/constant';
 import {
   createDesktopToken,
@@ -187,6 +190,60 @@ describe('desktop command store registration', () => {
 
     await expect(store.getDeviceByOwner('tmb-1')).resolves.toBe(deviceId);
     await expect(store.getDeviceByOwner('tmb-unknown')).resolves.toBeUndefined();
+  });
+});
+
+describe('desktop command busy window', () => {
+  it('keeps the device online while a taken command is still executing', async () => {
+    const { store, advance } = createStore();
+    await register(store);
+    advance(DESKTOP_HEARTBEAT_TTL_SECONDS * 1000);
+    await expect(store.isDeviceOnline(deviceId)).resolves.toBe(false);
+
+    await store.markBusy(deviceId, DESKTOP_BUSY_LONG_TTL_MS);
+    await expect(store.isDeviceOnline(deviceId)).resolves.toBe(true);
+
+    advance(DESKTOP_BUSY_LONG_TTL_MS);
+    await expect(store.isDeviceOnline(deviceId)).resolves.toBe(false);
+  });
+
+  it('marks the device busy when the client takes a command', async () => {
+    const { store, redis, advance } = createStore();
+    await store.enqueue({ deviceId, command: { action: 'click', ref: 'e12' } });
+    advance(DESKTOP_HEARTBEAT_TTL_SECONDS * 1000);
+
+    await store.waitForCommand({ deviceId, timeoutMs: 5_000 });
+
+    expect(await redis.get(`desktop-command:v1:busy:${deviceId}`)).toBe('1');
+    await expect(store.isDeviceOnline(deviceId)).resolves.toBe(true);
+  });
+
+  it('clears the busy marker once a result arrives', async () => {
+    const { store, advance } = createStore();
+    await register(store);
+    advance(DESKTOP_HEARTBEAT_TTL_SECONDS * 1000);
+    await store.markBusy(deviceId, DESKTOP_BUSY_LONG_TTL_MS);
+
+    await store.clearBusy(deviceId);
+
+    await expect(store.isDeviceOnline(deviceId)).resolves.toBe(false);
+  });
+
+  it('removes the busy marker on revoke', async () => {
+    const { store, redis } = createStore();
+    await register(store);
+    await store.markBusy(deviceId, DESKTOP_BUSY_LONG_TTL_MS);
+
+    await store.revoke({ deviceId, tmbId: 'tmb-1' });
+
+    expect(await redis.get(`desktop-command:v1:busy:${deviceId}`)).toBeNull();
+  });
+
+  it('uses a long busy window for click and upload and a short one otherwise', () => {
+    expect(getDesktopCommandBusyTtlMs('click')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+    expect(getDesktopCommandBusyTtlMs('upload')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+    expect(getDesktopCommandBusyTtlMs('read')).toBe(DESKTOP_BUSY_TTL_MS);
+    expect(getDesktopCommandBusyTtlMs(undefined)).toBe(DESKTOP_BUSY_TTL_MS);
   });
 });
 

@@ -26,7 +26,8 @@ import {
   DESKTOP_LONG_POLL_MAX_MS,
   DESKTOP_QUEUE_TTL_MS,
   DESKTOP_RESULT_TTL_SECONDS,
-  DESKTOP_TOKEN_TTL_MS
+  DESKTOP_TOKEN_TTL_MS,
+  getDesktopCommandBusyTtlMs
 } from './constant';
 import {
   createDesktopToken,
@@ -189,6 +190,7 @@ export class DesktopCommandStore {
   private tokenKey = (tokenHash: string) => this.key('token', tokenHash);
   private ownerKey = (tmbId: string) => this.key('owner', tmbId);
   private heartbeatKey = (deviceId: string) => this.key('hb', deviceId);
+  private busyKey = (deviceId: string) => this.key('busy', deviceId);
   private queueKey = (deviceId: string) => this.key('queue', deviceId);
   private resultKey = (commandId: string) => this.key('result', commandId);
   private browserResumeKey = (tmbId: string, chatId: string) =>
@@ -200,6 +202,19 @@ export class DesktopCommandStore {
       value: '1',
       ttlMs: DESKTOP_HEARTBEAT_TTL_SECONDS * 1000
     });
+  }
+
+  /** 指令执行期间客户端不再长轮询，用执行标记兜住在心跳过期后的窗口。 */
+  async markBusy(deviceId: string, ttlMs: number) {
+    await this.redis.set({
+      key: this.busyKey(deviceId),
+      value: '1',
+      ttlMs: Math.max(1000, ttlMs)
+    });
+  }
+
+  async clearBusy(deviceId: string) {
+    await this.redis.delete(this.busyKey(deviceId));
   }
 
   private async getDevice(deviceId: string) {
@@ -331,7 +346,10 @@ export class DesktopCommandStore {
 
     for (;;) {
       const command = await this.dequeue(deviceId);
-      if (command) return command;
+      if (command) {
+        await this.markBusy(deviceId, getDesktopCommandBusyTtlMs(command.command.action));
+        return command;
+      }
 
       const remaining = deadline - this.now();
       if (remaining <= 0) return undefined;
@@ -418,9 +436,13 @@ export class DesktopCommandStore {
     }
   }
 
-  /** 长轮询心跳在 60 秒内视为在线。 */
+  /** 长轮询心跳在 60 秒内视为在线；执行中的指令单独保活。 */
   async isDeviceOnline(deviceId: string): Promise<boolean> {
-    return (await this.redis.get(this.heartbeatKey(deviceId))) === '1';
+    const [heartbeat, busy] = await Promise.all([
+      this.redis.get(this.heartbeatKey(deviceId)),
+      this.redis.get(this.busyKey(deviceId))
+    ]);
+    return heartbeat === '1' || busy === '1';
   }
 
   /**
@@ -434,6 +456,7 @@ export class DesktopCommandStore {
     await this.redis.delete(this.tokenKey(device.tokenHash));
     await this.redis.delete(this.deviceKey(deviceId));
     await this.redis.delete(this.heartbeatKey(deviceId));
+    await this.redis.delete(this.busyKey(deviceId));
     await this.redis.delete(this.queueKey(deviceId));
 
     const ownerDeviceId = await this.redis.get(this.ownerKey(tmbId));
@@ -478,6 +501,9 @@ export const getDesktopCommandResult = (commandId: string) =>
 
 export const isDesktopDeviceOnline = (deviceId: string) =>
   desktopCommandStore.isDeviceOnline(deviceId);
+
+export const clearDesktopDeviceBusy = (deviceId: string) =>
+  desktopCommandStore.clearBusy(deviceId);
 
 export const getDesktopDeviceByOwner = (tmbId: string) =>
   desktopCommandStore.getDeviceByOwner(tmbId);

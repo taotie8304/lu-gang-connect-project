@@ -604,9 +604,27 @@ describe('desktop browser operation executor', () => {
     const result = await execute({ action: 'read' });
 
     expect(result.response).toContain('没有返回结果');
+    expect(result.response).toContain('确认');
+    expect(result.response).toContain('选择文件');
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'read', ok: false, code: 'timeout' })
     );
+  });
+
+  it('passes the client stop message to the model and asks before retrying', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      stopped: true,
+      message: '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('页面被再次关闭');
+    expect(result.response).toContain('询问用户');
+    expect(result.response).not.toContain('请先重新读取页面');
   });
 
   it('does not enqueue when the user already pressed stop', async () => {
@@ -617,6 +635,38 @@ describe('desktop browser operation executor', () => {
 
     expect(result.response).toContain('停止');
     expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('asks the user before continuing after the page was closed twice', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'page_closed_twice',
+      stopped: true,
+      message: '页面被再次关闭，我已停止自动重开。'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('询问用户');
+    expect(result.response).toContain('是否继续');
+    expect(result.response).not.toContain('操作已被桌面客户端停止');
+  });
+
+  it('tells the model to resume from the interrupted step after a page error', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'page_error',
+      snapshot
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('重新读取页面');
+    expect(result.response).toContain('从中断的步骤继续');
   });
 
   it('maps a failed desktop result to actionable Chinese guidance', async () => {

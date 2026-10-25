@@ -5,6 +5,7 @@ import { NextAPI } from '@/service/middleware/entry';
 import { parseApiInput } from '@fastgpt/service/common/zod/requestParseError';
 import {
   authenticateDesktopDevice,
+  clearDesktopDeviceBusy,
   saveDesktopCommandResult
 } from '@fastgpt/service/support/desktopCommand/store';
 import type { SubmitDesktopCommandResultResponse } from '@fastgpt/global/support/desktopCommand/type';
@@ -93,6 +94,8 @@ async function handler(req: ApiRequestProps): Promise<SubmitDesktopCommandResult
     commandId: body.commandId,
     result: body.result
   });
+  // 结果已回传，客户端马上恢复长轮询，执行中标记不再需要
+  await clearDesktopDeviceBusy(body.deviceId);
 
   return { accepted };
 }

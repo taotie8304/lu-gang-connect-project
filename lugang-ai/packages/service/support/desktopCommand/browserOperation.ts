@@ -227,7 +227,9 @@ const guidanceForCode = (code?: string): string | undefined => {
     case 'verification_failed':
       return '操作后没有检测到预期变化。请先重新读取页面，确认是否已经成功。';
     case 'page_error':
-      return '页面加载失败或已被关闭。桌面客户端会尝试恢复；如果仍未恢复，请让用户重新打开页面。';
+      return '页面加载失败或已被关闭。桌面客户端会尝试自动恢复；请先重新读取页面确认已经恢复，再从中断的步骤继续。如果页面仍未恢复，请让用户重新打开页面后再继续。';
+    case 'page_closed_twice':
+      return '页面被连续关闭两次，本次操作已停止。请先询问用户是否继续，得到用户确认后再重新打开页面继续操作，不要自己重试。';
     case 'sensitive_blocked':
       return '该操作涉及密码、验证码、银行卡或支付信息，必须由用户本人手动完成。';
     case 'high_risk_blocked':
@@ -497,7 +499,7 @@ export const createDesktopBrowserOperationExecutor = ({
 
     if (!result) {
       return finish({
-        response: `桌面客户端在 ${Math.round(timeoutMs / 1000)} 秒内没有返回结果。请确认客户端仍在前台运行，然后重试。`,
+        response: `桌面客户端在 ${Math.round(timeoutMs / 1000)} 秒内没有返回结果。如果系统正在等你确认操作或选择文件，请先完成确认或选择文件；否则请让用户确认桌面客户端仍在前台运行，然后重试。`,
         action,
         deviceId,
         url: requestUrl,
@@ -520,7 +522,7 @@ export const createDesktopBrowserOperationExecutor = ({
       const guidance =
         guidanceForCode(result.code) ??
         (result.stopped
-          ? '操作已被桌面客户端停止。请先重新读取页面，确认当前状态。'
+          ? `${result.message ?? '操作已被桌面客户端停止。'}\n\n请先询问用户接下来怎么做，得到确认后再继续，不要自行重试。`
           : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
       const message = `${prefix}${guidance}${snapshotBlock}`;
 

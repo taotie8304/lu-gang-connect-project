@@ -34,5 +34,15 @@ export const DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS =
 export const DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS =
   DESKTOP_BROWSER_CONFIRM_TIMEOUT_MS + DESKTOP_BROWSER_RESULT_TIMEOUT_MS;
 
+/**
+ * 指令被客户端取走后到回传结果之前不会再有长轮询请求，心跳会自然过期。
+ * 执行期间用独立标记保持在线，窗口与结果等待上限对齐并留出回传余量。
+ */
+export const DESKTOP_BUSY_TTL_MS = DESKTOP_BROWSER_RESULT_TIMEOUT_MS + 30_000;
+export const DESKTOP_BUSY_LONG_TTL_MS = DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS + 30_000;
+
+export const getDesktopCommandBusyTtlMs = (action?: string) =>
+  action === 'click' || action === 'upload' ? DESKTOP_BUSY_LONG_TTL_MS : DESKTOP_BUSY_TTL_MS;
+
 /** 会话级浏览器续跑状态保留 10 分钟，与设计文档一致 */
 export const DESKTOP_BROWSER_RESUME_TTL_MS = 10 * 60 * 1000;
