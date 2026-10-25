@@ -13,12 +13,9 @@ import type { CssRect } from '../shared/geometry';
 
 const api = {
   isAvailable: () => true,
-  getVersion: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.getVersion) as Promise<DesktopVersionInfo>,
-  openPanel: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.openPanel) as Promise<DesktopBrowserState>,
-  closePanel: () =>
-    ipcRenderer.invoke(IPC_CHANNELS.closePanel) as Promise<DesktopBrowserState>,
+  getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.getVersion) as Promise<DesktopVersionInfo>,
+  openPanel: () => ipcRenderer.invoke(IPC_CHANNELS.openPanel) as Promise<DesktopBrowserState>,
+  closePanel: () => ipcRenderer.invoke(IPC_CHANNELS.closePanel) as Promise<DesktopBrowserState>,
   getState: () => ipcRenderer.invoke(IPC_CHANNELS.getState) as Promise<DesktopBrowserState>,
   setBounds: (rect: CssRect) => ipcRenderer.send(IPC_CHANNELS.setBounds, rect),
   setVisible: (visible: boolean) => ipcRenderer.send(IPC_CHANNELS.setVisible, visible),
@@ -28,7 +25,10 @@ const api = {
   goForward: () => ipcRenderer.invoke(IPC_CHANNELS.goForward) as Promise<boolean>,
   tabs: {
     create: (url?: string) =>
-      ipcRenderer.invoke(IPC_CHANNELS.tabCreate, url ? { url } : undefined) as Promise<DesktopBrowserState>,
+      ipcRenderer.invoke(
+        IPC_CHANNELS.tabCreate,
+        url ? { url } : undefined
+      ) as Promise<DesktopBrowserState>,
     switch: (id: number) =>
       ipcRenderer.invoke(IPC_CHANNELS.tabSwitch, id) as Promise<DesktopBrowserState>,
     close: (id: number) =>
@@ -58,11 +58,38 @@ const api = {
     }
   },
   session: {
-    sync: () =>
-      ipcRenderer.invoke(IPC_CHANNELS.sessionSync) as Promise<DesktopSessionSyncResponse>,
+    sync: () => ipcRenderer.invoke(IPC_CHANNELS.sessionSync) as Promise<DesktopSessionSyncResponse>,
     logout: () => ipcRenderer.invoke(IPC_CHANNELS.sessionLogout) as Promise<void>
   },
+  // 鲁港通 - 自绘标题栏的窗口按钮；网页端据此判定当前客户端是否支持去边框标题栏
+  windowControls: {
+    minimize: () => {
+      void ipcRenderer.invoke(IPC_CHANNELS.windowMinimize);
+    },
+    toggleMaximize: () => ipcRenderer.invoke(IPC_CHANNELS.windowToggleMaximize) as Promise<boolean>,
+    isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.windowIsMaximized) as Promise<boolean>,
+    close: () => {
+      void ipcRenderer.invoke(IPC_CHANNELS.windowClose);
+    },
+    onMaximizeChange: (callback: (maximized: boolean) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, maximized: boolean) =>
+        callback(maximized);
+      ipcRenderer.on(IPC_CHANNELS.windowMaximizeChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.windowMaximizeChanged, listener);
+      };
+    }
+  },
   retryLoad: () => ipcRenderer.send(IPC_CHANNELS.retryLoad)
+};
+
+// 鲁港通 - 自绘标题栏占位：首帧就抬升网页内容，避免加载完成后再整体下移
+const TITLE_BAR_HEIGHT = '36px';
+const applyTitleBarHeight = () => {
+  const root = document.documentElement;
+  if (!root) return false;
+  root.style.setProperty('--lugang-titlebar-height', TITLE_BAR_HEIGHT);
+  return true;
 };
 
 // 鲁港通 - 只在应用源页面暴露桌面桥：登录跳转的第三方 OAuth 页面同样会加载本 preload
@@ -72,4 +99,7 @@ const isAppFrame = window.location.protocol === 'file:' || window.location.origi
 
 if (isAppFrame) {
   contextBridge.exposeInMainWorld('lugangDesktop', api);
+  if (!applyTitleBarHeight()) {
+    document.addEventListener('DOMContentLoaded', applyTitleBarHeight, { once: true });
+  }
 }

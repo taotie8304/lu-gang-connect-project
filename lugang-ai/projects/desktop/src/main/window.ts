@@ -9,6 +9,7 @@ import {
 } from './navigation';
 import { installNavigationGuard } from './navigationGuard';
 import { decideMainWindowPermission } from './mainWindowPermissions';
+import { createWindowFrameOptions } from './windowChrome';
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -50,6 +51,8 @@ export const createMainWindow = ({
   const height = Math.min(stored.height, workArea.height);
 
   const window = new BrowserWindow({
+    // 鲁港通 - Windows 去掉原生标题栏，改由网页渲染（标题栏能力缺失的老网页仍有 Alt+F4 / 托盘退出）
+    ...createWindowFrameOptions(process.platform),
     width,
     height,
     ...(restorePosition && stored.x !== undefined && stored.y !== undefined

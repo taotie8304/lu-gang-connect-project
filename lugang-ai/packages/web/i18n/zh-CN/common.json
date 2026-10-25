@@ -1363,5 +1363,11 @@
   "voucher_source_admin": "管理员发放",
   "voucher_pay_real_tip": "实付 ¥{{amount}}",
   "voucher_confirm_pay": "确认支付",
-  "voucher_confirm_free": "确认兑换"
+  "voucher_confirm_free": "确认兑换",
+  "desktop_window_minimize": "最小化",
+  "desktop_window_maximize": "最大化",
+  "desktop_window_restore": "还原",
+  "desktop_window_close": "关闭",
+  "desktop_sidebar_collapse": "收起侧栏",
+  "desktop_sidebar_expand": "展开侧栏"
 }

@@ -25,7 +25,12 @@ export const IPC_CHANNELS = {
   aiStatusChanged: 'lugang:ai-status-changed',
   sessionSync: 'lugang:session-sync',
   sessionLogout: 'lugang:session-logout',
-  confirmDecision: 'lugang:confirm-decision'
+  confirmDecision: 'lugang:confirm-decision',
+  windowMinimize: 'lugang:window-minimize',
+  windowToggleMaximize: 'lugang:window-toggle-maximize',
+  windowIsMaximized: 'lugang:window-is-maximized',
+  windowClose: 'lugang:window-close',
+  windowMaximizeChanged: 'lugang:window-maximize-changed'
 } as const;
 
 export type DesktopTab = { id: number; title: string; url: string; current: boolean };

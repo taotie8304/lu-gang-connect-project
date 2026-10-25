@@ -1363,5 +1363,11 @@
   "voucher_source_admin": "管理員發放",
   "voucher_pay_real_tip": "實付 ¥{{amount}}",
   "voucher_confirm_pay": "確認支付",
-  "voucher_confirm_free": "確認兌換"
+  "voucher_confirm_free": "確認兌換",
+  "desktop_window_minimize": "最小化",
+  "desktop_window_maximize": "最大化",
+  "desktop_window_restore": "還原",
+  "desktop_window_close": "關閉",
+  "desktop_sidebar_collapse": "收起側欄",
+  "desktop_sidebar_expand": "展開側欄"
 }

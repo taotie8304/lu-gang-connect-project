@@ -20,6 +20,7 @@ import type { BrowserManager } from './browser/manager';
 import type { AiController } from './ai/controller';
 import type { DeviceChannel } from './ai/deviceChannel';
 import type { AiCommand } from './ai/protocol';
+import type { WindowControls } from './windowChrome';
 
 type RegisterIpcOptions = {
   mainWindow: BrowserWindow;
@@ -28,6 +29,7 @@ type RegisterIpcOptions = {
   browser: BrowserManager;
   ai: AiController;
   deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
+  windowControls: WindowControls;
 };
 
 const INVALID_PAYLOAD = '请求参数无效，请刷新页面后重试';
@@ -39,7 +41,8 @@ export const registerIpc = ({
   appVersion,
   browser,
   ai,
-  deviceChannel
+  deviceChannel,
+  windowControls
 }: RegisterIpcOptions) => {
   const appOrigin = new URL(appUrl).origin;
 
@@ -125,12 +128,25 @@ export const registerIpc = ({
   handle(IPC_CHANNELS.sessionSync, () => deviceChannel.syncSession());
   handle(IPC_CHANNELS.sessionLogout, () => deviceChannel.clearSession());
 
+  // 鲁港通 - 自绘标题栏的窗口按钮：全部走主窗口校验，关闭仍复用收进托盘策略
+  handle(IPC_CHANNELS.windowMinimize, () => windowControls.minimize());
+  handle(IPC_CHANNELS.windowToggleMaximize, () => windowControls.toggleMaximize());
+  handle(IPC_CHANNELS.windowIsMaximized, () => windowControls.isMaximized());
+  handle(IPC_CHANNELS.windowClose, () => windowControls.close());
+
   // 鲁港通 - 控制器状态变化实时推送给网页端，停止按钮与工作状态依赖此通道
   const unsubscribe = ai.subscribe((state) => {
     if (mainWindow.isDestroyed()) return;
     mainWindow.webContents.send(IPC_CHANNELS.aiStatusChanged, state);
   });
   mainWindow.on('closed', unsubscribe);
+
+  // 鲁港通 - 最大化/还原（含系统贴边与双击标题栏）同步给标题栏按钮图标
+  const unsubscribeMaximize = windowControls.subscribe((maximized) => {
+    if (mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send(IPC_CHANNELS.windowMaximizeChanged, maximized);
+  });
+  mainWindow.on('closed', unsubscribeMaximize);
 
   listen(IPC_CHANNELS.setBounds, (payload) => browser.setBounds(payload as CssRect), cssRectSchema);
   listen(IPC_CHANNELS.setVisible, (payload) => browser.setVisible(payload as boolean), booleanSchema);

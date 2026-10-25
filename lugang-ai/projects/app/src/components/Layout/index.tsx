@@ -188,7 +188,14 @@ const Layout = ({ children }: { children: JSX.Element }) => {
               <Auth>{children}</Auth>
             ) : (
               <Auth>
-                <Box h={'100%'} position={'fixed'} left={0} top={0} w={navbarWidth}>
+                {/* 鲁港通 - 固定导航栏让出桌面自绘标题栏高度（网页端变量为 0） */}
+                <Box
+                  h={'calc(100% - var(--lugang-titlebar-height, 0px))'}
+                  position={'fixed'}
+                  left={0}
+                  top={'var(--lugang-titlebar-height, 0px)'}
+                  w={navbarWidth}
+                >
                   <Navbar unread={unread} />
                 </Box>
                 <Box h={'100%'} ml={navbarWidth} overflow={'overlay'}>

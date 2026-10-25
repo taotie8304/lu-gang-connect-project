@@ -869,6 +869,10 @@ export const theme = extendTheme({
         overflow: 'hidden',
         fontSize: '16px'
       },
+      // 鲁港通 - 桌面客户端自绘标题栏占位：浏览器里变量为空，保持 0
+      body: {
+        paddingTop: 'var(--lugang-titlebar-height, 0px)'
+      },
       a: {
         color: 'primary.600'
       },

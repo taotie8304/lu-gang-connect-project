@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Box, Button, Flex, Input, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useRouter } from 'next/router';
@@ -18,6 +18,13 @@ import UserAvatarPopover from '@/pageComponents/chat/UserAvatarPopover';
 import { ChatSidebarPaneEnum } from '@/pageComponents/chat/constants';
 import SidebarHistoryList from './SidebarHistoryList';
 import { LG, LG_GRID_STYLE } from '@/pageComponents/chat/lugangTheme';
+import {
+  hasDesktopTitleBar,
+  setDesktopSidebarControl,
+  subscribeDesktopTitleBar
+} from '@/web/common/system/desktopShell';
+
+const getServerDesktopTitleBar = () => false;
 
 type Props = {
   activeAppId: string;
@@ -77,6 +84,19 @@ const ChatSlider = ({ activeAppId }: Props) => {
   const onChangeChatId = useContextSelector(ChatContext, (v) => v.onChangeChatId);
   const clearChatRecords = useContextSelector(ChatItemContext, (v) => v.clearChatRecords);
   const setCiteModalData = useContextSelector(ChatItemContext, (v) => v.setCiteModalData);
+
+  // 鲁港通 - 方案 A：桌面自绘标题栏已承载品牌与折叠按钮，侧栏不再重复展示
+  const desktopTitleBar = useSyncExternalStore(
+    subscribeDesktopTitleBar,
+    hasDesktopTitleBar,
+    getServerDesktopTitleBar
+  );
+
+  useEffect(() => {
+    if (!desktopTitleBar) return;
+    setDesktopSidebarControl({ collapsed: isCollapsed, toggle: onTriggerCollapse });
+    return () => setDesktopSidebarControl(undefined);
+  }, [desktopTitleBar, isCollapsed, onTriggerCollapse]);
 
   const isRoot = userInfo?.username === 'root';
   const isAdmin = !!userInfo?.team?.permission.hasManagePer;
@@ -168,11 +188,13 @@ const ChatSlider = ({ activeAppId }: Props) => {
           pb={'12px'}
           gap={2}
         >
-          <MyTooltip label={t('chat:sidebar.expand')}>
-            <Box onClick={onTriggerCollapse}>
-              <BrandSeal />
-            </Box>
-          </MyTooltip>
+          {!desktopTitleBar && (
+            <MyTooltip label={t('chat:sidebar.expand')}>
+              <Box onClick={onTriggerCollapse}>
+                <BrandSeal />
+              </Box>
+            </MyTooltip>
+          )}
 
           <MyTooltip label={t('chat:sidebar.new_chat')}>
             <Flex
@@ -250,7 +272,9 @@ const ChatSlider = ({ activeAppId }: Props) => {
                   justifyContent={'center'}
                   cursor={'pointer'}
                   color={pane === ChatSidebarPaneEnum.ALL_APPS ? LG.mountain : '#5D7288'}
-                  bg={pane === ChatSidebarPaneEnum.ALL_APPS ? 'rgba(255,255,255,0.9)' : 'transparent'}
+                  bg={
+                    pane === ChatSidebarPaneEnum.ALL_APPS ? 'rgba(255,255,255,0.9)' : 'transparent'
+                  }
                   _hover={{ bg: 'rgba(255,255,255,0.8)' }}
                   onClick={handlers.openAllApps}
                 >
@@ -298,49 +322,51 @@ const ChatSlider = ({ activeAppId }: Props) => {
         pb={'12px'}
         gap={'12px'}
       >
-        {/* 品牌区 */}
-        <Flex alignItems={'center'} gap={'10px'} px={'6px'} pt={'2px'} pb={'6px'}>
-          <BrandSeal onClick={handlers.openHome} />
-          <Box minW={0} flex={'1 0 0'} cursor={'pointer'} onClick={handlers.openHome}>
-            <Text
-              fontSize={'15px'}
-              fontWeight={600}
-              letterSpacing={'0.12em'}
-              color={LG.ink}
-              whiteSpace={'nowrap'}
-            >
-              鲁港通
-            </Text>
-            <Text
-              fontSize={'9.5px'}
-              letterSpacing={'0.34em'}
-              color={'#4F80B4'}
-              mt={'2px'}
-              whiteSpace={'nowrap'}
-            >
-              智联鲁港
-            </Text>
-          </Box>
-          <MyTooltip label={t('chat:sidebar.collapse')}>
-            <Flex
-              w={'26px'}
-              h={'26px'}
-              flexShrink={0}
-              borderRadius={'7px'}
-              border={'1px solid'}
-              borderColor={'rgba(54,101,150,0.18)'}
-              bg={'rgba(255,255,255,0.6)'}
-              color={'#5A728A'}
-              alignItems={'center'}
-              justifyContent={'center'}
-              cursor={'pointer'}
-              _hover={{ bg: '#FFFFFF' }}
-              onClick={onTriggerCollapse}
-            >
-              <MyIcon name={'core/chat/sidebar/fold'} w={'13px'} h={'13px'} />
-            </Flex>
-          </MyTooltip>
-        </Flex>
+        {/* 品牌区：桌面客户端由窗口标题栏承载品牌与折叠，这里不再重复 */}
+        {!desktopTitleBar && (
+          <Flex alignItems={'center'} gap={'10px'} px={'6px'} pt={'2px'} pb={'6px'}>
+            <BrandSeal onClick={handlers.openHome} />
+            <Box minW={0} flex={'1 0 0'} cursor={'pointer'} onClick={handlers.openHome}>
+              <Text
+                fontSize={'15px'}
+                fontWeight={600}
+                letterSpacing={'0.12em'}
+                color={LG.ink}
+                whiteSpace={'nowrap'}
+              >
+                鲁港通
+              </Text>
+              <Text
+                fontSize={'9.5px'}
+                letterSpacing={'0.34em'}
+                color={'#4F80B4'}
+                mt={'2px'}
+                whiteSpace={'nowrap'}
+              >
+                智联鲁港
+              </Text>
+            </Box>
+            <MyTooltip label={t('chat:sidebar.collapse')}>
+              <Flex
+                w={'26px'}
+                h={'26px'}
+                flexShrink={0}
+                borderRadius={'7px'}
+                border={'1px solid'}
+                borderColor={'rgba(54,101,150,0.18)'}
+                bg={'rgba(255,255,255,0.6)'}
+                color={'#5A728A'}
+                alignItems={'center'}
+                justifyContent={'center'}
+                cursor={'pointer'}
+                _hover={{ bg: '#FFFFFF' }}
+                onClick={onTriggerCollapse}
+              >
+                <MyIcon name={'core/chat/sidebar/fold'} w={'13px'} h={'13px'} />
+              </Flex>
+            </MyTooltip>
+          </Flex>
+        )}
 
         {/* 新对话 */}
         <Button

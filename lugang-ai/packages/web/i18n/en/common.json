@@ -1363,5 +1363,11 @@
   "voucher_source_admin": "Issued by admin",
   "voucher_pay_real_tip": "Pay ¥{{amount}}",
   "voucher_confirm_pay": "Confirm payment",
-  "voucher_confirm_free": "Confirm redemption"
+  "voucher_confirm_free": "Confirm redemption",
+  "desktop_window_minimize": "Minimize",
+  "desktop_window_maximize": "Maximize",
+  "desktop_window_restore": "Restore",
+  "desktop_window_close": "Close",
+  "desktop_sidebar_collapse": "Collapse sidebar",
+  "desktop_sidebar_expand": "Expand sidebar"
 }

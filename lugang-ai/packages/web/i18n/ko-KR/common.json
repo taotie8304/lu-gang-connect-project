@@ -1359,5 +1359,11 @@
   "voucher_source_admin": "관리자 발급",
   "voucher_pay_real_tip": "실결제 ¥{{amount}}",
   "voucher_confirm_pay": "결제 확인",
-  "voucher_confirm_free": "교환 확인"
+  "voucher_confirm_free": "교환 확인",
+  "desktop_window_minimize": "최소화",
+  "desktop_window_maximize": "최대화",
+  "desktop_window_restore": "이전 크기로",
+  "desktop_window_close": "닫기",
+  "desktop_sidebar_collapse": "사이드바 접기",
+  "desktop_sidebar_expand": "사이드바 펼치기"
 }

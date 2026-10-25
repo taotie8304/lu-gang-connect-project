@@ -54,8 +54,9 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
       .catch(() => undefined);
   }, []);
 
+  // 鲁港通 - 桌面标题栏占住顶部 36px：高度跟随可视区用 100%，避免底部被裁掉
   return (
-    <Flex minH="100vh" w="full" bg="#06121F" overflow="hidden" userSelect="none">
+    <Flex minH="100%" w="full" bg="#06121F" overflow="hidden" userSelect="none">
       {/* 左：水墨长卷艺术区 */}
       <Box
         position="relative"
@@ -187,7 +188,7 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
           direction="column"
           justifyContent="space-between"
           h="full"
-          minH="100vh"
+          minH="100%"
           px="44px"
           py="36px"
         >
@@ -360,7 +361,14 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
           bgImage="linear-gradient(180deg, transparent, rgba(200,169,106,0.55) 30%, rgba(200,169,106,0.55) 70%, transparent)"
         />
 
-        <Box position="absolute" top="18px" right="22px" zIndex={2} borderRadius="md" overflow="hidden">
+        <Box
+          position="absolute"
+          top="18px"
+          right="22px"
+          zIndex={2}
+          borderRadius="md"
+          overflow="hidden"
+        >
           <I18nLngSelector />
         </Box>
 

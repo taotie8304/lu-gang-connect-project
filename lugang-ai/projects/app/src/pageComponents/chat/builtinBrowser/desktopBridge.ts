@@ -48,6 +48,15 @@ export type DesktopSessionSyncResponse = {
   registered: boolean;
 };
 
+/** 自绘标题栏的窗口按钮；老客户端没有这个能力，网页端据此决定是否渲染标题栏 */
+export type DesktopWindowControls = {
+  minimize(): void;
+  toggleMaximize(): Promise<boolean>;
+  close(): void;
+  isMaximized(): Promise<boolean>;
+  onMaximizeChange(callback: (maximized: boolean) => void): () => void;
+};
+
 export type DesktopBridge = {
   isAvailable(): boolean;
   getVersion(): Promise<DesktopVersionInfo>;
@@ -77,6 +86,7 @@ export type DesktopBridge = {
     sync(): Promise<DesktopSessionSyncResponse>;
     logout(): Promise<void>;
   };
+  windowControls?: DesktopWindowControls;
   retryLoad(): void;
 };
 

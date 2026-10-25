@@ -1,0 +1,8 @@
+/* 鲁港通 - 桌面自绘标题栏：整条可拖动窗口，按钮区单独排除 */
+.bar {
+  -webkit-app-region: drag;
+}
+
+.action {
+  -webkit-app-region: no-drag;
+}

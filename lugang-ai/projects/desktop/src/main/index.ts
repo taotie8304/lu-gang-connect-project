@@ -11,6 +11,7 @@ import { createTray, type TrayController } from './tray';
 import { setupAutoUpdate } from './update';
 import { resolveAppUrl } from '../shared/url';
 import { createMainWindow } from './window';
+import { createWindowControls } from './windowChrome';
 import { parseAiAllowedHosts } from './ai/allowlist';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
@@ -103,6 +104,26 @@ if (!gotLock) {
         shouldHideOnClose: () =>
           decideWindowCloseAction({ isQuitting, hasTray: Boolean(tray) }) === 'hide-to-tray',
         onHideToTray: () => tray?.notifyHidden()
+      });
+
+      // 鲁港通 - 自绘标题栏的窗口按钮：关闭走 close，复用「收进托盘」策略
+      const main = mainWindow;
+      const windowControls = createWindowControls({
+        minimize: () => main.minimize(),
+        maximize: () => main.maximize(),
+        unmaximize: () => main.unmaximize(),
+        isMaximized: () => main.isMaximized(),
+        close: () => main.close(),
+        // 鲁港通 - 系统级最大化（贴边、双击标题栏、快捷键）同样要同步给标题栏
+        subscribeMaximize: (listener) => {
+          main.on('maximize', listener);
+          main.on('unmaximize', listener);
+          return () => {
+            if (main.isDestroyed()) return;
+            main.removeListener('maximize', listener);
+            main.removeListener('unmaximize', listener);
+          };
+        }
       });
 
       const browser = new BrowserManager({
@@ -226,7 +247,8 @@ if (!gotLock) {
         appVersion: app.getVersion(),
         browser,
         ai,
-        deviceChannel: activeDeviceChannel
+        deviceChannel: activeDeviceChannel,
+        windowControls
       });
       setupAutoUpdate({ window: mainWindow, onBeforeQuit: markQuitting });
 

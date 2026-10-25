@@ -15,14 +15,60 @@
       }
       body {
         display: flex;
-        align-items: center;
-        justify-content: center;
+        flex-direction: column;
         font-family:
           'Microsoft YaHei', 'PingFang SC', system-ui, -apple-system, sans-serif;
         background: #f7f8fa;
         color: #1f2937;
       }
+      .titlebar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex: 0 0 36px;
+        height: 36px;
+        background: #ffffff;
+        border-bottom: 1px solid #e5e7eb;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .brand {
+        padding-left: 14px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        color: #6b7280;
+      }
+      .window-actions {
+        display: flex;
+        height: 100%;
+        -webkit-app-region: no-drag;
+      }
+      .window-actions button {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 46px;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        color: #4b5563;
+        cursor: pointer;
+      }
+      .window-actions button:hover {
+        background: #eef0f3;
+      }
+      .window-actions button.close:hover {
+        background: #c0483f;
+        color: #fff;
+      }
       main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         text-align: center;
         padding: 32px;
       }
@@ -35,7 +81,7 @@
         color: #6b7280;
         margin: 0 0 24px;
       }
-      button {
+      .retry {
         font-size: 14px;
         padding: 8px 20px;
         border: 0;
@@ -44,21 +90,69 @@
         color: #fff;
         cursor: pointer;
       }
-      button:hover {
+      .retry:hover {
         background: #1d4ed8;
       }
     </style>
   </head>
   <body>
+    <header class="titlebar">
+      <span class="brand">鲁港通</span>
+      <div class="window-actions">
+        <button id="minimize" type="button" title="最小化" aria-label="最小化">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 5h6" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <button id="maximize" type="button" title="最大化" aria-label="最大化">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <rect x="2.5" y="2.5" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1" />
+          </svg>
+        </button>
+        <button id="close" class="close" type="button" title="关闭" aria-label="关闭">
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+            <path d="M2 2l6 6M8 2l-6 6" stroke="currentColor" stroke-width="1.2" />
+          </svg>
+        </button>
+      </div>
+    </header>
     <main>
       <h1>无法连接到鲁港通</h1>
       <p>请检查网络连接后重试。如仍无法打开，请联系管理员。</p>
-      <button id="retry" type="button">重试</button>
+      <button id="retry" class="retry" type="button">重试</button>
     </main>
     <script>
+      var controls = window.lugangDesktop && window.lugangDesktop.windowControls;
+
       document.getElementById('retry').addEventListener('click', function () {
         if (window.lugangDesktop) window.lugangDesktop.retryLoad();
       });
+
+      if (controls) {
+        var maximizeButton = document.getElementById('maximize');
+        var maximized = false;
+        var renderMaximize = function (next) {
+          maximized = next;
+          maximizeButton.title = next ? '还原' : '最大化';
+          maximizeButton.setAttribute('aria-label', maximizeButton.title);
+          maximizeButton.innerHTML = next
+            ? '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="2" y="3.5" width="4.5" height="4.5" fill="none" stroke="currentColor" stroke-width="1"/><path d="M3.5 3.5V2h4.5v4.5H6.5" fill="none" stroke="currentColor" stroke-width="1"/></svg>'
+            : '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><rect x="2.5" y="2.5" width="5" height="5" fill="none" stroke="currentColor" stroke-width="1"/></svg>';
+        };
+
+        document.getElementById('minimize').addEventListener('click', function () {
+          controls.minimize();
+        });
+        maximizeButton.addEventListener('click', function () {
+          controls.toggleMaximize();
+        });
+        document.getElementById('close').addEventListener('click', function () {
+          controls.close();
+        });
+
+        controls.onMaximizeChange(renderMaximize);
+        controls.isMaximized().then(renderMaximize);
+      }
     </script>
   </body>
 </html>

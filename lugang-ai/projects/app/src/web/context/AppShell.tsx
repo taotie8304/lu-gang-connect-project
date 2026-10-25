@@ -16,6 +16,7 @@ import { appClientEnv } from '@/web/common/system/env';
 import ClientI18nBoundary from '@fastgpt/web/i18n/ClientI18nBoundary';
 import ClientI18nGate from '@fastgpt/web/i18n/ClientI18nGate';
 import { LANG_KEY } from '@fastgpt/web/i18n/utils';
+import DesktopTitleBar from '@/components/Layout/DesktopTitleBar';
 
 type NextPageWithLayout = NextPage & {
   setLayout?: (page: ReactElement) => JSX.Element;
@@ -66,6 +67,8 @@ const AppContent = ({ Component, pageProps, renderPage }: AppPropsWithLayout) =>
   return (
     <>
       {showHead && <NextHead title={title} desc={headDesc} icon={headIcon} />}
+      {/* 鲁港通 - 桌面客户端自绘标题栏；浏览器与老客户端内部不渲染 */}
+      <DesktopTitleBar />
       {scripts?.map((item, i) => (
         <Script key={i} strategy="lazyOnload" {...item} />
       ))}
