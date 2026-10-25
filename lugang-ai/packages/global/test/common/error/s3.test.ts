@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { parseS3UploadError } from '@fastgpt/global/common/error/s3';
+import { assertS3UploadResponseOk, parseS3UploadError } from '@fastgpt/global/common/error/s3';
 
 const createTranslator = () =>
   vi.fn((key: string, params?: Record<string, string>) =>
@@ -245,5 +245,111 @@ describe('parseS3UploadError', () => {
 
     expect(result).toBe('common:upload_file_error');
     expect(t).toHaveBeenCalledWith('common:upload_file_error');
+  });
+
+  it('should handle gateway blocked response error', () => {
+    const t = createTranslator();
+    const error = new Error('blocked');
+    (error as any).code = 'S3_UPLOAD_GATEWAY_BLOCKED';
+
+    const result = parseS3UploadError({ t, error });
+
+    expect(result).toBe('common:error.s3_upload_blocked');
+    expect(t).toHaveBeenCalledWith('common:error.s3_upload_blocked');
+  });
+
+  it('should handle server error page without json body', () => {
+    const t = createTranslator();
+    const result = parseS3UploadError({
+      t,
+      error: {
+        response: {
+          status: 500,
+          headers: { 'content-type': 'text/html' },
+          data: '<html><head><title>500 Internal Server Error</title></head><body></body></html>'
+        }
+      }
+    });
+
+    expect(result).toBe('common:error.s3_upload_service_unavailable');
+    expect(t).toHaveBeenCalledWith('common:error.s3_upload_service_unavailable');
+  });
+
+  it('should handle security filter page as blocked upload', () => {
+    const t = createTranslator();
+    const result = parseS3UploadError({
+      t,
+      error: {
+        response: {
+          status: 500,
+          headers: { 'content-type': 'text/html' },
+          data: '<html><body>宝塔免费WAF提醒您,Nginx缓冲区溢出</body></html>'
+        }
+      }
+    });
+
+    expect(result).toBe('common:error.s3_upload_blocked');
+    expect(t).toHaveBeenCalledWith('common:error.s3_upload_blocked');
+  });
+
+  it('should handle gateway status without response body', () => {
+    const t = createTranslator();
+    const result = parseS3UploadError({
+      t,
+      error: {
+        response: {
+          status: 504
+        }
+      }
+    });
+
+    expect(result).toBe('common:error.s3_upload_service_unavailable');
+    expect(t).toHaveBeenCalledWith('common:error.s3_upload_service_unavailable');
+  });
+
+  it('should explain HEIC photos are unsupported', () => {
+    const t = createTranslator();
+    const result = parseS3UploadError({
+      t,
+      filename: 'IMG_0042.HEIC',
+      error: {
+        response: {
+          data: {
+            statusText: 'InvalidUploadFileType'
+          }
+        }
+      }
+    });
+
+    expect(result).toBe('common:error.s3_upload_heic_unsupported');
+    expect(t).toHaveBeenCalledWith('common:error.s3_upload_heic_unsupported');
+  });
+});
+
+describe('assertS3UploadResponseOk', () => {
+  it('should accept proxy json success response', () => {
+    expect(() =>
+      assertS3UploadResponseOk({
+        data: { code: 200, statusText: '', message: '', data: { success: true } },
+        headers: { 'content-type': 'application/json' }
+      })
+    ).not.toThrow();
+  });
+
+  it('should accept empty success response', () => {
+    expect(() => assertS3UploadResponseOk({ data: '', headers: {} })).not.toThrow();
+  });
+
+  it('should reject html page returned with success status', () => {
+    expect(() =>
+      assertS3UploadResponseOk({
+        data: '<html><body>宝塔免费WAF提醒您,Nginx缓冲区溢出</body></html>',
+        headers: { 'content-type': 'text/html' }
+      })
+    ).toThrow();
+  });
+
+  it('should reject html body without content type', () => {
+    expect(() => assertS3UploadResponseOk({ data: '<!DOCTYPE html><html></html>' })).toThrow();
   });
 });

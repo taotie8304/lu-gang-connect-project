@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { parseS3UploadError } from '@fastgpt/global/common/error/s3';
+import { assertS3UploadResponseOk, parseS3UploadError } from '@fastgpt/global/common/error/s3';
 import { SINGLE_REQUEST_TIMEOUT } from './constants';
 import type { S3FileUploaderSingleParams } from './types';
 import { isUploadAbortError, throwIfAborted } from './utils';
@@ -10,7 +10,7 @@ export const uploadSingleFile = async (params: S3FileUploaderSingleParams): Prom
     throwIfAborted(params.signal);
     params.onProgress?.(0, params.file.size);
 
-    await axios.put(params.url, params.file, {
+    const response = await axios.put(params.url, params.file, {
       headers: {
         ...params.headers
       },
@@ -20,12 +20,18 @@ export const uploadSingleFile = async (params: S3FileUploaderSingleParams): Prom
       signal: params.signal,
       timeout: SINGLE_REQUEST_TIMEOUT
     });
+    assertS3UploadResponseOk(response);
   } catch (error) {
     if (isUploadAbortError(error, params.signal)) {
       throw error;
     }
 
-    throw parseS3UploadError({ t: params.t, error, maxSize: params.maxSize });
+    throw parseS3UploadError({
+      t: params.t,
+      error,
+      maxSize: params.maxSize,
+      filename: params.file.name
+    });
   }
 
   params.onProgress?.(params.file.size, params.file.size);

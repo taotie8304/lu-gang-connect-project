@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { parseS3UploadError } from '@fastgpt/global/common/error/s3';
+import {
+  assertS3UploadResponseOk,
+  parseS3UploadError,
+  S3UploadGatewayBlockedCode
+} from '@fastgpt/global/common/error/s3';
 import { MULTIPART_REQUEST_TIMEOUT, MULTIPART_RETRY_BASE_DELAY } from './constants';
 import type { MultipartUploadPart, S3FileUploaderMultipartParams } from './types';
 import {
@@ -56,6 +60,7 @@ const uploadMultipartPartWithRetry = async ({
         signal,
         timeout: MULTIPART_REQUEST_TIMEOUT
       });
+      assertS3UploadResponseOk(response);
       const etag = response.data?.data?.etag ?? response.data?.etag;
 
       if (typeof etag !== 'string' || !etag) {
@@ -65,7 +70,9 @@ const uploadMultipartPartWithRetry = async ({
       onProgress(size);
       return { partNumber, etag };
     } catch (error) {
-      if (isUploadAbortError(error, signal) || attempt >= maxRetry) {
+      const isGatewayBlocked =
+        (error as { code?: string } | undefined)?.code === S3UploadGatewayBlockedCode;
+      if (isUploadAbortError(error, signal) || isGatewayBlocked || attempt >= maxRetry) {
         throw error;
       }
 
@@ -211,7 +218,12 @@ export const uploadMultipartFile = async (params: S3FileUploaderMultipartParams)
       throw uploadError;
     }
 
-    throw parseS3UploadError({ t: params.t, error: uploadError, maxSize: params.maxSize });
+    throw parseS3UploadError({
+      t: params.t,
+      error: uploadError,
+      maxSize: params.maxSize,
+      filename: params.file.name
+    });
   } finally {
     params.signal?.removeEventListener('abort', onExternalAbort);
   }
