@@ -2,7 +2,6 @@ import ChatBox from '@/components/core/chat/ChatContainer/ChatBox';
 import { Flex, Box, IconButton } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import SideBar from '@/components/SideBar';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
 import { useContextSelector } from 'use-context-selector';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
@@ -18,9 +17,6 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import NextHead from '@/components/common/NextHead';
 import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
 import { ChatSidebarPaneEnum } from '../constants';
-import ChatHistorySidebar, {
-  CHAT_HISTORY_SLIDER_PC_WIDTH
-} from '@/pageComponents/chat/slider/ChatSliderSidebar';
 import ChatSliderMobileDrawer from '@/pageComponents/chat/slider/ChatSliderMobileDrawer';
 import dynamic from 'next/dynamic';
 import { getNanoid } from '@fastgpt/global/common/string/tools';
@@ -68,7 +64,6 @@ const AppChatWindow = () => {
   const mobileHeaderTitle = isCurrentChatReady
     ? chatBoxData.app.name
     : t('common:core.chat.New Chat');
-  const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
   const setChatBoxData = useContextSelector(ChatItemContext, (v) => v.setChatBoxData);
   const resetVariables = useContextSelector(ChatItemContext, (v) => v.resetVariables);
   const clearChatRecords = useContextSelector(ChatItemContext, (v) => v.clearChatRecords);
@@ -188,17 +183,8 @@ const AppChatWindow = () => {
         icon={isCurrentChatReady ? chatBoxData.app.avatar : undefined}
       />
 
-      {/* show history slider */}
-      {isPc ? (
-        <SideBar
-          w={`0 0 ${CHAT_HISTORY_SLIDER_PC_WIDTH}`}
-          externalTrigger={Boolean(datasetCiteData)}
-        >
-          <ChatHistorySidebar
-            menuConfirmButtonText={t('common:core.chat.Confirm to clear history')}
-          />
-        </SideBar>
-      ) : (
+      {/* 鲁港通 - PC 统一侧栏已上移到 ChatSlider，此处仅保留移动端抽屉 */}
+      {!isPc && (
         <ChatSliderMobileDrawer
           banner={chatSettings?.wideLogoUrl}
           menuConfirmButtonText={t('common:core.chat.Confirm to clear history')}

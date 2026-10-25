@@ -9,6 +9,7 @@ import HumanChatBubbleContent from './Content';
 import HumanChatBubbleEditDrawer from './EditDrawer';
 import HumanChatBubbleEditForm from './EditForm';
 import type { ChatBoxInputType } from '../../type';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 type HumanChatBubbleProps = {
   chatValue: UserChatItemValueItemType[];
@@ -70,14 +71,19 @@ const HumanChatBubble = ({
       <Box position={'relative'} w={'fit-content'} maxW={'100%'}>
         <Card
           {...MessageCardStyle}
-          bg={'primary.50'}
-          color={'myGray.900'}
+          bg={LG.userBubble}
+          color={'#1F3C54'}
           px={4}
           pt={3}
           pb={MessageCardStyle.py}
-          borderRadius={'12px'}
+          border={'1px solid'}
+          borderColor={'rgba(111,157,208,0.18)'}
+          boxShadow={'0 8px 20px rgba(78,128,178,0.16)'}
+          borderRadius={'16px 16px 4px 16px'}
           textAlign={'left'}
           maxW={'100%'}
+          fontSize={'13px'}
+          lineHeight={1.7}
         >
           <HumanChatBubbleContent chatValue={chatValue} />
           {children}

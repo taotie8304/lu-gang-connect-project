@@ -328,6 +328,12 @@ const ChatBox = ({
     [chatRecords]
   );
 
+  // 鲁港通 - 首页只要存在外部变量，输入区会换成变量表单，此时首页建议词不能直接发送
+  const hasHomeExternalVariables = useMemo(
+    () => variableList.some((item) => item.type !== VariableInputEnum.internal),
+    [variableList]
+  );
+
   const { chatForm, setValue, chatStarted, chatStartedWatch, resetInputVal } = useChatInputForm({
     sourceKey,
     chatId,
@@ -375,6 +381,16 @@ const ChatBox = ({
       return;
     }
     sendPrompt(input);
+  });
+  // 鲁港通 - 首页能力卡只填入输入框，建议词直接提问；有外部变量时统一退化为填入，
+  // 避免变量未填导致提问在变量表单校验里静默丢失。
+  const onPickHomePrompt = useMemoizedFn((text: string, mode: 'fill' | 'send') => {
+    if (mode === 'send' && !hasHomeExternalVariables) {
+      sendPromptWithDisabledGuard({ text });
+      return;
+    }
+    setValue('input', text);
+    TextareaDom.current?.focus();
   });
 
   const handleStopSettled = useMemoizedFn((status: ChatGenerateStatusEnum, completed: boolean) => {
@@ -652,7 +668,7 @@ const ChatBox = ({
   );
   const HomeChatInput = (
     <>
-      {variableList.filter((item) => item.type !== VariableInputEnum.internal).length > 0 ? (
+      {hasHomeExternalVariables ? (
         <Box w={'100%'}>
           <ChatHomeVariablesForm chatForm={chatForm} />
         </Box>
@@ -693,7 +709,7 @@ const ChatBox = ({
           {...HomeChatContentWrapperStyle}
         >
           {isPc ? (
-            <DesktopHomeLayout inputSlot={HomeChatInput} />
+            <DesktopHomeLayout inputSlot={HomeChatInput} onPickPrompt={onPickHomePrompt} />
           ) : (
             <MobileHomeLayout inputSlot={HomeChatInput} />
           )}

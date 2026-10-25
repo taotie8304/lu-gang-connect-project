@@ -32,24 +32,37 @@ const RenderProcessingCollapse = React.memo(function RenderProcessingCollapse({
       onChange={(index) => setIsExpanded(Array.isArray(index) ? index.length > 0 : index === 0)}
     >
       <AccordionItem borderTop={'none'} borderBottom={'none'} lineHeight={'24px'}>
-        <Box w={'full'} pb={'4px'} borderBottom={'1px solid'} borderBottomColor={'myGray.100'}>
+        <Box w={'full'} pb={'4px'}>
           <AccordionButton
             w={'fit-content'}
-            h={'24px'}
-            minH={'24px'}
-            display={'flex'}
+            h={'28px'}
+            minH={'28px'}
+            display={'inline-flex'}
             alignItems={'center'}
-            lineHeight={'24px'}
-            p={0}
-            bg={'transparent'}
-            border={'none'}
+            lineHeight={'28px'}
+            px={'10px'}
+            py={0}
+            borderRadius={'7px'}
+            border={'1px dashed'}
+            borderColor={'rgba(111,157,208,0.4)'}
+            bg={'rgba(231,241,251,0.7)'}
             boxShadow={'none'}
-            color={'myGray.600'}
-            _hover={{ color: 'myGray.600', bg: 'transparent' }}
-            _expanded={{ color: 'myGray.600' }}
+            color={'#4A6F92'}
+            fontSize={'11px'}
+            _hover={{ bg: 'rgba(231,241,251,0.95)', borderColor: 'rgba(111,157,208,0.6)' }}
+            _expanded={{ bg: 'rgba(231,241,251,0.95)', borderColor: 'rgba(111,157,208,0.6)' }}
           >
-            <HStack h={'24px'} lineHeight={'24px'} mr={1} spacing="0">
-              <Box fontSize={'16px'} lineHeight={'24px'}>
+            <Box
+              w={'6px'}
+              h={'6px'}
+              mr={'6px'}
+              borderRadius={'full'}
+              bg={'currentColor'}
+              opacity={0.6}
+              flexShrink={0}
+            />
+            <HStack h={'28px'} lineHeight={'28px'} spacing="0">
+              <Box>
                 {isProcessing ? t('chat:processing') : t('chat:processed')}
                 {isProcessing && label && (
                   <Box as="span">
@@ -61,7 +74,7 @@ const RenderProcessingCollapse = React.memo(function RenderProcessingCollapse({
               </Box>
             </HStack>
 
-            <AccordionIcon ml={1} w={'16px'} h={'16px'} color={'myGray.500'} />
+            <AccordionIcon ml={'4px'} w={'14px'} h={'14px'} color={'#6F9DD0'} />
           </AccordionButton>
         </Box>
         {isProcessing && !isExpanded && preview && <Box mt={2}>{preview}</Box>}

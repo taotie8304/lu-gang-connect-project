@@ -31,6 +31,7 @@ import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import type { WorkflowInteractiveResponseType } from '@fastgpt/global/core/workflow/template/system/interactive/type';
 import { ChatGenerateStatusEnum, ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const InputGuideBox = dynamic(() => import('./InputGuideBox'));
 const PLACEHOLDER_APP_NAME_TOKEN = '__APP_NAME__';
@@ -229,13 +230,13 @@ const ChatInput = ({
             whiteSpace={'pre-wrap'}
             wordBreak={'break-word'}
             boxShadow={'none !important'}
-            color={'myGray.900'}
+            color={LG.ink}
             fontWeight={400}
             fontSize={'16px'}
             letterSpacing={'0.5px'}
             w={'100%'}
             _placeholder={{
-              color: 'myGray.400',
+              color: LG.mutedSoft,
               fontSize: 'inherit',
               lineHeight: 'inherit',
               letterSpacing: 'inherit'
@@ -317,7 +318,7 @@ const ChatInput = ({
               top={0}
               h={textareaMinH}
               alignItems={'center'}
-              color={'myGray.400'}
+              color={LG.mutedSoft}
               fontSize={'16px'}
               lineHeight={textareaMinH}
               letterSpacing={'0.5px'}
@@ -363,17 +364,17 @@ const ChatInput = ({
 
   const RenderButtonGroup = useMemo(() => {
     const iconSize = {
-      w: '20px',
-      h: '20px'
+      w: '18px',
+      h: '18px'
     };
 
     return (
       <Flex
-        alignItems={'flex-start'}
+        alignItems={'center'}
         justifyContent={'space-between'}
         w={'100%'}
         mt={0}
-        h={9}
+        h={'34px'}
         gap={[0, 1]}
       >
         {/* 左侧自定义按钮组 */}
@@ -386,7 +387,7 @@ const ChatInput = ({
         {/* 右侧原有按钮组 */}
         <Flex alignItems={'center'} gap={[0, 1]}>
           {/* Attachment and Voice Group */}
-          <Flex alignItems={'center'} h={9}>
+          <Flex alignItems={'center'} h={'28px'}>
             {/* 鲁港通 - 办事浏览器入口 */}
             <BuiltinBrowserEntryButton />
 
@@ -395,19 +396,19 @@ const ChatInput = ({
               <Flex
                 alignItems={'center'}
                 justifyContent={'center'}
-                w={9}
-                h={9}
-                p={[1, 2]}
-                borderRadius={'sm'}
+                w={'28px'}
+                h={'28px'}
+                borderRadius={'8px'}
                 cursor={'pointer'}
-                _hover={{ bg: 'rgba(0, 0, 0, 0.04)' }}
+                color={LG.muted}
+                _hover={{ bg: LG.pale }}
                 onClick={(e) => {
                   e.stopPropagation();
                   onOpenSelectFile();
                 }}
               >
                 <MyTooltip label={selectFileLabel}>
-                  <MyIcon name={selectFileIcon as any} {...iconSize} color={'myGray.500'} />
+                  <MyIcon name={selectFileIcon as any} {...iconSize} color={'currentColor'} />
                 </MyTooltip>
                 <File onSelect={(files) => onSelectFile({ files })} />
               </Flex>
@@ -418,19 +419,19 @@ const ChatInput = ({
               <Flex
                 alignItems={'center'}
                 justifyContent={'center'}
-                w={9}
-                h={9}
-                p={[1, 2]}
-                borderRadius={'sm'}
+                w={'28px'}
+                h={'28px'}
+                borderRadius={'8px'}
                 cursor={'pointer'}
-                _hover={{ bg: 'rgba(0, 0, 0, 0.04)' }}
+                color={LG.muted}
+                _hover={{ bg: LG.pale }}
                 onClick={(e) => {
                   e.stopPropagation();
                   VoiceInputRef.current?.onSpeak?.();
                 }}
               >
                 <MyTooltip label={t('common:core.chat.Record')}>
-                  <MyIcon name={'core/chat/recordFill'} {...iconSize} color={'myGray.500'} />
+                  <MyIcon name={'core/chat/recordFill'} {...iconSize} color={'currentColor'} />
                 </MyTooltip>
               </Flex>
             )}
@@ -438,26 +439,29 @@ const ChatInput = ({
 
           {/* Divider Container */}
           {((canUseVoiceInput && !inputValue) || canUploadFile) && (
-            <Flex alignItems={'center'} justifyContent={'center'} w={2} h={4} mr={2}>
-              <Box w={'2px'} h={5} bg={'myGray.200'} />
+            <Flex alignItems={'center'} justifyContent={'center'} h={'16px'} mx={1.5}>
+              <Box w={'1px'} h={'100%'} bg={LG.line} />
             </Flex>
           )}
 
           {/* Send Button Container */}
-          <Flex alignItems={'center'} w={9} h={9} borderRadius={'lg'}>
+          <Flex alignItems={'center'} w={'34px'} h={'34px'} borderRadius={'full'}>
             <MyBox
               isLoading={isStopping}
               display={'flex'}
               alignItems={'center'}
               justifyContent={'center'}
-              w={9}
-              h={9}
-              p={[1, 2]}
-              bg={
-                isChatting ? 'primary.50' : canSendMessage ? 'primary.500' : 'rgba(17, 24, 36, 0.1)'
-              }
-              borderRadius={['md', 'lg']}
+              w={'34px'}
+              h={'34px'}
+              bg={isChatting ? LG.pale : canSendMessage ? LG.send : '#E5EBF2'}
+              borderRadius={'full'}
               cursor={isChatting ? 'pointer' : canSendMessage ? 'pointer' : 'not-allowed'}
+              boxShadow={canSendMessage && !isChatting ? '0 8px 18px rgba(78,128,178,0.3)' : 'none'}
+              _hover={
+                canSendMessage && !isChatting
+                  ? { bg: 'linear-gradient(140deg, #7FA8D3, #4A7CAE)' }
+                  : undefined
+              }
               onClick={(e) => {
                 e.stopPropagation();
                 if (isChatting) {
@@ -468,10 +472,14 @@ const ChatInput = ({
               }}
             >
               {isChatting ? (
-                <MyIcon {...iconSize} name={'stop'} color={'primary.600'} />
+                <MyIcon {...iconSize} name={'stop'} color={LG.mountain} />
               ) : (
                 <MyTooltip label={t('common:core.chat.Send Message')}>
-                  <MyIcon name={'core/chat/sendFill'} {...iconSize} color={'white'} />
+                  <MyIcon
+                    name={'core/chat/sendFill'}
+                    {...iconSize}
+                    color={canSendMessage ? 'white' : LG.mutedSoft}
+                  />
                 </MyTooltip>
               )}
             </MyBox>
@@ -497,10 +505,11 @@ const ChatInput = ({
     handleStop
   ]);
 
-  const activeStyles: FlexProps = {
-    boxShadow: '0px 5px 20px -4px rgba(19, 51, 107, 0.13)',
+  const composerBaseStyle: FlexProps = {
     border: '1px solid',
-    borderColor: 'myGray.250'
+    borderColor: LG.line,
+    boxShadow: '0 18px 40px rgba(78,128,178,0.11)',
+    transition: 'border-color 0.16s ease, box-shadow 0.16s ease'
   };
 
   return (
@@ -551,16 +560,18 @@ const ChatInput = ({
         p={mobilePreSpeak ? [0, 4] : 4}
         mb={0}
         position={'relative'}
-        borderRadius={['xl', 'xxl']}
+        borderRadius={'20px'}
         bg={'white'}
         overflow={mobilePreSpeak ? 'hidden' : 'display'}
+        {...composerBaseStyle}
         {...(focusing
-          ? activeStyles
+          ? {
+              borderColor: LG.lineStrong,
+              boxShadow:
+                '0 18px 44px rgba(78,128,178,0.14), 0 0 0 3px rgba(111,157,208,0.12)'
+            }
           : {
-              _hover: activeStyles,
-              border: '1px solid',
-              borderColor: 'myGray.200',
-              boxShadow: `0px 5px 16px -4px rgba(19, 51, 107, 0.08)`
+              _hover: { borderColor: 'rgba(111,157,208,0.34)' }
             })}
         onClick={() => TextareaDom?.current?.focus()}
       >

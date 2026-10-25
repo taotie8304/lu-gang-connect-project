@@ -12,6 +12,7 @@ import { ChatBoxContext } from '@/components/core/chat/ChatContainer/ChatBox/Pro
 import { WorkflowRuntimeContext } from '@/components/core/chat/ChatContainer/context/workflowRuntimeContext';
 import { ChatTypeEnum } from '@/components/core/chat/ChatContainer/ChatBox/constants';
 import { getUserPointsDetail } from '@/web/support/wallet/points/api';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 // 鲁港通 - 低余额提醒线（用户拍板 500 分）
 const LOW_BALANCE_THRESHOLD = 500;
@@ -87,7 +88,7 @@ export const PointsBalanceTag = () => {
       fontSize={'12px'}
       lineHeight={'16px'}
       whiteSpace={'nowrap'}
-      color={surplusPoints < LOW_BALANCE_THRESHOLD ? 'orange.500' : 'myGray.400'}
+      color={surplusPoints < LOW_BALANCE_THRESHOLD ? 'orange.500' : LG.mutedSoft}
     >
       {t('common:chat_points_balance', { points: formatNumber(surplusPoints) })}
     </Text>

@@ -6,6 +6,7 @@ import type {
 } from '@fastgpt/global/core/chat/type';
 import type { OnOpenCiteModalProps } from '@/web/core/chat/context/chatItemContext';
 import { useUserStore } from '@/web/support/user/useUserStore';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 import AIResponseBox from '../../../../components/AIResponseBox';
 import RenderProcessingCollapse from '../../../../components/AIResponseBox/RenderProcessingCollapse';
 import RenderProcessingPreview, {
@@ -196,7 +197,13 @@ const AIChatBubbleContent = ({
   flushProcessingGroup();
 
   return (
-    <Flex flexDirection={'column'} gap={4} fontSize={'16px'} lineHeight={1.75}>
+    <Flex
+      flexDirection={'column'}
+      gap={4}
+      fontSize={'16px'}
+      lineHeight={1.75}
+      color={LG.text}
+    >
       {contentBlocks}
     </Flex>
   );

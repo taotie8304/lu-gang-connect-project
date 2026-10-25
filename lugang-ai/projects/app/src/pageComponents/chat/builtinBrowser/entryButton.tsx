@@ -6,6 +6,7 @@ import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const BuiltinBrowserEntryButton = () => {
   const { t } = useTranslation();
@@ -18,19 +19,19 @@ const BuiltinBrowserEntryButton = () => {
     <Flex
       alignItems={'center'}
       justifyContent={'center'}
-      w={9}
-      h={9}
-      p={[1, 2]}
-      borderRadius={'sm'}
+      w={'28px'}
+      h={'28px'}
+      borderRadius={'8px'}
       cursor={'pointer'}
-      _hover={{ bg: 'rgba(0, 0, 0, 0.04)' }}
+      color={LG.muted}
+      _hover={{ bg: LG.pale }}
       onClick={(e) => {
         e.stopPropagation();
         if (!builtinBrowser.isOpen) builtinBrowser.openPanel();
       }}
     >
       <MyTooltip label={t('common:builtin_browser_open')}>
-        <MyIcon name={'common/globalLine'} w={'20px'} h={'20px'} color={'myGray.500'} />
+        <MyIcon name={'common/globalLine'} w={'18px'} h={'18px'} color={'currentColor'} />
       </MyTooltip>
     </Flex>
   );

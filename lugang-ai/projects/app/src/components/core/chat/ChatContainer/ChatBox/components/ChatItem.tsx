@@ -96,6 +96,9 @@ const ChatItem = (props: Props) => {
 
   const statisticalChatItem = useMemoEnhance(() => addStatisticalDataToHistoryItem(chat), [chat]);
   const quoteList: SearchDataResponseQuoteListItemType[] = statisticalChatItem.totalQuoteList ?? [];
+  // 鲁港通 - 消息区改版（第 4 批）：有真实引用（知识库来源或联网来源）时才显示「已核对官方原文」
+  const hasCitations =
+    quoteList.length > 0 || (statisticalChatItem.toolCiteLinks?.length ?? 0) > 0;
   const allowedCitationIds = useMemoEnhance(() => {
     const sourceQuoteList = statisticalChatItem.totalQuoteList;
     if (!sourceQuoteList) return;
@@ -344,6 +347,8 @@ const ChatItem = (props: Props) => {
               enableSandbox={enableSandbox}
               allowedCitationIds={allowedCitationIds}
               onOpenCiteModal={onOpenCiteModal}
+              showHeader={i === 0}
+              hasCitations={hasCitations}
               chatControllerProps={{
                 ...props,
                 isLastChild

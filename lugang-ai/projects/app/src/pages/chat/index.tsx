@@ -66,7 +66,7 @@ const Chat = () => {
         <Box
           flexGrow={0}
           flexShrink={0}
-          w={collapse ? '72px' : '220px'}
+          w={collapse ? '72px' : '264px'}
           overflow={'hidden'}
           transition={'width 0.1s ease-in-out'}
         >

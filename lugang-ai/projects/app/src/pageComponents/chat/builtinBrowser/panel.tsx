@@ -35,6 +35,7 @@ import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 import { createTabRefreshScheduler } from './polling';
 import { resolveBuiltinBrowserAiBadge } from './aiStatus';
 import type { DesktopAiState } from './desktopBridge';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const MINUTE_MS = 60 * 1000;
 const COUNTDOWN_TICK_MS = 30 * 1000;
@@ -650,24 +651,37 @@ const BuiltinBrowserPanelBody = ({
       <Flex
         flexShrink={0}
         alignItems={'center'}
-        gap={2}
-        h={'48px'}
-        px={4}
+        gap={'8px'}
+        h={'46px'}
+        pl={'12px'}
+        pr={'10px'}
         borderBottom={'1px solid'}
-        borderBottomColor={'myGray.200'}
+        borderBottomColor={LG.lineSoft}
+        bgGradient={'linear(to-b, #FFFFFF, #F4F8FE)'}
       >
-        <MyIcon name={'common/globalLine'} w={'16px'} h={'16px'} color={'myGray.600'} />
-        <Text fontSize={'sm'} fontWeight={500} color={'myGray.900'} whiteSpace={'nowrap'}>
+        <MyIcon name={'common/globalLine'} w={'14px'} h={'14px'} color={LG.mountain} />
+        <Text
+          fontSize={'12px'}
+          fontWeight={600}
+          color={LG.ink}
+          whiteSpace={'nowrap'}
+          letterSpacing={'0.01em'}
+        >
           {t('common:builtin_browser')}
         </Text>
         {isNative && status === 'active' && !aiBadge && (
           <Text
-            fontSize={'xs'}
-            px={1.5}
-            py={0.5}
-            borderRadius={'sm'}
-            bg={'green.50'}
-            color={'green.600'}
+            h={'17px'}
+            px={'6px'}
+            display={'inline-flex'}
+            alignItems={'center'}
+            borderRadius={'4px'}
+            bg={'rgba(111,157,208,0.12)'}
+            border={'1px solid'}
+            borderColor={'rgba(111,157,208,0.26)'}
+            color={LG.mountain}
+            fontSize={'9px'}
+            letterSpacing={'0.06em'}
             whiteSpace={'nowrap'}
           >
             {t('common:builtin_browser_local')}
@@ -675,8 +689,8 @@ const BuiltinBrowserPanelBody = ({
         )}
         {!isNative && status === 'active' && showRemaining && remainingMinutes !== undefined && (
           <Text
-            fontSize={'xs'}
-            color={isExpiringSoon ? 'orange.500' : 'myGray.500'}
+            fontSize={'10px'}
+            color={isExpiringSoon ? '#C4823A' : LG.muted}
             whiteSpace={'nowrap'}
           >
             {t(
@@ -691,22 +705,24 @@ const BuiltinBrowserPanelBody = ({
           <MyTooltip label={aiBadge.message || t(aiBadge.labelKey as any)}>
             <Flex
               alignItems={'center'}
-              gap={1}
-              px={1.5}
-              py={0.5}
-              borderRadius={'sm'}
+              gap={'4px'}
+              h={'17px'}
+              px={'6px'}
+              borderRadius={'4px'}
               bg={aiBadge.running ? 'blue.50' : 'orange.50'}
               color={aiBadge.running ? 'blue.600' : 'orange.600'}
               whiteSpace={'nowrap'}
             >
               <Box
-                w={'6px'}
-                h={'6px'}
+                w={'5px'}
+                h={'5px'}
                 borderRadius={'full'}
                 bg={aiBadge.running ? 'blue.500' : 'orange.500'}
               />
               {showAiBadgeLabel && (
-                <Text fontSize={'xs'}>{t(aiBadge.labelKey as any)}</Text>
+                <Text fontSize={'9px'} letterSpacing={'0.04em'}>
+                  {t(aiBadge.labelKey as any)}
+                </Text>
               )}
             </Flex>
           </MyTooltip>
@@ -717,9 +733,10 @@ const BuiltinBrowserPanelBody = ({
         {aiBadge?.running && (
           <Button
             size={'xs'}
-            h={'24px'}
+            h={'22px'}
             px={2}
-            fontSize={'xs'}
+            fontSize={'10px'}
+            borderRadius={'6px'}
             colorScheme={'red'}
             isLoading={isStoppingAi}
             loadingText={t('common:builtin_browser_ai_stopping')}
@@ -733,11 +750,11 @@ const BuiltinBrowserPanelBody = ({
           <MyTooltip label={t('common:builtin_browser_refit')}>
             <MyIcon
               name={'core/modules/fitView'}
-              w={'16px'}
-              h={'16px'}
-              color={'myGray.500'}
+              w={'15px'}
+              h={'15px'}
+              color={LG.muted}
               cursor={'pointer'}
-              _hover={{ color: 'myGray.700' }}
+              _hover={{ color: LG.mountain }}
               onClick={() => void handleRefit()}
             />
           </MyTooltip>
@@ -746,12 +763,12 @@ const BuiltinBrowserPanelBody = ({
           <MyTooltip label={t('common:builtin_browser_refresh')}>
             <MyIcon
               name={'common/refresh'}
-              w={'16px'}
-              h={'16px'}
-              color={'myGray.500'}
+              w={'15px'}
+              h={'15px'}
+              color={LG.muted}
               cursor={isReloading ? 'not-allowed' : 'pointer'}
               opacity={isReloading ? 0.5 : 1}
-              _hover={isReloading ? undefined : { color: 'myGray.700' }}
+              _hover={isReloading ? undefined : { color: LG.mountain }}
               onClick={() => void handleReload()}
             />
           </MyTooltip>
@@ -759,11 +776,11 @@ const BuiltinBrowserPanelBody = ({
         <MyTooltip label={t('common:builtin_browser_close')}>
           <MyIcon
             name={'close'}
-            w={'16px'}
-            h={'16px'}
-            color={'myGray.500'}
+            w={'15px'}
+            h={'15px'}
+            color={LG.muted}
             cursor={'pointer'}
-            _hover={{ color: 'myGray.700' }}
+            _hover={{ color: LG.mountain }}
             onClick={handleClose}
           />
         </MyTooltip>
@@ -773,11 +790,12 @@ const BuiltinBrowserPanelBody = ({
       <Flex
         flexShrink={0}
         alignItems={'center'}
-        gap={1}
+        gap={'4px'}
         px={2}
-        py={1.5}
+        py={'5px'}
+        bg={'rgba(244,248,254,0.6)'}
         borderBottom={'1px solid'}
-        borderBottomColor={'myGray.200'}
+        borderBottomColor={LG.lineSoft}
         overflowX={'auto'}
         css={{ '&::-webkit-scrollbar': { height: '2px' } }}
       >
@@ -786,34 +804,34 @@ const BuiltinBrowserPanelBody = ({
             key={tab.index}
             alignItems={'center'}
             gap={1}
-            h={'28px'}
-            minW={'96px'}
+            h={'24px'}
+            minW={'88px'}
             maxW={'180px'}
             flexShrink={0}
-            px={2}
-            borderRadius={'md'}
-            bg={tab.current ? 'white' : 'myGray.100'}
+            px={'8px'}
+            borderRadius={'6px'}
+            bg={tab.current ? 'white' : 'transparent'}
             border={'1px solid'}
-            borderColor={tab.current ? 'primary.300' : 'transparent'}
+            borderColor={tab.current ? LG.line : 'transparent'}
             cursor={'pointer'}
-            _hover={{ bg: tab.current ? 'white' : 'myGray.200' }}
+            _hover={{ bg: 'white', borderColor: LG.line }}
             onClick={() => void handleSelectTab(tab.index)}
           >
             <Text
               flex={'1 1 0'}
-              fontSize={'xs'}
+              fontSize={'10px'}
               noOfLines={1}
-              color={tab.current ? 'myGray.900' : 'myGray.600'}
+              color={tab.current ? LG.ink : LG.muted}
             >
               {tabLabel(tab)}
             </Text>
             <MyIcon
               name={'close'}
-              w={'12px'}
-              h={'12px'}
+              w={'11px'}
+              h={'11px'}
               flexShrink={0}
-              color={'myGray.400'}
-              _hover={{ color: 'myGray.700' }}
+              color={LG.mutedSoft}
+              _hover={{ color: LG.mountain }}
               aria-label={t('common:builtin_browser_close_tab')}
               onClick={(e) => {
                 e.stopPropagation();
@@ -826,22 +844,22 @@ const BuiltinBrowserPanelBody = ({
           <Flex
             alignItems={'center'}
             justifyContent={'center'}
-            w={'28px'}
-            h={'28px'}
+            w={'24px'}
+            h={'24px'}
             flexShrink={0}
-            borderRadius={'md'}
-            color={status === 'active' && !tabsFull ? 'myGray.500' : 'myGray.300'}
+            borderRadius={'6px'}
+            color={status === 'active' && !tabsFull ? LG.muted : LG.mutedSoft}
             cursor={status === 'active' && !tabsFull ? 'pointer' : 'not-allowed'}
             _hover={
               status === 'active' && !tabsFull
-                ? { bg: 'myGray.100', color: 'myGray.700' }
+                ? { bg: 'rgba(54,101,150,0.06)', color: LG.mountain }
                 : undefined
             }
             onClick={() => {
               if (status === 'active' && !tabsFull) void handleNewTab();
             }}
           >
-            <MyIcon name={'common/addLight'} w={'14px'} h={'14px'} />
+            <MyIcon name={'common/addLight'} w={'13px'} h={'13px'} />
           </Flex>
         </MyTooltip>
       </Flex>
@@ -850,15 +868,17 @@ const BuiltinBrowserPanelBody = ({
       <Flex
         flexShrink={0}
         alignItems={'center'}
-        px={3}
-        py={2}
+        px={'10px'}
+        py={'5px'}
+        bg={'#F5F9FE'}
         borderBottom={'1px solid'}
-        borderBottomColor={'myGray.200'}
+        borderBottomColor={LG.lineSoft}
       >
         <Input
           ref={urlInputRef}
           size={'sm'}
-          fontSize={'sm'}
+          h={'27px'}
+          fontSize={'11px'}
           value={urlInput}
           onChange={(e) => setUrlInput(e.target.value)}
           onFocus={() => {
@@ -873,11 +893,18 @@ const BuiltinBrowserPanelBody = ({
           }}
           placeholder={t('common:builtin_browser_url_placeholder')}
           isDisabled={status === 'error' || isNavigating}
-          bg={'myGray.100'}
-          borderColor={'transparent'}
-          _hover={{ bg: 'myGray.100' }}
-          _focusVisible={{ bg: 'white', borderColor: 'primary.500' }}
-          _placeholder={{ color: 'myGray.500' }}
+          bg={'white'}
+          border={'1px solid'}
+          borderColor={LG.line}
+          borderRadius={'7px'}
+          color={'#4A5F75'}
+          _hover={{ borderColor: 'rgba(111,157,208,0.4)' }}
+          _focusVisible={{
+            bg: 'white',
+            borderColor: LG.lineStrong,
+            boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
+          }}
+          _placeholder={{ color: '#9DAFC2' }}
         />
       </Flex>
 
@@ -898,12 +925,12 @@ const BuiltinBrowserPanelBody = ({
             justifyContent={'center'}
             gap={3}
           >
-            <MyIcon name={'common/loading'} w={'24px'} h={'24px'} color={'primary.500'} />
-            <Text fontSize={'sm'} color={'myGray.500'}>
+            <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
+            <Text fontSize={'12px'} color={LG.muted}>
               {t('common:builtin_browser_loading')}
             </Text>
             {loadingSlow && (
-              <Text fontSize={'xs'} color={'myGray.400'} textAlign={'center'} px={6}>
+              <Text fontSize={'11px'} color={LG.mutedSoft} textAlign={'center'} px={6}>
                 {t('common:builtin_browser_loading_slow')}
               </Text>
             )}
@@ -919,8 +946,8 @@ const BuiltinBrowserPanelBody = ({
             gap={3}
             px={6}
           >
-            <MyIcon name={'common/error'} w={'24px'} h={'24px'} color={'red.500'} />
-            <Text fontSize={'sm'} color={'myGray.600'} textAlign={'center'}>
+            <MyIcon name={'common/error'} w={'22px'} h={'22px'} color={'red.500'} />
+            <Text fontSize={'12px'} color={LG.text} textAlign={'center'}>
               {errorMessage}
             </Text>
             <Button size={'sm'} variant={'primary'} onClick={() => void loadSession()}>
@@ -966,10 +993,10 @@ const BuiltinBrowserPanelBody = ({
             alignItems={'center'}
             justifyContent={'center'}
             bg={'white'}
-            color={'myGray.500'}
+            color={LG.muted}
           >
             {isResizing && (
-              <Text fontSize={'sm'}>{t('common:builtin_browser_resizing')}</Text>
+              <Text fontSize={'12px'}>{t('common:builtin_browser_resizing')}</Text>
             )}
           </Flex>
         )}
@@ -1072,10 +1099,10 @@ const BuiltinBrowserPanel = () => {
         pr={0}
         insertProps={{
           borderWidth: 0,
-          boxShadow: 'none',
-          bg: 'white',
+          boxShadow: '-12px 0 28px rgba(78,128,178,0.08)',
+          bg: '#FCFEFF',
           borderLeft: '1px solid',
-          borderLeftColor: 'myGray.200',
+          borderLeftColor: LG.line,
           borderRadius: [0, '0 16px 16px 0'],
           // 鲁港通 - 左侧留出拖拽 gutter：原生 WebContentsView 从 body 起算，手柄才不会被盖住
           pl: `${BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX}px`
@@ -1094,7 +1121,7 @@ const BuiltinBrowserPanel = () => {
         zIndex={20}
         cursor={'col-resize'}
         style={{ touchAction: 'none' }}
-        _hover={{ bg: 'primary.50' }}
+        _hover={{ bg: 'rgba(231,241,251,0.6)' }}
         onPointerDown={handleDragStart}
         onPointerMove={handleDragMove}
         onPointerUp={handleDragEnd}
@@ -1105,10 +1132,10 @@ const BuiltinBrowserPanel = () => {
           left={'50%'}
           top={'50%'}
           transform={'translate(-50%, -50%)'}
-          w={'2px'}
-          h={'32px'}
-          borderRadius={'full'}
-          bg={'myGray.200'}
+          w={'3px'}
+          h={'34px'}
+          borderRadius={'2px'}
+          bg={'rgba(54,101,150,0.24)'}
         />
       </Box>
       {isDragging && (

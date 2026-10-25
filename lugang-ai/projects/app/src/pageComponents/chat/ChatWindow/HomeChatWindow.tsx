@@ -13,7 +13,6 @@ import {
 } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import SideBar from '@/components/SideBar';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
 import { useContextSelector } from 'use-context-selector';
 import { ChatItemContext } from '@/web/core/chat/context/chatItemContext';
@@ -41,9 +40,6 @@ import type { AppWhisperConfigType } from '@fastgpt/global/core/app/type';
 import { type AppFileSelectConfigType } from '@fastgpt/global/core/app/type/config.schema';
 import { ChatRecordContext } from '@/web/core/chat/context/chatRecordContext';
 import { ChatSidebarPaneEnum } from '../constants';
-import ChatHistorySidebar, {
-  CHAT_HISTORY_SLIDER_PC_WIDTH
-} from '@/pageComponents/chat/slider/ChatSliderSidebar';
 import ChatSliderMobileDrawer from '@/pageComponents/chat/slider/ChatSliderMobileDrawer';
 import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
 import { form2AppWorkflow } from '@/pageComponents/app/detail/Edit/SimpleApp/utils';
@@ -91,7 +87,6 @@ const HomeChatWindow = () => {
   );
 
   const chatBoxData = useContextSelector(ChatItemContext, (v) => v.chatBoxData);
-  const datasetCiteData = useContextSelector(ChatItemContext, (v) => v.datasetCiteData);
   const setChatBoxData = useContextSelector(ChatItemContext, (v) => v.setChatBoxData);
   const resetVariables = useContextSelector(ChatItemContext, (v) => v.resetVariables);
   const isShowCite = useContextSelector(ChatItemContext, (v) => v.isShowCite);
@@ -99,7 +94,6 @@ const HomeChatWindow = () => {
 
   const chatSettings = useContextSelector(ChatPageContext, (v) => v.chatSettings);
   const handlePaneChange = useContextSelector(ChatPageContext, (v) => v.handlePaneChange);
-  const homeAppId = useContextSelector(ChatPageContext, (v) => v.chatSettings?.appId || '');
   // 鲁港通 - 普通用户禁止进入团队应用列表时的回退目标
   const defaultAppId = useContextSelector(ChatPageContext, (v) => v.defaultAppId);
   const refreshRecentlyUsed = useContextSelector(ChatPageContext, (v) => v.refreshRecentlyUsed);
@@ -438,18 +432,8 @@ const HomeChatWindow = () => {
       {/* set window title and icon */}
       <NextHead title={chatSettings?.homeTabTitle} icon={getWebReqUrl(feConfigs?.favicon)} />
 
-      {/* show history slider */}
-      {isPc ? (
-        <SideBar
-          w={`0 0 ${CHAT_HISTORY_SLIDER_PC_WIDTH}`}
-          externalTrigger={Boolean(datasetCiteData)}
-        >
-          <ChatHistorySidebar
-            title={appId === homeAppId ? t('chat:history_slider.home.title') : undefined}
-            menuConfirmButtonText={t('common:core.chat.Confirm to clear history')}
-          />
-        </SideBar>
-      ) : (
+      {/* 鲁港通 - PC 统一侧栏已上移到 ChatSlider，此处仅保留移动端抽屉 */}
+      {!isPc && (
         <ChatSliderMobileDrawer
           banner={chatSettings?.wideLogoUrl}
           menuConfirmButtonText={t('common:core.chat.Confirm to clear history')}

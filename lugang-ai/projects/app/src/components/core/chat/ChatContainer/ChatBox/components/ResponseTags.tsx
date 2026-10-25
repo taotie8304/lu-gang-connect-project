@@ -21,15 +21,27 @@ import {
   canUserViewCitationSource,
   isAdminUser
 } from '@fastgpt/global/support/permission/citation';
+import { LG } from '@/pageComponents/chat/lugangTheme';
 
 export type CitationRenderItem = {
   type: 'dataset' | 'link';
   key: string;
   displayText: string;
   icon?: string;
+  // 鲁港通 - 消息区改版（第 4 批）：联网来源卡片显示域名副标题
+  domain?: string;
   // 鲁港通 - 引用内容权限：是否可点击查看；普通用户的知识库文件来源为 false，仅展示文件名
   clickable?: boolean;
   onClick: () => any;
+};
+
+// 鲁港通 - 消息区改版（第 4 批）：来源卡片域名只做展示，解析失败时不显示
+const getLinkDomain = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return undefined;
+  }
 };
 
 const WholeResponseModal = dynamic(() => import('../../../components/WholeResponseModal'));
@@ -48,52 +60,39 @@ const CitationListCard = React.memo(function CitationListCard({
   const [expanded, setExpanded] = useState<boolean>(false);
   const cardContentRef = React.useRef<HTMLDivElement>(null);
   const cardContentSize = useSize(cardContentRef);
-  const collapsedMaxHeight = 80;
+  const collapsedMaxHeight = 96;
   const isOverflow = (cardContentSize?.height || 0) > collapsedMaxHeight;
 
   if (items.length === 0) return null;
 
   return (
     <>
-      <Box
-        display={['none', 'block']}
-        mt={3}
-        w={'100%'}
-        border={'1px solid'}
-        borderColor={'myGray.200'}
-        borderRadius={'12px'}
-        bg={'white'}
-        overflow={'hidden'}
-        _hover={{
-          background: 'linear-gradient(0deg, #FFF 56.25%, #F7F8FA 100%)'
-        }}
-      >
+      <Box display={['none', 'block']} mt={'12px'} w={'100%'}>
         <Box
           position={'relative'}
           maxH={!expanded && isOverflow ? `${collapsedMaxHeight}px` : 'none'}
           overflow={'hidden'}
-          p={'8px'}
         >
           <Box ref={cardContentRef}>
-            <Flex h={'28px'} alignItems={'center'} justifyContent={'space-between'} px={'8px'}>
+            <Flex h={'22px'} alignItems={'center'} justifyContent={'space-between'}>
               <MyTooltip label={canOpenAll ? t('chat:view_citations') : ''}>
                 <Flex
                   alignItems={'center'}
                   gap={'6px'}
-                  color={'myGray.600'}
-                  fontSize={'14px'}
-                  lineHeight={'20px'}
+                  color={LG.muted}
+                  fontSize={'11.5px'}
+                  lineHeight={'18px'}
                   fontWeight={500}
                   cursor={canOpenAll ? 'pointer' : 'default'}
                   _hover={
                     canOpenAll
                       ? {
-                          color: 'primary.600',
+                          color: LG.mountain,
                           '.citation-count': {
-                            color: 'primary.600'
+                            color: LG.mountain
                           },
                           '.citation-arrow': {
-                            color: 'primary.600'
+                            color: LG.mountain
                           }
                         }
                       : undefined
@@ -109,7 +108,7 @@ const CitationListCard = React.memo(function CitationListCard({
                 >
                   <Box>
                     {t('chat:citation_card_prefix')}
-                    <Box as={'span'} className="citation-count" color={'myGray.900'}>
+                    <Box as={'span'} className="citation-count" color={LG.mountain}>
                       {items.length}
                     </Box>
                     {t('chat:citation_card_suffix')}
@@ -117,8 +116,8 @@ const CitationListCard = React.memo(function CitationListCard({
                   <MyIcon
                     className="citation-arrow"
                     name={'common/arrowRight'}
-                    w={'14px'}
-                    color={'myGray.400'}
+                    w={'12px'}
+                    color={LG.mutedSoft}
                     transform={'rotate(-45deg)'}
                   />
                 </Flex>
@@ -127,16 +126,16 @@ const CitationListCard = React.memo(function CitationListCard({
               {isOverflow && (
                 <MyIcon
                   name={expanded ? 'core/chat/chevronUp' : 'core/chat/chevronDown'}
-                  w={'16px'}
-                  color={'myGray.500'}
+                  w={'14px'}
+                  color={LG.mutedSoft}
                   cursor={'pointer'}
-                  _hover={{ color: 'primary.600' }}
+                  _hover={{ color: LG.mountain }}
                   onClick={() => setExpanded((state) => !state)}
                 />
               )}
             </Flex>
 
-            <Flex mt={'4px'} flexWrap={'wrap'} gap={'4px'}>
+            <Flex mt={'2px'} flexWrap={'wrap'} gap={'9px'}>
               {items.map((item) => (
                 <MyTooltip
                   key={item.key}
@@ -146,18 +145,22 @@ const CitationListCard = React.memo(function CitationListCard({
                 >
                   <Flex
                     alignItems={'center'}
+                    gap={'8px'}
+                    flex={'1 1 250px'}
                     minW={0}
-                    w={'max-content'}
-                    maxW={'100%'}
-                    px={'8px'}
-                    py={'6px'}
-                    borderRadius={'8px'}
-                    bg={'myGray.50'}
-                    color={'myGray.900'}
-                    fontSize={'14px'}
-                    lineHeight={'20px'}
+                    px={'10px'}
+                    py={'9px'}
+                    borderRadius={'10px'}
+                    border={'1px solid'}
+                    borderColor={LG.line}
+                    bg={'rgba(255,255,255,0.88)'}
+                    color={LG.text}
                     cursor={item.clickable ? 'pointer' : 'default'}
-                    _hover={item.clickable ? { bg: 'myGray.100' } : undefined}
+                    _hover={
+                      item.clickable
+                        ? { borderColor: 'rgba(111,157,208,0.5)', bg: 'white' }
+                        : undefined
+                    }
                     onClick={
                       item.clickable
                         ? (e) => {
@@ -167,9 +170,38 @@ const CitationListCard = React.memo(function CitationListCard({
                         : undefined
                     }
                   >
-                    <MyIcon name={item.icon as any} mr={2} flexShrink={0} w={'14px'} />
-                    <Box className={'textEllipsis'} minW={0}>
-                      {item.displayText}
+                    <Flex
+                      alignItems={'center'}
+                      justifyContent={'center'}
+                      w={'22px'}
+                      h={'22px'}
+                      flexShrink={0}
+                      borderRadius={'6px'}
+                      bg={LG.pale}
+                      color={LG.mountain}
+                    >
+                      <MyIcon name={item.icon as any} w={'13px'} h={'13px'} />
+                    </Flex>
+                    <Box minW={0} flex={1}>
+                      <Box
+                        className={'textEllipsis'}
+                        fontSize={'11px'}
+                        lineHeight={'15px'}
+                        color={LG.text}
+                      >
+                        {item.displayText}
+                      </Box>
+                      {item.domain && (
+                        <Box
+                          mt={'2px'}
+                          className={'textEllipsis'}
+                          fontSize={'9.5px'}
+                          lineHeight={'12px'}
+                          color={'#93A4B8'}
+                        >
+                          {item.domain}
+                        </Box>
+                      )}
                     </Box>
                   </Flex>
                 </MyTooltip>
@@ -315,6 +347,7 @@ const ResponseTags = ({
       key: `${r.url}-${index}`,
       displayText: r.name,
       icon: 'common/link',
+      domain: getLinkDomain(r.url),
       // 鲁港通 - 互联网引用网址：所有用户均可点击打开（req3A）
       clickable: true,
       onClick: () => {
