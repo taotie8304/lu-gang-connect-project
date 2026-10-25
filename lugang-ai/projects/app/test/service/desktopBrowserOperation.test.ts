@@ -149,6 +149,15 @@ describe('browser operation tool schema', () => {
     expect(tool.function.description).toContain('确认');
   });
 
+  it('tells the model to act without waiting for the user to name the browser', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('无需用户提示');
+    expect(description).toContain('办理');
+    expect(description).toContain('不要先让用户自己打开');
+    expect(description).toContain('从中断的步骤继续');
+  });
+
   it('parses generate_file and upload actions', () => {
     expect(
       parseBrowserOperationArgs({
