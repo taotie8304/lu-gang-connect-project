@@ -3,7 +3,7 @@ import { BrowserWindow } from 'electron';
 import { join } from 'node:path';
 import { IPC_CHANNELS } from '../../shared/ipc';
 import { createConfirmationGate, AI_CONFIRM_TIMEOUT_MS } from './confirmationGate';
-import type { AiConfirmationDecision, AiConfirmer } from './executor';
+import type { AiConfirmationDecision, AiConfirmCancelReason, AiConfirmer } from './executor';
 
 const CONFIRM_WINDOW_WIDTH = 480;
 const CONFIRM_WINDOW_HEIGHT = 420;
@@ -21,7 +21,7 @@ export type CreateAiConfirmerOptions = {
 };
 
 export const createAiConfirmer = (options: CreateAiConfirmerOptions): AiConfirmer => {
-  let cancelActive: (() => void) | undefined;
+  let cancelActive: ((reason?: AiConfirmCancelReason) => void) | undefined;
 
   const confirmer = (async (request: {
     host: string;
@@ -57,7 +57,7 @@ export const createAiConfirmer = (options: CreateAiConfirmerOptions): AiConfirme
     page.webContents.on('will-navigate', (event) => event.preventDefault());
 
     const gate = createConfirmationGate({ timeoutMs });
-    cancelActive = () => gate.decide('cancel');
+    cancelActive = (reason) => gate.decide(reason === 'page_closed' ? 'page_closed' : 'cancel');
 
     const onDecision = (event: Electron.IpcMainEvent, decision: unknown) => {
       if (event.sender !== page.webContents || !isDecision(decision)) return;
@@ -88,8 +88,8 @@ export const createAiConfirmer = (options: CreateAiConfirmerOptions): AiConfirme
     return decision;
   }) as AiConfirmer;
 
-  // 鲁港通 - 用户点停止时立即取消等待中的确认，避免停止后仍被误提交
-  confirmer.cancel = () => cancelActive?.();
+  // 鲁港通 - 用户点停止或页面被关闭时立即取消等待中的确认，避免停止后仍被误提交
+  confirmer.cancel = (reason) => cancelActive?.(reason);
 
   return confirmer;
 };

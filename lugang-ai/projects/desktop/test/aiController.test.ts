@@ -135,6 +135,10 @@ const createController = (
 };
 
 describe('AI 桌面控制器 · 指令执行与自愈', () => {
+  it('操作会话持续 10 分钟', () => {
+    expect(AI_SESSION_IDLE_MS).toBe(10 * 60 * 1000);
+  });
+
   it('成功操作后进入运行状态并记录会话网址', async () => {
     const { controller } = createController({ elements: [textField('申请人姓名')] });
 
@@ -156,6 +160,7 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
 
     const second = await controller.execute({ action: 'click', target: '不存在的按钮' });
     expect(second.stopped).toBe(true);
+    expect(second.code).toBe('too_many_failures');
     expect(second.message).toContain('连续两次');
 
     const state = controller.getState();
@@ -165,6 +170,7 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
     const callsBefore = snapshotCalls();
     const third = await controller.execute({ action: 'click', target: '不存在的按钮' });
     expect(third.stopped).toBe(true);
+    expect(third.code).toBe('too_many_failures');
     expect(snapshotCalls()).toBe(callsBefore);
   });
 
@@ -323,6 +329,7 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
 
     expect(result.ok).toBe(false);
     expect(result.stopped).toBe(true);
+    expect(result.code).toBe('submission_unconfirmed');
     expect(controller.getState().stopReason).toBe('submission_unconfirmed');
     expect(result.message).toContain('提交成功');
     expect(driver.clickAt).toHaveBeenCalledTimes(1);
@@ -389,6 +396,62 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
     expect(state.status).toBe('stopped');
     expect(state.stopReason).toBe('page_closed_twice');
     expect(state.message).toContain('再次关闭');
+  });
+
+  it('页面被关闭导致的失败不计入连续失败次数', async () => {
+    const { controller, driver } = createController({
+      elements: [textField('申请人姓名')]
+    });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+
+    await controller.handleTabClosed({ id: 1, url: PAGE_URL, active: true });
+
+    // 页面刚关闭时读取失败属于关页副作用，不应消耗连续失败额度
+    (driver.snapshot as ReturnType<typeof vi.fn>).mockRejectedValueOnce(new Error('page closed'));
+    const closedFailure = await controller.execute({ action: 'read' });
+    expect(closedFailure.ok).toBe(false);
+    expect(closedFailure.code).toBe('page_error');
+    expect(closedFailure.stopped).toBeFalsy();
+
+    // 真正的第一次操作失败仍不停止；若关页失败被计数，这里就会停止
+    const firstRealFailure = await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(firstRealFailure.ok).toBe(false);
+    expect(firstRealFailure.stopped).toBeFalsy();
+    expect(controller.getState().status).toBe('running');
+  });
+
+  it('页面被关闭时立即取消等待中的提交确认', async () => {
+    let settle: (decision: AiConfirmationDecision) => void = () => undefined;
+    const confirm = Object.assign(
+      vi.fn(
+        () =>
+          new Promise<AiConfirmationDecision>((resolve) => {
+            settle = resolve;
+          })
+      ),
+      {
+        cancel: vi.fn((reason?: 'cancel' | 'page_closed') => {
+          settle(reason === 'page_closed' ? 'page_closed' : 'cancel');
+        })
+      }
+    );
+    const { controller, driver } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm
+    });
+
+    const pending = controller.execute({ action: 'click', target: '提交申请' });
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+
+    await controller.handleTabClosed({ id: 1, url: PAGE_URL, active: true });
+    const result = await pending;
+
+    expect(confirm.cancel).toHaveBeenCalledWith('page_closed');
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('page_error');
+    expect(result.message).toContain('页面被关闭');
+    expect(driver.clickAt).not.toHaveBeenCalled();
+    expect(controller.getState().status).toBe('running');
   });
 
   it('用户关闭非 AI 操作的标签页不会触发重开', async () => {

@@ -7,7 +7,7 @@ export type AiAuditOutcome = 'ok' | 'failed' | 'blocked' | 'stopped';
 
 export type AiAuditConfirmation = {
   required: true;
-  decision: 'allow' | 'handoff' | 'cancel' | 'timeout' | 'unavailable';
+  decision: 'allow' | 'handoff' | 'cancel' | 'timeout' | 'unavailable' | 'page_closed';
   label: string;
 };
 

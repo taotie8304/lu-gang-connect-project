@@ -734,6 +734,22 @@ describe('AI 页面执行器', () => {
     expect(calls.clickAt).toHaveLength(0);
   });
 
+  it('页面被关闭时按页面关闭处理确认，不点击也不当作主动取消', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })])
+    );
+    const result = await createExecutor(driver, {
+      confirm: async () => 'page_closed'
+    }).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('page_error');
+    expect(result.message).toContain('页面被关闭');
+    expect(result.message).toContain('没有提交');
+    expect(result.confirmation?.decision).toBe('page_closed');
+    expect(calls.clickAt).toHaveLength(0);
+  });
+
   it('客户端无法弹出确认框时不直接提交', async () => {
     const { driver, calls } = createDriver(
       makeSnapshot([makeElement({ ref: 'e1', name: '提交申请', text: '提交申请' })])

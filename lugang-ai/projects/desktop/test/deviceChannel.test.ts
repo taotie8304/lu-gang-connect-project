@@ -47,6 +47,9 @@ const createChannel = (
     token?: string;
     cookie?: string | undefined;
     execute?: (command: unknown, context: { commandId: string }) => Promise<unknown>;
+    stopState?: DesktopAiState;
+    fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+    pollRequestTimeoutMs?: number;
   } = {}
 ) => {
   const calls: FetchCall[] = [];
@@ -54,6 +57,9 @@ const createChannel = (
   const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     calls.push({ url, init });
+    if (options.fetchImpl) {
+      return options.fetchImpl(url, init);
+    }
     if (options.route) {
       const routed = options.route(url);
       if (routed) return routed;
@@ -71,7 +77,7 @@ const createChannel = (
         changed: true
       }))
   );
-  const stopExecution = vi.fn(() => stoppedState);
+  const stopExecution = vi.fn(() => options.stopState ?? stoppedState);
   const sleep = vi.fn(async () => undefined);
 
   const channel = createDeviceChannel({
@@ -85,7 +91,8 @@ const createChannel = (
     stopExecution,
     fetchImpl: fetchImpl as unknown as typeof fetch,
     sleep,
-    pollTimeoutMs: 25_000
+    pollTimeoutMs: 25_000,
+    ...(options.pollRequestTimeoutMs ? { pollRequestTimeoutMs: options.pollRequestTimeoutMs } : {})
   });
 
   return {
@@ -284,7 +291,12 @@ describe('桌面设备通道 · 用户停止', () => {
     expect(JSON.parse(String(resultCall.init?.body))).toEqual({
       deviceId: DEVICE_ID,
       commandId: COMMAND_ID,
-      result: expect.objectContaining({ ok: false, stopped: true, code: 'stopped' })
+      result: expect.objectContaining({
+        ok: false,
+        stopped: true,
+        code: 'stopped_by_user',
+        message: '用户已停止操作'
+      })
     });
 
     settleCommand({ ok: true, changed: true });
@@ -302,6 +314,111 @@ describe('桌面设备通道 · 用户停止', () => {
 
     expect(harness.stopExecution).toHaveBeenCalledTimes(1);
     expect(harness.calls).toHaveLength(0);
+  });
+
+  it('reports the client stop reason and message so the server can guide the model', async () => {
+    let settleCommand: (value: unknown) => void = () => undefined;
+    const executing = new Promise((resolve) => {
+      settleCommand = resolve;
+    });
+    const pageClosedState: DesktopAiState = {
+      status: 'stopped',
+      reopens: 1,
+      stopReason: 'page_closed_twice',
+      message: '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。'
+    };
+    const harness = createChannel({
+      cookie: 'session-cookie-value',
+      stopState: pageClosedState,
+      responses: [
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({
+          command: {
+            id: COMMAND_ID,
+            createdAt: 1_700_000_000_000,
+            command: { action: 'read' }
+          }
+        }),
+        apiResponse({ accepted: true }),
+        apiResponse({ command: null })
+      ],
+      execute: () => executing
+    });
+
+    await harness.channel.syncSession();
+    await vi.waitFor(() => expect(harness.executeCommand).toHaveBeenCalledTimes(1));
+
+    await expect(harness.channel.stopAi()).resolves.toEqual(pageClosedState);
+    await vi.waitFor(() =>
+      expect(
+        harness.calls.some((call) => call.url.endsWith('/api/proApi/desktop/result'))
+      ).toBe(true)
+    );
+    const resultCall = harness.calls.find((call) => call.url.endsWith('/desktop/result'))!;
+    expect(JSON.parse(String(resultCall.init?.body))).toEqual({
+      deviceId: DEVICE_ID,
+      commandId: COMMAND_ID,
+      result: {
+        ok: false,
+        stopped: true,
+        code: 'page_closed_twice',
+        message: pageClosedState.message
+      }
+    });
+
+    settleCommand({ ok: true, changed: true });
+    await flush();
+    harness.channel.stop();
+  });
+});
+
+describe('桌面设备通道 · 轮询健壮性', () => {
+  it('reconnects automatically when a long poll hangs past the request timeout', async () => {
+    let round = 0;
+    let aborted = 0;
+    const harness = createChannel({
+      token: 'lgd_saved-token',
+      pollRequestTimeoutMs: 20,
+      fetchImpl: (_url, init) => {
+        round += 1;
+        if (round === 1) {
+          return new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => {
+              aborted += 1;
+              reject(new Error('aborted'));
+            });
+          });
+        }
+        return new Promise<Response>(() => undefined);
+      }
+    });
+
+    harness.channel.startPolling();
+
+    await vi.waitFor(() => expect(harness.calls.length).toBeGreaterThanOrEqual(2));
+    expect(aborted).toBe(1);
+    harness.channel.stop();
+  });
+
+  it('aborts the in-flight long poll when polling stops', async () => {
+    let aborted = false;
+    const harness = createChannel({
+      token: 'lgd_saved-token',
+      fetchImpl: (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            aborted = true;
+            reject(new Error('aborted'));
+          });
+        })
+    });
+
+    harness.channel.startPolling();
+    await vi.waitFor(() => expect(harness.calls).toHaveLength(1));
+
+    harness.channel.stop();
+
+    await vi.waitFor(() => expect(aborted).toBe(true));
   });
 });
 

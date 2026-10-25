@@ -26,6 +26,7 @@ export type DeviceChannelOptions = {
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   pollTimeoutMs?: number;
+  pollRequestTimeoutMs?: number;
   log?: (message: string, error?: unknown) => void;
 };
 
@@ -46,6 +47,8 @@ type ActiveCommand = {
 const SESSION_COOKIE_NAME = 'fastgpt_token';
 const RETRY_DELAY_MS = 1000;
 const DEFAULT_POLL_TIMEOUT_MS = 25_000;
+// 鲁港通 - 长轮询请求比服务端等待多留 10 秒，超时后立即重连而不是永久挂起
+const POLL_TIMEOUT_GRACE_MS = 10_000;
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -91,10 +94,13 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleep = options.sleep ?? defaultSleep;
   const pollTimeoutMs = options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+  const pollRequestTimeoutMs =
+    options.pollRequestTimeoutMs ?? pollTimeoutMs + POLL_TIMEOUT_GRACE_MS;
 
   let polling = false;
   let generation = 0;
   let active: ActiveCommand | undefined;
+  let inFlight: AbortController | undefined;
 
   // 会话同步与退出清理串行执行，避免并发注册互相顶掉令牌
   let sessionChain: Promise<unknown> = Promise.resolve();
@@ -110,6 +116,9 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
   const stopPolling = () => {
     polling = false;
     generation += 1;
+    // 鲁港通 - 停止轮询时立即中断挂起的请求，避免退出后仍占着长连接
+    inFlight?.abort();
+    inFlight = undefined;
   };
 
   const postResult = async (token: string, commandId: string, result: unknown) => {
@@ -164,12 +173,18 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
         return;
       }
 
+      const controller = new AbortController();
+      inFlight = controller;
+      const timer = setTimeout(() => controller.abort(), pollRequestTimeoutMs);
+      timer.unref?.();
+
       try {
         const response = await fetchImpl(
           `${root}/api/proApi/desktop/commands?deviceId=${encodeURIComponent(deviceId)}&timeoutMs=${pollTimeoutMs}`,
           {
             method: 'GET',
-            headers: { Authorization: `Bearer ${token}` }
+            headers: { Authorization: `Bearer ${token}` },
+            signal: controller.signal
           }
         );
 
@@ -192,8 +207,12 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
           await handleEnvelope(envelope, token);
         }
       } catch (error) {
+        if (!polling || generation !== current) return;
         log?.('desktop command poll failed', error);
         await sleep(RETRY_DELAY_MS);
+      } finally {
+        clearTimeout(timer);
+        if (inFlight === controller) inFlight = undefined;
       }
     }
   };
@@ -283,8 +302,9 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
       await postResult(current.token, current.commandId, {
         ok: false,
         stopped: true,
-        code: 'stopped',
-        message: '用户已停止操作'
+        // 鲁港通 - 把客户端的真实停止原因交给服务端，便于给出针对性的中文指引
+        code: state.stopReason ?? 'stopped_by_user',
+        message: state.message ?? '用户已停止操作'
       });
     }
     return state;

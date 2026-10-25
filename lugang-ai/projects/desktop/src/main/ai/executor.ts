@@ -6,7 +6,7 @@ import {
   isSensitiveElement,
   matchAiTarget
 } from './matcher';
-import { AI_STOP_MESSAGES } from './policy';
+import { AI_STOP_MESSAGES, type AiStopReason } from './policy';
 import type { AiCommand } from './protocol';
 import {
   normalizeAiSnapshot,
@@ -67,13 +67,15 @@ export type AiFileInputState = {
   names?: string[];
 };
 
-export type AiConfirmationDecision = 'allow' | 'handoff' | 'cancel' | 'timeout';
+export type AiConfirmationDecision = 'allow' | 'handoff' | 'cancel' | 'timeout' | 'page_closed';
+
+export type AiConfirmCancelReason = 'cancel' | 'page_closed';
 
 export type AiConfirmer = ((request: {
   host: string;
   label: string;
   url?: string;
-}) => Promise<AiConfirmationDecision>) & { cancel?: () => void };
+}) => Promise<AiConfirmationDecision>) & { cancel?: (reason?: AiConfirmCancelReason) => void };
 
 export type AiConfirmationInfo = {
   required: true;
@@ -89,7 +91,7 @@ export type AiFileResult = {
 
 export type AiCommandResult = {
   ok: boolean;
-  code?: AiActionErrorCode;
+  code?: AiActionErrorCode | AiStopReason;
   message?: string;
   snapshot?: AiPageSnapshot;
   changed?: boolean;
@@ -217,8 +219,8 @@ export class AiExecutor {
     this.confirm = options.confirm;
   }
 
-  cancelConfirmation = (): void => {
-    this.confirm?.cancel?.();
+  cancelConfirmation = (reason?: AiConfirmCancelReason): void => {
+    this.confirm?.cancel?.(reason);
   };
 
   async execute(command: AiCommand): Promise<AiCommandResult> {
@@ -462,6 +464,16 @@ export class AiExecutor {
         ok: false,
         code: 'confirmation_timeout',
         message: AI_STOP_MESSAGES.confirmation_timeout,
+        snapshot: before,
+        confirmation
+      };
+    }
+    // 鲁港通 - 页面被关闭时自动撤销本次提交，不再点击，也不等同于用户主动取消
+    if (decision === 'page_closed') {
+      return {
+        ok: false,
+        code: 'page_error',
+        message: '页面被关闭，本次提交已自动取消，没有提交任何内容。页面恢复后我会重新读取页面再继续。',
         snapshot: before,
         confirmation
       };

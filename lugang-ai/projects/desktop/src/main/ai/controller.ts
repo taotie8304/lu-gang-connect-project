@@ -24,7 +24,7 @@ import {
 } from './policy';
 import type { AiCommand } from './protocol';
 
-export const AI_SESSION_IDLE_MS = 3 * 60 * 1000;
+export const AI_SESSION_IDLE_MS = 10 * 60 * 1000;
 
 export type AiControllerBrowser = {
   openPanel(): unknown;
@@ -60,7 +60,9 @@ export type AiTabClosedEvent = {
 };
 
 // 鲁港通 - 安全类拦截直接结束会话，其余失败按连续失败计数
-const SECURITY_STOP_REASONS: Partial<Record<AiActionErrorCode, AiStopReason>> = {
+const SECURITY_STOP_REASONS: Partial<
+  Record<AiActionErrorCode | AiStopReason, AiStopReason>
+> = {
   sensitive_blocked: 'sensitive_blocked',
   high_risk_blocked: 'high_risk_blocked',
   not_allowed: 'domain_not_allowed',
@@ -88,6 +90,7 @@ export class AiController {
   private sessionTabId: number | undefined;
   private sessionActiveUntil = 0;
   private reopening = false;
+  private pageClosedRecently = false;
 
   constructor(options: AiControllerOptions) {
     this.browser = options.browser;
@@ -145,7 +148,12 @@ export class AiController {
 
     if (this.guard.stopped) {
       if (!options.resume) {
-        return { ok: false, stopped: true, message: this.guard.stopMessage };
+        return {
+          ok: false,
+          stopped: true,
+          code: this.guard.stopReason,
+          message: this.guard.stopMessage
+        };
       }
       this.resetSession();
     } else if (!this.isSessionAlive()) {
@@ -177,11 +185,16 @@ export class AiController {
   handleTabClosed = async (event: AiTabClosedEvent): Promise<void> => {
     if (!this.isSessionAlive() || this.reopening) return;
     if (this.sessionTabId !== undefined && event.id !== this.sessionTabId) return;
+    // 鲁港通 - 页面消失时先撤销挂起的提交确认，避免确认窗卡住最长 5 分钟
+    this.pageClosedRecently = true;
+    this.executor.cancelConfirmation('page_closed');
     await this.reopenPage(event.url);
   };
 
   handlePanelClosed = async (): Promise<void> => {
     if (!this.isSessionAlive() || this.reopening) return;
+    this.pageClosedRecently = true;
+    this.executor.cancelConfirmation('page_closed');
     await this.reopenPage(this.sessionUrl);
   };
 
@@ -195,6 +208,7 @@ export class AiController {
     this.sessionUrl = undefined;
     this.sessionTabId = undefined;
     this.sessionActiveUntil = 0;
+    this.pageClosedRecently = false;
   }
 
   private ensurePanel() {
@@ -220,6 +234,7 @@ export class AiController {
   private applyResult(command: AiCommand, result: AiCommandResult): AiCommandResult {
     if (result.ok) {
       this.guard = recordAiActionSuccess(this.guard);
+      this.pageClosedRecently = false;
       if (command.action === 'type' && command.target) {
         this.rememberField(command.target, command.text);
       }
@@ -227,7 +242,12 @@ export class AiController {
       if (command.action === 'click' && result.confirmation?.decision === 'allow') {
         this.guard = stopAiSession(this.guard, 'submitted');
         this.sessionActiveUntil = 0;
-        return { ...result, stopped: true, message: this.guard.stopMessage };
+        return {
+          ...result,
+          stopped: true,
+          code: this.guard.stopReason,
+          message: this.guard.stopMessage
+        };
       }
       return result;
     }
@@ -238,19 +258,40 @@ export class AiController {
     ) {
       this.guard = stopAiSession(this.guard, 'submission_unconfirmed');
       this.sessionActiveUntil = 0;
-      return { ...result, stopped: true, message: this.guard.stopMessage };
+      return {
+        ...result,
+        stopped: true,
+        code: this.guard.stopReason,
+        message: this.guard.stopMessage
+      };
     }
 
     const securityReason = result.code ? SECURITY_STOP_REASONS[result.code] : undefined;
     if (securityReason) {
       this.guard = stopAiSession(this.guard, securityReason);
-      return { ...result, stopped: true, message: this.guard.stopMessage };
+      return {
+        ...result,
+        stopped: true,
+        code: this.guard.stopReason,
+        message: this.guard.stopMessage
+      };
+    }
+
+    // 鲁港通 - 关页引起的读取失败不消耗连续失败额度，避免页面刚重开就误停
+    if (this.pageClosedRecently && result.code === 'page_error') {
+      this.pageClosedRecently = false;
+      return result;
     }
 
     const failure = recordAiActionFailure(this.guard);
     this.guard = failure.next;
     if (failure.stop) {
-      return { ...result, stopped: true, message: failure.message };
+      return {
+        ...result,
+        stopped: true,
+        code: this.guard.stopReason,
+        message: failure.message
+      };
     }
     return result;
   }
