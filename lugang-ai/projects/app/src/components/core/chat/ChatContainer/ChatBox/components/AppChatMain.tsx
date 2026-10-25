@@ -6,6 +6,7 @@ import type { ChatBoxInputFormType } from '../type';
 import { ChatBoxContentMaxWidth, type ChatTypeEnum } from '../constants';
 import WelcomeBox from './WelcomeBox';
 import LugangWelcomeSlogan from './LugangWelcomeSlogan';
+import LugangWelcomeHero from './home/LugangWelcomeHero';
 import VariableInputForm from './VariableInputForm';
 import ChatRecordsList, { type ChatRecordsListProps } from './ChatRecordsList';
 import QuickQuestionButton from '@/components/core/chat/QuickQuestionButton';
@@ -32,6 +33,8 @@ type AppChatMainProps = BoxProps & {
   recordsListProps: ChatRecordsListProps;
   boxBodyProps?: BoxProps;
   EmptyState?: React.ReactNode;
+  /** 鲁港通 - 默认 AI 助手的空会话用品牌首屏替换三语轮播与应用欢迎语 */
+  brandWelcome?: boolean;
 };
 
 /**
@@ -54,13 +57,23 @@ const AppChatMain = ({
   recordsListProps,
   maxW = ['100%', ChatBoxContentMaxWidth],
   boxBodyProps,
-  EmptyState
+  EmptyState,
+  brandWelcome
 }: AppChatMainProps) => {
   const visibleWelcomeQuestions = welcomeQuestions.map((text) => text.trim()).filter(Boolean);
   const hasEmptyState = recordsListProps.records.length === 0 && !!EmptyState;
   // 复用快捷回复的发送通道：它不受 canSendPrompt 限制，开场白阶段的预设问题也能直接发送，
   // 由 sendPrompt 内部校验变量，行为与旧版 welcomeText 内嵌的 quick-replies 一致。
   const onQuickReplyClick = useContextSelector(QuickReplyContext, (v) => v.onQuickReplyClick);
+
+  // 鲁港通 - 能力卡只把提示词填进输入框，建议问题走快捷回复直接发送
+  const onPickWelcomePrompt = (text: string, mode: 'fill' | 'send') => {
+    if (mode === 'send' && onQuickReplyClick) {
+      onQuickReplyClick(text);
+      return;
+    }
+    chatForm.setValue('input', text);
+  };
 
   return (
     <ScrollData
@@ -89,9 +102,16 @@ const AppChatMain = ({
           maxW={['calc(100% - 25px)', ChatBoxContentMaxWidth]}
           mx={'auto'}
         >
-          {/* 鲁港通 - 空会话时展示品牌三语欢迎语（普→粤→英轮播 + 浅色光晕背景） */}
-          {recordsListProps.records.length === 0 && <LugangWelcomeSlogan />}
-          {!!welcomeText && <WelcomeBox welcomeText={welcomeText} />}
+          {/* 鲁港通 - 默认 AI 助手的空会话展示品牌首屏；其余助手保留三语欢迎语与应用欢迎语 */}
+          {recordsListProps.records.length === 0 &&
+            (brandWelcome ? (
+              <Box py={5}>
+                <LugangWelcomeHero onPickPrompt={onPickWelcomePrompt} />
+              </Box>
+            ) : (
+              <LugangWelcomeSlogan />
+            ))}
+          {!!welcomeText && !brandWelcome && <WelcomeBox welcomeText={welcomeText} />}
           {visibleWelcomeQuestions.length > 0 && (
             <Flex w={'100%'} flexDirection={'column'} alignItems={'flex-start'} gap={2}>
               {visibleWelcomeQuestions.map((text, index) => (

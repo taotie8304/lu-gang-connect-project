@@ -66,6 +66,8 @@ import {
 } from '../context/quickReplyContext';
 import type { ChatAuthTargetInput } from '@/web/core/chat/utils';
 import { useChatAuthApiTarget } from '@/web/core/chat/utils';
+import { ChatPageContext } from '@/web/core/chat/context/chatPageContext';
+import { isBrandWelcomeApp } from './utils/brandWelcome';
 
 const ChatHomeVariablesForm = dynamic(() => import('./components/home/ChatHomeVariablesForm'));
 const DesktopHomeLayout = dynamic(() => import('./components/home/DesktopHomeLayout'));
@@ -202,6 +204,17 @@ const ChatBox = ({
   const chatScrollTargetKey = useMemo(
     () => getChatScrollTargetKey({ sourceKey, chatId }),
     [sourceKey, chatId]
+  );
+  // 鲁港通 - 只有默认 AI 助手把品牌首屏（问候语 + 能力卡 + 建议词）作为空会话欢迎区
+  const defaultAppId = useContextSelector(ChatPageContext, (v) => v.defaultAppId);
+  const brandWelcome = useMemo(
+    () =>
+      isBrandWelcomeApp({
+        sourceType: sourceTarget.sourceType,
+        sourceId: sourceTarget.sourceId,
+        defaultAppId
+      }),
+    [defaultAppId, sourceTarget.sourceId, sourceTarget.sourceType]
   );
   const welcomeText = useContextSelector(ChatBoxContext, (v) => v.welcomeText);
   const welcomeQuestions = useContextSelector(ChatBoxContext, (v) => v.welcomeQuestions);
@@ -727,6 +740,7 @@ const ChatBox = ({
             recordsListProps={recordsListProps}
             maxW={props.maxW}
             boxBodyProps={boxBodyProps}
+            brandWelcome={brandWelcome}
             EmptyState={
               chatRecords.length === 0 && isChatRecordsLoaded && !isLoadingRecords
                 ? EmptyState
