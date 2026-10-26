@@ -1,7 +1,7 @@
 // 鲁港通 - AI 桌面控制器：串联执行器与浏览器生命周期，负责自愈、停止与审计
 import { randomUUID } from 'node:crypto';
 import type { DesktopAiState } from '../../shared/ipc';
-import { isAiUrlAllowed } from './allowlist';
+import { isAiUrlOperable } from './urlPolicy';
 import { buildAiAuditRecord, type AiAuditRecord } from './audit';
 import {
   AiExecutor,
@@ -39,7 +39,6 @@ export type AiControllerBrowser = {
 export type AiControllerOptions = {
   browser: AiControllerBrowser;
   driver: AiPageDriver;
-  allowedHosts: string[];
   audit?: (record: AiAuditRecord) => Promise<void> | void;
   generateFile?: AiFileGenerator;
   pickFile?: AiFilePicker;
@@ -79,7 +78,6 @@ export class AiController {
   private readonly browser: AiControllerBrowser;
   private readonly driver: AiPageDriver;
   private readonly executor: AiExecutor;
-  private readonly allowedHosts: string[];
   private readonly auditRecord?: (record: AiAuditRecord) => Promise<void> | void;
   private readonly now: () => number;
   private readonly idleMs: number;
@@ -95,13 +93,11 @@ export class AiController {
   constructor(options: AiControllerOptions) {
     this.browser = options.browser;
     this.driver = options.driver;
-    this.allowedHosts = options.allowedHosts;
     this.auditRecord = options.audit;
     this.now = options.now ?? (() => Date.now());
     this.idleMs = options.idleMs ?? AI_SESSION_IDLE_MS;
     this.executor = new AiExecutor({
       driver: options.driver,
-      allowedHosts: options.allowedHosts,
       generateFile: options.generateFile,
       pickFile: options.pickFile,
       confirm: options.confirm
@@ -223,9 +219,9 @@ export class AiController {
   private capturePageState(result: AiCommandResult) {
     const state = this.browser.getState();
     const current = state.tabs.find((tab) => tab.current) ?? state.tabs[0];
-    if (current?.url && isAiUrlAllowed(current.url, this.allowedHosts)) {
+    if (current?.url && isAiUrlOperable(current.url)) {
       this.sessionUrl = current.url;
-    } else if (result.snapshot?.url && isAiUrlAllowed(result.snapshot.url, this.allowedHosts)) {
+    } else if (result.snapshot?.url && isAiUrlOperable(result.snapshot.url)) {
       this.sessionUrl = result.snapshot.url;
     }
     this.sessionTabId = state.activeTabId ?? this.sessionTabId;
@@ -306,7 +302,7 @@ export class AiController {
 
   private async reopenPage(fallbackUrl?: string): Promise<void> {
     const targetUrl = this.sessionUrl ?? fallbackUrl;
-    if (!targetUrl || !isAiUrlAllowed(targetUrl, this.allowedHosts)) {
+    if (!targetUrl || !isAiUrlOperable(targetUrl)) {
       this.guard = stopAiSession(this.guard, 'domain_not_allowed');
       this.sessionActiveUntil = 0;
       await this.auditReopen(false, targetUrl);

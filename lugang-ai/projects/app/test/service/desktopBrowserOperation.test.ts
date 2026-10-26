@@ -9,7 +9,7 @@ import {
 import {
   createDesktopBrowserOperationExecutor,
   isDesktopBrowserEnabledForUser,
-  isDesktopBrowserUrlAllowed
+  isDesktopBrowserUrlOperable
 } from '@fastgpt/service/support/desktopCommand/browserOperation';
 import { DESKTOP_BROWSER_RESUME_TTL_MS } from '@fastgpt/service/support/desktopCommand/constant';
 import type { DesktopBrowserSnapshot } from '@fastgpt/global/support/desktopCommand/type';
@@ -158,6 +158,15 @@ describe('browser operation tool schema', () => {
     expect(description).toContain('从中断的步骤继续');
   });
 
+  it('no longer limits operation to government sites', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('任何公网站点');
+    expect(description).not.toContain('政府官方网站');
+    expect(description).not.toContain('只能访问政府');
+    expect(description).not.toContain('政府事务');
+  });
+
   it('parses generate_file and upload actions', () => {
     expect(
       parseBrowserOperationArgs({
@@ -292,24 +301,22 @@ describe('desktop browser grey list', () => {
   });
 });
 
-describe('desktop browser url allowlist', () => {
-  it('allows government host suffixes', () => {
-    expect(isDesktopBrowserUrlAllowed('https://www.gov.hk/en/residents/')).toBe(true);
-    expect(isDesktopBrowserUrlAllowed('https://www.immd.gov.hk/hkt/contact.html')).toBe(true);
-    expect(isDesktopBrowserUrlAllowed('http://www.gov.cn/zhengce/')).toBe(true);
+describe('desktop browser url policy', () => {
+  it('allows any public http/https site', () => {
+    expect(isDesktopBrowserUrlOperable('https://www.gov.hk/en/residents/')).toBe(true);
+    expect(isDesktopBrowserUrlOperable('https://www.empf.org.hk/register')).toBe(true);
+    expect(isDesktopBrowserUrlOperable('https://example.com/login')).toBe(true);
+    expect(isDesktopBrowserUrlOperable('http://www.gov.cn/zhengce/')).toBe(true);
   });
 
-  it('rejects lookalike hosts, other domains and non-http protocols', () => {
-    expect(isDesktopBrowserUrlAllowed('https://gov.hk.evil.com/')).toBe(false);
-    expect(isDesktopBrowserUrlAllowed('https://example.com/')).toBe(false);
-    expect(isDesktopBrowserUrlAllowed('javascript:alert(1)')).toBe(false);
-    expect(isDesktopBrowserUrlAllowed('not a url')).toBe(false);
-  });
-
-  it('honours an explicit host list for local test pages', () => {
-    expect(isDesktopBrowserUrlAllowed('http://127.0.0.1:3100/form', ['.gov.hk', '127.0.0.1'])).toBe(
-      true
-    );
+  it('rejects loopback, private and non-http addresses', () => {
+    expect(isDesktopBrowserUrlOperable('http://127.0.0.1:3100/form')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('http://localhost:8123/')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('http://192.168.1.1/')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('https://10.20.30.40/portal')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('javascript:alert(1)')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('file:///C:/secret.txt')).toBe(false);
+    expect(isDesktopBrowserUrlOperable('not a url')).toBe(false);
   });
 });
 
@@ -397,14 +404,27 @@ describe('desktop browser operation executor', () => {
     expect(store.enqueue).not.toHaveBeenCalled();
   });
 
-  it('rejects a navigate outside the allowlist before touching the device', async () => {
+  it('rejects a loopback navigate before touching the device', async () => {
     const store = createFakeStore();
     const execute = createExecutor({ store });
 
-    const result = await execute({ action: 'navigate', url: 'https://example.com/login' });
+    const result = await execute({ action: 'navigate', url: 'http://127.0.0.1:3100/admin' });
 
-    expect(result.response).toContain('允许');
+    expect(result.response).toContain('本机');
     expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('navigates to any public site', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'navigate', url: 'https://www.empf.org.hk/register' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'navigate', url: 'https://www.empf.org.hk/register' }
+    });
+    expect(result.response).toContain('操作已执行');
   });
 
   it('sends a click command and returns the fresh snapshot', async () => {

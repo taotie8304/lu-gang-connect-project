@@ -1,5 +1,5 @@
 // 鲁港通 - AI 指令执行器：定位、动作前安全拦截、动作后页面校验
-import { isAiHostAllowed, isAiUrlAllowed } from './allowlist';
+import { isAiPrivateHost, isAiSnapshotUrlAllowed } from './urlPolicy';
 import {
   isConfirmableActionLabel,
   isPaymentActionLabel,
@@ -200,20 +200,17 @@ const parseHttpUrl = (input: string): URL | null => {
 
 export class AiExecutor {
   private readonly driver: AiPageDriver;
-  private readonly allowedHosts: string[];
   private readonly generateFile?: AiFileGenerator;
   private readonly pickFile?: AiFilePicker;
   private readonly confirm?: AiConfirmer;
 
   constructor(options: {
     driver: AiPageDriver;
-    allowedHosts: string[];
     generateFile?: AiFileGenerator;
     pickFile?: AiFilePicker;
     confirm?: AiConfirmer;
   }) {
     this.driver = options.driver;
-    this.allowedHosts = options.allowedHosts;
     this.generateFile = options.generateFile;
     this.pickFile = options.pickFile;
     this.confirm = options.confirm;
@@ -502,7 +499,7 @@ export class AiExecutor {
         message: '网址格式无效，只支持 http 或 https 的网站地址。'
       };
     }
-    if (!isAiHostAllowed(parsed.hostname, this.allowedHosts)) {
+    if (isAiPrivateHost(parsed.hostname)) {
       return {
         ok: false,
         code: 'not_allowed',
@@ -694,7 +691,7 @@ export class AiExecutor {
 
   private async readSnapshot(options?: { fullText?: boolean }): Promise<SnapshotResult> {
     const snapshot = normalizeAiSnapshot(await this.driver.snapshot(options), options);
-    if (!snapshot.url || !isAiUrlAllowed(snapshot.url, this.allowedHosts)) {
+    if (!isAiSnapshotUrlAllowed(snapshot.url)) {
       return {
         result: {
           ok: false,

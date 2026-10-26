@@ -15,7 +15,6 @@ import type { AiPageElement, AiPageSnapshot } from '../src/main/ai/snapshot';
 import type { DesktopBrowserState } from '../src/shared/ipc';
 
 const PAGE_URL = 'https://www.gov.hk/en/residents/form';
-const ALLOWED = ['.gov.hk'];
 
 const makeSnapshot = (
   elements: Partial<AiPageElement>[] = [],
@@ -125,7 +124,6 @@ const createController = (
   const controller = new AiController({
     browser,
     driver: harness.driver,
-    allowedHosts: ALLOWED,
     now: options.now,
     audit: options.audit,
     confirm: options.confirm,

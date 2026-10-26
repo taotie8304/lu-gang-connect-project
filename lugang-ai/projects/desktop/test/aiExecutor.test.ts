@@ -160,7 +160,6 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
   return { driver, calls };
 };
 
-const allowedHosts = ['.gov.hk', '.gov.cn'];
 const createExecutor = (
   driver: AiPageDriver,
   extras: {
@@ -168,7 +167,7 @@ const createExecutor = (
     pickFile?: () => Promise<string | null>;
     confirm?: AiConfirmer;
   } = {}
-) => new AiExecutor({ driver, allowedHosts, ...extras });
+) => new AiExecutor({ driver, ...extras });
 
 describe('AI 页面执行器', () => {
   it('点击目标并返回操作后的页面快照', async () => {
@@ -431,23 +430,23 @@ describe('AI 页面执行器', () => {
     expect(calls.scroll).toEqual([['down', 300]]);
   });
 
-  it('导航到白名单内的政府网站', async () => {
+  it('导航到任意公网站点', async () => {
     const { driver, calls } = createDriver(makeSnapshot([]));
     const result = await createExecutor(driver).execute({
       action: 'navigate',
-      url: 'https://www.gov.hk/sc/forms/apply?lang=sc'
+      url: 'https://www.empf.org.hk/register?lang=sc'
     });
 
     expect(result.ok).toBe(true);
-    expect(calls.navigate).toEqual(['https://www.gov.hk/sc/forms/apply?lang=sc']);
-    expect(result.snapshot?.url).toBe('https://www.gov.hk/sc/forms/apply');
+    expect(calls.navigate).toEqual(['https://www.empf.org.hk/register?lang=sc']);
+    expect(result.snapshot?.url).toBe('https://www.empf.org.hk/register');
   });
 
-  it('导航到非白名单网站时拒绝', async () => {
+  it('导航到本机或内网地址时拒绝', async () => {
     const { driver, calls } = createDriver(makeSnapshot([]));
     const result = await createExecutor(driver).execute({
       action: 'navigate',
-      url: 'https://evil.example.com/steal'
+      url: 'http://192.168.1.1/admin'
     });
 
     expect(result.ok).toBe(false);
@@ -466,10 +465,10 @@ describe('AI 页面执行器', () => {
     expect(result.code).toBe('invalid_url');
   });
 
-  it('当前页面不在白名单时不允许任何操作', async () => {
+  it('当前页面是本机地址时不允许任何操作', async () => {
     const { driver, calls } = createDriver(
       makeSnapshot([makeElement({ ref: 'e1', name: '下一步', text: '下一步' })], {
-        url: 'https://evil.example.com/page'
+        url: 'http://127.0.0.1:3100/page'
       })
     );
     const result = await createExecutor(driver).execute({ action: 'click', ref: 'e1' });
@@ -479,9 +478,9 @@ describe('AI 页面执行器', () => {
     expect(calls.clickAt).toHaveLength(0);
   });
 
-  it('导航被重定向到非白名单网站时立即拦截', async () => {
+  it('导航被重定向到内网地址时立即拦截', async () => {
     const { driver } = createDriver(makeSnapshot([]), {
-      navigateSnapshot: makeSnapshot([], { url: 'https://evil.example.com/redirected' })
+      navigateSnapshot: makeSnapshot([], { url: 'http://10.0.0.5/redirected' })
     });
     const result = await createExecutor(driver).execute({
       action: 'navigate',

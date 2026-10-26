@@ -12,7 +12,6 @@ import { setupAutoUpdate } from './update';
 import { resolveAppUrl } from '../shared/url';
 import { createMainWindow } from './window';
 import { createWindowControls } from './windowChrome';
-import { parseAiAllowedHosts } from './ai/allowlist';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
 import { createAiConfirmer } from './ai/confirmDialog';
@@ -145,7 +144,6 @@ if (!gotLock) {
         }
       });
 
-      const allowedHosts = parseAiAllowedHosts(process.env.LUGANG_AI_ALLOWED_HOSTS);
       const aiDriver = new CdpPageDriver({
         getSession: () => browser.getActiveDebuggerSession(),
         navigate: async (url) => {
@@ -159,7 +157,6 @@ if (!gotLock) {
       const ai = new AiController({
         browser,
         driver: aiDriver,
-        allowedHosts,
         audit: (record) => aiAudit.append(record),
         generateFile: async (input) => {
           const file = await generateFile(input);

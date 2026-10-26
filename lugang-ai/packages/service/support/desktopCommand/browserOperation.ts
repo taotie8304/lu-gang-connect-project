@@ -1,5 +1,5 @@
 // 鲁港通 - 智能体浏览器操作执行器（P2 阶段一）：
-// 负责灰度判断、官方站点白名单、敏感字段拦截、设备在线检查、指令下发与快照格式化。
+// 负责灰度判断、本机/内网地址拦截、敏感字段拦截、设备在线检查、指令下发与快照格式化。
 import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall
@@ -24,8 +24,6 @@ import {
 } from './store';
 
 export const DESKTOP_BROWSER_ENABLED_ENV = 'LUGANG_DESKTOP_AI_BROWSER';
-export const DESKTOP_BROWSER_ALLOWED_HOSTS_ENV = 'LUGANG_AI_ALLOWED_HOSTS';
-export const DESKTOP_BROWSER_DEFAULT_ALLOWED_HOSTS = ['.gov.hk', '.gov.cn'];
 
 export type DesktopBrowserIdentity = {
   tmbId: string;
@@ -78,20 +76,46 @@ const SENSITIVE_TARGET_PATTERN =
 const CONTINUATION_PATTERN =
   /^(继续|繼續|接着|接著|往下|继续吧|繼續吧|继续填写|繼續填寫|continue|go on|keep going)[。.!！?？\s]*$/i;
 
-const normalizeEntry = (entry: string): string => {
-  const trimmed = entry.trim().toLowerCase();
-  if (!trimmed) return '';
-  return trimmed.startsWith('.') ? `.${trimmed.slice(1).replace(/\.$/, '')}` : trimmed.replace(/\.$/, '');
+const normalizeHost = (hostname: string): string =>
+  hostname.trim().toLowerCase().replace(/\.$/, '');
+
+const stripBrackets = (host: string): string =>
+  host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+
+const isPrivateIpv4 = (host: string): boolean => {
+  const match = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(host);
+  if (!match) return false;
+  const [a, b] = match.slice(1).map(Number);
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 169 && b === 254)
+  );
 };
 
-export const parseDesktopBrowserAllowedHosts = (
-  raw: string | undefined = process.env[DESKTOP_BROWSER_ALLOWED_HOSTS_ENV]
-): string[] => {
-  const entries = (raw ?? '')
-    .split(',')
-    .map(normalizeEntry)
-    .filter(Boolean);
-  return entries.length > 0 ? entries : [...DESKTOP_BROWSER_DEFAULT_ALLOWED_HOSTS];
+const isPrivateIpv6 = (host: string): boolean => {
+  if (host === '::' || host === '::1') return true;
+  if (/^fe[89ab][0-9a-f]?:/.test(host)) return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return true;
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(host);
+  return mapped ? isPrivateIpv4(mapped[1]) : false;
+};
+
+const isPrivateHost = (hostname: string): boolean => {
+  const host = stripBrackets(normalizeHost(hostname));
+  if (!host) return true;
+  if (
+    host === 'localhost' ||
+    host.endsWith('.localhost') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal')
+  ) {
+    return true;
+  }
+  return isPrivateIpv4(host) || isPrivateIpv6(host);
 };
 
 /**
@@ -122,22 +146,12 @@ export const isDesktopBrowserEnabledForUser = (
     .some((item) => candidates.includes(item));
 };
 
-/** 仅允许 http(s) 且命中官方站点白名单；后缀匹配防止 gov.hk.evil.com 这类仿冒域名。 */
-export const isDesktopBrowserUrlAllowed = (
-  input: string,
-  allowedHosts: string[] = parseDesktopBrowserAllowedHosts()
-): boolean => {
+/** 只拦截本机/内网地址与非 http(s) 协议，公网站点不设白名单。 */
+export const isDesktopBrowserUrlOperable = (input: string): boolean => {
   try {
     const url = new URL(input);
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
-
-    const host = url.hostname.toLowerCase().replace(/\.$/, '');
-    return allowedHosts
-      .map(normalizeEntry)
-      .filter(Boolean)
-      .some((entry) =>
-        entry.startsWith('.') ? host === entry.slice(1) || host.endsWith(entry) : host === entry
-      );
+    return !isPrivateHost(url.hostname);
   } catch {
     return false;
   }
@@ -226,6 +240,8 @@ const guidanceForCode = (code?: string): string | undefined => {
       return '匹配到多个可能的元素。请改用元素引用（ref）重新操作。';
     case 'verification_failed':
       return '操作后没有检测到预期变化。请先重新读取页面，确认是否已经成功。';
+    case 'not_allowed':
+      return '当前页面指向本机或内网地址，不能代为操作。请让用户在自己的浏览器里处理，或先导航到对外的网页。';
     case 'page_error':
       return '页面加载失败或已被关闭。桌面客户端会尝试自动恢复；请先重新读取页面确认已经恢复，再从中断的步骤继续。如果页面仍未恢复，请让用户重新打开页面后再继续。';
     case 'page_closed_twice':
@@ -402,10 +418,10 @@ export const createDesktopBrowserOperationExecutor = ({
 
     if (action === 'navigate') {
       const url = typeof args.url === 'string' ? args.url : '';
-      if (!isDesktopBrowserUrlAllowed(url)) {
+      if (!isDesktopBrowserUrlOperable(url)) {
         return finish({
           response:
-            '当前只允许操作政府官方网站（如 gov.hk、gov.cn），该地址不在允许范围内。请提供官方办事页面地址。',
+            '这个地址是本机或内网地址，为安全起见不能代为打开。请提供对外的网页地址，或者让用户在自己的浏览器里打开。',
           action,
           url: requestUrl,
           ok: false,

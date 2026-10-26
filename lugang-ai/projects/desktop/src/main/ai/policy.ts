@@ -33,7 +33,7 @@ export const AI_STOP_MESSAGES: Record<AiStopReason, string> = {
     '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。',
   sensitive_blocked: '密码、验证码、银行卡等敏感信息需要你亲自填写，我不能代为输入。',
   high_risk_blocked: '支付、转账、购买等资金操作不能由我代为进行，需要你本人完成。',
-  domain_not_allowed: '该网站不在允许自动操作的范围内，需要你亲自处理。',
+  domain_not_allowed: '这个地址指向本机或内网，为安全起见我不能代为操作。需要处理时请你在自己的浏览器里完成。',
   cancelled_by_user: '你取消了选择文件，我已停止上传操作。需要继续时请告诉我。',
   handed_over: '已把页面交还给你手动提交，我不会再继续操作。你完成提交后如果需要我继续，请告诉我。',
   confirmation_declined: '你取消了本次提交，页面没有提交任何内容。需要继续时请告诉我。',
