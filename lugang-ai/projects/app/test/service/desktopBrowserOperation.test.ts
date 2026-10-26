@@ -11,7 +11,11 @@ import {
   isDesktopBrowserEnabledForUser,
   isDesktopBrowserUrlOperable
 } from '@fastgpt/service/support/desktopCommand/browserOperation';
-import { DESKTOP_BROWSER_RESUME_TTL_MS } from '@fastgpt/service/support/desktopCommand/constant';
+import {
+  DESKTOP_BROWSER_RESUME_TTL_MS,
+  DESKTOP_BUSY_LONG_TTL_MS,
+  getDesktopCommandBusyTtlMs
+} from '@fastgpt/service/support/desktopCommand/constant';
 import type { DesktopBrowserSnapshot } from '@fastgpt/global/support/desktopCommand/type';
 import { createTestStore } from './desktopTestStore';
 
@@ -132,6 +136,8 @@ describe('browser operation tool schema', () => {
       'scroll',
       'upload',
       'generate_file',
+      'open_form',
+      'fill_form',
       'wait'
     ]);
   });
@@ -167,6 +173,15 @@ describe('browser operation tool schema', () => {
     expect(description).not.toContain('政府事务');
   });
 
+  it('tells the model to ask for missing details before filling a local form', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('open_form');
+    expect(description).toContain('fill_form');
+    expect(description).toContain('不要编造');
+    expect(description).toContain('核对');
+  });
+
   it('parses generate_file and upload actions', () => {
     expect(
       parseBrowserOperationArgs({
@@ -199,6 +214,53 @@ describe('browser operation tool schema', () => {
         target: '上传附件'
       }).success
     ).toBe(true);
+  });
+
+  it('parses open_form and fill_form actions', () => {
+    expect(parseBrowserOperationArgs({ action: 'open_form' })).toMatchObject({
+      success: true,
+      args: { action: 'open_form' }
+    });
+    expect(
+      parseBrowserOperationArgs({
+        action: 'open_form',
+        hint: '慈善组织申请表'
+      })
+    ).toMatchObject({ success: true, args: { action: 'open_form', hint: '慈善组织申请表' } });
+    expect(
+      parseBrowserOperationArgs({
+        action: 'fill_form',
+        token: 'lgform_abc123',
+        fields: [
+          { field: 'f1', value: '张三' },
+          { field: 'f2', value: '' }
+        ]
+      })
+    ).toMatchObject({ success: true, args: { action: 'fill_form', token: 'lgform_abc123' } });
+  });
+
+  it('rejects incomplete or oversized fill_form payloads', () => {
+    expect(BrowserOperationArgsSchema.safeParse({ action: 'fill_form', fields: [] }).success).toBe(
+      false
+    );
+    expect(
+      BrowserOperationArgsSchema.safeParse({ action: 'fill_form', token: 'lgform_abc', fields: [] })
+        .success
+    ).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'fill_form',
+        token: 'lgform_abc',
+        fields: [{ field: 'f1', value: 'x'.repeat(2001) }]
+      }).success
+    ).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'fill_form',
+        token: 'lgform_abc',
+        fields: Array.from({ length: 201 }, (_, index) => ({ field: `f${index}`, value: 'x' }))
+      }).success
+    ).toBe(false);
   });
 
   it('rejects oversized generated file content and rows', () => {
@@ -780,5 +842,180 @@ describe('desktop browser operation executor', () => {
     const result = await execute({ action: 'read' });
 
     expect(result.response).toContain('操作已执行');
+  });
+});
+
+describe('desktop form filling', () => {
+  const formSummary = {
+    format: 'docx' as const,
+    name: '慈善组织申请表.docx',
+    title: '慈善组织申请表',
+    fields: [
+      { id: 'f1', label: '机构名称', kind: 'text' as const, required: true },
+      { id: 'f2', label: '组织类型', kind: 'choice' as const, options: ['社团', '公司'] },
+      { id: 'f3', label: '成立日期', kind: 'date' as const }
+    ]
+  };
+
+  const fillFields = [{ field: 'f1', value: '香港慈善总会' }];
+
+  it('opens a local form and lists field ids for the model to fill', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      form: formSummary,
+      formToken: 'lgform_abc'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_form', hint: '请选择慈善组织申请表' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'open_form', hint: '请选择慈善组织申请表' }
+    });
+    expect(result.response).toContain('慈善组织申请表.docx');
+    expect(result.response).toContain('Word');
+    expect(result.response).toContain('f1');
+    expect(result.response).toContain('机构名称');
+    expect(result.response).toContain('必填');
+    expect(result.response).toContain('社团');
+    expect(result.response).toContain('fill_form');
+  });
+
+  it('warns the model when the field list was truncated', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      form: { ...formSummary, fieldsTruncated: true, warnings: ['部分表格列过多'] },
+      formToken: 'lgform_abc'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_form' });
+
+    expect(result.response).toContain('只列出了一部分');
+    expect(result.response).toContain('部分表格列过多');
+  });
+
+  it('waits for the user to pick a form file and to confirm filling', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'open_form' });
+    await execute({ action: 'fill_form', token: 'lgform_abc', fields: fillFields });
+
+    const [openWait, fillWait] = (store.waitForResult as any).mock.calls;
+    expect(openWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+    expect(fillWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+  });
+
+  it('keeps the device online long enough while a form is being picked or confirmed', () => {
+    expect(getDesktopCommandBusyTtlMs('open_form')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+    expect(getDesktopCommandBusyTtlMs('fill_form')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+  });
+
+  it('fills a copy and tells the model where it was saved', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      file: {
+        name: '慈善组织申请表-已填写.docx',
+        format: 'docx',
+        folder: '鲁港通生成文件'
+      },
+      fill: {
+        filled: 3,
+        skipped: ['「成立日期」缺少可用内容，已跳过'],
+        warnings: ['工作表受保护，部分单元格只读']
+      }
+    } as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({
+      action: 'fill_form',
+      token: 'lgform_abc',
+      fields: fillFields
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'fill_form', token: 'lgform_abc', fields: fillFields }
+    });
+    expect(result.response).toContain('慈善组织申请表-已填写.docx');
+    expect(result.response).toContain('共填写 3 项');
+    expect(result.response).toContain('成立日期');
+    expect(result.response).toContain('工作表受保护');
+    expect(result.response).toContain('原文件');
+    expect(JSON.stringify(audit.mock.calls[0][0])).not.toContain('香港慈善总会');
+  });
+
+  it('tells the model to reopen the form when the token expired', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'form_expired' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'fill_form', token: 'stale', fields: fillFields });
+
+    expect(result.response).toContain('失效');
+    expect(result.response).toContain('open_form');
+  });
+
+  it('asks the user to fill password like fields by hand', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'form_field_blocked' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'fill_form', token: 'lgform_abc', fields: fillFields });
+
+    expect(result.response).toContain('本人');
+    expect(result.response).toContain('密码');
+  });
+
+  it('does not retry after the user cancelled the fill confirmation', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'confirmation_declined',
+      message: '你取消了这次表单填写，没有生成任何文件。'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'fill_form', token: 'lgform_abc', fields: fillFields });
+
+    expect(result.response).toContain('没有生成副本');
+    expect(result.response).not.toContain('提交确认');
+  });
+
+  it('tells the model to let the user pick the file again after cancelling', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'form_cancelled' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_form' });
+
+    expect(result.response).toContain('取消');
+    expect(result.response).toContain('不要重试');
+  });
+
+  it('does not overwrite the page resume state with a local form action', async () => {
+    const store = createFakeStore();
+    store.getBrowserResume.mockResolvedValue({
+      goal: '填写申请表',
+      url: 'https://www.immd.gov.hk/hkt/apply.html',
+      updatedAt: 1
+    } as any);
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      form: formSummary,
+      formToken: 'lgform_abc'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_form' });
+
+    expect(store.saveBrowserResume).not.toHaveBeenCalled();
+    expect(result.response).not.toContain('上一轮浏览器任务');
   });
 });

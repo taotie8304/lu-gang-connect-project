@@ -8,9 +8,13 @@ import type {
   AiConfirmationDecision,
   AiConfirmer,
   AiFileGenerator,
+  AiFormConfirmer,
+  AiFormFiller,
+  AiFormOpener,
   AiPageDriver
 } from '../src/main/ai/executor';
 import type { AiAuditRecord } from '../src/main/ai/audit';
+import type { ParsedForm } from '../src/main/ai/form/types';
 import type { AiPageElement, AiPageSnapshot } from '../src/main/ai/snapshot';
 import type { DesktopBrowserState } from '../src/shared/ipc';
 
@@ -114,6 +118,9 @@ const createController = (
     audit?: (record: AiAuditRecord) => Promise<void> | void;
     confirm?: AiConfirmer;
     generateFile?: AiFileGenerator;
+    openForm?: AiFormOpener;
+    fillForm?: AiFormFiller;
+    confirmForm?: AiFormConfirmer;
     afterClick?: AiPageSnapshot;
   } = {}
 ) => {
@@ -127,7 +134,10 @@ const createController = (
     now: options.now,
     audit: options.audit,
     confirm: options.confirm,
-    generateFile: options.generateFile
+    generateFile: options.generateFile,
+    openForm: options.openForm,
+    fillForm: options.fillForm,
+    confirmForm: options.confirmForm
   });
   return { browser, controller, ...harness };
 };
@@ -587,5 +597,85 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('confirmation_declined');
     expect(driver.clickAt).not.toHaveBeenCalled();
+  });
+
+  it('表单动作只处理本机文件，不打开办事浏览器', async () => {
+    const form: ParsedForm = {
+      format: 'docx',
+      name: '申请表.docx',
+      fields: [
+        {
+          id: 'f1',
+          label: '申请人姓名',
+          kind: 'text',
+          locator: { type: 'docx-paragraph', paragraph: 1, labelEnd: 6 }
+        }
+      ],
+      path: 'C:\\表单\\申请表.docx'
+    };
+    const { browser, controller } = createController({ openForm: async () => form });
+    browser.state.panelOpen = false;
+    browser.state.tabs = [];
+    browser.state.activeTabId = null;
+
+    const result = await controller.execute({ action: 'open_form' });
+
+    expect(result.ok).toBe(true);
+    expect(browser.openPanel).not.toHaveBeenCalled();
+  });
+
+  it('用户停止时取消等待中的表单填写确认', async () => {
+    const form: ParsedForm = {
+      format: 'docx',
+      name: '申请表.docx',
+      fields: [
+        {
+          id: 'f1',
+          label: '申请人姓名',
+          kind: 'text',
+          locator: { type: 'docx-paragraph', paragraph: 1, labelEnd: 6 }
+        }
+      ],
+      path: 'C:\\表单\\申请表.docx'
+    };
+    let settle: (decision: 'allow' | 'cancel') => void = () => undefined;
+    const confirmForm = Object.assign(
+      vi.fn(
+        () =>
+          new Promise<'allow' | 'cancel'>((resolve) => {
+            settle = resolve;
+          })
+      ),
+      { cancel: vi.fn(() => settle('cancel')) }
+    );
+    const fillForm = vi.fn(async () => ({
+      name: '申请表-已填写.docx',
+      format: 'docx' as const,
+      folder: '鲁港通生成文件',
+      path: 'C:\\下载\\鲁港通生成文件\\申请表-已填写.docx',
+      filled: 1,
+      skipped: [],
+      warnings: []
+    }));
+    const { controller } = createController({
+      openForm: async () => form,
+      fillForm,
+      confirmForm
+    });
+
+    const opened = await controller.execute({ action: 'open_form' });
+    const pending = controller.execute({
+      action: 'fill_form',
+      token: opened.formToken as string,
+      fields: [{ field: 'f1', value: '张三' }]
+    });
+    await vi.waitFor(() => expect(confirmForm).toHaveBeenCalledTimes(1));
+    controller.stop();
+    const result = await pending;
+
+    expect(confirmForm.cancel).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('confirmation_declined');
+    expect(fillForm).not.toHaveBeenCalled();
   });
 });

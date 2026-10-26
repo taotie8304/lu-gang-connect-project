@@ -9,14 +9,18 @@ import type {
   DesktopBrowserResumeState,
   DesktopBrowserSnapshot,
   DesktopCommandEnvelope,
-  DesktopCommandResult
+  DesktopCommandFileResult,
+  DesktopCommandResult,
+  DesktopFormField,
+  DesktopFormFillResult,
+  DesktopFormSummary
 } from '@fastgpt/global/support/desktopCommand/type';
 import {
   DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESUME_TTL_MS,
-  DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS,
-  DESKTOP_COMMAND_MAX_BYTES
+  DESKTOP_COMMAND_MAX_BYTES,
+  isDesktopLongWaitAction
 } from './constant';
 import {
   desktopCommandStore,
@@ -232,7 +236,81 @@ const formatSnapshot = (snapshot: DesktopBrowserSnapshot): string => {
   return lines.join('\n');
 };
 
-const guidanceForCode = (code?: string): string | undefined => {
+const FORM_KIND_LABELS: Record<DesktopFormField['kind'], string> = {
+  text: '文本',
+  choice: '单选项',
+  checkbox: '勾选项',
+  date: '日期',
+  'table-cell': '表格单元格',
+  unknown: '其他'
+};
+
+const FORM_FORMAT_LABELS: Record<DesktopFormSummary['format'], string> = {
+  docx: 'Word 文档',
+  xlsx: 'Excel 表格',
+  pdf: 'PDF 表单'
+};
+
+/** open_form 只返回结构摘要，这里把它转成模型能直接照着填的字段清单 */
+const formatFormSummary = (form: DesktopFormSummary): string => {
+  const lines: string[] = [];
+  lines.push(
+    `表单已读取：${form.name}（${FORM_FORMAT_LABELS[form.format]}）${form.title ? `，标题「${form.title}」` : ''}，共 ${form.fields.length} 个字段。`
+  );
+
+  if (form.fields.length > 0) {
+    lines.push('可填写字段（fill_form 时用字段 id）：');
+    for (const field of form.fields) {
+      const details = [
+        FORM_KIND_LABELS[field.kind] ?? '其他',
+        field.required ? '必填' : '',
+        field.options?.length ? `可选：${field.options.join(' / ')}` : '',
+        field.hint ? `提示：${field.hint}` : ''
+      ]
+        .filter(Boolean)
+        .join('，');
+      lines.push(`- ${field.id}「${field.label}」${details ? ` ${details}` : ''}`);
+    }
+  } else {
+    lines.push('这份表单没有识别到可填写的字段。');
+  }
+
+  if (form.fieldsTruncated) {
+    lines.push('（字段较多，这里只列出了一部分；其余字段需要用户自己补充）');
+  }
+  if (form.warnings?.length) {
+    lines.push(`提示：${form.warnings.join('；')}`);
+  }
+  lines.push(
+    '下一步：结合用户资料和办理要求，用 fill_form 按字段 id 填写；资料不全或没有把握的字段留空，并告诉用户还需要补充什么，不要编造证件号、电话、地址等个人信息。'
+  );
+
+  return lines.join('\n');
+};
+
+const formatFillResult = (
+  file: DesktopCommandFileResult,
+  fill: DesktopFormFillResult | undefined
+): string => {
+  const lines = [
+    `已生成已填写的副本：${file.name}${file.folder ? `，保存在「${file.folder}」` : ''}，共填写 ${fill?.filled ?? 0} 项。`,
+    '原文件没有被修改，副本只保存在你的电脑上，不会上传到服务器。'
+  ];
+  if (fill?.skipped?.length) {
+    lines.push(`以下内容没有写入：${fill.skipped.join('；')}`);
+  }
+  if (fill?.warnings?.length) {
+    lines.push(`提示：${fill.warnings.join('；')}`);
+  }
+  lines.push(
+    '请让用户打开副本核对填写结果。核对无误后如果还需要上传到网页，再按用户要求用 upload（桌面客户端会再次让用户亲自选择文件）。'
+  );
+  return lines.join('\n');
+};
+
+const guidanceForCode = (code?: string, action?: string): string | undefined => {
+  const isFormFill = action === 'fill_form';
+
   switch (code) {
     case 'not_found':
       return '找不到目标元素。页面可能已经变化，请先重新读取页面，再决定下一步操作。';
@@ -258,14 +336,36 @@ const guidanceForCode = (code?: string): string | undefined => {
       return '文件没有成功附加到页面。请让用户手动选择文件上传，不要在没有文件的情况下提交。';
     case 'file_generation_failed':
       return '文件没有生成成功。请调整文件名或内容后重新生成；如果仍然失败，请让用户自行准备文件。';
+    case 'unsupported_action':
+      return '当前桌面客户端版本不支持这个操作。请让用户把客户端升级到最新版本后再试，不要重复调用。';
+    case 'form_open_failed':
+      return '表单文件没有读取成功。请让用户确认文件能正常打开（支持 Word、Excel 和可填写 PDF，扫描件和图片 PDF 不支持）后重新选择。';
+    case 'form_cancelled':
+      return '用户取消了选择表单，本次没有填写任何内容。请不要重试；等用户准备好表单并明确要求后再继续。';
+    case 'form_expired':
+      return '这份表单已经失效（可能已经填写过，或上一次读取已经过期）。请重新用 open_form 让用户选择同一份表单，再按返回的新字段清单填写。';
+    case 'form_field_blocked':
+      return '表单里有密码、验证码或银行卡类字段，这类信息必须由用户本人填写，本次没有生成副本。请让用户手动填写这些字段。';
+    case 'form_field_not_found':
+      return '给出的字段在这份表单里都没有找到。请重新用 open_form 读取表单，按返回的字段 id 填写。';
+    case 'form_fill_failed':
+      return '已填写的副本没有生成成功。请不要反复重试，改为让用户手动填写原表单；如果用户愿意，也可以换一份 Word 或 Excel 表单再试。';
+    case 'pdf_font_missing':
+      return '这台电脑缺少填写 PDF 需要的中文字体，副本没有生成。请让用户手动填写这份 PDF，或改用 Word、Excel 格式的表单。';
     case 'confirmation_unavailable':
-      return '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
+      return isFormFill
+        ? '桌面客户端无法弹出填写确认框，本次没有写入任何内容。请不要重试，改为让用户自己填写原表单。'
+        : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
     case 'handed_over':
       return '用户选择了自己提交，页面已交还给你本人，AI 不会重试或再次提交。请不要重试；等用户反馈结果后再继续。';
     case 'confirmation_declined':
-      return '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
+      return isFormFill
+        ? '用户取消了这次填写确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 fill_form；等用户明确要求后再继续。'
+        : '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
     case 'confirmation_timeout':
-      return '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
+      return isFormFill
+        ? '填写确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
+        : '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
     default:
       return undefined;
   }
@@ -478,7 +578,7 @@ export const createDesktopBrowserOperationExecutor = ({
     if (Buffer.byteLength(JSON.stringify(command), 'utf8') > DESKTOP_COMMAND_MAX_BYTES) {
       return finish({
         response:
-          '本次操作携带的内容过多，无法发送到桌面客户端。请缩短文件正文或减少表格行数后重试（正文最多 8000 字，表格最多 200 行）。',
+          '本次操作携带的内容过多，无法发送到桌面客户端。请缩短文件正文、减少表格行数或精简填写内容后重试（正文最多 8000 字，表格最多 200 行）。',
         action,
         deviceId,
         url: requestUrl,
@@ -501,13 +601,10 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
-    // 提交类点击等待用户在原生确认框做决定，上传等待用户在原生文件框选文件，都需要覆盖人工操作窗口
-    const timeoutMs =
-      action === 'click'
-        ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS)
-        : action === 'upload'
-          ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS)
-          : resultTimeoutMs;
+    // 提交类点击等待用户在原生确认框做决定，上传与表单动作等待用户亲自选文件或确认填写
+    const timeoutMs = isDesktopLongWaitAction(action)
+      ? Math.max(resultTimeoutMs, DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS)
+      : resultTimeoutMs;
     const result: DesktopCommandResult | undefined = await store.waitForResult({
       commandId: envelope.id,
       timeoutMs
@@ -526,9 +623,13 @@ export const createDesktopBrowserOperationExecutor = ({
 
     const snapshot = result.snapshot;
     const resultUrl = snapshot?.url || requestUrl;
+    // 鲁港通 - 表单动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
+    const touchesPage = action !== 'open_form' && action !== 'fill_form';
     const resume = await loadResume();
     const hint =
-      !resumeHintShown && resume && resume.goal !== currentGoal ? buildResumeHint(resume) : '';
+      touchesPage && !resumeHintShown && resume && resume.goal !== currentGoal
+        ? buildResumeHint(resume)
+        : '';
     if (hint) resumeHintShown = true;
 
     const snapshotBlock = snapshot ? `\n\n${formatSnapshot(snapshot)}` : '';
@@ -536,7 +637,7 @@ export const createDesktopBrowserOperationExecutor = ({
 
     if (!result.ok) {
       const guidance =
-        guidanceForCode(result.code) ??
+        guidanceForCode(result.code, action) ??
         (result.stopped
           ? `${result.message ?? '操作已被桌面客户端停止。'}\n\n请先询问用户接下来怎么做，得到确认后再继续，不要自行重试。`
           : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
@@ -561,12 +662,20 @@ export const createDesktopBrowserOperationExecutor = ({
         : result.file && action === 'upload'
           ? `文件「${result.file.name}」已附加到页面。请让用户核对页面显示的文件是否正确。`
           : '';
+    const formNote =
+      result.form && action === 'open_form'
+        ? formatFormSummary(result.form)
+        : result.fill && result.file && action === 'fill_form'
+          ? formatFillResult(result.file, result.fill)
+          : '';
     const confirmationNote =
       result.confirmation?.required && result.confirmation.decision === 'allow'
         ? '你已确认，页面已提交并执行。本轮操作到此结束，不要再次提交。'
         : '';
     const successLead =
-      fileNote || (confirmationNote ? `操作已执行。${confirmationNote}` : '操作已执行。');
+      fileNote ||
+      formNote ||
+      (confirmationNote ? `操作已执行。${confirmationNote}` : '操作已执行。');
     const changedNote =
       result.changed === false
         ? '\n页面没有检测到明显变化。如果操作没有生效，请先重新读取页面确认状态。'
@@ -579,7 +688,7 @@ export const createDesktopBrowserOperationExecutor = ({
       : currentGoal || resume?.goal || '';
     const resumeUrl = resultUrl || resume?.url || '';
 
-    if (goal && resumeUrl) {
+    if (touchesPage && goal && resumeUrl) {
       const nextResume: DesktopBrowserResumeState = {
         goal,
         url: resumeUrl,

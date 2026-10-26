@@ -92,6 +92,55 @@ describe('AI 指令协议', () => {
     ).toBeNull();
   });
 
+  it('接受打开表单与回填表单指令', () => {
+    expect(parseAiCommand({ action: 'open_form' })?.action).toBe('open_form');
+    expect(parseAiCommand({ action: 'open_form', hint: '慈善组织申请表' })?.action).toBe(
+      'open_form'
+    );
+
+    const fill = parseAiCommand({
+      action: 'fill_form',
+      token: 'lgform_abc123',
+      fields: [
+        { field: 'f1', value: '张三' },
+        { field: 'f2', value: '' }
+      ]
+    });
+    expect(fill?.action).toBe('fill_form');
+  });
+
+  it('回填指令必须携带令牌与至少一个字段，且不能携带本机路径', () => {
+    expect(parseAiCommand({ action: 'fill_form', fields: [{ field: 'f1', value: 'x' }] })).toBeNull();
+    expect(parseAiCommand({ action: 'fill_form', token: 'lgform_abc', fields: [] })).toBeNull();
+    expect(
+      parseAiCommand({ action: 'fill_form', token: 'lgform_abc', fields: [{ field: '', value: 'x' }] })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'fill_form',
+        token: 'lgform_abc',
+        fields: [{ field: 'f1', value: 'x'.repeat(2001) }]
+      })
+    ).toBeNull();
+
+    const withPath = parseAiCommand({
+      action: 'fill_form',
+      token: 'lgform_abc',
+      path: 'C:\\Users\\tester\\Downloads\\表单.docx',
+      fields: [{ field: 'f1', value: 'x' }]
+    }) as { path?: string } | null;
+    expect(withPath?.path).toBeUndefined();
+  });
+
+  it('打开表单指令不携带本机路径', () => {
+    const withPath = parseAiCommand({
+      action: 'open_form',
+      path: 'C:\\Users\\tester\\Downloads\\表单.docx'
+    }) as Record<string, unknown> | null;
+    expect(withPath?.action).toBe('open_form');
+    expect(withPath?.path).toBeUndefined();
+  });
+
   it('上传指令必须给出元素定位信息，且不能携带本地路径', () => {
     const upload = parseAiCommand({ action: 'upload', target: '上传附件' });
     expect(upload?.action).toBe('upload');

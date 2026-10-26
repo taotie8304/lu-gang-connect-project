@@ -79,6 +79,24 @@ const uploadCommand = requiresLocator({
   ...locateSchema
 });
 
+// 鲁港通 - 打开表单只让用户在原生文件框里选文件，协议层不接受任何本机路径
+const openFormCommand = z.object({
+  action: z.literal('open_form'),
+  hint: z.string().trim().max(100).optional()
+});
+
+const fillFormFieldSchema = z.object({
+  field: z.string().trim().min(1).max(200),
+  value: z.string().max(2000)
+});
+
+// 鲁港通 - 回填只看服务端下发的字段清单，token 对应本机已打开的表单
+const fillFormCommand = z.object({
+  action: z.literal('fill_form'),
+  token: z.string().trim().min(1).max(64),
+  fields: z.array(fillFormFieldSchema).min(1).max(200)
+});
+
 export const aiCommandSchema = z.discriminatedUnion('action', [
   readCommand,
   navigateCommand,
@@ -88,6 +106,8 @@ export const aiCommandSchema = z.discriminatedUnion('action', [
   scrollCommand,
   uploadCommand,
   generateFileCommand,
+  openFormCommand,
+  fillFormCommand,
   stopCommand
 ]);
 

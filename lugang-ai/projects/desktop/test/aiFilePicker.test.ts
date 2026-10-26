@@ -43,4 +43,24 @@ describe('本机文件选择', () => {
     await expect(picker()).resolves.toBe('C:\\资料\\证明.pdf');
     expect((showOpenDialog.mock.calls[0][0] as { defaultPath?: string }).defaultPath).toBeUndefined();
   });
+
+  it('选择表单时改用表单标题与可填写格式过滤', async () => {
+    const showOpenDialog = vi.fn(async (_options: FilePickerDialogOptions) =>
+      created(['C:\\表单\\申请表.docx'])
+    );
+    const picker = createFilePicker({ showOpenDialog, getDefaultPath: () => undefined });
+
+    await expect(
+      picker({
+        title: '选择要填写的空白表单',
+        buttonLabel: '选择表单',
+        filters: [{ name: '可填写表单', extensions: ['docx', 'xlsx', 'pdf'] }]
+      })
+    ).resolves.toBe('C:\\表单\\申请表.docx');
+    expect(showOpenDialog.mock.calls[0][0]).toMatchObject({
+      title: '选择要填写的空白表单',
+      buttonLabel: '选择表单',
+      filters: [{ name: '可填写表单', extensions: ['docx', 'xlsx', 'pdf'] }]
+    });
+  });
 });

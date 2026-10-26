@@ -15,10 +15,13 @@ import { createWindowControls } from './windowChrome';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
 import { createAiConfirmer } from './ai/confirmDialog';
+import { createAiFormConfirmer } from './ai/formConfirm';
 import { AiController } from './ai/controller';
 import { createDeviceChannel, type DeviceChannel } from './ai/deviceChannel';
 import { createFileGenerator } from './ai/fileGenerator';
 import { createFilePicker } from './ai/filePicker';
+import { fillFormCopy } from './ai/form/fill';
+import { parseFormFile } from './ai/form/parse';
 
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
@@ -154,6 +157,13 @@ if (!gotLock) {
       // 鲁港通 - 生成文件只记录本机路径用于上传默认定位，不进入 IPC 结果或审计
       const generateFile = createFileGenerator();
       let lastGeneratedPath: string | undefined;
+      const pickFile = createFilePicker({
+        showOpenDialog: (options) =>
+          mainWindow && !mainWindow.isDestroyed()
+            ? dialog.showOpenDialog(mainWindow, options)
+            : dialog.showOpenDialog(options),
+        getDefaultPath: () => lastGeneratedPath
+      });
       const ai = new AiController({
         browser,
         driver: aiDriver,
@@ -163,16 +173,34 @@ if (!gotLock) {
           lastGeneratedPath = file.path;
           return file;
         },
-        pickFile: createFilePicker({
-          showOpenDialog: (options) =>
-            mainWindow && !mainWindow.isDestroyed()
-              ? dialog.showOpenDialog(mainWindow, options)
-              : dialog.showOpenDialog(options),
-          getDefaultPath: () => lastGeneratedPath
-        }),
+        pickFile,
         confirm: createAiConfirmer({
           getParentWindow: () => mainWindow,
           preloadPath: join(__dirname, '../preload/confirm.cjs'),
+          rendererDir
+        }),
+        // 鲁港通 - 表单只在用户亲手选定后读取，路径与字段定位留在主进程
+        openForm: async () => {
+          const picked = await pickFile({
+            title: '选择要填写的空白表单',
+            buttonLabel: '选择表单',
+            filters: [{ name: '可填写表单', extensions: ['docx', 'xlsx', 'pdf'] }]
+          });
+          if (!picked) return null;
+          return parseFormFile(picked);
+        },
+        fillForm: async ({ form, values }) => {
+          const copy = await fillFormCopy({
+            form,
+            values,
+            outputDir: app.getPath('downloads')
+          });
+          lastGeneratedPath = copy.path;
+          return copy;
+        },
+        confirmForm: createAiFormConfirmer({
+          getParentWindow: () => mainWindow,
+          preloadPath: join(__dirname, '../preload/formConfirm.cjs'),
           rendererDir
         })
       });

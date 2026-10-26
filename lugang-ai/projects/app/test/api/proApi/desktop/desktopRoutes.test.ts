@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   authenticateDesktopDevice: vi.fn(),
   waitForDesktopCommand: vi.fn(),
   saveDesktopCommandResult: vi.fn(),
+  clearDesktopDeviceBusy: vi.fn(),
   revokeDesktopDevice: vi.fn()
 }));
 
@@ -23,6 +24,7 @@ vi.mock('@fastgpt/service/support/desktopCommand/store', () => ({
   authenticateDesktopDevice: mocks.authenticateDesktopDevice,
   waitForDesktopCommand: mocks.waitForDesktopCommand,
   saveDesktopCommandResult: mocks.saveDesktopCommandResult,
+  clearDesktopDeviceBusy: mocks.clearDesktopDeviceBusy,
   revokeDesktopDevice: mocks.revokeDesktopDevice
 }));
 

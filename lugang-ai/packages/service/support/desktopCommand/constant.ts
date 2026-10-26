@@ -41,8 +41,15 @@ export const DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS =
 export const DESKTOP_BUSY_TTL_MS = DESKTOP_BROWSER_RESULT_TIMEOUT_MS + 30_000;
 export const DESKTOP_BUSY_LONG_TTL_MS = DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS + 30_000;
 
+/** 需要等用户亲手操作的动作：确认提交、选择上传文件、选择表单、确认填写 */
+export const DESKTOP_LONG_WAIT_ACTIONS = ['click', 'upload', 'open_form', 'fill_form'] as const;
+
+export const isDesktopLongWaitAction = (action?: string): boolean =>
+  typeof action === 'string' &&
+  (DESKTOP_LONG_WAIT_ACTIONS as readonly string[]).includes(action);
+
 export const getDesktopCommandBusyTtlMs = (action?: string) =>
-  action === 'click' || action === 'upload' ? DESKTOP_BUSY_LONG_TTL_MS : DESKTOP_BUSY_TTL_MS;
+  isDesktopLongWaitAction(action) ? DESKTOP_BUSY_LONG_TTL_MS : DESKTOP_BUSY_TTL_MS;
 
 /** 会话级浏览器续跑状态保留 10 分钟，与设计文档一致 */
 export const DESKTOP_BROWSER_RESUME_TTL_MS = 10 * 60 * 1000;

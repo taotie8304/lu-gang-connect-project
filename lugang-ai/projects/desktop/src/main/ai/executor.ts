@@ -1,4 +1,13 @@
 // 鲁港通 - AI 指令执行器：定位、动作前安全拦截、动作后页面校验
+import { randomUUID } from 'node:crypto';
+import { FormFillError, FormParseError } from './form/types';
+import type {
+  FilledFormCopy,
+  FormFillValue,
+  FormSummary,
+  ParsedForm
+} from './form/types';
+import { toFormSummary } from './form/parse';
 import { isAiPrivateHost, isAiSnapshotUrlAllowed } from './urlPolicy';
 import {
   isConfirmableActionLabel,
@@ -35,6 +44,14 @@ export type AiActionErrorCode =
   | 'handed_over'
   | 'confirmation_declined'
   | 'confirmation_timeout'
+  | 'unsupported_action'
+  | 'form_open_failed'
+  | 'form_cancelled'
+  | 'form_expired'
+  | 'form_field_not_found'
+  | 'form_field_blocked'
+  | 'form_fill_failed'
+  | 'pdf_font_missing'
   | 'page_error';
 
 export type AiFileFormat = 'docx' | 'xlsx' | 'pdf';
@@ -57,6 +74,35 @@ export type AiGeneratedFile = {
 export type AiFileGenerator = (input: AiFileGeneratorInput) => Promise<AiGeneratedFile>;
 
 export type AiFilePicker = () => Promise<string | null>;
+
+/** 鲁港通 - 表单打开与回填：路径与字段定位只留在本机，不进入指令结果 */
+export type AiFormOpener = () => Promise<ParsedForm | null>;
+
+export type AiFormFiller = (input: {
+  form: ParsedForm;
+  values: FormFillValue[];
+}) => Promise<FilledFormCopy>;
+
+export type AiFormConfirmItem = { label: string; value: string };
+
+export type AiFormConfirmRequest = {
+  fileName: string;
+  format: ParsedForm['format'];
+  items: AiFormConfirmItem[];
+  total: number;
+};
+
+export type AiFormConfirmDecision = 'allow' | 'cancel' | 'timeout' | 'unavailable';
+
+export type AiFormConfirmer = ((
+  request: AiFormConfirmRequest
+) => Promise<AiFormConfirmDecision>) & { cancel?: () => void };
+
+export type AiFormFillInfo = {
+  filled: number;
+  skipped?: string[];
+  warnings?: string[];
+};
 
 export type AiFileInputState = {
   found: boolean;
@@ -98,6 +144,9 @@ export type AiCommandResult = {
   stopped?: boolean;
   file?: AiFileResult;
   confirmation?: AiConfirmationInfo;
+  form?: FormSummary;
+  formToken?: string;
+  fill?: AiFormFillInfo;
 };
 
 export type AiResolvedElement = {
@@ -188,6 +237,11 @@ const ambiguous = (
   ...(snapshot ? { snapshot } : {})
 });
 
+// 鲁港通 - 密码、验证码与银行卡类字段永久禁止自动填写
+const FORM_BLOCKED_LABEL = /密码|验证码|动态码|银行卡|卡号|信用卡|cvv|安全码/i;
+const MAX_FORM_TOKENS = 3;
+const MAX_FORM_CONFIRM_ITEMS = 50;
+
 const parseHttpUrl = (input: string): URL | null => {
   try {
     const url = new URL(input);
@@ -203,21 +257,35 @@ export class AiExecutor {
   private readonly generateFile?: AiFileGenerator;
   private readonly pickFile?: AiFilePicker;
   private readonly confirm?: AiConfirmer;
+  private readonly openForm?: AiFormOpener;
+  private readonly fillForm?: AiFormFiller;
+  private readonly confirmForm?: AiFormConfirmer;
+  private readonly forms = new Map<string, ParsedForm>();
 
   constructor(options: {
     driver: AiPageDriver;
     generateFile?: AiFileGenerator;
     pickFile?: AiFilePicker;
     confirm?: AiConfirmer;
+    openForm?: AiFormOpener;
+    fillForm?: AiFormFiller;
+    confirmForm?: AiFormConfirmer;
   }) {
     this.driver = options.driver;
     this.generateFile = options.generateFile;
     this.pickFile = options.pickFile;
     this.confirm = options.confirm;
+    this.openForm = options.openForm;
+    this.fillForm = options.fillForm;
+    this.confirmForm = options.confirmForm;
   }
 
   cancelConfirmation = (reason?: AiConfirmCancelReason): void => {
     this.confirm?.cancel?.(reason);
+  };
+
+  cancelFormConfirmation = (): void => {
+    this.confirmForm?.cancel?.();
   };
 
   async execute(command: AiCommand): Promise<AiCommandResult> {
@@ -236,6 +304,8 @@ export class AiExecutor {
   private async run(command: Exclude<AiCommand, { action: 'stop' }>): Promise<AiCommandResult> {
     if (command.action === 'navigate') return this.navigate(command.url);
     if (command.action === 'generate_file') return this.generateFileLocally(command);
+    if (command.action === 'open_form') return this.openFormLocally();
+    if (command.action === 'fill_form') return this.fillFormLocally(command);
 
     if (command.action === 'read') {
       const read = await this.readSnapshot({ fullText: command.fullText === true });
@@ -315,6 +385,183 @@ export class AiExecutor {
         ok: false,
         code: 'file_generation_failed',
         message: '文件没有生成成功，请重新生成一次；如果仍然失败，请手动准备文件后再上传。'
+      };
+    }
+  }
+
+  private async openFormLocally(): Promise<AiCommandResult> {
+    if (!this.openForm) {
+      return {
+        ok: false,
+        code: 'unsupported_action',
+        message: '当前客户端版本不支持读取本机表单，请升级到最新版本后重试。'
+      };
+    }
+
+    let form: ParsedForm | null;
+    try {
+      form = await this.openForm();
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'form_open_failed',
+        message:
+          error instanceof FormParseError
+            ? error.message
+            : '这个表单文件没有读取成功，请确认文件能正常打开后再选一次。'
+      };
+    }
+    if (!form) {
+      return {
+        ok: false,
+        code: 'form_cancelled',
+        message: '你取消了选择表单，已停止填写。需要继续时请告诉我。'
+      };
+    }
+
+    const token = randomUUID();
+    this.forms.set(token, form);
+    // 鲁港通 - 只保留最近打开的几份表单，避免长期持有本机文件结构
+    while (this.forms.size > MAX_FORM_TOKENS) {
+      const oldest = this.forms.keys().next().value;
+      if (!oldest) break;
+      this.forms.delete(oldest);
+    }
+
+    return { ok: true, form: toFormSummary(form), formToken: token };
+  }
+
+  private async fillFormLocally(
+    command: Extract<AiCommand, { action: 'fill_form' }>
+  ): Promise<AiCommandResult> {
+    const form = this.forms.get(command.token);
+    if (!form) {
+      return {
+        ok: false,
+        code: 'form_expired',
+        message: '这份表单已经失效或还没有打开，请先让我重新读取表单，再按新的字段清单填写。'
+      };
+    }
+
+    const byId = new Map(form.fields.map((field) => [field.id, field]));
+    const values: FormFillValue[] = [];
+    const skipped: string[] = [];
+    let blocked = 0;
+    let unknown = 0;
+
+    for (const item of command.fields) {
+      const field = byId.get(item.field);
+      if (!field) {
+        unknown += 1;
+        skipped.push(`没有找到字段「${item.field}」，已跳过`);
+        continue;
+      }
+      if (FORM_BLOCKED_LABEL.test(field.label)) {
+        blocked += 1;
+        skipped.push(`「${field.label}」属于密码、验证码或银行卡类信息，不会自动填写`);
+        continue;
+      }
+      values.push({ id: field.id, value: item.value });
+    }
+
+    if (values.length === 0) {
+      if (blocked > 0) {
+        return {
+          ok: false,
+          code: 'form_field_blocked',
+          message: AI_STOP_MESSAGES.sensitive_blocked
+        };
+      }
+      return {
+        ok: false,
+        code: 'form_field_not_found',
+        message:
+          unknown > 0
+            ? '你给的字段在这份表单里都没有找到，请让我重新读取表单后再填写。'
+            : '这次没有可以填写的字段，请重新给出要填写的内容。'
+      };
+    }
+
+    if (!this.confirmForm) {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: '当前客户端无法弹出填写确认框，还没有写入任何内容。请升级到最新版本后再试。'
+      };
+    }
+
+    // 鲁港通 - 写盘前先展示字段与内容，确认框只传摘要不传本机路径
+    const items = values
+      .filter((value) => value.value.trim().length > 0)
+      .slice(0, MAX_FORM_CONFIRM_ITEMS)
+      .map((value) => ({ label: byId.get(value.id)?.label ?? value.id, value: value.value }));
+
+    let decision: AiFormConfirmDecision;
+    try {
+      decision = await this.confirmForm({
+        fileName: form.name,
+        format: form.format,
+        items,
+        total: values.length
+      });
+    } catch {
+      decision = 'unavailable';
+    }
+
+    if (decision === 'cancel') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: '你取消了这次表单填写，没有生成任何文件。需要继续时请告诉我。'
+      };
+    }
+    if (decision === 'timeout') {
+      return {
+        ok: false,
+        code: 'confirmation_timeout',
+        message: '等待填写确认超时，已取消这次填写，没有生成任何文件。需要继续时请告诉我。'
+      };
+    }
+    if (decision === 'unavailable') {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: '当前客户端无法弹出填写确认框，还没有写入任何内容。请升级到最新版本后再试。'
+      };
+    }
+
+    if (!this.fillForm) {
+      return {
+        ok: false,
+        code: 'form_fill_failed',
+        message: '当前客户端版本不支持生成已填写的副本，请升级到最新版本后重试。'
+      };
+    }
+
+    try {
+      const copy = await this.fillForm({ form, values });
+      this.forms.delete(command.token);
+      const allSkipped = [...skipped, ...copy.skipped];
+      return {
+        ok: true,
+        file: { name: copy.name, format: copy.format, folder: copy.folder },
+        fill: {
+          filled: copy.filled,
+          ...(allSkipped.length > 0 ? { skipped: allSkipped } : {}),
+          ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
+        }
+      };
+    } catch (error) {
+      if (error instanceof FormFillError && error.code === 'pdf_font_missing') {
+        return { ok: false, code: 'pdf_font_missing', message: error.message };
+      }
+      return {
+        ok: false,
+        code: 'form_fill_failed',
+        message:
+          error instanceof FormFillError
+            ? error.message
+            : '填写副本没有生成成功，请重试一次；如果仍然失败，请手动填写原表单。'
       };
     }
   }

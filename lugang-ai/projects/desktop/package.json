@@ -1,6 +1,6 @@
 {
   "name": "@lugang/desktop",
-  "version": "0.3.1",
+  "version": "0.4.0",
   "private": true,
   "description": "鲁港通 Windows 桌面客户端（P1）",
   "main": "dist/main/index.cjs",
@@ -14,6 +14,7 @@
     "dist": "pnpm build && electron-builder --win --x64"
   },
   "devDependencies": {
+    "@types/adm-zip": "catalog:",
     "@types/node": "catalog:",
     "electron": "44.9.0",
     "electron-builder": "26.15.3",
@@ -64,7 +65,11 @@
     ]
   },
   "dependencies": {
+    "@pdf-lib/fontkit": "catalog:",
+    "@xmldom/xmldom": "catalog:",
+    "adm-zip": "catalog:",
     "docx": "catalog:",
-    "exceljs": "catalog:"
+    "exceljs": "catalog:",
+    "pdf-lib": "catalog:"
   }
 }

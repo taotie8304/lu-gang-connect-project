@@ -20,6 +20,8 @@ export const BROWSER_OPERATION_ACTIONS = [
   'scroll',
   'upload',
   'generate_file',
+  'open_form',
+  'fill_form',
   'wait'
 ] as const;
 
@@ -29,6 +31,8 @@ const MAX_GENERATED_FILE_CHARS = 8000;
 const MAX_GENERATED_FILE_ROWS = 200;
 const MAX_GENERATED_FILE_COLUMNS = 12;
 const MAX_GENERATED_CELL_CHARS = 200;
+const MAX_FORM_FIELDS = 200;
+const MAX_FORM_FIELD_VALUE_CHARS = 2000;
 
 const locateSchema = {
   ref: refSchema.optional(),
@@ -116,6 +120,25 @@ const waitAction = z.object({
   seconds: z.number().int().min(1).max(10)
 });
 
+const openFormAction = z.object({
+  action: z.literal('open_form'),
+  hint: z.string().trim().max(100).optional()
+});
+
+const fillFormAction = z.object({
+  action: z.literal('fill_form'),
+  token: z.string().trim().min(1).max(64),
+  fields: z
+    .array(
+      z.object({
+        field: z.string().trim().min(1).max(200),
+        value: z.string().max(MAX_FORM_FIELD_VALUE_CHARS)
+      })
+    )
+    .min(1)
+    .max(MAX_FORM_FIELDS)
+});
+
 export const BrowserOperationArgsSchema = z.discriminatedUnion('action', [
   readAction,
   navigateAction,
@@ -125,6 +148,8 @@ export const BrowserOperationArgsSchema = z.discriminatedUnion('action', [
   scrollAction,
   uploadAction,
   generateFileAction,
+  openFormAction,
+  fillFormAction,
   waitAction
 ]);
 
@@ -155,7 +180,7 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
   function: {
     name: BROWSER_OPERATION_TOOL_NAME,
     description:
-      '操作桌面客户端中打开的浏览器页面，替用户完成在线办理。仅在桌面客户端内可用；除本机、内网和本地文件地址会被拦截外，任何公网站点都可以打开并操作，不要以「不在允许范围」或「只能操作政府网站」为由拒绝用户。当用户需要在线办理、填写表单、查询进度或上传材料时，默认主动使用本工具，无需用户提示，也不要先让用户自己打开网页或自己输入网址；按用户提供的网址或页面名称直接 navigate 过去，入口不确定时先按用户给出的信息打开确认。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read。页面被关闭或刷新后，客户端会自动重开一次，先 read 确认已恢复，再从中断的步骤继续，不要从头重做。可以生成 Word/Excel/PDF 文件（generate_file，文件只保存在用户电脑上）；遇到上传入口时用 upload，桌面客户端会弹出文件选择框让用户亲自选择文件，你不能指定本机路径。点击提交、发布、删除、注销等按钮时，桌面客户端会自动弹出原生确认框，由用户决定是否提交、自己提交或取消；不要绕过确认，也不要重复提交。不要填写密码、验证码、银行卡或支付信息，也不要发起支付、转账或购买；遇到这类字段就停下，请用户本人填写。',
+      '操作桌面客户端中打开的浏览器页面，替用户完成在线办理。仅在桌面客户端内可用；除本机、内网和本地文件地址会被拦截外，任何公网站点都可以打开并操作，不要以「不在允许范围」或「只能操作政府网站」为由拒绝用户。当用户需要在线办理、填写表单、查询进度或上传材料时，默认主动使用本工具，无需用户提示，也不要先让用户自己打开网页或自己输入网址；按用户提供的网址或页面名称直接 navigate 过去，入口不确定时先按用户给出的信息打开确认。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read。页面被关闭或刷新后，客户端会自动重开一次，先 read 确认已恢复，再从中断的步骤继续，不要从头重做。可以生成 Word/Excel/PDF 文件（generate_file，文件只保存在用户电脑上）；遇到上传入口时用 upload，桌面客户端会弹出文件选择框让用户亲自选择文件，你不能指定本机路径。点击提交、发布、删除、注销等按钮时，桌面客户端会自动弹出原生确认框，由用户决定是否提交、自己提交或取消；不要绕过确认，也不要重复提交。用户要填写本机的空白表单（Word、Excel 或可填写 PDF）时，先用 open_form 让用户自己选择文件，按返回的字段清单用 fill_form 填写；桌面客户端会先展示填写清单让用户确认，再把副本保存到「鲁港通生成文件」，不会修改原文件，也不会自动上传。资料不全时先请用户补齐，不要编造或猜测证件号、电话、地址、金额等个人信息；没有把握的字段可以留空。填写完成后请用户打开副本核对，只有用户明确要求时才继续上传。不要填写密码、验证码、银行卡或支付信息，也不要发起支付、转账或购买；遇到这类字段就停下，请用户本人填写。',
     parameters: {
       type: 'object',
       properties: {
@@ -226,6 +251,26 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
         seconds: {
           type: 'number',
           description: 'wait 的等待秒数，1 到 10'
+        },
+        hint: {
+          type: 'string',
+          description: 'open_form 时给用户看的选文件提示，例如「请选择慈善组织申请表」'
+        },
+        token: {
+          type: 'string',
+          description: 'open_form 返回的表单令牌，fill_form 时必须原样带回'
+        },
+        fields: {
+          type: 'array',
+          description: 'fill_form 的字段清单，按 open_form 返回的字段 id 填写',
+          items: {
+            type: 'object',
+            properties: {
+              field: { type: 'string', description: 'open_form 返回的字段 id，例如 f1' },
+              value: { type: 'string', description: '要填入该字段的内容' }
+            },
+            required: ['field', 'value']
+          }
         }
       },
       required: ['action']
@@ -255,7 +300,7 @@ export const parseBrowserOperationArgs = (raw: unknown): BrowserOperationParseRe
   if (!isSupportedAction(action)) {
     return {
       success: false,
-      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/upload/generate_file/wait。`
+      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/upload/generate_file/open_form/fill_form/wait。`
     };
   }
 

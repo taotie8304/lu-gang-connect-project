@@ -71,6 +71,35 @@ export type DesktopCommandConfirmationResult = {
   label?: string;
 };
 
+/** 本地表单字段类型：只用于让模型理解结构，不含任何用户已填内容 */
+export type DesktopFormField = {
+  /** 回填时使用的稳定引用，例如 f3 / table:R2C1 */
+  id: string;
+  /** 字段名称或表头文字 */
+  label: string;
+  kind: 'text' | 'choice' | 'checkbox' | 'date' | 'table-cell' | 'unknown';
+  required?: boolean;
+  options?: string[];
+  hint?: string;
+};
+
+/** open_form 返回的表单摘要：不含本机路径与文件内容 */
+export type DesktopFormSummary = {
+  format: 'docx' | 'xlsx' | 'pdf';
+  name: string;
+  title?: string;
+  fields: DesktopFormField[];
+  fieldsTruncated?: boolean;
+  warnings?: string[];
+};
+
+/** fill_form 的写入结果：只回传统计与提示，不回传填写内容 */
+export type DesktopFormFillResult = {
+  filled: number;
+  skipped?: string[];
+  warnings?: string[];
+};
+
 export type DesktopCommandResult = {
   ok: boolean;
   code?: string;
@@ -79,10 +108,16 @@ export type DesktopCommandResult = {
   stopped?: boolean;
   /** 浏览器操作类指令执行后的最新页面快照 */
   snapshot?: DesktopBrowserSnapshot;
-  /** generate_file / upload 的结果 */
+  /** generate_file / upload / fill_form 的结果 */
   file?: DesktopCommandFileResult;
   /** 点击提交类按钮时的确认结果 */
   confirmation?: DesktopCommandConfirmationResult;
+  /** open_form 的表单结构摘要 */
+  form?: DesktopFormSummary;
+  /** open_form 返回的表单引用：fill_form 回填时原样带回，不含本机路径 */
+  formToken?: string;
+  /** fill_form 的写入统计 */
+  fill?: DesktopFormFillResult;
 };
 
 /** 设备注册（POST）：deviceId 由客户端生成并在本机持久化 */

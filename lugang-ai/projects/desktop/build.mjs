@@ -42,6 +42,11 @@ await build({
   entryPoints: ['src/preload/confirm.ts'],
   outfile: join(dist, 'preload/confirm.cjs')
 });
+await build({
+  ...common,
+  entryPoints: ['src/preload/formConfirm.ts'],
+  outfile: join(dist, 'preload/formConfirm.cjs')
+});
 await cp(join(root, 'src/renderer'), join(dist, 'renderer'), { recursive: true });
 // 鲁港通 - 托盘图标随 dist 分发（electron-builder files 只收录 dist 与 package.json）
 await cp(join(root, 'build/icon.png'), join(dist, 'tray-icon.png'));

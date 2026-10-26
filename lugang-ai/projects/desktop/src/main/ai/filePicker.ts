@@ -17,24 +17,30 @@ export type CreateFilePickerOptions = {
   getDefaultPath: () => string | undefined;
 };
 
-export const createFilePicker = ({
-  showOpenDialog,
-  getDefaultPath
-}: CreateFilePickerOptions) => {
-  return async (): Promise<string | null> => {
+// 鲁港通 - 同一份选择器兼顾上传与表单：只换标题与可选格式，路径仍由用户亲手选择
+export type FilePickerRequest = {
+  title?: string;
+  buttonLabel?: string;
+  filters?: { name: string; extensions: string[] }[];
+};
+
+const UPLOAD_FILTERS = [
+  {
+    name: '文档文件',
+    extensions: ['doc', 'docx', 'pdf', 'xls', 'xlsx', 'jpg', 'jpeg', 'png']
+  },
+  { name: '所有文件', extensions: ['*'] }
+];
+
+export const createFilePicker = ({ showOpenDialog, getDefaultPath }: CreateFilePickerOptions) => {
+  return async (request?: FilePickerRequest): Promise<string | null> => {
     const defaultPath = getDefaultPath();
     const result = await showOpenDialog({
       properties: ['openFile'],
-      title: '选择要上传的文件',
-      buttonLabel: '选择文件',
+      title: request?.title ?? '选择要上传的文件',
+      buttonLabel: request?.buttonLabel ?? '选择文件',
       ...(defaultPath ? { defaultPath } : {}),
-      filters: [
-        {
-          name: '文档文件',
-          extensions: ['doc', 'docx', 'pdf', 'xls', 'xlsx', 'jpg', 'jpeg', 'png']
-        },
-        { name: '所有文件', extensions: ['*'] }
-      ]
+      filters: request?.filters ?? UPLOAD_FILTERS
     });
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];

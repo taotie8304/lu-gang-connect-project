@@ -26,6 +26,8 @@ export const IPC_CHANNELS = {
   sessionSync: 'lugang:session-sync',
   sessionLogout: 'lugang:session-logout',
   confirmDecision: 'lugang:confirm-decision',
+  formConfirmDecision: 'lugang:form-confirm-decision',
+  formConfirmPayload: 'lugang:form-confirm-payload',
   windowMinimize: 'lugang:window-minimize',
   windowToggleMaximize: 'lugang:window-toggle-maximize',
   windowIsMaximized: 'lugang:window-is-maximized',

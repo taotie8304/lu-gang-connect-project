@@ -10,6 +10,9 @@ import {
   type AiConfirmer,
   type AiFileGenerator,
   type AiFilePicker,
+  type AiFormConfirmer,
+  type AiFormFiller,
+  type AiFormOpener,
   type AiPageDriver
 } from './executor';
 import {
@@ -43,6 +46,9 @@ export type AiControllerOptions = {
   generateFile?: AiFileGenerator;
   pickFile?: AiFilePicker;
   confirm?: AiConfirmer;
+  openForm?: AiFormOpener;
+  fillForm?: AiFormFiller;
+  confirmForm?: AiFormConfirmer;
   now?: () => number;
   idleMs?: number;
 };
@@ -100,7 +106,10 @@ export class AiController {
       driver: options.driver,
       generateFile: options.generateFile,
       pickFile: options.pickFile,
-      confirm: options.confirm
+      confirm: options.confirm,
+      openForm: options.openForm,
+      fillForm: options.fillForm,
+      confirmForm: options.confirmForm
     });
   }
 
@@ -134,6 +143,7 @@ export class AiController {
 
     if (command.action === 'stop') {
       this.executor.cancelConfirmation();
+      this.executor.cancelFormConfirmation();
       this.guard = recordAiUserStop(this.guard);
       this.sessionActiveUntil = 0;
       this.typedFields.clear();
@@ -157,7 +167,8 @@ export class AiController {
     }
 
     this.sessionActiveUntil = this.now() + this.idleMs;
-    this.ensurePanel();
+    // 鲁港通 - 表单动作只处理本机文件，不应打开或切换办事浏览器
+    if (command.action !== 'open_form' && command.action !== 'fill_form') this.ensurePanel();
     this.emit();
 
     const startedAt = this.now();
@@ -171,6 +182,7 @@ export class AiController {
 
   stop = (): DesktopAiState => {
     this.executor.cancelConfirmation();
+    this.executor.cancelFormConfirmation();
     this.guard = recordAiUserStop(this.guard);
     this.sessionActiveUntil = 0;
     this.typedFields.clear();
@@ -184,6 +196,7 @@ export class AiController {
     // 鲁港通 - 页面消失时先撤销挂起的提交确认，避免确认窗卡住最长 5 分钟
     this.pageClosedRecently = true;
     this.executor.cancelConfirmation('page_closed');
+    this.executor.cancelFormConfirmation();
     await this.reopenPage(event.url);
   };
 
@@ -191,6 +204,7 @@ export class AiController {
     if (!this.isSessionAlive() || this.reopening) return;
     this.pageClosedRecently = true;
     this.executor.cancelConfirmation('page_closed');
+    this.executor.cancelFormConfirmation();
     await this.reopenPage(this.sessionUrl);
   };
 

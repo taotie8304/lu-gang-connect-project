@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"
+    />
+    <title>填写前确认</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        font-family:
+          'Microsoft YaHei', 'PingFang SC', system-ui, -apple-system, sans-serif;
+        background: #f6f9fd;
+        color: #1f2d3d;
+      }
+      main {
+        flex: 1;
+        padding: 22px 24px 12px;
+        overflow-y: auto;
+      }
+      h1 {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 18px;
+        margin: 0 0 6px;
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        background: #5b8ff9;
+        color: #fff;
+        font-size: 14px;
+        font-weight: 700;
+      }
+      .lead {
+        font-size: 13px;
+        color: #6b7c93;
+        margin: 0 0 14px;
+        line-height: 1.5;
+      }
+      .card {
+        background: #fff;
+        border: 1px solid #e3ebf5;
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .card-label {
+        font-size: 12px;
+        color: #9aa8bb;
+        margin: 0 0 4px;
+      }
+      .file {
+        font-size: 15px;
+        font-weight: 600;
+        word-break: break-all;
+      }
+      .meta {
+        font-size: 12px;
+        color: #6b7c93;
+        margin-top: 4px;
+      }
+      .items {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+      .item {
+        border: 1px solid #eef3fa;
+        border-radius: 10px;
+        background: #fafcff;
+        padding: 8px 10px;
+      }
+      .item-label {
+        font-size: 12px;
+        color: #7d8ea3;
+        margin: 0 0 3px;
+      }
+      .item-value {
+        font-size: 14px;
+        line-height: 1.5;
+        word-break: break-word;
+        white-space: pre-wrap;
+      }
+      .empty {
+        font-size: 13px;
+        color: #9aa8bb;
+        margin: 0;
+      }
+      .note {
+        font-size: 12px;
+        color: #6b7c93;
+        line-height: 1.6;
+        margin: 12px 0 0;
+      }
+      footer {
+        padding: 12px 24px 18px;
+        background: #f6f9fd;
+        border-top: 1px solid #e8eff8;
+      }
+      .countdown {
+        font-size: 12px;
+        color: #9aa8bb;
+        margin: 0 0 10px;
+        text-align: right;
+      }
+      .buttons {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        padding: 9px 16px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        white-space: nowrap;
+      }
+      button:focus-visible {
+        outline: 2px solid #5b8ff9;
+        outline-offset: 2px;
+      }
+      #cancel {
+        background: #fff;
+        border-color: #d3deec;
+        color: #37475a;
+        margin-right: auto;
+      }
+      #cancel:hover {
+        background: #eef4fd;
+      }
+      #allow {
+        background: linear-gradient(135deg, #5b8ff9, #4b7cf3);
+        color: #fff;
+      }
+      #allow:hover {
+        filter: brightness(1.05);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1><span class="badge" aria-hidden="true">✓</span>填写前确认</h1>
+      <p class="lead">我准备按下面的内容填写表单，请核对个人信息与内容是否准确。</p>
+      <section class="card">
+        <p class="card-label">表单文件</p>
+        <div class="file" id="file">—</div>
+        <div class="meta" id="meta"></div>
+      </section>
+      <section class="card">
+        <p class="card-label">将填写的内容</p>
+        <div class="items" id="items">
+          <p class="empty">正在读取填写清单…</p>
+        </div>
+      </section>
+      <p class="note">
+        确认后只会生成一份已填写的副本，原文件不会被修改；本次不会上传，也不会提交任何内容。
+      </p>
+    </main>
+    <footer>
+      <p class="countdown" id="countdown" aria-live="polite"></p>
+      <div class="buttons">
+        <button id="cancel" type="button">取消</button>
+        <button id="allow" type="button">确认填写并生成副本</button>
+      </div>
+    </footer>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var timeoutMs = Number(params.get('timeoutMs')) || 300000;
+        var FORMAT_LABELS = { docx: 'Word 文档', xlsx: 'Excel 表格', pdf: 'PDF 表单' };
+
+        var decided = false;
+        function decide(decision) {
+          if (decided) return;
+          decided = true;
+          if (window.lugangFormConfirm) window.lugangFormConfirm.decide(decision);
+        }
+
+        function render(request) {
+          if (!request || typeof request !== 'object') return;
+          document.getElementById('file').textContent = request.fileName || '当前表单';
+          var meta = FORMAT_LABELS[request.format] || '文档';
+          document.getElementById('meta').textContent = meta;
+
+          var list = document.getElementById('items');
+          list.textContent = '';
+          var items = Array.isArray(request.items) ? request.items : [];
+          if (items.length === 0) {
+            var empty = document.createElement('p');
+            empty.className = 'empty';
+            empty.textContent = '这次没有需要写入的内容。';
+            list.appendChild(empty);
+          }
+          items.forEach(function (item) {
+            var row = document.createElement('div');
+            row.className = 'item';
+            var label = document.createElement('p');
+            label.className = 'item-label';
+            label.textContent = item && item.label ? item.label : '字段';
+            var value = document.createElement('div');
+            value.className = 'item-value';
+            value.textContent = item && typeof item.value === 'string' ? item.value : '';
+            row.appendChild(label);
+            row.appendChild(value);
+            list.appendChild(row);
+          });
+
+          var total = Number(request.total) || items.length;
+          if (total > items.length) {
+            var more = document.createElement('p');
+            more.className = 'empty';
+            more.textContent =
+              '另有 ' + (total - items.length) + ' 项内容未在此处展开，确认后会一并填写。';
+            list.appendChild(more);
+          }
+        }
+
+        if (window.lugangFormConfirm) {
+          window.lugangFormConfirm.onPayload(render);
+        }
+
+        document.getElementById('allow').addEventListener('click', function () {
+          decide('allow');
+        });
+        document.getElementById('cancel').addEventListener('click', function () {
+          decide('cancel');
+        });
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') decide('cancel');
+        });
+
+        var deadline = Date.now() + timeoutMs;
+        var countdown = document.getElementById('countdown');
+        function tick() {
+          var left = Math.max(0, deadline - Date.now());
+          var total = Math.ceil(left / 1000);
+          var minutes = Math.floor(total / 60);
+          var seconds = total % 60;
+          countdown.textContent =
+            (left > 0 ? '如 ' : '已超时，即将关闭') +
+            (left > 0
+              ? minutes + ':' + (seconds < 10 ? '0' + seconds : seconds) + ' 内未操作，将自动取消'
+              : '');
+          if (left <= 0) {
+            ['allow', 'cancel'].forEach(function (id) {
+              document.getElementById(id).disabled = true;
+            });
+            return;
+          }
+          window.setTimeout(tick, 1000);
+        }
+        tick();
+        document.getElementById('cancel').focus();
+      })();
+    </script>
+  </body>
+</html>
