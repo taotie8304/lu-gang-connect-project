@@ -134,6 +134,7 @@ def extract_html(
     content_selector: str | None = None,
     organization: str | None = None,
     title_strip_prefixes: list[str] | None = None,
+    title_strip_suffixes: list[str] | None = None,
 ) -> ExtractedContent:
     """提取 HTML 标题与净化正文。
 
@@ -142,13 +143,15 @@ def extract_html(
     organization：来源机构名，用于清洗 <title> 里的站点名前缀。
     title_strip_prefixes：显式标题前缀（如 TID 繁体「工業貿易署 - 」——与简体 org
     匹配不上），命中即剥离。
+    title_strip_suffixes：显式标题后缀（如 InvestHK「标题 | InvestHK」）。
     """
     parser = _TextExtractor(_parse_selector(content_selector))
     parser.feed(_decode_html(content))
     raw_title = "".join(parser.title_parts).strip() or None
     # 鲁港通 - 容器正文优先（剔除面包屑/字号控件/相关报道），未命中回退全文
     text = parser.container_text or _squeeze("".join(parser.text_parts))
-    title = clean_title(raw_title, organization, title_strip_prefixes)
+    title = clean_title(raw_title, organization, title_strip_prefixes,
+                        title_strip_suffixes)
     return ExtractedContent(
         title=title, text=text or None, language_hint=_lang_hint(title, text)
     )
@@ -166,16 +169,26 @@ def clean_title(
     raw: str | None,
     organization: str | None = None,
     strip_prefixes: list[str] | None = None,
+    strip_suffixes: list[str] | None = None,
 ) -> str | None:
     """清洗 <title>：去掉站点名/栏目名前缀，保留真实文章标题。
 
     仅在标题以机构名（或其括号前核心名）开头时处理；其余情况（如港府英文标题）原样返回。
     strip_prefixes：配置化的显式前缀（如 TID 繁体「工業貿易署 - 」，与简体 org
     匹配不上），优先剥离；剥离后剩空则保持原样。
+    strip_suffixes：配置化的显式后缀（如 InvestHK「 | InvestHK」），命中即剥离。
     """
     title = (raw or "").strip()
     if not title:
         return None
+    # 鲁港通 - 站点名后缀（InvestHK 实测「标题 | InvestHK」）先剥，再走机构/栏目前缀清洗
+    for suffix in strip_suffixes or []:
+        if not isinstance(suffix, str) or not suffix or not title.endswith(suffix):
+            continue
+        rest = title[: -len(suffix)].strip(" \t_|·—-")
+        if rest:
+            title = rest
+        break
     # 鲁港通 - 显式前缀优先（实测 TID：繁体站点名 vs 简体 org，startswith 匹配不上）
     for p in strip_prefixes or []:
         if not isinstance(p, str) or not p or not title.startswith(p):

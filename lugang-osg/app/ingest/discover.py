@@ -51,22 +51,70 @@ def parse_rss(content: bytes) -> list[DiscoveredItem]:
 _SITEMAP_NS = "{http://www.sitemaps.org/schemas/sitemap/0.9}"
 
 
-def parse_sitemap(content: bytes, base_url: str) -> list[DiscoveredItem]:
-    """解析 sitemap.xml / sitemapindex（index 只返回子 sitemap URL，由 pipeline 递归拉取）。"""
+def parse_sitemap(
+    content: bytes, base_url: str, since_days: int | None = None
+) -> list[DiscoveredItem]:
+    """解析 sitemap.xml / sitemapindex（index 只返回子 sitemap URL，由 pipeline 递归拉取）。
+
+    鲁港通 - since_days：按 <url><lastmod> 过滤过旧条目。sitemapindex 的子 sitemap 条目
+    不参与过滤（内容由递归拉取决定）；无 lastmod 的 URL 保留（无法判定时限，误杀会丢文档）。
+    """
     import xml.etree.ElementTree as ET
+    from datetime import datetime, timedelta, timezone
 
     try:
         root = ET.fromstring(content)
     except ET.ParseError:
         return []
 
+    # 鲁港通 - 命名空间按根元素动态取（部分站点 sitemap 无 xmlns，写死会一条都解析不出）
+    ns = ""
+    if root.tag.startswith("{"):
+        ns = root.tag[1:].split("}", 1)[0]
+
+    def q(tag: str) -> str:
+        return f"{{{ns}}}{tag}" if ns else tag
+
     items: list[DiscoveredItem] = []
-    # 鲁港通 - sitemapindex：loc 指向子 sitemap，同样返回（pipeline 会继续拉取解析）
-    for loc in root.iter(f"{_SITEMAP_NS}loc"):
-        url = (loc.text or "").strip()
-        if url:
-            items.append(DiscoveredItem(url=urljoin(base_url, url)))
+    if root.tag.endswith("sitemapindex"):
+        for loc in root.iter(q("loc")):
+            url = (loc.text or "").strip()
+            if url:
+                items.append(DiscoveredItem(url=urljoin(base_url, url)))
+        return items
+
+    cutoff = None
+    if since_days is not None:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=int(since_days))
+
+    for node in root.iter(q("url")):
+        loc = node.find(q("loc"))
+        url = (loc.text or "").strip() if loc is not None else ""
+        if not url:
+            continue
+        if cutoff is not None:
+            lastmod = node.find(q("lastmod"))
+            published = _parse_lastmod(lastmod.text if lastmod is not None else None)
+            if published is not None and published < cutoff:
+                continue
+        items.append(DiscoveredItem(url=urljoin(base_url, url)))
     return items
+
+
+def _parse_lastmod(raw: str | None):
+    """解析 sitemap <lastmod>（ISO date/datetime，容忍 Z 后缀与无时区）；失败返回 None。"""
+    from datetime import datetime, timezone
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def is_sitemap(content_type: str, content: bytes) -> bool:

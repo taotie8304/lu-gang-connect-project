@@ -70,6 +70,9 @@ class SyncStats:
     skipped_limit: int = 0
     # 鲁港通 - 标题噪声自动归档的新文档数（status=archived，不进知识库）
     archived_noise: int = 0
+    # 鲁港通 - 政策白名单：抓取前跳过与抓取后归档的非政策条目数（P1-A）
+    skipped_offtopic: int = 0
+    archived_offtopic: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -86,8 +89,11 @@ def sync_source(
     """同步一个来源。fetcher/sleeper/resolver 供测试注入。
 
     force_refetch=True 时已知文档也重新抓取（用于人工触发的全量核对）。
+    fixed_url 来源每次同步强制重抓：ITF/EMF 等固定页承载「申请截止/已停止」状态，
+    跳过已知文档会让状态永久停在首次抓取（2026-10-17 P1-A）。
     """
     settings = settings or get_settings()
+    force_refetch = force_refetch or source.discovery_method == "fixed_url"
     stats = SyncStats()
     run = CrawlRun(source_id=source.id, status="running")
     db.add(run)
@@ -153,10 +159,23 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
             items.extend(_fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats,
                                           lambda c, b: parse_rss(c)))
     elif method == "sitemap":
+        # 鲁港通 - sitemap 候选量实测爆炸（InvestHK 4803 / HKSTP 3288 条）：since_days 按
+        # lastmod 截断旧闻，url_pattern 只保留目标频道（如 /zh-hk/news/），两者都在
+        # 发现层挡掉，避免为无关 URL 逐条建 crawl_task（P1-A）。
+        since_days = cfg.get("sitemap_since_days")
+        # 鲁港通 - 递归拉取的子 sitemap 也须沿用同一形态/时限规则；叶子 URL 才过滤形态
+        pattern = None
+        raw_pattern = cfg.get("sitemap_url_pattern")
+        if raw_pattern:
+            try:
+                pattern = re.compile(raw_pattern)
+            except re.error as exc:
+                stats.errors.append(f"sitemap_url_pattern 无效（忽略）: {exc}")
         for url in cfg.get("sitemap_urls", []):
-            items.extend(
-                _fetch_sitemap_recursive(db, url, rules, settings, fetcher, sleeper, stats, depth=0)
-            )
+            items.extend(_fetch_sitemap_recursive(
+                db, url, rules, settings, fetcher, sleeper, stats, depth=0,
+                since_days=since_days, url_pattern=pattern,
+            ))
     elif method == "listing":
         # 鲁港通 - 商务厅 xxgk 检索式列表页：POST + {currpage} 翻页（参数在 query、无 body，
         # 即网站自身 funclick 的调用形态）；普通 GET 列表页不受影响（缺省 GET、无 paginate）。
@@ -318,24 +337,37 @@ def _fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats, parser_f
         return []
 
 
-def _fetch_sitemap_recursive(db, url, rules, settings, fetcher, sleeper, stats, depth) -> list[DiscoveredItem]:
-    """sitemap 可能是 sitemapindex：子 sitemap 继续拉取（限深防循环）。"""
+def _fetch_sitemap_recursive(db, url, rules, settings, fetcher, sleeper, stats, depth,
+                             since_days=None, url_pattern=None) -> list[DiscoveredItem]:
+    """sitemap 可能是 sitemapindex：子 sitemap 继续拉取（限深防循环）。
+
+    since_days / url_pattern：时限与目标频道形态过滤，对递归子 sitemap 沿用；
+    形态过滤只作用于叶子 URL（子 sitemap 地址本身不匹配目标频道）。
+    """
     result = _fetch_with_retry(url, rules, settings, fetcher, sleeper, stats)
     if result is None:
         return []
-    items = parse_sitemap(result.content, result.final_url)
+    items = parse_sitemap(result.content, result.final_url, since_days=since_days)
     if depth >= _SITEMAP_MAX_DEPTH:
-        return items
+        return _filter_sitemap_leaves(items, url_pattern)
     # 鲁港通 - 判定 sitemapindex：返回的 loc 又指向 .xml 站点地图
     out: list[DiscoveredItem] = []
     for item in items:
         if _looks_like_sitemap(item.url):
             out.extend(
-                _fetch_sitemap_recursive(db, item.url, rules, settings, fetcher, sleeper, stats, depth + 1)
+                _fetch_sitemap_recursive(db, item.url, rules, settings, fetcher, sleeper,
+                                         stats, depth + 1,
+                                         since_days=since_days, url_pattern=url_pattern)
             )
-        else:
+        elif url_pattern is None or url_pattern.search(item.url):
             out.append(item)
     return out
+
+
+def _filter_sitemap_leaves(items, url_pattern) -> list[DiscoveredItem]:
+    if url_pattern is None:
+        return items
+    return [it for it in items if url_pattern.search(it.url)]
 
 
 def _looks_like_sitemap(url: str) -> bool:
@@ -387,6 +419,7 @@ def _process_candidates(db, source, run, candidates, rules, settings,
     known = {d.canonical_url: d for d in db.execute(
         select(Document).where(Document.source_id == source.id)
     ).scalars()}
+    cfg = source.discovery_config or {}
     entry_urls = _entry_urls(source)
     # 鲁港通 - fixed_url 入口即目标文档；api_json 的 canonical_url 是详情 API 端点
     # （/prod-api/...getInfo?id=），网页形态规则对它无意义，两者均豁免栏目页形态过滤。
@@ -443,6 +476,17 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             db.commit()
             continue
 
+        # 3) 政策白名单（P1-A）：列表标题已给定时先判定，非政策条目抓取前跳过不耗配额。
+        #    sitemap 候选无列表标题，只能在抓取后按文章标题判定（见 _store_document）。
+        #    只约束新建文档：存量文档重抓照旧更新版本，不因白名单变化断更。
+        include_patterns = cfg.get("title_include_patterns")
+        if (doc is None and item.title and include_patterns
+                and not first_matching_pattern(item.title, include_patterns)):
+            task.status = "skipped_offtopic"
+            stats.skipped_offtopic += 1
+            db.commit()
+            continue
+
         # 4) 取得文档内容：api_json 列表项已内嵌全文（body_html）→ 直接构造抓取结果，
         #    跳过详情页请求（海右人社详情是 SPA 静态抓不到，且全文已在列表接口）；
         #    其余发现方式走安全通道 fetch_with_retry（含逐跳白名单校验与重试）。
@@ -479,6 +523,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             # （同 skipped_low_content），保证 max_pages_per_run 上限不被绕过
             stats.archived_noise += 1
             stats.fetched_ok += 1
+        elif action == "archived_offtopic":
+            # 鲁港通 - 抓取后按文章标题判定为非政策的新文档已置 archived（P1-A）
+            stats.archived_offtopic += 1
+            stats.fetched_ok += 1
         elif action == "skipped_low_content":
             # 鲁港通 - 抽取成功但正文不足（栏目页/导航页）：计入已处理页数，
             # 保证 max_pages_per_run 上限不被噪声页绕过
@@ -496,12 +544,20 @@ def _process_candidates(db, source, run, candidates, rules, settings,
 def _store_document(db, source, canonical, result: FetchResult, item) -> str:
     """sha256 版本化入库。返回 new / archived_noise / updated / unchanged / skipped_low_content。"""
     content_sha = hashlib.sha256(result.content).hexdigest()
+    cfg = source.discovery_config or {}
+    # 鲁港通 - 部分站点 <title> 无法区分页面（HA 多页均为「HA」、LD/IPD 多个子页同名），
+    # 用 title_overrides 按 URL 显式指定可读标题，保证引用来源可辨。
+    overrides = cfg.get("title_overrides") or {}
+    override = overrides.get(canonical) if isinstance(overrides, dict) else None
 
     doc = db.execute(
         select(Document).where(Document.canonical_url == canonical)
     ).scalar_one_or_none()
 
     if doc is not None:
+        # 标题覆盖先于「内容未变」短路生效，配置修正后下次同步即可刷新旧文档标题
+        if override and doc.title != override:
+            doc.title = override
         existing = db.execute(
             select(DocumentVersion).where(
                 DocumentVersion.document_id == doc.id,
@@ -512,7 +568,6 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
             return "unchanged"
 
     is_pdf = result.content_type == "application/pdf"
-    cfg = source.discovery_config or {}
     extracted = (
         extract_pdf(result.content)
         if is_pdf
@@ -521,6 +576,7 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
             content_selector=cfg.get("content_selector"),
             organization=source.organization,
             title_strip_prefixes=cfg.get("title_strip_prefixes"),
+            title_strip_suffixes=cfg.get("title_strip_suffixes"),
         )
     )
 
@@ -534,24 +590,36 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
         # 来源配置的 title_exclude_patterns 即置 archived（不进知识库、可随时恢复）。
         # 只作用于新建文档：已人工恢复（candidate）的存量文档重抓不会被再次归档。
         noise_hit = None
-        for t in (item.title, extracted.title):
+        for t in (override, item.title, extracted.title):
             noise_hit = first_matching_pattern(t, cfg.get("title_exclude_patterns"))
             if noise_hit:
                 break
+        # 鲁港通 - 政策白名单（P1-A）：配置后新文档标题须命中（列表或文章标题任一），
+        # 否则视为非政策内容归档（如 InvestHK 门店开业新闻/HKSTP 活动通告）。
+        include_patterns = cfg.get("title_include_patterns")
+        offtopic = bool(include_patterns) and not any(
+            first_matching_pattern(t, include_patterns)
+            for t in (override, item.title, extracted.title)
+        )
+        doc_title = override or item.title or extracted.title
         doc = Document(
             source_id=source.id,
             canonical_url=canonical,
-            title=item.title or extracted.title,
+            title=doc_title,
             language=extracted.language_hint,
             organization=source.organization,
-            status="archived" if noise_hit else "candidate",
+            status="archived" if (noise_hit or offtopic) else "candidate",
         )
         db.add(doc)
         db.flush()
         if noise_hit:
             action = "archived_noise"
             logger.info("%s: 标题命中排除词「%s」自动归档: %s",
-                        source.code, noise_hit, item.title or extracted.title)
+                        source.code, noise_hit, doc_title)
+        elif offtopic:
+            action = "archived_offtopic"
+            logger.info("%s: 标题未命中政策白名单自动归档: %s",
+                        source.code, doc_title)
         else:
             action = "new"
     else:
@@ -568,7 +636,8 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
         http_status=result.http_status,
         content_sha256=content_sha,
         extracted_text=extracted.text,
-        extracted_metadata={"title": extracted.title, "language": extracted.language_hint},
+        extracted_metadata={"title": override or extracted.title,
+                            "language": extracted.language_hint},
         is_current=True,
     )
     db.add(version)

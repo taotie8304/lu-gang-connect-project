@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
 import pytest
@@ -1938,3 +1939,339 @@ class TestTitleFilterMatcher:
         """配置了非法正则时跳过该模式、其余模式照常生效，绝不中断采集。"""
         assert first_matching_pattern(NOISE_T_A, ["([", "任免"]) == "任免"
         assert first_matching_pattern(NOISE_T_A, ["(["]) is None
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - P1-A 政策相关性过滤（2026-10-17 用户要求：只保留政策类信息）
+# ---------------------------------------------------------------------------
+
+POLICY_PATTERNS = ["政策|措施|計劃|資助|基金|條例|草案|議案|申請"]
+
+
+def _sitemap_with_lastmod(entries) -> bytes:
+    """entries=[(url, lastmod_or_None)]；构造带 lastmod 的 urlset。"""
+    rows = "".join(
+        f"<url><loc>{u}</loc>{f'<lastmod>{lm}</lastmod>' if lm else ''}</url>"
+        for u, lm in entries
+    )
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"{rows}</urlset>"
+    ).encode("utf-8")
+
+
+class TestSitemapSinceDays:
+    def test_filters_old_urls_but_keeps_sitemapindex_and_no_lastmod(self):
+        """sitemap_since_days：按 <lastmod> 过滤过旧 URL；无 lastmod 不过滤（不误杀）；
+        sitemapindex 的子 sitemap 条目不受 lastmod 过滤（由递归拉取决定内容）。"""
+        recent = (datetime.now(timezone.utc) - timedelta(days=10)).date().isoformat()
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).date().isoformat()
+        content = _sitemap_with_lastmod([
+            ("https://www.hkstp.org/zh-hk/news/recent", recent),
+            ("https://www.hkstp.org/zh-hk/news/old", old),
+            ("https://www.hkstp.org/zh-hk/news/unknown", None),
+        ])
+        items = parse_sitemap(content, "https://www.hkstp.org/zh-hk/sitemap.xml", since_days=365)
+        assert {i.url for i in items} == {
+            "https://www.hkstp.org/zh-hk/news/recent",
+            "https://www.hkstp.org/zh-hk/news/unknown",
+        }
+
+        index = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f"<sitemap><loc>https://x/sitemap-news.xml</loc><lastmod>{old}</lastmod></sitemap>"
+            "</sitemapindex>"
+        ).encode("utf-8")
+        assert len(parse_sitemap(index, "https://x/sitemap.xml", since_days=365)) == 1
+
+    def test_no_since_days_keeps_all(self):
+        old = (datetime.now(timezone.utc) - timedelta(days=400)).date().isoformat()
+        content = _sitemap_with_lastmod([("https://x/old", old)])
+        assert len(parse_sitemap(content, "https://x/sitemap.xml")) == 1
+
+
+SITEMAP_POLICY_YAML = """
+sources:
+  - id: inv_policy_test
+    name: 投资推广署政策过滤测试
+    group: hk_economy_innovation
+    organization: 香港投资推广署 InvestHK
+    base_domains: [www.investhk.gov.hk]
+    allowed_path_prefixes: [/sitemap.xml, /zh-hk/news/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.investhk.gov.hk/sitemap.xml"
+    sitemap_since_days: 365
+    sitemap_url_pattern: '/zh-hk/news/[^/]+/?$'
+    title_include_patterns:
+      - '政策|措施|計劃|資助|基金|條例|草案|議案|申請'
+    title_strip_suffixes:
+      - " | InvestHK"
+    content_selector: .articlesdetail__container
+    rate_limit_per_minute: 60
+    max_pages_per_run: 20
+    enabled: true
+"""
+
+_INV_SITEMAP = "https://www.investhk.gov.hk/sitemap.xml"
+_INV_POLICY = "https://www.investhk.gov.hk/zh-hk/news/enhancement-measures/"
+_INV_NOISE = "https://www.investhk.gov.hk/zh-hk/news/restaurant-opens/"
+_INV_OLD = "https://www.investhk.gov.hk/zh-hk/news/old-policy-2023/"
+_INV_CLIENT = "https://www.investhk.gov.hk/zh-hk/our-clients/acme/"
+_INV_POLICY_TITLE = "優化「新資本投資者入境計劃」措施"
+_INV_NOISE_TITLE = "日式漢堡排專門店在香港開設首間門市"
+
+
+def _inv_sitemap_bytes() -> bytes:
+    recent = (datetime.now(timezone.utc) - timedelta(days=5)).date().isoformat()
+    old = (datetime.now(timezone.utc) - timedelta(days=500)).date().isoformat()
+    return _sitemap_with_lastmod([
+        (_INV_POLICY, recent),
+        (_INV_NOISE, recent),
+        (_INV_OLD, old),
+        (_INV_CLIENT, recent),
+    ])
+
+
+def _inv_article(title: str) -> bytes:
+    return (
+        "<html><head><title>"
+        f"{title} | InvestHK"
+        "</title></head><body><div class='articlesdetail__container'>"
+        f"<p>{_LONG_ZH}</p></div></body></html>"
+    ).encode("utf-8")
+
+
+RSS_POLICY_YAML = """
+sources:
+  - id: rss_policy_test
+    name: 新闻公报政策过滤测试
+    group: hk_core_gov
+    organization: 香港特别行政区政府新闻处
+    base_domains: [www.info.gov.hk]
+    allowed_path_prefixes: [/gia/rss/, /gia/general/]
+    discovery_method: rss
+    feed_urls:
+      - "https://www.info.gov.hk/gia/rss/general_zh.xml"
+    title_include_patterns:
+      - '政策|措施|計劃|資助|基金|條例|草案|議案|申請'
+    content_selector: "#contentbody"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 20
+    enabled: true
+"""
+
+_RSS_FEED = "https://www.info.gov.hk/gia/rss/general_zh.xml"
+_RSS_POLICY_URL = "https://www.info.gov.hk/gia/general/202610/17/P2026101700001.htm"
+_RSS_NOISE_URL = "https://www.info.gov.hk/gia/general/202610/17/P2026101700002.htm"
+_RSS_POLICY_TITLE = "民政及青年事務局推出新一輪青年實習資助計劃"
+_RSS_NOISE_TITLE = "數個泳灘懸掛紅旗"
+
+
+def _rss_policy_bytes() -> bytes:
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>'
+        f"<item><title>{_RSS_POLICY_TITLE}</title><link>{_RSS_POLICY_URL}</link></item>"
+        f"<item><title>{_RSS_NOISE_TITLE}</title><link>{_RSS_NOISE_URL}</link></item>"
+        "</channel></rss>"
+    ).encode("utf-8")
+
+
+class TestPolicyRelevanceFilter:
+    """P1-A：政策白名单（title_include_patterns）与 sitemap 形态/时限过滤。"""
+
+    def test_sitemap_filters_by_pattern_and_lastmod(self, db):
+        import_sources_yaml(SITEMAP_POLICY_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "inv_policy_test")).scalar_one()
+        # yaml 白名单贯通：新增键必须写入 discovery_config
+        assert src.discovery_config["sitemap_since_days"] == 365
+        assert src.discovery_config["sitemap_url_pattern"] == "/zh-hk/news/[^/]+/?$"
+        assert src.discovery_config["title_strip_suffixes"] == [" | InvestHK"]
+
+        fetcher = _FakeFetcher({
+            _INV_SITEMAP: _inv_sitemap_bytes(),
+            _INV_POLICY: _inv_article(_INV_POLICY_TITLE),
+            _INV_NOISE: _inv_article(_INV_NOISE_TITLE),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        # 发现层：our-clients 形态不符、500 天前的旧闻 → 均不成候选
+        assert stats.discovered == 2
+        assert _INV_CLIENT not in fetcher.calls
+        assert _INV_OLD not in fetcher.calls
+        # 政策标题入库；商业门店新闻抓取后按白名单归档，不进知识库
+        assert stats.new_docs == 1
+        assert stats.archived_offtopic == 1
+        docs = {d.canonical_url: d for d in db.execute(select(Document)).scalars()}
+        assert docs[_INV_POLICY].status == "candidate"
+        assert docs[_INV_POLICY].title == _INV_POLICY_TITLE   # 站点后缀已清洗
+        assert docs[_INV_NOISE].status == "archived"
+        tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
+        assert tasks[_INV_POLICY] == "new"
+        assert tasks[_INV_NOISE] == "archived_offtopic"
+
+    def test_rss_offtopic_skipped_before_fetch(self, db):
+        """RSS 条目自带标题：不匹配政策白名单时在抓取前跳过，不浪费配额。"""
+        import_sources_yaml(RSS_POLICY_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "rss_policy_test")).scalar_one()
+        fetcher = _FakeFetcher({
+            _RSS_FEED: _rss_policy_bytes(),
+            _RSS_POLICY_URL: _article_html(_RSS_POLICY_TITLE, _LONG_ZH),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert stats.discovered == 2
+        assert stats.new_docs == 1
+        assert stats.skipped_offtopic == 1
+        assert _RSS_NOISE_URL not in fetcher.calls       # 泳滩红旗页从未抓取
+        doc = db.execute(select(Document)).scalar_one()
+        assert doc.canonical_url == _RSS_POLICY_URL
+
+    def test_sitemap_offtopic_archived_after_fetch_when_no_list_title(self, db):
+        """sitemap 候选无列表标题：抓取后用文章标题判定，未命中白名单置 archived。"""
+        import_sources_yaml(SITEMAP_POLICY_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "inv_policy_test")).scalar_one()
+        # 只保留噪声 URL 的 sitemap；文章页标题不含政策关键词
+        sitemap = _sitemap_with_lastmod([
+            (_INV_NOISE, (datetime.now(timezone.utc) - timedelta(days=5)).date().isoformat()),
+        ])
+        fetcher = _FakeFetcher({
+            _INV_SITEMAP: sitemap,
+            _INV_NOISE: _inv_article(_INV_NOISE_TITLE),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats.new_docs == 0
+        assert stats.archived_offtopic == 1
+        doc = db.execute(select(Document)).scalar_one()
+        assert doc.status == "archived"
+
+
+FIXED_URL_YAML = """
+sources:
+  - id: itf_fixed_test
+    name: ITF 固定页测试
+    group: hk_economy_innovation
+    organization: 创新科技署
+    base_domains: [www.itf.gov.hk]
+    allowed_path_prefixes: [/tc/funding-programmes/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-start-ups/itvf/index.html"
+    content_selector: "#content"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 20
+    enabled: true
+"""
+
+_ITF_URL = (
+    "https://www.itf.gov.hk/tc/funding-programmes/"
+    "supporting-start-ups/itvf/index.html"
+)
+
+
+class TestFixedUrlAlwaysRefetch:
+    """ITF/EMF 等固定页承载「申请截止/已停止」状态，定时同步必须重抓否则状态永久过期。"""
+
+    def test_fixed_url_rechecks_known_docs_without_force_flag(self, db):
+        import_sources_yaml(FIXED_URL_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "itf_fixed_test")).scalar_one()
+        page = _article_html("創新及科技基金 企業支援計劃", _LONG_ZH)
+        fetcher = _FakeFetcher({_ITF_URL: page})
+
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+        stats2 = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                             sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert stats2.already_known == 0
+        assert stats2.unchanged_docs == 1
+        assert fetcher.calls.count(_ITF_URL) == 2
+
+    def test_fixed_url_content_change_creates_version(self, db):
+        import_sources_yaml(FIXED_URL_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "itf_fixed_test")).scalar_one()
+        fetcher = _FakeFetcher({_ITF_URL: _article_html("計劃", _LONG_ZH)})
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+        fetcher.responses[_ITF_URL] = _article_html("計劃", _LONG_ZH + " 本輪申請現已截止。")
+        stats2 = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                             sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats2.updated_docs == 1
+        assert len(db.execute(select(DocumentVersion)).scalars().all()) == 2
+
+
+TITLE_OVERRIDE_YAML = """
+sources:
+  - id: ha_title_test
+    name: 医管局标题覆盖测试
+    group: hk_public_services
+    organization: 医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Content_ID=281820"
+    content_selector: "#mainContent"
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Content_ID=281820": "医管局 - 「全年收费上限」（适用于符合资格人士）"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 20
+    enabled: true
+"""
+
+_HA_TITLE_URL = "https://www.ha.org.hk/visitor/ha_view_content.asp?Content_ID=281820"
+
+
+class TestTitleOverrides:
+    """HA 等站点的 <title> 仅为「HA」，须按 URL 显式指定可读标题（引用展示依赖 Document.title）。"""
+
+    def test_overridden_title_used_for_new_document(self, db):
+        import_sources_yaml(TITLE_OVERRIDE_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "ha_title_test")).scalar_one()
+        fetcher = _FakeFetcher({_HA_TITLE_URL: _article_html("HA", _LONG_ZH)})
+
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+
+        doc = db.execute(select(Document)).scalar_one()
+        assert doc.title == "医管局 - 「全年收费上限」（适用于符合资格人士）"
+        version = db.execute(select(DocumentVersion)).scalar_one()
+        assert version.extracted_metadata["title"] == doc.title
+
+    def test_overridden_title_updates_existing_document(self, db):
+        import_sources_yaml(TITLE_OVERRIDE_YAML, db)
+        src = db.execute(select(Source).where(Source.code == "ha_title_test")).scalar_one()
+        fetcher = _FakeFetcher({_HA_TITLE_URL: _article_html("HA", _LONG_ZH)})
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+
+        src.discovery_config = {
+            **src.discovery_config,
+            "title_overrides": {_HA_TITLE_URL: "医管局 - 医疗收费（修订）"},
+        }
+        db.commit()
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+
+        doc = db.execute(select(Document)).scalar_one()
+        assert doc.title == "医管局 - 医疗收费（修订）"
+
+
+class TestTitleSuffixCleanup:
+    def test_configured_suffix_stripped(self):
+        raw = "優化「新資本投資者入境計劃」措施 | InvestHK"
+        assert clean_title(raw, "香港投资推广署 InvestHK",
+                           strip_suffixes=[" | InvestHK"]) == "優化「新資本投資者入境計劃」措施"
+
+    def test_extract_html_applies_suffix_cleanup(self):
+        html = (
+            "<html><head><title>政策新聞 | InvestHK</title></head><body>"
+            f"<p>{_LONG_ZH}</p></body></html>"
+        ).encode("utf-8")
+        out = extract_html(html, title_strip_suffixes=[" | InvestHK"])
+        assert out.title == "政策新聞"

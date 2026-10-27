@@ -62,6 +62,32 @@ def test_hk_two_sources_share_news_department_folder():
     assert b.folder_path == ("政府新闻处",)
 
 
+def test_hk_p1a_new_sources_have_routes():
+    """P1-A 新源：ITF/科技园/中小企基金必须能路由到对应部门，否则导入报 MappingError。"""
+    assert resolve_route("hk_itf", "https://www.itf.gov.hk/tc/x").folder_path == ("创新科技署",)
+    assert resolve_route("hk_hkstp", "https://www.hkstp.org/zh-hk/x").folder_path == ("香港科技园公司",)
+    assert resolve_route("hk_smefund", "https://smefund.tid.gov.hk/sc_chi/x").folder_path == ("工业贸易署",)
+
+
+def test_hk_p1b_new_sources_have_routes():
+    """P1-B 新源：房屋署/公司注册处/知识产权署/卫生署/社署/医管局/劳工处必须能路由。"""
+    cases = {
+        "hk_hd_policy": "房屋署",
+        "hk_cr_policy": "公司注册处",
+        "hk_ipd_policy": "知识产权署",
+        "hk_dh_policy": "卫生署",
+        "hk_swd_policy": "社会福利署",
+        "hk_ha_policy": "医院管理局",
+        "hk_ld_policy": "劳工处",
+    }
+    for code, dept in cases.items():
+        route = resolve_route(code, "https://example.com/x.html")
+        assert route.kb_key == "hk"
+        assert route.dataset_id == HK_DATASET_ID
+        assert route.folder_path == (dept,), code
+        assert route.column is None, code
+
+
 def test_sd_provincial_source():
     route = resolve_route(
         "sd_kjt",
@@ -92,7 +118,7 @@ def test_unknown_source_raises():
 
 
 def test_all_importable_sources_covered():
-    # 13 香港 + 7 山东省级 + 4 济南，共 24 个可导入源均有路由
+    # 23 香港（含 P1-A、P1-B 新源）+ 7 山东省级 + 4 济南，共 34 个可导入源均有路由
     codes = [
         "hk_data_gov",
         "hk_edb",
@@ -102,11 +128,21 @@ def test_all_importable_sources_covered():
         "hk_immd",
         "hk_investhk",
         "hk_ird",
+        "hk_itf",
         "hk_itib",
+        "hk_hkstp",
         "hk_news_gov",
         "hk_policy_address",
+        "hk_smefund",
         "hk_tid",
         "hk_wfsfaa",
+        "hk_hd_policy",
+        "hk_cr_policy",
+        "hk_ipd_policy",
+        "hk_dh_policy",
+        "hk_swd_policy",
+        "hk_ha_policy",
+        "hk_ld_policy",
         "sd_prov_gov",
         "sd_commerce",
         "sd_czt",

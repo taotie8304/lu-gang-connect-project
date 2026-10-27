@@ -27,18 +27,28 @@ class KbRoute:
 
 # 鲁港通 - 香港源 → 部门文件夹（取自源配置 organization 的简称）
 _HK_DEPARTMENTS: dict[str, str] = {
+    "hk_cr_policy": "公司注册处",
     "hk_data_gov": "数字政策办公室",
+    "hk_dh_policy": "卫生署",
     "hk_edb": "教育局",
     "hk_gia_press": "政府新闻处",
+    "hk_ha_policy": "医院管理局",
+    "hk_hd_policy": "房屋署",
     "hk_gov_portal": "政府一站通",
     "hk_hkma": "金融管理局",
     "hk_immd": "入境事务处",
     "hk_investhk": "投资推广署",
     "hk_ird": "税务局",
+    "hk_ipd_policy": "知识产权署",
     "hk_itib": "创新科技及工业局",
+    "hk_itf": "创新科技署",
+    "hk_hkstp": "香港科技园公司",
+    "hk_ld_policy": "劳工处",
     "hk_news_gov": "政府新闻处",
     "hk_police_so": "警务处",
     "hk_policy_address": "施政报告",
+    "hk_smefund": "工业贸易署",
+    "hk_swd_policy": "社会福利署",
     "hk_tid": "工业贸易署",
     "hk_wfsfaa": "在职家庭及学生资助事务处",
 }

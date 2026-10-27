@@ -44,6 +44,14 @@ _DISCOVERY_KEYS = (
     "link_pattern",
     # 鲁港通 - 标题噪声自动归档（六区级源）：命中即置 archived 的标题排除模式（正则列表）
     "title_exclude_patterns",
+    # 鲁港通 - P1-A 政策相关性：标题白名单（不命中不入库）、标题后缀清洗、
+    # sitemap 时限与目标频道形态收窄
+    "title_include_patterns",
+    "title_strip_suffixes",
+    # 鲁港通 - 按 URL 显式指定标题（HA 多页 <title> 均为「HA」、LD/IPD 子页同名）
+    "title_overrides",
+    "sitemap_since_days",
+    "sitemap_url_pattern",
 )
 
 

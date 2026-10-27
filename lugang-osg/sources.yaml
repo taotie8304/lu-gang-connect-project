@@ -115,14 +115,24 @@ sources:
     group: hk_core_gov
     organization: 香港特别行政区政府新闻处
     base_domains: [www.info.gov.hk]
-    allowed_path_prefixes: [/gia/general/]
-    discovery_method: listing
-    listing_urls:
-      - "https://www.info.gov.hk/gia/general/ctoday.htm"
+    allowed_path_prefixes: [/gia/general/, /gia/rss/]
+    # 鲁港通 - P1-A：改用 RSS（100 条/次，含完整列表标题）；原 ctoday.htm 列表页
+    # 只有当日公报且需逐页抓取，覆盖不足。标题白名单只收政策/资助/立法类公报，
+    # 泳滩红旗、火警、卖旗日、判囚、任命、体育活动等一律不入库。
+    discovery_method: rss
+    feed_urls:
+      - "https://www.info.gov.hk/gia/rss/general_zh.xml"
     content_selector: "#contentbody"
+    title_include_patterns:
+      - '政策|措施|計劃|資助|基金|津貼|補貼|援助|貸款|擔保|申請|條例|法例|規例|草案|議案|諮詢|施政|預算|稅務|稅項|收費|費用|規管|監管|機制|框架|指引|守則|辦法|方案|賣地|刊憲|修訂|檢討|統計|數據|人工智能|創新科技|中小企|就業|培訓|房屋|公屋|土地|福利|社會保障|退休保障|強積金|貿易|產業|管制|立法會'
+    # 鲁港通 - 白名单仍会放进「出席/致辭/呼籲/火警」类条目（如 IMF 年會、泳灘紅旗），
+    # 二次排除只留政策文本与政务数据，公告/仪式/执法/服务提示一律归档。
+    title_exclude_patterns:
+      - '致辭|致詞|演辭|發言|會見傳媒|記者會|出席|開幕|閉幕|典禮|酒會|午宴|晚宴|論壇|研討會|座談|考察|參觀|探訪|巡視|頒獎|嘉許|獲獎|表揚|比賽|錦標賽|運動會|音樂會|匯演|嘉年華|啟動禮|簽署儀式|呼籲|特別通知|火警|泳灘|紅旗|暴雨|颱風|風球|山泥傾瀉|水浸|停電|停水|交通意外|判囚|判刑|提堂|拘捕|被捕|檢控|任命|委任|出任|離任|請辭|逝世|訃告|哀悼|慰問|門診|疫苗|流感|衞生防護中心|感染|確診|招聘|招標|升降機|立法會七題|議案|對外商品貿易|契約修訂|地段增批|特權及豁免權'
     schedule: "30 */6 * * *"
     rate_limit_per_minute: 6
-    enabled: false
+    max_pages_per_run: 60
+    enabled: true
 
   - id: hk_gov_portal
     name: 香港政府一站通
@@ -179,14 +189,100 @@ sources:
     group: hk_economy_innovation
     organization: 香港投资推广署 InvestHK
     base_domains: [www.investhk.gov.hk]
-    allowed_path_prefixes: [/zh-hk]
-    discovery_method: listing
-    listing_urls:
-      - "https://www.investhk.gov.hk/zh-hk"
+    # 鲁港通 - P1-A：sitemap 实测 4803 条（全站新闻 246 条），首页 listing 是 JS 空壳。
+    # since_days 截断一年前旧闻，url_pattern 只留 /zh-hk/news/ 单篇；标题白名单再挡掉
+    # 门店开业/客户故事等商业新闻（用户要求：只要政策类信息）。
+    allowed_path_prefixes: [/sitemap.xml, /zh-hk/news/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.investhk.gov.hk/sitemap.xml"
+    sitemap_since_days: 365
+    sitemap_url_pattern: '/zh-hk/news/[^/]+/?$'
+    title_include_patterns:
+      - '政策|措施|計劃|資助|基金|津貼|補貼|援助|貸款|擔保|申請|條例|法例|規例|草案|議案|諮詢|施政|預算|稅務|稅項|收費|費用|規管|監管|機制|框架|指引|守則|辦法|方案|賣地|刊憲|修訂|檢討|統計|數據|人工智能|創新科技|中小企|就業|培訓|房屋|公屋|土地|福利|社會保障|退休保障|強積金|貿易|產業|管制|立法會'
+    # 鲁港通 - 试采复核（2026-10-17）：5 条候选中 3 条为企业落户/扩张新闻，补充排除词
+    title_exclude_patterns:
+      - '開設|進駐|開業|旗艦店|門店|分店|晚宴|酒會|週年|周年|論壇|研討會|座談|考察|代表團|訪問|展覽|比賽|嘉年華|慶祝|總部|研發中心|辦事處|擴展|落戶|設立|融資|上市|高峰論壇|出海專班|招商成果|駐港公司'
+    title_strip_suffixes: [" | InvestHK"]
     content_selector: .articlesdetail__container
-    schedule: "30 10 * * *"
+    schedule: "30 8 * * *"
     rate_limit_per_minute: 6
-    enabled: false
+    max_pages_per_run: 50
+    enabled: true
+
+  - id: hk_itf
+    name: 创新及科技基金（ITF）计划页
+    group: hk_economy_innovation
+    organization: 创新科技署
+    base_domains: [www.itf.gov.hk]
+    # 鲁港通 - P1-A：13 个现行资助计划固定页，承载「全年接受申请/本轮截止/已停止」
+    # 等状态文字，是防止 TVP 类过时答案的关键来源。栏目页为 /index.html 会被形态
+    # 过滤，故用 fixed_url；pipeline 对 fixed_url 每次同步强制重抓以保鲜状态。
+    allowed_path_prefixes: [/tc/funding-programmes/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.itf.gov.hk/tc/funding-programmes/facilitating-technology/psts/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/fostering-culture/gsp/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/nurturing-talent/research-talent-hub/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/promoting-new-industrialisation/itif/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/promoting-new-industrialisation/new-industrialisation-support-scheme/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/promoting-new-industrialisation/nias/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-research/ess/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-research/ftrss/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-research/itsp/itsp-platform-seed/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-research/mhktcfs/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-start-ups/itvf/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-start-ups/pitas/index.html"
+      - "https://www.itf.gov.hk/tc/funding-programmes/supporting-start-ups/raiseplus/index.html"
+    # 鲁港通 - 实测页面标题为「创科创投基金 - 创新及科技基金」，剥离统一后缀
+    title_strip_suffixes: [" - 創新及科技基金"]
+    content_selector: "#content"
+    schedule: "30 6 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 20
+    enabled: true
+
+  - id: hk_hkstp
+    name: 香港科技园公司新闻
+    group: hk_economy_innovation
+    organization: 香港科技园公司
+    base_domains: [www.hkstp.org]
+    # 鲁港通 - P1-A：sitemap 实测 3288 条，新闻频道 834 条，多为孵化/合作/活动；
+    # 政策白名单只保留资助计划、施政措施、规管等政策类内容（用户要求）。
+    allowed_path_prefixes: [/zh-hk/sitemap.xml, /zh-hk/park-life/news-and-events/news/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.hkstp.org/zh-hk/sitemap.xml"
+    sitemap_since_days: 365
+    sitemap_url_pattern: '/zh-hk/park-life/news-and-events/news/.+'
+    # 鲁港通 - 试采复核（2026-10-17）：新闻频道 27 条候选中仅 4 条政策相关，其余为企业
+    # 孵化/合作/活动/上市新闻；白名单收窄为政策文本与政府计划专用词，避免通用词放行。
+    title_include_patterns:
+      - '政策|措施|施政|預算案|規劃|綱要|資助計劃|支援計劃|實習計劃|監管沙盒|條例|法例|規例|草案|議案|諮詢|指引|守則|框架|機制|稅務|稅項|創科產業|土地|房屋|中小企|就業|培訓|立法會'
+    # 鲁港通 - 新闻频道以园区活动/企业故事为主：排除典礼、招聘、峰会、上市融资等事件型报道
+    title_exclude_patterns:
+      - '開幕|開業|進駐|旗艦店|門店|分店|晚宴|酒會|週年|周年|論壇|研討會|座談|考察|代表團|展覽|比賽|嘉年華|慶祝|招聘日|同樂日|開放日|導賞|峰會|博覽|亮相|參展|落戶|上市|融資|策略合作|備忘錄|簽署|圓滿|成果展|成果日|啟動禮|體驗館|孵化計劃|加速計劃|出訪|開設|擴展'
+    content_selector: .content
+    schedule: "30 11 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 100
+    enabled: true
+
+  - id: hk_smefund
+    name: 中小企业市场推广基金（EMF）重点资讯
+    group: hk_economy_innovation
+    organization: 香港工业贸易署
+    base_domains: [smefund.tid.gov.hk]
+    # 鲁港通 - P1-A：EMF 自 2026-07-01 并入 BUD，本页承载「最后申请阶段/截止日期」
+    # 等状态资讯（实测正文 1963 字且干净）；每日重抓保证状态时效。
+    allowed_path_prefixes: [/sc_chi/emf/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://smefund.tid.gov.hk/sc_chi/emf/emf_update.html"
+    schedule: "50 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
 
   - id: hk_itib
     name: 创新科技及工业局
@@ -313,6 +409,280 @@ sources:
       - "https://www.wfsfaa.gov.hk/tc/resources/online_services/online_services.htm"
     schedule: "30 7 * * *"
     rate_limit_per_minute: 4
+    enabled: true
+
+  # 鲁港通 - P1-B：香港民生部门政策固定页（2026-10-17 服务器实测 selector/正文长度/标题）。
+  # 全部为 HTML 正文页（PDF 抽取为空，不入库）；fixed_url 每次同步强制重抓保持政策时效。
+  - id: hk_hd_policy
+    name: 香港房屋委员会及房屋署政策页
+    group: hk_departments
+    organization: 香港房屋委员会及房屋署
+    base_domains: [www.housingauthority.gov.hk]
+    allowed_path_prefixes: [/tc/flat-application/, /tc/home-ownership/, /tc/public-housing/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/ordinary-families/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/elderly-persons/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/non-elderly-one-person-applicants/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/new-arrivals/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/income-and-asset-limits/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/express-flat-allocation-scheme/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/families-with-newborns-allocation-priority-scheme/index.html"
+      - "https://www.housingauthority.gov.hk/tc/flat-application/harmonious-families-priority-scheme/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/application-guide/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/information-for-home-owners/resale-restriction/index.html"
+      - "https://www.housingauthority.gov.hk/tc/public-housing/flat-in-take/index.html"
+    title_strip_suffixes: [" | 香港房屋委員會及房屋署"]
+    # 鲁港通 - 多数页面 <title> 只有栏目标题（如「長者」「一般家庭」），按 URL 补全可读标题
+    title_overrides:
+      "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/ordinary-families/index.html": "房屋署 - 公屋申请：一般家庭"
+      "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/elderly-persons/index.html": "房屋署 - 长者优先配屋计划"
+      "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/non-elderly-one-person-applicants/index.html": "房屋署 - 公屋配额及计分制（非长者一人申请）"
+      "https://www.housingauthority.gov.hk/tc/flat-application/application-guide/new-arrivals/index.html": "房屋署 - 新来港人士公屋申请"
+      "https://www.housingauthority.gov.hk/tc/flat-application/income-and-asset-limits/index.html": "房屋署 - 公屋入息及资产限额"
+      "https://www.housingauthority.gov.hk/tc/flat-application/express-flat-allocation-scheme/index.html": "房屋署 - 特快公屋编配计划"
+      "https://www.housingauthority.gov.hk/tc/flat-application/families-with-newborns-allocation-priority-scheme/index.html": "房屋署 - 家有初生优先配屋计划"
+      "https://www.housingauthority.gov.hk/tc/flat-application/harmonious-families-priority-scheme/index.html": "房屋署 - 天伦乐优先配屋计划"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/application-guide/index.html": "房屋署 - 租置计划购买申请指引"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/information-for-home-owners/resale-restriction/index.html": "房屋署 - 资助房屋转让限制"
+      "https://www.housingauthority.gov.hk/tc/public-housing/flat-in-take/index.html": "房屋署 - 公屋入伙须知"
+    content_selector: .sysThemeColorMainContent
+    schedule: "40 3 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 20
+    enabled: true
+
+  - id: hk_cr_policy
+    name: 公司注册处服务与条例页
+    group: hk_departments
+    organization: 香港公司注册处
+    base_domains: [www.cr.gov.hk]
+    allowed_path_prefixes: [/tc/legislation/, /tc/services/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.cr.gov.hk/tc/services/fees.htm"
+      - "https://www.cr.gov.hk/tc/services/register-company.htm"
+      - "https://www.cr.gov.hk/tc/services/change-company-name.htm"
+      - "https://www.cr.gov.hk/tc/services/general-filing-requirement.htm"
+      - "https://www.cr.gov.hk/tc/services/obtain-company-info.htm"
+      - "https://www.cr.gov.hk/tc/services/deregister-company.htm"
+      - "https://www.cr.gov.hk/tc/legislation/nir/overview.htm"
+      - "https://www.cr.gov.hk/tc/legislation/co2025/tsr/overview.htm"
+      - "https://www.cr.gov.hk/tc/legislation/co2025/promotepaperless/overview.htm"
+      - "https://www.cr.gov.hk/tc/legislation/co2025/redomiciliation/overview.htm"
+      - "https://www.cr.gov.hk/tc/legislation/scr/overview.htm"
+    # 鲁港通 - 站点标题前缀混用「註冊處 / 註册處」两种字形，全部剥离
+    title_strip_prefixes: ["公司註冊處 - ", "公司註册處 - "]
+    # 鲁港通 - 统一为简体可读标题（部分页面残留栏目前缀或问号）
+    title_overrides:
+      "https://www.cr.gov.hk/tc/services/fees.htm": "公司注册处 - 《公司条例》规定的主要收费"
+      "https://www.cr.gov.hk/tc/services/register-company.htm": "公司注册处 - 如何办理新公司的注册"
+      "https://www.cr.gov.hk/tc/services/change-company-name.htm": "公司注册处 - 如何更改公司名称"
+      "https://www.cr.gov.hk/tc/services/general-filing-requirement.htm": "公司注册处 - 交付文件的一般规定"
+      "https://www.cr.gov.hk/tc/services/obtain-company-info.htm": "公司注册处 - 如何取得公司资料"
+      "https://www.cr.gov.hk/tc/services/deregister-company.htm": "公司注册处 - 如何撤销注册不营运但有偿债能力的公司"
+      "https://www.cr.gov.hk/tc/legislation/nir/overview.htm": "公司注册处 - 新查册安排概览"
+      "https://www.cr.gov.hk/tc/legislation/co2025/tsr/overview.htm": "公司注册处 - 2025年公司（修订）条例：库存股份制度"
+      "https://www.cr.gov.hk/tc/legislation/co2025/promotepaperless/overview.htm": "公司注册处 - 2025年公司（修订）条例：无纸化公司通讯"
+      "https://www.cr.gov.hk/tc/legislation/co2025/redomiciliation/overview.htm": "公司注册处 - 2025年公司（修订）（第2号）条例：公司迁册制度"
+      "https://www.cr.gov.hk/tc/legislation/scr/overview.htm": "公司注册处 - 重要控制人登记册概览"
+    content_selector: .main-block
+    schedule: "50 3 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 20
+    enabled: true
+
+  - id: hk_ipd_policy
+    name: 知识产权署表格费用与政策页
+    group: hk_departments
+    organization: 香港知识产权署
+    base_domains: [www.ipd.gov.hk]
+    allowed_path_prefixes: [/tc/designs/, /tc/ip-overview/, /tc/patents/, /tc/trade-marks/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ipd.gov.hk/tc/trade-marks/forms-and-fees/index.html"
+      - "https://www.ipd.gov.hk/tc/patents/forms-and-fees/index.html"
+      - "https://www.ipd.gov.hk/tc/designs/forms-and-fees/index.html"
+      - "https://www.ipd.gov.hk/tc/ip-overview/ip-in-hong-kong/2026-policy-address/index.html"
+      - "https://www.ipd.gov.hk/tc/ip-overview/ip-in-hong-kong/The-First-Five-Year-Plan/index.html"
+    title_strip_prefixes: ["知識產權署 - "]
+    # 鲁港通 - 三类「表格及費用」页 <title> 相同，按 URL 指定可读标题
+    title_overrides:
+      "https://www.ipd.gov.hk/tc/trade-marks/forms-and-fees/index.html": "知识产权署 - 商标表格及费用"
+      "https://www.ipd.gov.hk/tc/patents/forms-and-fees/index.html": "知识产权署 - 专利表格及费用"
+      "https://www.ipd.gov.hk/tc/designs/forms-and-fees/index.html": "知识产权署 - 外观设计表格及费用"
+      "https://www.ipd.gov.hk/tc/ip-overview/ip-in-hong-kong/2026-policy-address/index.html": "知识产权署 - 2026年施政报告：发展区域知识产权贸易中心"
+      "https://www.ipd.gov.hk/tc/ip-overview/ip-in-hong-kong/The-First-Five-Year-Plan/index.html": "知识产权署 - 五年规划（2026—2030）：发展区域知识产权贸易中心"
+    content_selector: "#mainContent"
+    schedule: "0 4 * * *"
+    rate_limit_per_minute: 6
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_dh_policy
+    name: 卫生署医疗收费页
+    group: hk_departments
+    organization: 香港卫生署
+    base_domains: [www.dh.gov.hk]
+    allowed_path_prefixes: [/tc_chi/useful/useful_fee/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_os.html"
+      - "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_ehs.html"
+      - "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_ds.html"
+      - "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_phthc.html"
+      - "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_misc.html"
+    title_strip_prefixes: ["衞生署 - ", "衛生署 - "]
+    # 鲁港通 - <title> 为「衞生署-有用資料-…收費概覽-」长串，按 URL 指定简洁标题
+    title_overrides:
+      "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_os.html": "卫生署 - 公共卫生服务收费：门诊服务"
+      "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_ehs.html": "卫生署 - 公共卫生服务收费：长者健康服务"
+      "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_ds.html": "卫生署 - 公共卫生服务收费：牙科服务"
+      "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_phthc.html": "卫生署 - 公共卫生服务收费：港口卫生旅游健康中心"
+      "https://www.dh.gov.hk/tc_chi/useful/useful_fee/useful_fee_misc.html": "卫生署 - 公共卫生服务收费：杂项"
+    content_selector: "#mainContent"
+    schedule: "10 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_swd_policy
+    name: 社会福利署服务政策页
+    group: hk_departments
+    organization: 香港社会福利署
+    base_domains: [www.swd.gov.hk]
+    allowed_path_prefixes: [/tc/pubsvc/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.swd.gov.hk/tc/pubsvc/elderly/cat_commcare/psccsv/"
+      - "https://www.swd.gov.hk/tc/pubsvc/elderly/cat_residentcare/psrcsv/"
+      - "https://www.swd.gov.hk/tc/pubsvc/family/cat_childcareservice/fostercare/"
+      - "https://www.swd.gov.hk/tc/pubsvc/family/cat_childcareservice/daychildcares/"
+    # 鲁港通 - 站点 <title> 为面包屑长串，按 URL 指定可读标题
+    title_overrides:
+      "https://www.swd.gov.hk/tc/pubsvc/elderly/cat_commcare/psccsv/": "社会福利署 - 长者社区照顾服务券"
+      "https://www.swd.gov.hk/tc/pubsvc/elderly/cat_residentcare/psrcsv/": "社会福利署 - 长者院舍住宿照顾服务券"
+      "https://www.swd.gov.hk/tc/pubsvc/family/cat_childcareservice/fostercare/": "社会福利署 - 寄养服务"
+      "https://www.swd.gov.hk/tc/pubsvc/family/cat_childcareservice/daychildcares/": "社会福利署 - 日间幼儿照顾服务"
+    content_selector: "#content"
+    schedule: "20 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_ha_policy
+    name: 医院管理局医疗收费与入院须知
+    group: hk_departments
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    # 鲁港通 - 302 链：/visitor/ → /visitor/ → /visitor/ → /haho/ho/，终点页需在允许前缀内
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=10045&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=259365&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=259367&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=281450&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=281820&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=10043&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 均为「HA」，按 Content_ID 指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=10045&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 医疗收费"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=259365&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 医疗费用减免（符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=259367&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 医疗费用减免（非符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=281450&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 公营医疗收费改革"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=281820&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 全年收费上限"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10044&Content_ID=10043&Dimension=100&Lang=CHIB5&Ver=HTML&Change_Page=1": "医管局 - 入院手续及住院须知"
+    content_selector: "#mainContent"
+    schedule: "30 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_ld_policy
+    name: 劳工处雇佣条例与最低工资常见问题
+    group: hk_departments
+    organization: 香港劳工处
+    base_domains: [www.labour.gov.hk]
+    allowed_path_prefixes: [/tc/faq/, /tc/news/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.labour.gov.hk/tc/news/mwo.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57a_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57b_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57c_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57d_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57e_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57f_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57g_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57h_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57i_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57j_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57k_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57l_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57m_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap57n_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_coverage.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_basic_principles.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_hours_worked.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_wage_items.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_keeping_record.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_computing_statutory_entitlements.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_reckoning_and_payment_commission.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_additional_remuneration.htm"
+      - "https://www.labour.gov.hk/tc/faq/smw_others.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282a_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282b_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282c_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282d_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282e_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282f_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282g_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282h_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282i_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282j_whole.htm"
+      - "https://www.labour.gov.hk/tc/faq/cap282k_whole.htm"
+    title_strip_prefixes: ["勞工處 - "]
+    # 鲁港通 - 同一法例下所有 FAQ 页 <title> 相同（仅章节号），按 URL 指定页面主题
+    title_overrides:
+      "https://www.labour.gov.hk/tc/faq/cap57a_whole.htm": "劳工处 - 雇佣条例：受保障的雇员"
+      "https://www.labour.gov.hk/tc/faq/cap57b_whole.htm": "劳工处 - 雇佣条例：雇佣合约与连续性合约"
+      "https://www.labour.gov.hk/tc/faq/cap57c_whole.htm": "劳工处 - 雇佣条例：工资"
+      "https://www.labour.gov.hk/tc/faq/cap57d_whole.htm": "劳工处 - 雇佣条例：终止雇佣合约"
+      "https://www.labour.gov.hk/tc/faq/cap57e_whole.htm": "劳工处 - 雇佣条例：休息日"
+      "https://www.labour.gov.hk/tc/faq/cap57f_whole.htm": "劳工处 - 雇佣条例：法定假日"
+      "https://www.labour.gov.hk/tc/faq/cap57g_whole.htm": "劳工处 - 雇佣条例：病假与疾病津贴"
+      "https://www.labour.gov.hk/tc/faq/cap57h_whole.htm": "劳工处 - 雇佣条例：产假"
+      "https://www.labour.gov.hk/tc/faq/cap57i_whole.htm": "劳工处 - 雇佣条例：年假"
+      "https://www.labour.gov.hk/tc/faq/cap57j_whole.htm": "劳工处 - 雇佣条例：年终酬金"
+      "https://www.labour.gov.hk/tc/faq/cap57k_whole.htm": "劳工处 - 雇佣条例：雇佣保障"
+      "https://www.labour.gov.hk/tc/faq/cap57l_whole.htm": "劳工处 - 雇佣条例：遣散费及长期服务金"
+      "https://www.labour.gov.hk/tc/faq/cap57m_whole.htm": "劳工处 - 雇佣条例：强积金与雇员福利"
+      "https://www.labour.gov.hk/tc/faq/cap57n_whole.htm": "劳工处 - 雇佣条例：侍产假"
+      "https://www.labour.gov.hk/tc/faq/smw_coverage.htm": "劳工处 - 最低工资条例：适用范围"
+      "https://www.labour.gov.hk/tc/faq/smw_basic_principles.htm": "劳工处 - 最低工资条例：计算基本原则"
+      "https://www.labour.gov.hk/tc/faq/smw_hours_worked.htm": "劳工处 - 最低工资条例：工作时数"
+      "https://www.labour.gov.hk/tc/faq/smw_wage_items.htm": "劳工处 - 最低工资条例：工资项目"
+      "https://www.labour.gov.hk/tc/faq/smw_keeping_record.htm": "劳工处 - 最低工资条例：工作时数纪录"
+      "https://www.labour.gov.hk/tc/faq/smw_computing_statutory_entitlements.htm": "劳工处 - 最低工资条例：与其他法定权益的计算"
+      "https://www.labour.gov.hk/tc/faq/smw_reckoning_and_payment_commission.htm": "劳工处 - 最低工资条例：佣金计算及支付"
+      "https://www.labour.gov.hk/tc/faq/smw_additional_remuneration.htm": "劳工处 - 最低工资条例：额外报酬"
+      "https://www.labour.gov.hk/tc/faq/smw_others.htm": "劳工处 - 最低工资条例：其他问题"
+      "https://www.labour.gov.hk/tc/faq/cap282a_whole.htm": "劳工处 - 雇员补偿条例：强制投购保险"
+      "https://www.labour.gov.hk/tc/faq/cap282b_whole.htm": "劳工处 - 雇员补偿条例：呈报工伤意外"
+      "https://www.labour.gov.hk/tc/faq/cap282c_whole.htm": "劳工处 - 雇员补偿条例：在香港以外地方工作受伤"
+      "https://www.labour.gov.hk/tc/faq/cap282d_whole.htm": "劳工处 - 雇员补偿条例：怀疑职业病"
+      "https://www.labour.gov.hk/tc/faq/cap282e_whole.htm": "劳工处 - 雇员补偿条例：收入的计算"
+      "https://www.labour.gov.hk/tc/faq/cap282f_whole.htm": "劳工处 - 雇员补偿条例：医疗费的计算"
+      "https://www.labour.gov.hk/tc/faq/cap282g_whole.htm": "劳工处 - 雇员补偿条例：工伤病假跟进及判伤"
+      "https://www.labour.gov.hk/tc/faq/cap282h_whole.htm": "劳工处 - 雇员补偿条例：书面病假跟进方式"
+      "https://www.labour.gov.hk/tc/faq/cap282i_whole.htm": "劳工处 - 雇员补偿条例：离职后的雇员补偿"
+      "https://www.labour.gov.hk/tc/faq/cap282j_whole.htm": "劳工处 - 雇员补偿条例：有怀疑的工伤个案"
+      "https://www.labour.gov.hk/tc/faq/cap282k_whole.htm": "劳工处 - 雇员补偿条例：其他问题"
+    content_selector: "#content"
+    schedule: "40 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 50
     enabled: true
 
   - id: jinan_hrss
