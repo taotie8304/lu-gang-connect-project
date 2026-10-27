@@ -4,10 +4,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import AdmZip from 'adm-zip';
 import ExcelJS from 'exceljs';
-import { PDFDocument } from 'pdf-lib';
 import { GENERATED_FILE_FOLDER, resolveGeneratedFileName } from '../fileNaming';
 import { fillDocxDocument } from './docxFill';
+import { PdfDecryptError } from './pdfDecrypt';
 import { fillPdfDocument } from './pdfFill';
+import { loadPdfDocument } from './pdfLoad';
 import { fillXlsxDocument } from './xlsxFill';
 import {
   FormFillError,
@@ -83,7 +84,18 @@ const writePdfCopy = async (
   entries: FormFillEntry[]
 ) => {
   const bytes = new Uint8Array(await readFile(form.path));
-  const document = await PDFDocument.load(bytes, { updateMetadata: false });
+  let document: Awaited<ReturnType<typeof loadPdfDocument>>;
+  try {
+    document = await loadPdfDocument(bytes);
+  } catch (error) {
+    if (error instanceof PdfDecryptError) {
+      throw new FormFillError(
+        'form_fill_failed',
+        '这个 PDF 有密码保护，暂时无法生成填写副本；请先用 PDF 阅读器另存为未加密的 PDF 后再试。'
+      );
+    }
+    throw error;
+  }
   const result = await fillPdfDocument(document, entries);
   await writeFile(targetPath, await document.save());
   return result;
@@ -127,7 +139,7 @@ export const fillFormCopy = async (options: FillFormCopyOptions): Promise<Filled
   return {
     name,
     format: form.format,
-    folder,
+    folder: GENERATED_FILE_FOLDER,
     path,
     filled: result.filled,
     skipped,

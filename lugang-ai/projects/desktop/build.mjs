@@ -14,7 +14,7 @@ const common = {
   target: 'node22',
   sourcemap: true,
   logLevel: 'info',
-  external: ['electron'],
+  external: ['electron', '@jspawn/qpdf-wasm/qpdf.js'],
   absWorkingDir: root
 };
 
@@ -47,8 +47,20 @@ await build({
   entryPoints: ['src/preload/formConfirm.ts'],
   outfile: join(dist, 'preload/formConfirm.cjs')
 });
+await build({
+  ...common,
+  entryPoints: ['src/preload/documentConfirm.ts'],
+  outfile: join(dist, 'preload/documentConfirm.cjs')
+});
 await cp(join(root, 'src/renderer'), join(dist, 'renderer'), { recursive: true });
 // 鲁港通 - 托盘图标随 dist 分发（electron-builder files 只收录 dist 与 package.json）
 await cp(join(root, 'build/icon.png'), join(dist, 'tray-icon.png'));
+// 鲁港通 - qpdf-wasm 以 external 形式运行时加载，需把 js/wasm 副本放到 dist 内让 Node 解析
+const qpdfSource = join(root, 'node_modules/@jspawn/qpdf-wasm');
+const qpdfTarget = join(dist, 'main/node_modules/@jspawn/qpdf-wasm');
+await mkdir(qpdfTarget, { recursive: true });
+for (const file of ['package.json', 'qpdf.js', 'qpdf.wasm']) {
+  await cp(join(qpdfSource, file), join(qpdfTarget, file));
+}
 
 console.log('[lugang-desktop] build complete');

@@ -100,6 +100,47 @@ export type DesktopFormFillResult = {
   warnings?: string[];
 };
 
+/** open_document 返回的段落提纲：只含段落编号、摘要与样式，不含本机路径 */
+export type DesktopDocumentParagraph = {
+  index: number;
+  text: string;
+  style?: string;
+};
+
+export type DesktopDocumentTable = {
+  index: number;
+  rows: number;
+  cells: number;
+  header: string[];
+};
+
+export type DesktopDocumentSheet = {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  header: string[];
+  sampleRows: string[][];
+};
+
+/** open_document 返回的文档提纲：不含整篇正文与文件路径 */
+export type DesktopDocumentSummary = {
+  format: 'docx' | 'xlsx';
+  name: string;
+  paragraphs?: DesktopDocumentParagraph[];
+  tables?: DesktopDocumentTable[];
+  paragraphsTruncated?: boolean;
+  sheets?: DesktopDocumentSheet[];
+  sheetsTruncated?: boolean;
+  warnings?: string[];
+};
+
+/** edit_document 的写入结果：只回传统计与提示，不回传修改内容 */
+export type DesktopDocumentEditResult = {
+  applied: number;
+  skipped?: string[];
+  warnings?: string[];
+};
+
 export type DesktopCommandResult = {
   ok: boolean;
   code?: string;
@@ -118,6 +159,12 @@ export type DesktopCommandResult = {
   formToken?: string;
   /** fill_form 的写入统计 */
   fill?: DesktopFormFillResult;
+  /** open_document 的文档提纲 */
+  document?: DesktopDocumentSummary;
+  /** open_document 返回的文档引用：edit_document 修改时原样带回，不含本机路径 */
+  documentToken?: string;
+  /** edit_document 的写入统计 */
+  edit?: DesktopDocumentEditResult;
 };
 
 /** 设备注册（POST）：deviceId 由客户端生成并在本机持久化 */

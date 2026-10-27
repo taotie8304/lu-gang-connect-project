@@ -54,21 +54,9 @@ const snapshot: DesktopBrowserSnapshot = {
 const userMessage = (content: string): ChatCompletionMessageParam =>
   ({ role: 'user', content }) as ChatCompletionMessageParam;
 
-const callTool = (args: Record<string, unknown>) =>
-  ({
-    call: {
-      id: 'call_1',
-      type: 'function',
-      function: {
-        name: BROWSER_OPERATION_TOOL_NAME,
-        arguments: JSON.stringify(args)
-      }
-    },
-    messages: [userMessage('帮我填写姓名')]
-  }) as any;
-
 const createFakeStore = () => ({
   getDeviceByOwner: vi.fn(async () => deviceId as string | undefined),
+  getDeviceAppVersionByOwner: vi.fn(async () => '0.6.0' as string | undefined),
   isDeviceOnline: vi.fn(async () => true),
   enqueue: vi.fn(async ({ command }: { command: Record<string, unknown> }) => ({
     id: commandId,
@@ -138,6 +126,8 @@ describe('browser operation tool schema', () => {
       'generate_file',
       'open_form',
       'fill_form',
+      'open_document',
+      'edit_document',
       'wait'
     ]);
   });
@@ -150,7 +140,11 @@ describe('browser operation tool schema', () => {
     expect(parameters.properties.fileName).toBeDefined();
     expect(parameters.properties.content).toBeDefined();
     expect(parameters.properties.rows).toBeDefined();
+    expect(parameters.properties.blocks).toBeDefined();
+    expect(parameters.properties.sheets).toBeDefined();
     expect(tool.function.description).toContain('生成');
+    expect(tool.function.description).toContain('页脚');
+    expect(tool.function.description).toContain('冻结');
     expect(tool.function.description).toContain('文件选择');
     expect(tool.function.description).toContain('确认');
   });
@@ -216,6 +210,103 @@ describe('browser operation tool schema', () => {
     ).toBe(true);
   });
 
+  it('accepts structured blocks and prepares legacy text for old clients', () => {
+    const parsed = parseBrowserOperationArgs({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '申请须知',
+      blocks: [
+        { type: 'heading', text: '一、申请条件' },
+        { type: 'paragraph', text: '申请人须年满十八岁。' },
+        { type: 'list', ordered: true, items: ['身份证明', '住址证明'] },
+        { type: 'table', header: ['项目', '要求'], rows: [['年龄', '18 岁以上']] }
+      ]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'generate_file') return;
+    expect(parsed.args.blocks).toHaveLength(4);
+    expect(parsed.args.blocks?.[3]).toMatchObject({ type: 'table' });
+    expect(parsed.args.content).toContain('一、申请条件');
+    expect(parsed.args.content).toContain('1. 身份证明');
+    expect(parsed.args.content).toContain('项目 | 要求');
+  });
+
+  it('accepts multiple sheets and prepares legacy rows for old clients', () => {
+    const parsed = parseBrowserOperationArgs({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '成绩汇总',
+      sheets: [
+        {
+          name: '人员名单',
+          header: ['姓名', '分数'],
+          rows: [
+            ['张三', '90'],
+            ['李四', '=SUM(B2:B2)']
+          ],
+          merges: ['A4:B4'],
+          widths: [16, 10],
+          freeze: true
+        },
+        { name: '说明', rows: [['本表由助手生成']] }
+      ]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'generate_file') return;
+    expect(parsed.args.sheets).toHaveLength(2);
+    expect(parsed.args.rows?.[0]).toEqual(['人员名单']);
+    expect(parsed.args.rows?.[1]).toEqual(['姓名', '分数']);
+    expect(parsed.args.rows?.[3]).toEqual(['李四', '=SUM(B2:B2)']);
+    expect(parsed.args.rows?.flat()).toContain('说明');
+  });
+
+  it('工作表只有名称时也给旧客户端补一行内容', () => {
+    const parsed = parseBrowserOperationArgs({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '空白模板',
+      sheets: [{ name: '填写说明', merges: ['A1:B1'], widths: [20, 20] }]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'generate_file') return;
+    expect(parsed.args.rows).toEqual([['填写说明']]);
+  });
+
+  it('enforces the document budgets and rejects malformed blocks', () => {
+    const base = { action: 'generate_file', format: 'docx', fileName: '报告' } as const;
+
+    expect(parseBrowserOperationArgs({ ...base, content: 'x'.repeat(12000) }).success).toBe(true);
+    expect(parseBrowserOperationArgs({ ...base, content: 'x'.repeat(12001) }).success).toBe(false);
+    expect(
+      parseBrowserOperationArgs({
+        ...base,
+        blocks: [{ type: 'heading', text: '标题' }, { type: 'video', text: '不支持' }]
+      }).success
+    ).toBe(false);
+    expect(
+      parseBrowserOperationArgs({
+        ...base,
+        format: 'xlsx',
+        sheets: [
+          {
+            header: ['姓名'],
+            rows: Array.from({ length: 201 }, () => ['张三'])
+          }
+        ]
+      }).success
+    ).toBe(false);
+    expect(
+      parseBrowserOperationArgs({
+        ...base,
+        format: 'xlsx',
+        sheets: [{ name: '名单', merges: ['B2'] }]
+      }).success
+    ).toBe(false);
+  });
+
   it('parses open_form and fill_form actions', () => {
     expect(parseBrowserOperationArgs({ action: 'open_form' })).toMatchObject({
       success: true,
@@ -263,13 +354,106 @@ describe('browser operation tool schema', () => {
     ).toBe(false);
   });
 
+  it('parses open_document and edit_document actions', () => {
+    expect(parseBrowserOperationArgs({ action: 'open_document' })).toMatchObject({
+      success: true,
+      args: { action: 'open_document' }
+    });
+    expect(
+      parseBrowserOperationArgs({ action: 'open_document', hint: '请选择年度工作计划' })
+    ).toMatchObject({ success: true, args: { action: 'open_document', hint: '请选择年度工作计划' } });
+
+    const parsed = parseBrowserOperationArgs({
+      action: 'edit_document',
+      token: 'lgdoc_abc123',
+      operations: [
+        { op: 'replace_text', find: '2023年', replace: '2024年', paragraph: 1 },
+        { op: 'append_paragraph', text: '备注：待补充。' }
+      ]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'edit_document') return;
+    expect(parsed.args.token).toBe('lgdoc_abc123');
+    expect(parsed.args.operations).toHaveLength(2);
+  });
+
+  it('rejects unknown document operations and malformed cell references', () => {
+    expect(
+      parseBrowserOperationArgs({
+        action: 'edit_document',
+        token: 'lgdoc_abc',
+        operations: [{ op: 'delete_paragraph', paragraph: 1 }]
+      }).success
+    ).toBe(false);
+    expect(
+      parseBrowserOperationArgs({
+        action: 'edit_document',
+        token: 'lgdoc_abc',
+        operations: [{ op: 'set_cell', sheet: '总表', cell: '2B', value: '1' }]
+      }).success
+    ).toBe(false);
+    expect(
+      parseBrowserOperationArgs({ action: 'edit_document', token: 'lgdoc_abc', operations: [] })
+        .success
+    ).toBe(false);
+  });
+
+  it('enforces the edit caps for word replacements, inserts and excel cells', () => {
+    const edit = (operations: unknown[]) =>
+      parseBrowserOperationArgs({ action: 'edit_document', token: 'lgdoc_abc', operations }).success;
+
+    expect(
+      edit(
+        Array.from({ length: 50 }, (_, index) => ({
+          op: 'replace_text',
+          find: `a${index}`,
+          replace: 'b'
+        }))
+      )
+    ).toBe(true);
+    expect(
+      edit(
+        Array.from({ length: 51 }, (_, index) => ({
+          op: 'replace_text',
+          find: `a${index}`,
+          replace: 'b'
+        }))
+      )
+    ).toBe(false);
+    expect(
+      edit(Array.from({ length: 20 }, (_, index) => ({ op: 'insert_paragraph', after: index, text: 'x' })))
+    ).toBe(true);
+    expect(
+      edit(Array.from({ length: 21 }, (_, index) => ({ op: 'insert_paragraph', after: index, text: 'x' })))
+    ).toBe(false);
+    expect(
+      edit(
+        Array.from({ length: 50 }, () => ({
+          op: 'append_row',
+          sheet: '总表',
+          values: ['a', 'b', 'c', 'd']
+        }))
+      )
+    ).toBe(true);
+    expect(
+      edit(
+        Array.from({ length: 51 }, () => ({
+          op: 'append_row',
+          sheet: '总表',
+          values: ['a', 'b', 'c', 'd']
+        }))
+      )
+    ).toBe(false);
+  });
+
   it('rejects oversized generated file content and rows', () => {
     expect(
       BrowserOperationArgsSchema.safeParse({
         action: 'generate_file',
         format: 'docx',
         fileName: '超长文件',
-        content: 'x'.repeat(8001)
+        content: 'x'.repeat(12001)
       }).success
     ).toBe(false);
     expect(
@@ -1014,6 +1198,253 @@ describe('desktop form filling', () => {
     const execute = createExecutor({ store });
 
     const result = await execute({ action: 'open_form' });
+
+    expect(store.saveBrowserResume).not.toHaveBeenCalled();
+    expect(result.response).not.toContain('上一轮浏览器任务');
+  });
+});
+
+describe('desktop document editing', () => {
+  const documentSummary = {
+    format: 'docx' as const,
+    name: '2024年工作计划.docx',
+    paragraphs: [
+      { index: 0, text: '2024年工作计划', style: 'Heading1' },
+      { index: 1, text: '今年目标：2023年完成 10 个项目。' },
+      { index: 2, text: '备注：无。' }
+    ],
+    tables: [{ index: 0, rows: 2, cells: 3, header: ['序号', '事项', '负责人'] }],
+    warnings: ['文档内含批注，修改时不会保留']
+  };
+
+  const editOperations = [{ op: 'replace_text', find: '2023年', replace: '2024年', paragraph: 1 }];
+
+  it('tells the model to open a local document before editing it', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('open_document');
+    expect(description).toContain('edit_document');
+    expect(description).toContain('副本');
+    expect(description).toContain('原文件');
+    expect(description).toContain('确认');
+  });
+
+  it('refuses an old client before opening a document', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.5.0');
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('升级');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'open_document', ok: false, code: 'desktop_upgrade_required' })
+    );
+  });
+
+  it('refuses an old client before editing a document', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.5.9');
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    expect(result.response).toContain('升级');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('opens a document and lists paragraph indexes for editing', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: documentSummary,
+      documentToken: 'lgdoc_abc'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document', hint: '请选择年度工作计划' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'open_document', hint: '请选择年度工作计划' }
+    });
+    expect(result.response).toContain('2024年工作计划.docx');
+    expect(result.response).toContain('Word');
+    expect(result.response).toContain('[1]');
+    expect(result.response).toContain('2023年完成 10 个项目');
+    expect(result.response).toContain('序号 | 事项 | 负责人');
+    expect(result.response).toContain('批注');
+    expect(result.response).toContain('replace_text');
+    expect(result.response).toContain('edit_document');
+  });
+
+  it('shows sheet names and sample rows for excel documents', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: {
+        format: 'xlsx',
+        name: '预算表.xlsx',
+        sheets: [
+          {
+            name: '总表',
+            rowCount: 12,
+            columnCount: 3,
+            header: ['项目', '预算', '实际'],
+            sampleRows: [['交通', '5000', '4200']]
+          }
+        ]
+      },
+      documentToken: 'lgdoc_xlsx'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('预算表.xlsx');
+    expect(result.response).toContain('Excel');
+    expect(result.response).toContain('「总表」');
+    expect(result.response).toContain('交通 | 5000 | 4200');
+    expect(result.response).toContain('set_cell');
+  });
+
+  it('edits a copy and reports what was applied without the edit content', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      file: { name: '2024年工作计划-已修改.docx', format: 'docx', folder: '鲁港通生成文件' },
+      edit: {
+        applied: 2,
+        skipped: ['「第 3 段」没有找到要替换的文字'],
+        warnings: ['文档内含批注，修改时不会保留']
+      }
+    } as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'edit_document', token: 'lgdoc_abc', operations: editOperations }
+    });
+    expect(result.response).toContain('2024年工作计划-已修改.docx');
+    expect(result.response).toContain('鲁港通生成文件');
+    expect(result.response).toContain('共完成 2 处修改');
+    expect(result.response).toContain('第 3 段');
+    expect(result.response).toContain('批注');
+    expect(result.response).toContain('原文件');
+    expect(JSON.stringify(audit.mock.calls[0][0])).not.toContain('2024年');
+  });
+
+  it('tells the model to reopen the document when the token expired', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'document_expired' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'stale',
+      operations: editOperations
+    });
+
+    expect(result.response).toContain('失效');
+    expect(result.response).toContain('open_document');
+  });
+
+  it('does not retry after the user cancelled the edit confirmation', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'confirmation_declined',
+      message: '你取消了这次修改，没有生成任何副本。'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    expect(result.response).toContain('没有生成副本');
+    expect(result.response).toContain('不要重试');
+    expect(result.response).not.toContain('提交确认');
+  });
+
+  it('explains that nothing matched when the document had no change', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'document_no_change',
+      message: '没有找到需要修改的文字，未生成副本。'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    expect(result.response).toContain('没有生成副本');
+    expect(result.response).toContain('open_document');
+  });
+
+  it('asks the user to pick the document again after cancelling selection', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'document_cancelled' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('取消');
+    expect(result.response).toContain('不要重试');
+  });
+
+  it('waits for the user to pick and confirm a document and stays online', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'open_document' });
+    await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    const [openWait, editWait] = (store.waitForResult as any).mock.calls;
+    expect(openWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+    expect(editWait[0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+    expect(getDesktopCommandBusyTtlMs('open_document')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+    expect(getDesktopCommandBusyTtlMs('edit_document')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+  });
+
+  it('does not overwrite the page resume state with a local document action', async () => {
+    const store = createFakeStore();
+    store.getBrowserResume.mockResolvedValue({
+      goal: '填写申请表',
+      url: 'https://www.immd.gov.hk/hkt/apply.html',
+      updatedAt: 1
+    } as any);
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: documentSummary,
+      documentToken: 'lgdoc_abc'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
 
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
     expect(result.response).not.toContain('上一轮浏览器任务');

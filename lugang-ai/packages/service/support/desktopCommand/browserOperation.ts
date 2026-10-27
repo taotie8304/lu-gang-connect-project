@@ -11,6 +11,8 @@ import type {
   DesktopCommandEnvelope,
   DesktopCommandFileResult,
   DesktopCommandResult,
+  DesktopDocumentEditResult,
+  DesktopDocumentSummary,
   DesktopFormField,
   DesktopFormFillResult,
   DesktopFormSummary
@@ -18,7 +20,6 @@ import type {
 import {
   DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
   DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
-  DESKTOP_BROWSER_RESUME_TTL_MS,
   DESKTOP_COMMAND_MAX_BYTES,
   isDesktopLongWaitAction
 } from './constant';
@@ -44,6 +45,7 @@ export type DesktopBrowserOperationStore = Pick<
   | 'waitForResult'
   | 'saveBrowserResume'
   | 'getBrowserResume'
+  | 'getDeviceAppVersionByOwner'
 >;
 
 export type DesktopBrowserAuditRecord = {
@@ -308,8 +310,110 @@ const formatFillResult = (
   return lines.join('\n');
 };
 
+const DOCUMENT_FORMAT_LABELS: Record<DesktopDocumentSummary['format'], string> = {
+  docx: 'Word 文档',
+  xlsx: 'Excel 表格'
+};
+
+/** 鲁港通 - 文档修改从桌面端 0.6.0 起支持，服务端按注册上报的版本识别 */
+export const DESKTOP_DOCUMENT_MIN_VERSION = '0.6.0';
+
+const parseVersion = (input?: string): number[] | undefined => {
+  const text = (input ?? '').trim().replace(/^v/i, '');
+  if (!text) return undefined;
+  const parts = text.split('.').slice(0, 3);
+  const nums = parts.map((part) => Number.parseInt(part.replace(/[^0-9].*$/, ''), 10));
+  if (nums.some((value) => Number.isNaN(value))) return undefined;
+  while (nums.length < 3) nums.push(0);
+  return nums;
+};
+
+export const isDesktopDocumentVersionSupported = (
+  version: string | undefined,
+  minimum: string = DESKTOP_DOCUMENT_MIN_VERSION
+): boolean => {
+  const current = parseVersion(version);
+  const required = parseVersion(minimum);
+  if (!current || !required) return false;
+  for (let index = 0; index < 3; index += 1) {
+    if (current[index] > required[index]) return true;
+    if (current[index] < required[index]) return false;
+  }
+  return true;
+};
+
+/** open_document 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
+const formatDocumentSummary = (document: DesktopDocumentSummary): string => {
+  const lines: string[] = [
+    `文档已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`
+  ];
+
+  if (document.paragraphs?.length) {
+    lines.push('段落（方括号内是段落序号，修改时直接使用）：');
+    for (const paragraph of document.paragraphs) {
+      lines.push(
+        `- [${paragraph.index}] ${paragraph.text}${paragraph.style ? `（样式：${paragraph.style}）` : ''}`
+      );
+    }
+  }
+  if (document.tables?.length) {
+    lines.push('表格（序号从 0 开始，改单元格时用表格序号、行号、列号）：');
+    for (const table of document.tables) {
+      lines.push(
+        `- 表 ${table.index}：${table.rows} 行 ${table.cells} 列${table.header.length ? `，表头：${table.header.join(' | ')}` : ''}`
+      );
+    }
+  }
+  if (document.sheets?.length) {
+    lines.push('工作表：');
+    for (const sheet of document.sheets) {
+      lines.push(
+        `- 「${sheet.name}」${sheet.rowCount} 行 ${sheet.columnCount} 列${sheet.header.length ? `，表头：${sheet.header.join(' | ')}` : ''}`
+      );
+      for (const row of sheet.sampleRows) {
+        lines.push(`  ${row.join(' | ')}`);
+      }
+    }
+  }
+  if (document.paragraphsTruncated) {
+    lines.push('（段落较多，这里只列出了前一部分；其余段落需要用户自己处理）');
+  }
+  if (document.sheetsTruncated) {
+    lines.push('（工作表较多，这里只列出了前几张）');
+  }
+  if (document.warnings?.length) {
+    lines.push(`提示：${document.warnings.join('；')}`);
+  }
+  lines.push(
+    '下一步：按用户要求用 edit_document 提交修改，token 用这次返回的值。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell）、工作表追加一行（append_row）。只写副本，原文件不会被改动；桌面客户端会先列出改动清单让用户确认。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。'
+  );
+
+  return lines.join('\n');
+};
+
+const formatEditResult = (
+  file: DesktopCommandFileResult,
+  edit: DesktopDocumentEditResult | undefined
+): string => {
+  const lines = [
+    `已生成修改后的副本：${file.name}${file.folder ? `，保存在「${file.folder}」` : ''}，共完成 ${edit?.applied ?? 0} 处修改。`,
+    '原文件没有被修改，副本只保存在你的电脑上，不会上传到服务器。'
+  ];
+  if (edit?.skipped?.length) {
+    lines.push(`以下改动没有写入：${edit.skipped.join('；')}`);
+  }
+  if (edit?.warnings?.length) {
+    lines.push(`提示：${edit.warnings.join('；')}`);
+  }
+  lines.push(
+    '请让用户打开副本核对修改结果。需要继续修改同一份文档时，先重新用 open_document 打开（副本或原文件）再提交，不要复用旧 token。'
+  );
+  return lines.join('\n');
+};
+
 const guidanceForCode = (code?: string, action?: string): string | undefined => {
   const isFormFill = action === 'fill_form';
+  const isDocumentEdit = action === 'edit_document';
 
   switch (code) {
     case 'not_found':
@@ -352,20 +456,38 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
       return '已填写的副本没有生成成功。请不要反复重试，改为让用户手动填写原表单；如果用户愿意，也可以换一份 Word 或 Excel 表单再试。';
     case 'pdf_font_missing':
       return '这台电脑缺少填写 PDF 需要的中文字体，副本没有生成。请让用户手动填写这份 PDF，或改用 Word、Excel 格式的表单。';
+    case 'desktop_upgrade_required':
+      return '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试，升级前不要改用其他方式自行改写用户文件。';
+    case 'document_open_failed':
+      return '这份文档没有读取成功。请让用户确认文件能正常打开（目前支持 Word .docx 与 Excel .xlsx）后重新用 open_document 选择。';
+    case 'document_cancelled':
+      return '用户取消了选择文档，本次没有做任何修改。请不要重试；等用户准备好文件并明确要求后再继续。';
+    case 'document_expired':
+      return '这份文档已经失效（可能已经修改过，或上一次读取已经过期）。请重新用 open_document 让用户选择同一份文档，再按返回的段落序号提交 edit_document。';
+    case 'document_no_change':
+      return '文档里没有找到需要修改的内容，本次没有生成副本，原文件也没有变化。请重新用 open_document 读取文档，确认要修改的段落或文字后再试，不要反复重试。';
+    case 'document_edit_failed':
+      return '修改副本没有生成成功。请不要反复重试，改为让用户手动修改原文档；如果用户愿意，也可以换一份 Word 或 Excel 文件再试。';
     case 'confirmation_unavailable':
       return isFormFill
         ? '桌面客户端无法弹出填写确认框，本次没有写入任何内容。请不要重试，改为让用户自己填写原表单。'
-        : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
+        : isDocumentEdit
+          ? '桌面客户端无法弹出修改确认框，本次没有改动任何文件。请不要重试，改为让用户手动修改原文档。'
+          : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
     case 'handed_over':
       return '用户选择了自己提交，页面已交还给你本人，AI 不会重试或再次提交。请不要重试；等用户反馈结果后再继续。';
     case 'confirmation_declined':
       return isFormFill
         ? '用户取消了这次填写确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 fill_form；等用户明确要求后再继续。'
-        : '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
+        : isDocumentEdit
+          ? '用户取消了这次修改确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 edit_document；等用户明确要求后再继续。'
+          : '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
     case 'confirmation_timeout':
       return isFormFill
         ? '填写确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
-        : '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
+        : isDocumentEdit
+          ? '修改确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
+          : '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
     default:
       return undefined;
   }
@@ -553,6 +675,22 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
+    // 鲁港通 - 文档修改依赖 0.6.0 起的桌面端，旧客户端直接引导升级而不是下发无法执行的指令
+    if (action === 'open_document' || action === 'edit_document') {
+      const appVersion = await store.getDeviceAppVersionByOwner(identity.tmbId);
+      if (!isDesktopDocumentVersionSupported(appVersion)) {
+        return finish({
+          response:
+            '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试。',
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'desktop_upgrade_required'
+        });
+      }
+    }
+
     let command: DesktopAiCommand;
     if (action === 'wait') {
       const seconds = typeof args.seconds === 'number' ? args.seconds : 1;
@@ -574,11 +712,11 @@ export const createDesktopBrowserOperationExecutor = ({
       command = args;
     }
 
-    // 鲁港通 - 指令通道限制 32KB：超限时提前给出可操作提示，避免通用入队错误
+    // 鲁港通 - 指令通道限制 128KB：超限时提前给出可操作提示，避免通用入队错误
     if (Buffer.byteLength(JSON.stringify(command), 'utf8') > DESKTOP_COMMAND_MAX_BYTES) {
       return finish({
         response:
-          '本次操作携带的内容过多，无法发送到桌面客户端。请缩短文件正文、减少表格行数或精简填写内容后重试（正文最多 8000 字，表格最多 200 行）。',
+          '本次操作携带的内容过多，无法发送到桌面客户端。请缩短文件正文、减少表格行数或精简填写内容后重试（正文最多 12000 字，表格合计最多 200 行）。',
         action,
         deviceId,
         url: requestUrl,
@@ -623,8 +761,12 @@ export const createDesktopBrowserOperationExecutor = ({
 
     const snapshot = result.snapshot;
     const resultUrl = snapshot?.url || requestUrl;
-    // 鲁港通 - 表单动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
-    const touchesPage = action !== 'open_form' && action !== 'fill_form';
+    // 鲁港通 - 表单与文档动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
+    const touchesPage =
+      action !== 'open_form' &&
+      action !== 'fill_form' &&
+      action !== 'open_document' &&
+      action !== 'edit_document';
     const resume = await loadResume();
     const hint =
       touchesPage && !resumeHintShown && resume && resume.goal !== currentGoal
@@ -668,6 +810,12 @@ export const createDesktopBrowserOperationExecutor = ({
         : result.fill && result.file && action === 'fill_form'
           ? formatFillResult(result.file, result.fill)
           : '';
+    const documentNote =
+      result.document && action === 'open_document'
+        ? formatDocumentSummary(result.document)
+        : result.edit && result.file && action === 'edit_document'
+          ? formatEditResult(result.file, result.edit)
+          : '';
     const confirmationNote =
       result.confirmation?.required && result.confirmation.decision === 'allow'
         ? '你已确认，页面已提交并执行。本轮操作到此结束，不要再次提交。'
@@ -675,6 +823,7 @@ export const createDesktopBrowserOperationExecutor = ({
     const successLead =
       fileNote ||
       formNote ||
+      documentNote ||
       (confirmationNote ? `操作已执行。${confirmationNote}` : '操作已执行。');
     const changedNote =
       result.changed === false

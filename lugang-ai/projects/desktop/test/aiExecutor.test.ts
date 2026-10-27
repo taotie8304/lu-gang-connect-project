@@ -557,6 +557,40 @@ describe('AI 页面执行器', () => {
     expect(calls.snapshots).toHaveLength(0);
   });
 
+  it('把结构化正文与多工作表原样交给文件生成器', async () => {
+    const { driver } = createDriver(makeSnapshot([]));
+    const generateFile = vi.fn<AiFileGenerator>(async (input) => ({
+      name: `${input.fileName}.${input.format}`,
+      format: input.format,
+      folder: '下载 / 鲁港通生成文件',
+      path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\文件'
+    }));
+
+    const blocks = [
+      { type: 'heading' as const, level: 1 as const, text: '一、申请条件' },
+      { type: 'paragraph' as const, text: '须年满十八岁。' }
+    ];
+    await createExecutor(driver, { generateFile }).execute({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '申请说明',
+      blocks
+    });
+    expect(generateFile).toHaveBeenLastCalledWith(expect.objectContaining({ blocks }));
+
+    const sheets = [
+      { name: '名单', header: ['姓名'], rows: [['张三']] },
+      { name: '说明', rows: [['本表由助手生成']] }
+    ];
+    await createExecutor(driver, { generateFile }).execute({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '成绩汇总',
+      sheets
+    });
+    expect(generateFile).toHaveBeenLastCalledWith(expect.objectContaining({ sheets }));
+  });
+
   it('生成文件失败时给出可操作提示', async () => {
     const { driver } = createDriver(makeSnapshot([]));
     const result = await createExecutor(driver, {

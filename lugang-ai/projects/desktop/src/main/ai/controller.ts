@@ -8,6 +8,9 @@ import {
   type AiActionErrorCode,
   type AiCommandResult,
   type AiConfirmer,
+  type AiDocumentConfirmer,
+  type AiDocumentEditor,
+  type AiDocumentOpener,
   type AiFileGenerator,
   type AiFilePicker,
   type AiFormConfirmer,
@@ -49,6 +52,9 @@ export type AiControllerOptions = {
   openForm?: AiFormOpener;
   fillForm?: AiFormFiller;
   confirmForm?: AiFormConfirmer;
+  openDocument?: AiDocumentOpener;
+  editDocument?: AiDocumentEditor;
+  confirmDocument?: AiDocumentConfirmer;
   now?: () => number;
   idleMs?: number;
 };
@@ -109,7 +115,10 @@ export class AiController {
       confirm: options.confirm,
       openForm: options.openForm,
       fillForm: options.fillForm,
-      confirmForm: options.confirmForm
+      confirmForm: options.confirmForm,
+      openDocument: options.openDocument,
+      editDocument: options.editDocument,
+      confirmDocument: options.confirmDocument
     });
   }
 
@@ -144,6 +153,7 @@ export class AiController {
     if (command.action === 'stop') {
       this.executor.cancelConfirmation();
       this.executor.cancelFormConfirmation();
+      this.executor.cancelDocumentConfirmation();
       this.guard = recordAiUserStop(this.guard);
       this.sessionActiveUntil = 0;
       this.typedFields.clear();
@@ -167,8 +177,13 @@ export class AiController {
     }
 
     this.sessionActiveUntil = this.now() + this.idleMs;
-    // 鲁港通 - 表单动作只处理本机文件，不应打开或切换办事浏览器
-    if (command.action !== 'open_form' && command.action !== 'fill_form') this.ensurePanel();
+    // 鲁港通 - 表单与文档动作只处理本机文件，不应打开或切换办事浏览器
+    const localOnly =
+      command.action === 'open_form' ||
+      command.action === 'fill_form' ||
+      command.action === 'open_document' ||
+      command.action === 'edit_document';
+    if (!localOnly) this.ensurePanel();
     this.emit();
 
     const startedAt = this.now();
@@ -183,6 +198,7 @@ export class AiController {
   stop = (): DesktopAiState => {
     this.executor.cancelConfirmation();
     this.executor.cancelFormConfirmation();
+    this.executor.cancelDocumentConfirmation();
     this.guard = recordAiUserStop(this.guard);
     this.sessionActiveUntil = 0;
     this.typedFields.clear();
@@ -197,6 +213,7 @@ export class AiController {
     this.pageClosedRecently = true;
     this.executor.cancelConfirmation('page_closed');
     this.executor.cancelFormConfirmation();
+    this.executor.cancelDocumentConfirmation();
     await this.reopenPage(event.url);
   };
 
@@ -205,6 +222,7 @@ export class AiController {
     this.pageClosedRecently = true;
     this.executor.cancelConfirmation('page_closed');
     this.executor.cancelFormConfirmation();
+    this.executor.cancelDocumentConfirmation();
     await this.reopenPage(this.sessionUrl);
   };
 

@@ -1,5 +1,6 @@
 // 鲁港通 - 桌面客户端主进程入口
-import { app, BrowserWindow, dialog, Menu, safeStorage } from 'electron';
+import { app, dialog, Menu, safeStorage } from 'electron';
+import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
@@ -15,9 +16,13 @@ import { createWindowControls } from './windowChrome';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
 import { createAiConfirmer } from './ai/confirmDialog';
+import { createAiDocumentConfirmer } from './ai/documentConfirm';
 import { createAiFormConfirmer } from './ai/formConfirm';
 import { AiController } from './ai/controller';
 import { createDeviceChannel, type DeviceChannel } from './ai/deviceChannel';
+import { editDocxCopy } from './ai/document/docxEdit';
+import { editXlsxCopy } from './ai/document/xlsxEdit';
+import { parseDocumentFile } from './ai/document/parse';
 import { createFileGenerator } from './ai/fileGenerator';
 import { createFilePicker } from './ai/filePicker';
 import { fillFormCopy } from './ai/form/fill';
@@ -96,7 +101,6 @@ if (!gotLock) {
       const appUrl = resolveAppUrl(process.env.LUGANG_WEB_URL);
       const userDataDir = app.getPath('userData');
       const rendererDir = join(__dirname, '../renderer');
-      let aiController: AiController | undefined;
 
       mainWindow = createMainWindow({
         appUrl,
@@ -164,7 +168,7 @@ if (!gotLock) {
             : dialog.showOpenDialog(options),
         getDefaultPath: () => lastGeneratedPath
       });
-      const ai = new AiController({
+      const aiController = new AiController({
         browser,
         driver: aiDriver,
         audit: (record) => aiAudit.append(record),
@@ -202,9 +206,32 @@ if (!gotLock) {
           getParentWindow: () => mainWindow,
           preloadPath: join(__dirname, '../preload/formConfirm.cjs'),
           rendererDir
+        }),
+        // 鲁港通 - 文档修改：只读取用户亲手选定的文件，副本写入下载目录，原文件不动
+        openDocument: async () => {
+          const picked = await pickFile({
+            title: '选择要修改的 Word 或 Excel 文件',
+            buttonLabel: '选择文档',
+            filters: [{ name: 'Word / Excel 文档', extensions: ['docx', 'xlsx'] }]
+          });
+          if (!picked) return null;
+          return parseDocumentFile(picked);
+        },
+        editDocument: async ({ document, operations }) => {
+          const input = { document, operations, outputDir: app.getPath('downloads') };
+          const copy =
+            document.format === 'docx'
+              ? await editDocxCopy(input)
+              : await editXlsxCopy(input);
+          lastGeneratedPath = copy.path;
+          return copy;
+        },
+        confirmDocument: createAiDocumentConfirmer({
+          getParentWindow: () => mainWindow,
+          preloadPath: join(__dirname, '../preload/documentConfirm.cjs'),
+          rendererDir
         })
       });
-      aiController = ai;
 
       // 鲁港通 - 设备令牌只留在主进程：用应用会话 Cookie 注册，safeStorage 加密后落盘
       const deviceStore = createDeviceStore({
@@ -231,8 +258,8 @@ if (!gotLock) {
           return cookies[0]?.value;
         },
         executeCommand: (command, { commandId }) =>
-          ai.execute(command, { resume: true, commandId }),
-        stopExecution: () => ai.stop(),
+          aiController.execute(command, { resume: true, commandId }),
+        stopExecution: () => aiController.stop(),
         log: (message, error) => log.warn(`[lugang-desktop] ${message}`, error)
       });
       const activeDeviceChannel = deviceChannel;
@@ -271,7 +298,7 @@ if (!gotLock) {
         appUrl,
         appVersion: app.getVersion(),
         browser,
-        ai,
+        ai: aiController,
         deviceChannel: activeDeviceChannel,
         windowControls
       });

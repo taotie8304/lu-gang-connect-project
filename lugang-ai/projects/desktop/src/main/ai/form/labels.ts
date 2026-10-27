@@ -11,10 +11,13 @@ export const cleanLabel = (text: string): string =>
     .trim();
 
 export const isValidLabel = (label: string): boolean =>
-  label.length > 0 &&
+  // 鲁港通 - 单个字符多是模板碎片（如「(」「元」「x」），不可能是字段名
+  label.length >= 2 &&
   label.length <= MAX_FORM_LABEL_LENGTH &&
   !/^[\d.,\s%-]+$/.test(label) &&
-  !/[_＿]{2,}/.test(label);
+  !/[_＿]{2,}/.test(label) &&
+  // 鲁港通 - 整段被括号包住的通常是填写说明（如“(12-17歲)”），不是字段名
+  !/^[(（].*[)）]$/.test(label);
 
 export const kindForLabel = (label: string): FormFieldKind =>
   /日期|时间|出生|年月日|date/i.test(label) ? 'date' : 'text';

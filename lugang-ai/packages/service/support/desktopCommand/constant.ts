@@ -18,7 +18,8 @@ export const DESKTOP_LONG_POLL_DEFAULT_MS = 25_000;
 export const DESKTOP_LONG_POLL_MAX_MS = 25_000;
 export const DESKTOP_LONG_POLL_INTERVAL_MS = 500;
 
-export const DESKTOP_COMMAND_MAX_BYTES = 32 * 1024;
+/** 结构化文档正文（blocks/sheets 与旧客户端降级内容）会同时下发，上限放到 128KB */
+export const DESKTOP_COMMAND_MAX_BYTES = 128 * 1024;
 
 /** 浏览器操作结果等待上限：桌面端单步操作通常在数秒内完成，30 秒未回传视为超时 */
 export const DESKTOP_BROWSER_RESULT_TIMEOUT_MS = 30_000;
@@ -41,8 +42,15 @@ export const DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS =
 export const DESKTOP_BUSY_TTL_MS = DESKTOP_BROWSER_RESULT_TIMEOUT_MS + 30_000;
 export const DESKTOP_BUSY_LONG_TTL_MS = DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS + 30_000;
 
-/** 需要等用户亲手操作的动作：确认提交、选择上传文件、选择表单、确认填写 */
-export const DESKTOP_LONG_WAIT_ACTIONS = ['click', 'upload', 'open_form', 'fill_form'] as const;
+/** 需要等用户亲手操作的动作：确认提交、选择上传文件、选择表单、确认填写、选择与修改文档 */
+export const DESKTOP_LONG_WAIT_ACTIONS = [
+  'click',
+  'upload',
+  'open_form',
+  'fill_form',
+  'open_document',
+  'edit_document'
+] as const;
 
 export const isDesktopLongWaitAction = (action?: string): boolean =>
   typeof action === 'string' &&

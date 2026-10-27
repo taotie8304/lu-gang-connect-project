@@ -1,6 +1,6 @@
 {
   "name": "@lugang/desktop",
-  "version": "0.4.0",
+  "version": "0.6.0",
   "private": true,
   "description": "鲁港通 Windows 桌面客户端（P1）",
   "main": "dist/main/index.cjs",
@@ -65,6 +65,7 @@
     ]
   },
   "dependencies": {
+    "@jspawn/qpdf-wasm": "catalog:",
     "@pdf-lib/fontkit": "catalog:",
     "@xmldom/xmldom": "catalog:",
     "adm-zip": "catalog:",

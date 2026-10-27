@@ -92,6 +92,85 @@ describe('AI 指令协议', () => {
     ).toBeNull();
   });
 
+  it('接受结构化正文与多工作表指令', () => {
+    const word = parseAiCommand({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '慈善组织申请说明',
+      title: '慈善组织申请说明',
+      blocks: [
+        { type: 'heading', level: 1, text: '一、申请条件' },
+        { type: 'paragraph', text: '须年满十八岁。' },
+        { type: 'list', ordered: true, items: ['身份证明', '住址证明'] },
+        { type: 'table', header: ['项目', '要求'], rows: [['年龄', '18 岁以上']] },
+        { type: 'divider' },
+        { type: 'pageBreak' }
+      ]
+    }) as { blocks?: unknown[] } | null;
+    expect(word?.blocks).toHaveLength(6);
+
+    const excel = parseAiCommand({
+      action: 'generate_file',
+      format: 'xlsx',
+      fileName: '成绩汇总',
+      sheets: [
+        {
+          name: '人员名单',
+          header: ['姓名', '分数'],
+          rows: [['张三', '90']],
+          merges: ['A4:B4'],
+          widths: [16, 10],
+          freeze: true
+        },
+        { name: '说明', rows: [['本表由助手生成']] }
+      ]
+    }) as { sheets?: unknown[] } | null;
+    expect(excel?.sheets).toHaveLength(2);
+  });
+
+  it('拒绝结构不合法的正文块与超额工作表', () => {
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: 'x',
+        blocks: [{ type: 'video', text: '不支持' }]
+      })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'docx',
+        fileName: 'x',
+        blocks: [{ type: 'heading', level: 4, text: '层级越界' }]
+      })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'xlsx',
+        fileName: 'x',
+        sheets: Array.from({ length: 6 }, () => ({ rows: [['a']] }))
+      })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'xlsx',
+        fileName: 'x',
+        sheets: [{ name: '名单', merges: ['B2'] }]
+      })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'generate_file',
+        format: 'xlsx',
+        fileName: 'x',
+        sheets: [{ name: '名单'.repeat(20), rows: [['a']] }]
+      })
+    ).toBeNull();
+  });
+
   it('接受打开表单与回填表单指令', () => {
     expect(parseAiCommand({ action: 'open_form' })?.action).toBe('open_form');
     expect(parseAiCommand({ action: 'open_form', hint: '慈善组织申请表' })?.action).toBe(
@@ -153,5 +232,83 @@ describe('AI 指令协议', () => {
       (parseAiCommand({ action: 'upload', ref: 'e9', path: 'C:\\x.txt' }) as { path?: string })
         ?.path
     ).toBeUndefined();
+  });
+
+  it('接受打开文档与修改文档指令', () => {
+    expect(parseAiCommand({ action: 'open_document' })?.action).toBe('open_document');
+    expect(parseAiCommand({ action: 'open_document', hint: '慈善组织申请表' })?.action).toBe(
+      'open_document'
+    );
+
+    const edit = parseAiCommand({
+      action: 'edit_document',
+      token: 'lgdoc_abc123',
+      operations: [
+        { op: 'replace_text', find: '2023', replace: '2024' },
+        { op: 'set_paragraph', paragraph: 2, text: '新的第三段' },
+        { op: 'insert_paragraph', after: 2, text: '补充说明' },
+        { op: 'append_paragraph', text: '末尾补充' },
+        { op: 'set_table_cell', table: 0, row: 1, cell: 2, text: '已更新' },
+        { op: 'set_cell', sheet: '名单', cell: 'B2', value: '90' },
+        { op: 'append_row', sheet: '名单', values: ['张三', '90'] }
+      ]
+    }) as { action?: string; operations?: unknown[] } | null;
+    expect(edit?.action).toBe('edit_document');
+    expect(edit?.operations).toHaveLength(7);
+  });
+
+  it('打开文档指令不携带本机路径', () => {
+    const withPath = parseAiCommand({
+      action: 'open_document',
+      path: 'C:\\Users\\tester\\Downloads\\申请表.docx'
+    }) as Record<string, unknown> | null;
+    expect(withPath?.action).toBe('open_document');
+    expect(withPath?.path).toBeUndefined();
+  });
+
+  it('修改文档指令必须携带令牌与至少一个操作', () => {
+    expect(
+      parseAiCommand({ action: 'edit_document', operations: [{ op: 'append_paragraph', text: 'x' }] })
+    ).toBeNull();
+    expect(parseAiCommand({ action: 'edit_document', token: 'lgdoc_abc', operations: [] })).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'edit_document',
+        token: 'lgdoc_abc',
+        operations: [{ op: 'remove_page', index: 1 }]
+      })
+    ).toBeNull();
+  });
+
+  it('拒绝非法或超量的文档修改操作', () => {
+    const edit = (operations: unknown[]) =>
+      parseAiCommand({ action: 'edit_document', token: 'lgdoc_abc', operations });
+
+    expect(edit([{ op: 'replace_text', find: '', replace: 'x' }])).toBeNull();
+    expect(
+      edit([{ op: 'replace_text', find: 'a', replace: '', paragraph: 1, sheet: '名单' }])
+    ).toBeNull();
+    expect(edit([{ op: 'set_cell', sheet: '名单', cell: 'B', value: 'x' }])).toBeNull();
+    expect(edit([{ op: 'set_cell', sheet: '名单', cell: 'B0', value: 'x' }])).toBeNull();
+    expect(edit([{ op: 'set_cell', sheet: '名单', cell: 'B3x', value: 'x' }])).toBeNull();
+    expect(edit([{ op: 'append_row', sheet: '名单', values: [] }])).toBeNull();
+    expect(
+      edit(Array.from({ length: 61 }, () => ({ op: 'append_paragraph', text: 'x' })))
+    ).toBeNull();
+    expect(
+      edit(Array.from({ length: 51 }, () => ({ op: 'set_paragraph', paragraph: 0, text: 'x' })))
+    ).toBeNull();
+    expect(
+      edit(Array.from({ length: 21 }, () => ({ op: 'insert_paragraph', after: 0, text: 'x' })))
+    ).toBeNull();
+    expect(
+      edit(
+        Array.from({ length: 60 }, () => ({
+          op: 'append_row',
+          sheet: '名单',
+          values: ['a', 'b', 'c', 'd']
+        }))
+      )
+    ).toBeNull();
   });
 });

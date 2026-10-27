@@ -2,14 +2,16 @@
 import { readFile } from 'node:fs/promises';
 import {
   PDFCheckBox,
-  PDFDocument,
   PDFDropdown,
   PDFOptionList,
   PDFRadioGroup,
   PDFSignature,
   PDFTextField
 } from 'pdf-lib';
+import type { PDFDocument } from 'pdf-lib';
 import { FormParseError, type RawFormField, type RawFormParse } from './types';
+import { PdfDecryptError } from './pdfDecrypt';
+import { loadPdfDocument } from './pdfLoad';
 
 const readFields = (document: PDFDocument, warnings: Set<string>): RawFormField[] => {
   const form = document.getForm();
@@ -89,16 +91,12 @@ export const parsePdfForm = async (filePath: string): Promise<RawFormParse> => {
   let document: PDFDocument;
   try {
     const bytes = new Uint8Array(await readFile(filePath));
-    document = await PDFDocument.load(bytes, {
-      ignoreEncryption: false,
-      updateMetadata: false
-    });
+    document = await loadPdfDocument(bytes);
   } catch (error) {
-    const detail = error instanceof Error ? error.message : '';
-    if (/encrypt/i.test(detail)) {
+    if (error instanceof PdfDecryptError) {
       throw new FormParseError(
         'form_parse_failed',
-        '这个 PDF 有密码保护，暂时无法读取；请先解除密码后再试。'
+        '这个 PDF 有密码保护，暂时无法自动读取；请先用 PDF 阅读器另存为未加密的 PDF 后再试。'
       );
     }
     throw new FormParseError(

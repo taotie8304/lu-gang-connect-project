@@ -8,6 +8,11 @@ import type {
   ParsedForm
 } from './form/types';
 import { toFormSummary } from './form/parse';
+import { DocumentEditError } from './document/editTypes';
+import type { EditedDocumentCopy } from './document/editTypes';
+import { DocumentParseError } from './document/types';
+import type { DocumentSummary, ParsedDocument } from './document/types';
+import { toDocumentSummary } from './document/parse';
 import { isAiPrivateHost, isAiSnapshotUrlAllowed } from './urlPolicy';
 import {
   isConfirmableActionLabel,
@@ -16,7 +21,12 @@ import {
   matchAiTarget
 } from './matcher';
 import { AI_STOP_MESSAGES, type AiStopReason } from './policy';
-import type { AiCommand } from './protocol';
+import type {
+  AiCommand,
+  DocumentEditOperation,
+  GeneratedDocBlock,
+  GeneratedSheet
+} from './protocol';
 import {
   normalizeAiSnapshot,
   snapshotChanged,
@@ -52,6 +62,11 @@ export type AiActionErrorCode =
   | 'form_field_blocked'
   | 'form_fill_failed'
   | 'pdf_font_missing'
+  | 'document_open_failed'
+  | 'document_cancelled'
+  | 'document_expired'
+  | 'document_no_change'
+  | 'document_edit_failed'
   | 'page_error';
 
 export type AiFileFormat = 'docx' | 'xlsx' | 'pdf';
@@ -62,6 +77,8 @@ export type AiFileGeneratorInput = {
   title?: string;
   content?: string;
   rows?: string[][];
+  blocks?: GeneratedDocBlock[];
+  sheets?: GeneratedSheet[];
 };
 
 export type AiGeneratedFile = {
@@ -100,6 +117,36 @@ export type AiFormConfirmer = ((
 
 export type AiFormFillInfo = {
   filled: number;
+  skipped?: string[];
+  warnings?: string[];
+};
+
+/** 鲁港通 - 文档打开与修改：路径与正文只留在本机，不进入指令结果 */
+export type AiDocumentOpener = () => Promise<ParsedDocument | null>;
+
+export type AiDocumentEditor = (input: {
+  document: ParsedDocument;
+  operations: DocumentEditOperation[];
+}) => Promise<EditedDocumentCopy>;
+
+export type AiDocumentConfirmItem = { target: string; before?: string; after: string };
+
+export type AiDocumentConfirmRequest = {
+  fileName: string;
+  format: ParsedDocument['format'];
+  items: AiDocumentConfirmItem[];
+  total: number;
+  warnings: string[];
+};
+
+export type AiDocumentConfirmDecision = 'allow' | 'cancel' | 'timeout' | 'unavailable';
+
+export type AiDocumentConfirmer = ((
+  request: AiDocumentConfirmRequest
+) => Promise<AiDocumentConfirmDecision>) & { cancel?: () => void };
+
+export type AiDocumentEditInfo = {
+  applied: number;
   skipped?: string[];
   warnings?: string[];
 };
@@ -147,6 +194,9 @@ export type AiCommandResult = {
   form?: FormSummary;
   formToken?: string;
   fill?: AiFormFillInfo;
+  document?: DocumentSummary;
+  documentToken?: string;
+  edit?: AiDocumentEditInfo;
 };
 
 export type AiResolvedElement = {
@@ -241,6 +291,46 @@ const ambiguous = (
 const FORM_BLOCKED_LABEL = /密码|验证码|动态码|银行卡|卡号|信用卡|cvv|安全码/i;
 const MAX_FORM_TOKENS = 3;
 const MAX_FORM_CONFIRM_ITEMS = 50;
+const MAX_DOCUMENT_TOKENS = 3;
+
+// 鲁港通 - 把改动翻译成用户看得懂的确认清单条目
+const buildDocumentConfirmItems = (
+  document: ParsedDocument,
+  operations: DocumentEditOperation[]
+): AiDocumentConfirmItem[] =>
+  operations.map((operation) => {
+    switch (operation.op) {
+      case 'replace_text': {
+        const target = operation.paragraph !== undefined
+          ? `第 ${operation.paragraph + 1} 段`
+          : operation.sheet !== undefined
+            ? `工作表「${operation.sheet}」`
+            : '全篇';
+        return { target, before: operation.find, after: operation.replace };
+      }
+      case 'set_paragraph': {
+        const before = document.paragraphs?.[operation.paragraph]?.text;
+        return {
+          target: `第 ${operation.paragraph + 1} 段`,
+          ...(before !== undefined ? { before } : {}),
+          after: operation.text
+        };
+      }
+      case 'insert_paragraph':
+        return { target: `第 ${operation.after + 1} 段之后`, after: operation.text };
+      case 'append_paragraph':
+        return { target: '文末', after: operation.text };
+      case 'set_table_cell':
+        return {
+          target: `第 ${operation.table + 1} 张表 第 ${operation.row + 1} 行第 ${operation.cell + 1} 格`,
+          after: operation.text
+        };
+      case 'set_cell':
+        return { target: `工作表「${operation.sheet}」${operation.cell}`, after: operation.value };
+      default:
+        return { target: `工作表「${operation.sheet}」末尾`, after: operation.values.join(' | ') };
+    }
+  });
 
 const parseHttpUrl = (input: string): URL | null => {
   try {
@@ -260,7 +350,11 @@ export class AiExecutor {
   private readonly openForm?: AiFormOpener;
   private readonly fillForm?: AiFormFiller;
   private readonly confirmForm?: AiFormConfirmer;
+  private readonly openDocument?: AiDocumentOpener;
+  private readonly editDocument?: AiDocumentEditor;
+  private readonly confirmDocument?: AiDocumentConfirmer;
   private readonly forms = new Map<string, ParsedForm>();
+  private readonly documents = new Map<string, ParsedDocument>();
 
   constructor(options: {
     driver: AiPageDriver;
@@ -270,6 +364,9 @@ export class AiExecutor {
     openForm?: AiFormOpener;
     fillForm?: AiFormFiller;
     confirmForm?: AiFormConfirmer;
+    openDocument?: AiDocumentOpener;
+    editDocument?: AiDocumentEditor;
+    confirmDocument?: AiDocumentConfirmer;
   }) {
     this.driver = options.driver;
     this.generateFile = options.generateFile;
@@ -278,6 +375,9 @@ export class AiExecutor {
     this.openForm = options.openForm;
     this.fillForm = options.fillForm;
     this.confirmForm = options.confirmForm;
+    this.openDocument = options.openDocument;
+    this.editDocument = options.editDocument;
+    this.confirmDocument = options.confirmDocument;
   }
 
   cancelConfirmation = (reason?: AiConfirmCancelReason): void => {
@@ -286,6 +386,10 @@ export class AiExecutor {
 
   cancelFormConfirmation = (): void => {
     this.confirmForm?.cancel?.();
+  };
+
+  cancelDocumentConfirmation = (): void => {
+    this.confirmDocument?.cancel?.();
   };
 
   async execute(command: AiCommand): Promise<AiCommandResult> {
@@ -306,6 +410,8 @@ export class AiExecutor {
     if (command.action === 'generate_file') return this.generateFileLocally(command);
     if (command.action === 'open_form') return this.openFormLocally();
     if (command.action === 'fill_form') return this.fillFormLocally(command);
+    if (command.action === 'open_document') return this.openDocumentLocally();
+    if (command.action === 'edit_document') return this.editDocumentLocally(command);
 
     if (command.action === 'read') {
       const read = await this.readSnapshot({ fullText: command.fullText === true });
@@ -369,6 +475,8 @@ export class AiExecutor {
     if (command.title) input.title = command.title;
     if (command.content) input.content = command.content;
     if (command.rows?.length) input.rows = command.rows;
+    if (command.blocks?.length) input.blocks = command.blocks;
+    if (command.sheets?.length) input.sheets = command.sheets;
 
     try {
       const generated = await this.generateFile(input);
@@ -562,6 +670,140 @@ export class AiExecutor {
           error instanceof FormFillError
             ? error.message
             : '填写副本没有生成成功，请重试一次；如果仍然失败，请手动填写原表单。'
+      };
+    }
+  }
+
+  private async openDocumentLocally(): Promise<AiCommandResult> {
+    if (!this.openDocument) {
+      return {
+        ok: false,
+        code: 'unsupported_action',
+        message: '当前客户端版本不支持读取本机文档，请升级到最新版本后重试。'
+      };
+    }
+
+    let document: ParsedDocument | null;
+    try {
+      document = await this.openDocument();
+    } catch (error) {
+      return {
+        ok: false,
+        code: 'document_open_failed',
+        message:
+          error instanceof DocumentParseError
+            ? error.message
+            : '这个文档没有读取成功，请确认文件能正常打开后再选一次。'
+      };
+    }
+    if (!document) {
+      return {
+        ok: false,
+        code: 'document_cancelled',
+        message: '你取消了选择文档，已停止修改。需要继续时请告诉我。'
+      };
+    }
+
+    const token = randomUUID();
+    this.documents.set(token, document);
+    // 鲁港通 - 只保留最近打开的几份文档，避免长期持有本机文件结构
+    while (this.documents.size > MAX_DOCUMENT_TOKENS) {
+      const oldest = this.documents.keys().next().value;
+      if (!oldest) break;
+      this.documents.delete(oldest);
+    }
+
+    return { ok: true, document: toDocumentSummary(document), documentToken: token };
+  }
+
+  private async editDocumentLocally(
+    command: Extract<AiCommand, { action: 'edit_document' }>
+  ): Promise<AiCommandResult> {
+    const document = this.documents.get(command.token);
+    if (!document) {
+      return {
+        ok: false,
+        code: 'document_expired',
+        message: '这份文档已经失效或还没有打开，请先让我重新读取文档，再按修改清单操作。'
+      };
+    }
+
+    if (!this.confirmDocument) {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: '当前客户端无法弹出修改确认框，还没有写入任何内容。请升级到最新版本后再试。'
+      };
+    }
+
+    // 鲁港通 - 生成副本前先展示每一条改动，确认框只传摘要不传本机路径
+    const items = buildDocumentConfirmItems(document, command.operations);
+    let decision: AiDocumentConfirmDecision;
+    try {
+      decision = await this.confirmDocument({
+        fileName: document.name,
+        format: document.format,
+        items,
+        total: command.operations.length,
+        warnings: document.warnings ?? []
+      });
+    } catch {
+      decision = 'unavailable';
+    }
+
+    if (decision === 'cancel') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: '你取消了这次修改，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (decision === 'timeout') {
+      return {
+        ok: false,
+        code: 'confirmation_timeout',
+        message: '等待修改确认超时，已取消这次修改，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (decision === 'unavailable') {
+      return {
+        ok: false,
+        code: 'confirmation_unavailable',
+        message: '当前客户端无法弹出修改确认框，还没有写入任何内容。请升级到最新版本后再试。'
+      };
+    }
+
+    if (!this.editDocument) {
+      return {
+        ok: false,
+        code: 'document_edit_failed',
+        message: '当前客户端版本不支持修改本机文档，请升级到最新版本后重试。'
+      };
+    }
+
+    try {
+      const copy = await this.editDocument({ document, operations: command.operations });
+      this.documents.delete(command.token);
+      return {
+        ok: true,
+        file: { name: copy.name, format: copy.format, folder: copy.folder },
+        edit: {
+          applied: copy.applied,
+          ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
+          ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
+        }
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        code:
+          error instanceof DocumentEditError && error.code === 'document_no_change'
+            ? 'document_no_change'
+            : 'document_edit_failed',
+        message:
+          error instanceof DocumentEditError
+            ? error.message
+            : '修改副本没有生成成功，请重试一次；如果仍然失败，请手动修改原文档。'
       };
     }
   }

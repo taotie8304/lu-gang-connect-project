@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { existsSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import AdmZip from 'adm-zip';
@@ -10,8 +11,49 @@ import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it } from 'vitest';
 import { fillFormCopy } from '../src/main/ai/form/fill';
 import { parseFormFile } from '../src/main/ai/form/parse';
+import type { ParsedForm } from '../src/main/ai/form/types';
 
 const HAS_CJK_FONT = existsSync(join(process.env.WINDIR ?? 'C:\\Windows', 'Fonts', 'simhei.ttf'));
+
+const nodeRequire = createRequire(import.meta.url);
+
+type QpdfModule = {
+  FS: { writeFile: (path: string, data: Uint8Array) => void; readFile: (path: string) => Uint8Array };
+  callMain: (args: string[]) => number;
+};
+
+const loadQpdf = async (): Promise<QpdfModule> => {
+  const factory = nodeRequire('@jspawn/qpdf-wasm/qpdf.js') as (
+    options: Record<string, unknown>
+  ) => Promise<QpdfModule>;
+  const globalScope = globalThis as { fetch?: typeof fetch };
+  const savedFetch = globalScope.fetch;
+  globalScope.fetch = undefined;
+  let init: Promise<QpdfModule>;
+  try {
+    init = factory({});
+  } finally {
+    globalScope.fetch = savedFetch;
+  }
+  return init;
+};
+
+const encryptPdf = async (bytes: Uint8Array): Promise<Uint8Array> => {
+  const qpdf = await loadQpdf();
+  qpdf.FS.writeFile('/in.pdf', bytes);
+  const code = qpdf.callMain([
+    '--no-warn',
+    '--encrypt',
+    '',
+    'lugang-owner',
+    '256',
+    '--',
+    '/in.pdf',
+    '/out.pdf'
+  ]);
+  if (code !== 0 && code !== 3) throw new Error(`qpdf encrypt failed: ${code}`);
+  return qpdf.FS.readFile('/out.pdf');
+};
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), 'lugang-fill-'));
@@ -101,7 +143,8 @@ describe('本地表单回填', () => {
       });
 
       expect(result.name).toBe('慈善组织申请表-已填写.docx');
-      expect(result.folder).toBe(join(dir, '鲁港通生成文件'));
+      expect(result.folder).toBe('鲁港通生成文件');
+      expect(result.path).toBe(join(dir, '鲁港通生成文件', '慈善组织申请表-已填写.docx'));
       expect(result.filled).toBe(3);
       expect(result.skipped).toEqual([]);
 
@@ -214,6 +257,75 @@ describe('本地表单回填', () => {
       expect(skipped.skipped).toHaveLength(2);
       expect(skipped.skipped[0]).toMatch(/不存在|无法识别/);
       expect(skipped.skipped[1]).toMatch(/空白|跳过/);
+    });
+  });
+
+  it('拒绝写入 Excel 合并区域中不可见的从属单元格', async () => {
+    await withTempDir(async (dir) => {
+      const source = join(dir, '申请表.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('申请表');
+      sheet.mergeCells('B1:C1');
+      await workbook.xlsx.writeFile(source);
+
+      const form: ParsedForm = {
+        format: 'xlsx',
+        name: '申请表.xlsx',
+        fields: [
+          {
+            id: 'f1',
+            label: '姓名',
+            kind: 'text',
+            locator: { type: 'xlsx-cell', sheet: '申请表', row: 1, column: 3 }
+          }
+        ],
+        path: source
+      };
+
+      const result = await fillFormCopy({
+        form,
+        outputDir: dir,
+        values: [{ id: 'f1', value: '李四' }]
+      });
+
+      expect(result.filled).toBe(0);
+      expect(result.skipped.join('')).toMatch(/合并/);
+
+      const reread = new ExcelJS.Workbook();
+      await reread.xlsx.readFile(result.path);
+      expect(reread.getWorksheet('申请表')!.getCell('B1').value).toBeFalsy();
+    });
+  });
+
+  it.skipIf(!HAS_CJK_FONT)('读取并回填空用户密码加密的 PDF', async () => {
+    await withTempDir(async (dir) => {
+      const plain = join(dir, '申请表.pdf');
+      await writeFillablePdf(plain);
+      const encryptedBytes = await encryptPdf(new Uint8Array(await readFile(plain)));
+      const source = join(dir, '申请表-加密.pdf');
+      await writeFile(source, encryptedBytes);
+
+      await expect(PDFDocument.load(encryptedBytes)).rejects.toThrow();
+
+      const form = await parseFormFile(source);
+      const byLabel = new Map(form.fields.map((field) => [field.label, field.id]));
+      expect(byLabel.has('applicant_name')).toBe(true);
+
+      const result = await fillFormCopy({
+        form,
+        outputDir: dir,
+        values: [
+          { id: byLabel.get('applicant_name')!, value: 'Li Si' },
+          { id: byLabel.get('agree')!, value: '是' }
+        ]
+      });
+
+      expect(result.filled).toBe(2);
+      const filled = await PDFDocument.load(new Uint8Array(await readFile(result.path)));
+      expect(filled.getForm().getTextField('applicant_name').getText()).toBe('Li Si');
+      expect(filled.getForm().getCheckBox('agree').isChecked()).toBe(true);
+
+      expect(new Uint8Array(await readFile(source))).toEqual(encryptedBytes);
     });
   });
 });

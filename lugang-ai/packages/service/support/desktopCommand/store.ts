@@ -471,6 +471,13 @@ export class DesktopCommandStore {
   async getDeviceByOwner(tmbId: string): Promise<string | undefined> {
     return (await this.redis.get(this.ownerKey(tmbId))) ?? undefined;
   }
+
+  /** 返回该成员设备的客户端版本号；版本由注册时上报，缺失表示旧客户端。 */
+  async getDeviceAppVersionByOwner(tmbId: string): Promise<string | undefined> {
+    const deviceId = await this.getDeviceByOwner(tmbId);
+    if (!deviceId) return undefined;
+    return (await this.getDevice(deviceId))?.appVersion;
+  }
 }
 
 export const desktopCommandStore = new DesktopCommandStore();
@@ -507,6 +514,9 @@ export const clearDesktopDeviceBusy = (deviceId: string) =>
 
 export const getDesktopDeviceByOwner = (tmbId: string) =>
   desktopCommandStore.getDeviceByOwner(tmbId);
+
+export const getDesktopDeviceAppVersionByOwner = (tmbId: string) =>
+  desktopCommandStore.getDeviceAppVersionByOwner(tmbId);
 
 export const revokeDesktopDevice = (params: { deviceId: string; tmbId: string }) =>
   desktopCommandStore.revoke(params);
