@@ -201,5 +201,90 @@ describe('pagination.ts', () => {
         offset: 100
       });
     });
+
+    it('应该在省略 pageSize 但传入 offset 时保留 offset', () => {
+      const req = {
+        body: {
+          offset: 30
+        },
+        query: {}
+      } as any;
+
+      const result = parsePaginationRequest(req);
+
+      expect(result).toEqual({
+        pageSize: 10,
+        offset: 30
+      });
+    });
+
+    it('应该在省略 pageSize 但传入 pageNum 时保留分页位置', () => {
+      const req = {
+        body: {
+          pageNum: 3
+        },
+        query: {}
+      } as any;
+
+      const result = parsePaginationRequest(req);
+
+      expect(result).toEqual({
+        pageSize: 10,
+        offset: 20
+      });
+    });
+
+    it('应该从 query 中读取省略 pageSize 时的 pageNum', () => {
+      const req = {
+        body: {},
+        query: {
+          pageNum: '2'
+        }
+      } as any;
+
+      const result = parsePaginationRequest(req);
+
+      expect(result).toEqual({
+        pageSize: 10,
+        offset: 10
+      });
+    });
+
+    it('应该识别 offset=0 而不是回退到 pageNum', () => {
+      const req = {
+        body: {
+          pageSize: 10,
+          pageNum: 5,
+          offset: 0
+        },
+        query: {}
+      } as any;
+
+      const result = parsePaginationRequest(req);
+
+      expect(result).toEqual({
+        pageSize: 10,
+        offset: 0
+      });
+    });
+
+    it('应该在 body 仅携带分页位置时整组优先使用 body', () => {
+      const req = {
+        body: {
+          pageNum: 2
+        },
+        query: {
+          pageSize: '20',
+          offset: '40'
+        }
+      } as any;
+
+      const result = parsePaginationRequest(req);
+
+      expect(result).toEqual({
+        pageSize: 10,
+        offset: 10
+      });
+    });
   });
 });

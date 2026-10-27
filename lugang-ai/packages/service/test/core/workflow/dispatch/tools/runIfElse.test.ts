@@ -31,7 +31,7 @@ const buildProps = ({
   sourceHandles
 }: {
   ifElseList: IfElseListItemType[];
-  value: string;
+  value: unknown;
   sourceHandles: string[];
 }) =>
   ({
@@ -105,5 +105,74 @@ describe('dispatchIfElse branch handles', () => {
       getHandleId('ifElse', 'source', 'stableB'),
       getHandleId('ifElse', 'source', IfElseResultEnum.ELSE)
     ]);
+  });
+});
+
+const singleConditionProps = ({
+  input,
+  condition,
+  compareValue
+}: {
+  input: unknown;
+  condition: VariableConditionEnum;
+  compareValue: unknown;
+}) =>
+  buildProps({
+    value: input,
+    ifElseList: [
+      {
+        condition: 'AND',
+        list: [{ variable: ref('input'), condition, value: compareValue as any }]
+      }
+    ],
+    sourceHandles: [
+      getHandleId('ifElse', 'source', IfElseResultEnum.IF),
+      getHandleId('ifElse', 'source', IfElseResultEnum.ELSE)
+    ]
+  });
+
+const selectedResult = async (input: unknown, condition: VariableConditionEnum, compareValue: unknown) => {
+  const result = await dispatchIfElse(singleConditionProps({ input, condition, compareValue }));
+  return result.data?.[NodeOutputKeyEnum.ifElseResult];
+};
+
+describe('dispatchIfElse condition values', () => {
+  it('should stringify number input for include conditions', async () => {
+    await expect(selectedResult(123, VariableConditionEnum.include, '2')).resolves.toBe(
+      IfElseResultEnum.IF
+    );
+  });
+
+  it('should not treat number input as always not-included', async () => {
+    await expect(selectedResult(123, VariableConditionEnum.notInclude, '2')).resolves.toBe(
+      IfElseResultEnum.ELSE
+    );
+  });
+
+  it('should stringify number input for start/end conditions', async () => {
+    await expect(selectedResult(12345, VariableConditionEnum.startWith, '123')).resolves.toBe(
+      IfElseResultEnum.IF
+    );
+    await expect(selectedResult(12345, VariableConditionEnum.endWith, '345')).resolves.toBe(
+      IfElseResultEnum.IF
+    );
+  });
+
+  it('should stringify number input for regex conditions', async () => {
+    await expect(selectedResult(12345, VariableConditionEnum.reg, '234')).resolves.toBe(
+      IfElseResultEnum.IF
+    );
+  });
+
+  it('should stringify non-string regex pattern instead of throwing', async () => {
+    await expect(selectedResult('12345', VariableConditionEnum.reg, 234)).resolves.toBe(
+      IfElseResultEnum.IF
+    );
+  });
+
+  it('should not match when regex pattern is empty after unwrapping slashes', async () => {
+    await expect(selectedResult('anything', VariableConditionEnum.reg, '//')).resolves.toBe(
+      IfElseResultEnum.ELSE
+    );
   });
 });
