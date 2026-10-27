@@ -9,6 +9,7 @@ import { type BoxProps } from '@chakra-ui/react';
 import { useMemoEnhance } from '@fastgpt/web/hooks/useMemoEnhance';
 import type { GetRecordsV2ResponseType } from '@fastgpt/global/openapi/core/chat/record/api';
 import { hasChatAuthTargetInput, type ChatAuthTargetInput } from '../utils';
+import { useMemoizedFn } from 'ahooks';
 
 type ChatRecordProviderParams = ChatAuthTargetInput & {
   chatId?: string;
@@ -19,6 +20,7 @@ type ChatRecordContextType = {
   isLoadingRecords: boolean;
   chatRecords: ChatSiteItemType[];
   setChatRecords: React.Dispatch<React.SetStateAction<ChatSiteItemType[]>>;
+  refreshChatRecords: () => Promise<ChatSiteItemType[]>;
   isChatRecordsLoaded: boolean;
   totalRecordsCount: number;
   ScrollData: ({
@@ -37,6 +39,7 @@ export const ChatRecordContext = createContext<ChatRecordContextType>({
   setChatRecords: function (value: React.SetStateAction<ChatSiteItemType[]>): void {
     throw new Error('Function not implemented.');
   },
+  refreshChatRecords: async () => [],
   isChatRecordsLoaded: false,
 
   ScrollData: function ({
@@ -78,7 +81,8 @@ const ChatRecordContextProvider = ({
     setDataList: setChatRecords,
     ScrollData,
     isLoading,
-    itemRefs
+    itemRefs,
+    loadInitData
   } = useLinkedScroll(
     async (
       data: LinkedPaginationProps<ChatRecordProviderParams>
@@ -117,17 +121,32 @@ const ChatRecordContextProvider = ({
     }
   );
 
+  /** 重新加载最新记录窗口，并同步 useLinkedScroll 内部的分页锚点。 */
+  const refreshChatRecords = useMemoizedFn(async () => {
+    const response = await loadInitData({ refresh: true, scrollWhenFinish: false });
+    return response?.list ?? [];
+  });
+
   const contextValue = useMemoEnhance(() => {
     return {
       isLoadingRecords: isLoading,
       chatRecords,
       setChatRecords,
+      refreshChatRecords,
       ScrollData,
       isChatRecordsLoaded,
       totalRecordsCount,
       itemRefs
     };
-  }, [isLoading, chatRecords, setChatRecords, totalRecordsCount, ScrollData, isChatRecordsLoaded]);
+  }, [
+    isLoading,
+    chatRecords,
+    setChatRecords,
+    refreshChatRecords,
+    totalRecordsCount,
+    ScrollData,
+    isChatRecordsLoaded
+  ]);
   return <ChatRecordContext.Provider value={contextValue}>{children}</ChatRecordContext.Provider>;
 };
 

@@ -115,6 +115,8 @@ export function useLinkedScroll<
         anchorRef.current.top = response.list[0];
         anchorRef.current.bottom = response.list[response.list.length - 1];
       }
+
+      return response;
     },
     {
       refreshDeps: [currentData],

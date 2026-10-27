@@ -1285,8 +1285,8 @@ export class WorkflowQueue {
       if (assistantResponses) {
         this.chatAssistantResponse = this.chatAssistantResponse.concat(assistantResponses);
       } else {
-        // reasoning 不能独立落历史；只有存在可见文本时才附着保存。
-        if (answerText) {
+        // 用户可能在正文开始前停止工作流；reasoning-only 也要落历史，避免刷新后丢失。
+        if (answerText || reasoningText) {
           this.chatAssistantResponse.push({
             ...(reasoningText
               ? {
@@ -1295,9 +1295,13 @@ export class WorkflowQueue {
                   }
                 }
               : {}),
-            text: {
-              content: answerText
-            }
+            ...(answerText
+              ? {
+                  text: {
+                    content: answerText
+                  }
+                }
+              : {})
           });
         }
       }
