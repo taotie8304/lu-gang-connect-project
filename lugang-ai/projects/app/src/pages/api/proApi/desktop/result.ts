@@ -64,6 +64,74 @@ const confirmationSchema = z.object({
   label: z.string().max(200).optional()
 });
 
+const tokenSchema = z.string().trim().min(1).max(200);
+const warningsSchema = z.array(z.string().max(300)).max(20);
+const skippedSchema = z.array(z.string().max(300)).max(200);
+
+// 鲁港通 - 表单/文档摘要边界：桌面端解析时已截断（段落 300 段、字段 200 个、工作表 12 个等），
+// 这里保留更宽的上限，只拦截异常载荷，避免把正文整篇或超长字段写进 Redis/Mongo
+const formFieldSchema = z.object({
+  id: z.string().trim().min(1).max(80),
+  label: z.string().max(200),
+  kind: z.enum(['text', 'choice', 'checkbox', 'date', 'table-cell', 'unknown']),
+  required: z.boolean().optional(),
+  options: z.array(z.string().max(200)).max(100).optional(),
+  hint: z.string().max(300).optional()
+});
+
+const formSummarySchema = z.object({
+  format: z.enum(['docx', 'xlsx', 'pdf']),
+  name: z.string().trim().min(1).max(120),
+  title: z.string().max(200).optional(),
+  fields: z.array(formFieldSchema).max(300, '表单字段数量超出上限'),
+  fieldsTruncated: z.boolean().optional(),
+  warnings: warningsSchema.optional()
+});
+
+const formFillResultSchema = z.object({
+  filled: z.number().int().min(0),
+  skipped: skippedSchema.optional(),
+  warnings: warningsSchema.optional()
+});
+
+const documentParagraphSchema = z.object({
+  index: z.number().int().min(0),
+  text: z.string().max(500),
+  style: z.string().max(60).optional()
+});
+
+const documentTableSchema = z.object({
+  index: z.number().int().min(0),
+  rows: z.number().int().min(0),
+  cells: z.number().int().min(0),
+  header: z.array(z.string().max(120)).max(20)
+});
+
+const documentSheetSchema = z.object({
+  name: z.string().trim().min(1).max(120),
+  rowCount: z.number().int().min(0),
+  columnCount: z.number().int().min(0),
+  header: z.array(z.string().max(120)).max(50),
+  sampleRows: z.array(z.array(z.string().max(300)).max(50)).max(20)
+});
+
+const documentSummarySchema = z.object({
+  format: z.enum(['docx', 'xlsx']),
+  name: z.string().trim().min(1).max(120),
+  paragraphs: z.array(documentParagraphSchema).max(500, '段落数量超出上限').optional(),
+  tables: z.array(documentTableSchema).max(50).optional(),
+  paragraphsTruncated: z.boolean().optional(),
+  sheets: z.array(documentSheetSchema).max(50).optional(),
+  sheetsTruncated: z.boolean().optional(),
+  warnings: warningsSchema.optional()
+});
+
+const documentEditResultSchema = z.object({
+  applied: z.number().int().min(0),
+  skipped: skippedSchema.optional(),
+  warnings: warningsSchema.optional()
+});
+
 const bodySchema = z.object({
   deviceId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/, '设备标识格式不正确'),
   commandId: z.uuid('指令标识格式不正确'),
@@ -75,7 +143,13 @@ const bodySchema = z.object({
     stopped: z.boolean().optional(),
     snapshot: snapshotSchema.optional(),
     file: fileResultSchema.optional(),
-    confirmation: confirmationSchema.optional()
+    confirmation: confirmationSchema.optional(),
+    form: formSummarySchema.optional(),
+    formToken: tokenSchema.optional(),
+    fill: formFillResultSchema.optional(),
+    document: documentSummarySchema.optional(),
+    documentToken: tokenSchema.optional(),
+    edit: documentEditResultSchema.optional()
   })
 });
 

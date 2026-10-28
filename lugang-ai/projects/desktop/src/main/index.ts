@@ -1,9 +1,11 @@
 // 鲁港通 - 桌面客户端主进程入口
-import { app, dialog, Menu, safeStorage } from 'electron';
+import { app, dialog, Menu, safeStorage, shell } from 'electron';
 import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
+import { IPC_CHANNELS } from '../shared/ipc';
+import { DocumentPreviewManager, type PreviewEditor } from './ai/documentPreview';
 import { BrowserManager } from './browser/manager';
 import { createDeviceStore } from './deviceStore';
 import { registerIpc } from './ipc';
@@ -19,6 +21,7 @@ import { createAiConfirmer } from './ai/confirmDialog';
 import { createAiDocumentConfirmer } from './ai/documentConfirm';
 import { createAiFormConfirmer } from './ai/formConfirm';
 import { AiController } from './ai/controller';
+import type { AiDocumentPreviewer } from './ai/executor';
 import { createDeviceChannel, type DeviceChannel } from './ai/deviceChannel';
 import { editDocxCopy } from './ai/document/docxEdit';
 import { editXlsxCopy } from './ai/document/xlsxEdit';
@@ -168,6 +171,45 @@ if (!gotLock) {
             : dialog.showOpenDialog(options),
         getDefaultPath: () => lastGeneratedPath
       });
+      // 鲁港通 - 文档副本写入下载目录，原文件不动；只记录本机路径用于后续打开
+      const editDocumentCopy: PreviewEditor = async ({ document, operations }) => {
+        const input = { document, operations, outputDir: app.getPath('downloads') };
+        const copy =
+          document.format === 'docx' ? await editDocxCopy(input) : await editXlsxCopy(input);
+        lastGeneratedPath = copy.path;
+        return copy;
+      };
+      // 鲁港通 - 右栏文件标签与逐条确认：会话只在本机主进程，快照不含本机路径
+      const documents = new DocumentPreviewManager({
+        editDocument: editDocumentCopy,
+        openLocal: async () => {
+          const picked = await pickFile({
+            title: '选择要打开的文件',
+            buttonLabel: '打开文件',
+            filters: [{ name: 'Word / Excel / PDF', extensions: ['docx', 'xlsx', 'pdf'] }]
+          });
+          if (!picked) return null;
+          if (picked.toLowerCase().endsWith('.pdf')) {
+            return { format: 'pdf', name: basename(picked), path: picked };
+          }
+          const document = await parseDocumentFile(picked);
+          return { format: document.format, document };
+        },
+        openCopy: async (path) => {
+          const error = await shell.openPath(path);
+          if (error) log.warn('[lugang-desktop] open copy failed', error);
+        },
+        emit: (list) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.documentsChanged, list);
+          }
+        }
+      });
+      // 鲁港通 - 停止 AI 或关闭面板时一并放弃未完成的预览会话
+      const previewDocument: AiDocumentPreviewer = Object.assign(
+        (input: Parameters<AiDocumentPreviewer>[0]) => documents.preview(input),
+        { cancel: () => documents.cancelAll() }
+      );
       const aiController = new AiController({
         browser,
         driver: aiDriver,
@@ -217,20 +259,14 @@ if (!gotLock) {
           if (!picked) return null;
           return parseDocumentFile(picked);
         },
-        editDocument: async ({ document, operations }) => {
-          const input = { document, operations, outputDir: app.getPath('downloads') };
-          const copy =
-            document.format === 'docx'
-              ? await editDocxCopy(input)
-              : await editXlsxCopy(input);
-          lastGeneratedPath = copy.path;
-          return copy;
-        },
+        editDocument: editDocumentCopy,
         confirmDocument: createAiDocumentConfirmer({
           getParentWindow: () => mainWindow,
           preloadPath: join(__dirname, '../preload/documentConfirm.cjs'),
           rendererDir
-        })
+        }),
+        // 鲁港通 - 右栏挂载时走结构化预览，2 秒未认领自动回退上面的原生确认窗
+        previewDocument
       });
 
       // 鲁港通 - 设备令牌只留在主进程：用应用会话 Cookie 注册，safeStorage 加密后落盘
@@ -293,6 +329,9 @@ if (!gotLock) {
       appSession.cookies.on('changed', onCookieChanged);
       mainWindow.webContents.on('did-finish-load', scheduleSync);
 
+      // 鲁港通 - 更新控制器先装配再交给 IPC，网页端点「检查更新」才有落点
+      const update = setupAutoUpdate({ window: mainWindow, onBeforeQuit: markQuitting });
+
       registerIpc({
         mainWindow,
         appUrl,
@@ -300,9 +339,11 @@ if (!gotLock) {
         browser,
         ai: aiController,
         deviceChannel: activeDeviceChannel,
-        windowControls
+        documents,
+        windowControls,
+        update
       });
-      setupAutoUpdate({ window: mainWindow, onBeforeQuit: markQuitting });
+      update.start();
 
       // 鲁港通 - 托盘创建失败时回落为普通关闭，避免窗口藏起来后找不回
       try {

@@ -1,0 +1,421 @@
+// 鲁港通 - 文档预览会话：右栏逐条确认、全部应用、超时与副本生成都只在本机完成
+import { randomUUID } from 'node:crypto';
+import type { DocumentEditOperation } from './protocol';
+import type { EditedDocumentCopy } from './document/editTypes';
+import type { DocumentSheet, ParsedDocument } from './document/types';
+import { DocumentParseError } from './document/types';
+import {
+  buildPreviewChanges,
+  computePreviewBlocks,
+  extractDocxPreview,
+  type DocxPreviewModel,
+  type PreviewChange
+} from './document/docxPreview';
+import type {
+  DesktopDocumentBlock,
+  DesktopDocumentFormat,
+  DesktopDocumentPreviewState,
+  DesktopDocumentSnapshot,
+  DesktopDocumentSummary
+} from '../../shared/ipc';
+
+const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
+const DEFAULT_CLAIM_TIMEOUT_MS = 2000;
+const DEFAULT_MAX_SESSIONS = 3;
+
+export type PreviewEditor = (input: {
+  document: ParsedDocument;
+  operations: DocumentEditOperation[];
+}) => Promise<EditedDocumentCopy>;
+
+export type LocalPreviewInput =
+  | { format: 'docx' | 'xlsx'; document: ParsedDocument }
+  | { format: 'pdf'; name: string; path: string };
+
+export type DocumentPreviewOutcome =
+  | { status: 'done'; copy: EditedDocumentCopy }
+  | { status: 'no_change' }
+  | { status: 'declined' }
+  | { status: 'timeout' }
+  | { status: 'unavailable' }
+  | { status: 'failed'; message: string };
+
+type Session = {
+  token: string;
+  mode: 'review' | 'view';
+  format: DesktopDocumentFormat;
+  fileName: string;
+  state: DesktopDocumentPreviewState;
+  changes: PreviewChange[];
+  blocks: DesktopDocumentBlock[];
+  operations: DocumentEditOperation[];
+  document?: ParsedDocument;
+  sheets?: DocumentSheet[];
+  warnings: string[];
+  copy?: { name: string; folder: string };
+  copyPath?: string;
+  message?: string;
+  model?: DocxPreviewModel;
+  resolve?: (outcome: DocumentPreviewOutcome) => void;
+  claimTimer?: ReturnType<typeof setTimeout>;
+  reviewTimer?: ReturnType<typeof setTimeout>;
+};
+
+export type DocumentPreviewManagerOptions = {
+  editDocument: PreviewEditor;
+  openLocal?: () => Promise<LocalPreviewInput | null>;
+  openCopy?: (path: string) => void | Promise<void>;
+  emit?: (list: DesktopDocumentSummary[]) => void;
+  timeoutMs?: number;
+  claimTimeoutMs?: number;
+  maxSessions?: number;
+};
+
+const isOpenReview = (session: Session): boolean =>
+  session.state === 'pending' || session.state === 'reviewing';
+
+export class DocumentPreviewManager {
+  private readonly sessions = new Map<string, Session>();
+  private readonly editDocument: PreviewEditor;
+  private readonly pickLocal?: () => Promise<LocalPreviewInput | null>;
+  private readonly openCopyPath?: (path: string) => void | Promise<void>;
+  private readonly emit: (list: DesktopDocumentSummary[]) => void;
+  private readonly timeoutMs: number;
+  private readonly claimTimeoutMs: number;
+  private readonly maxSessions: number;
+
+  constructor(options: DocumentPreviewManagerOptions) {
+    this.editDocument = options.editDocument;
+    this.pickLocal = options.openLocal;
+    this.openCopyPath = options.openCopy;
+    this.emit = options.emit ?? (() => undefined);
+    this.timeoutMs = options.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
+    this.claimTimeoutMs = options.claimTimeoutMs ?? DEFAULT_CLAIM_TIMEOUT_MS;
+    this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+  }
+
+  preview = (input: {
+    document: ParsedDocument;
+    operations: DocumentEditOperation[];
+  }): Promise<DocumentPreviewOutcome> =>
+    new Promise((resolve) => {
+      const session: Session = {
+        token: randomUUID(),
+        mode: 'review',
+        format: 'docx',
+        fileName: input.document.name,
+        state: 'pending',
+        changes: [],
+        blocks: [],
+        operations: input.operations,
+        document: input.document,
+        warnings: [...(input.document.warnings ?? [])],
+        resolve
+      };
+      this.sessions.set(session.token, session);
+      this.evict();
+      this.emitList();
+
+      // 鲁港通 - 网页端 2 秒内没有认领说明右栏没挂载，回退原确认窗避免卡住 AI
+      session.claimTimer = setTimeout(() => {
+        if (session.state !== 'pending') return;
+        session.state = 'declined';
+        this.finish(session, { status: 'unavailable' }, false);
+      }, this.claimTimeoutMs);
+
+      void this.loadReview(session);
+    });
+
+  openLocal = async (): Promise<DesktopDocumentSnapshot | null> => {
+    if (!this.pickLocal) return null;
+    let input: LocalPreviewInput | null = null;
+    try {
+      input = await this.pickLocal();
+    } catch {
+      return null;
+    }
+    if (!input) return null;
+
+    const session: Session = {
+      token: randomUUID(),
+      mode: 'view',
+      format: input.format,
+      fileName: input.format === 'pdf' ? input.name : input.document.name,
+      state: 'viewing',
+      changes: [],
+      blocks: [],
+      operations: [],
+      warnings: input.format === 'pdf' ? [] : [...(input.document.warnings ?? [])],
+      ...(input.format === 'pdf' ? {} : { document: input.document })
+    };
+    this.sessions.set(session.token, session);
+    this.evict();
+    this.emitList();
+
+    if (input.format === 'docx') {
+      try {
+        const model = await extractDocxPreview(input.document.path);
+        session.model = model;
+        session.blocks = computePreviewBlocks(model, [], []);
+      } catch (error) {
+        session.state = 'failed';
+        session.message =
+          error instanceof DocumentParseError
+            ? error.message
+            : '这个文档没有读取成功，请确认文件能正常打开后再选一次。';
+      }
+      this.emitList();
+    } else if (input.format === 'xlsx') {
+      session.sheets = input.document.sheets ?? [];
+      this.emitList();
+    }
+
+    return this.snapshot(session);
+  };
+
+  list = (): DesktopDocumentSummary[] =>
+    [...this.sessions.values()].map((session) => ({
+      token: session.token,
+      mode: session.mode,
+      format: session.format,
+      fileName: session.fileName,
+      state: session.state,
+      total: session.changes.length,
+      decided: session.changes.filter((change) => change.status !== 'pending').length
+    }));
+
+  get = (token: string): DesktopDocumentSnapshot | undefined => {
+    const session = this.sessions.get(token);
+    return session ? this.snapshot(session) : undefined;
+  };
+
+  claim = (token: string): DesktopDocumentSnapshot | undefined => {
+    const session = this.sessions.get(token);
+    if (!session) return undefined;
+    if (session.state === 'pending') {
+      session.state = 'reviewing';
+      this.clearTimer(session, 'claimTimer');
+      this.resetReviewTimer(session);
+      this.emitList();
+    }
+    return this.snapshot(session);
+  };
+
+  decide = (
+    token: string,
+    index: number,
+    decision: 'apply' | 'skip'
+  ): DesktopDocumentSnapshot | undefined => {
+    const session = this.sessions.get(token);
+    if (!session) return undefined;
+    if (session.state !== 'reviewing') return this.snapshot(session);
+
+    const next = session.changes.find((change) => change.status === 'pending');
+    if (!next || next.index !== index) return this.snapshot(session);
+
+    next.status = decision === 'apply' ? 'applied' : 'skipped';
+    this.afterDecision(session);
+    return this.snapshot(session);
+  };
+
+  applyAll = (token: string): DesktopDocumentSnapshot | undefined => {
+    const session = this.sessions.get(token);
+    if (!session) return undefined;
+    if (session.state !== 'reviewing') return this.snapshot(session);
+
+    let changed = false;
+    for (const change of session.changes) {
+      if (change.status !== 'pending') continue;
+      change.status = 'applied';
+      changed = true;
+    }
+    if (changed) this.afterDecision(session);
+    return this.snapshot(session);
+  };
+
+  close = (token: string): void => {
+    const session = this.sessions.get(token);
+    if (!session) return;
+    if (session.mode === 'review' && isOpenReview(session)) {
+      session.state = 'declined';
+      this.finish(session, { status: 'declined' }, false);
+      return;
+    }
+    if (session.state === 'finalizing') return;
+    this.sessions.delete(token);
+    this.emitList();
+  };
+
+  cancelAll = (): void => {
+    for (const session of [...this.sessions.values()]) {
+      if (session.mode === 'review' && isOpenReview(session)) {
+        session.state = 'declined';
+        this.finish(session, { status: 'declined' }, false);
+        continue;
+      }
+      if (session.state === 'finalizing') continue;
+      this.sessions.delete(session.token);
+    }
+    this.emitList();
+  };
+
+  openCopy = (token: string): boolean => {
+    const session = this.sessions.get(token);
+    if (!session?.copyPath || !this.openCopyPath) return false;
+    void this.openCopyPath(session.copyPath);
+    return true;
+  };
+
+  private loadReview = async (session: Session): Promise<void> => {
+    if (!session.document) return;
+    try {
+      const model = await extractDocxPreview(session.document.path);
+      if (!isOpenReview(session)) return;
+      session.model = model;
+      session.changes = buildPreviewChanges(model, session.operations);
+      session.blocks = computePreviewBlocks(model, session.operations, session.changes);
+      this.emitList();
+    } catch {
+      // 鲁港通 - 文档过大或读取失败时不占用右栏，交回原确认窗处理
+      if (session.state !== 'pending' && session.state !== 'reviewing') return;
+      session.state = 'declined';
+      this.finish(session, { status: 'unavailable' }, false);
+    }
+  };
+
+  private afterDecision(session: Session): void {
+    if (!session.model) return;
+    session.blocks = computePreviewBlocks(session.model, session.operations, session.changes);
+
+    if (session.changes.some((change) => change.status === 'pending')) {
+      this.resetReviewTimer(session);
+      this.emitList();
+      return;
+    }
+
+    this.clearTimer(session, 'reviewTimer');
+    session.state = 'finalizing';
+    this.emitList();
+    void this.finalize(session);
+  }
+
+  private finalize = async (session: Session): Promise<void> => {
+    const applied = session.operations.filter(
+      (_operation, index) => session.changes[index]?.status === 'applied'
+    );
+    if (applied.length === 0) {
+      session.state = 'no_change';
+      this.finish(session, { status: 'no_change' }, true);
+      return;
+    }
+
+    try {
+      const copy = await this.editDocument({
+        document: session.document as ParsedDocument,
+        operations: applied
+      });
+      session.state = 'done';
+      session.copy = { name: copy.name, folder: copy.folder };
+      session.copyPath = copy.path;
+      this.finish(session, { status: 'done', copy }, true);
+    } catch {
+      session.state = 'failed';
+      session.message = '副本没有生成成功，没有写入任何内容，原文件不受影响。请重试一次。';
+      this.finish(session, { status: 'failed', message: session.message }, true);
+    }
+  };
+
+  private finish = (
+    session: Session,
+    outcome: DocumentPreviewOutcome,
+    keep: boolean
+  ): void => {
+    this.clearTimer(session, 'claimTimer');
+    this.clearTimer(session, 'reviewTimer');
+    if (!keep) this.sessions.delete(session.token);
+    this.emitList();
+    const resolve = session.resolve;
+    session.resolve = undefined;
+    resolve?.(outcome);
+  };
+
+  private resetReviewTimer(session: Session): void {
+    this.clearTimer(session, 'reviewTimer');
+    session.reviewTimer = setTimeout(() => {
+      if (session.state !== 'reviewing') return;
+      session.state = 'timeout';
+      this.finish(session, { status: 'timeout' }, false);
+    }, this.timeoutMs);
+  }
+
+  private clearTimer(session: Session, key: 'claimTimer' | 'reviewTimer'): void {
+    const timer = session[key];
+    if (timer) clearTimeout(timer);
+    session[key] = undefined;
+  }
+
+  private evict(): void {
+    while (this.sessions.size > this.maxSessions) {
+      let candidate: Session | undefined;
+      for (const session of this.sessions.values()) {
+        if (session.state === 'finalizing') continue;
+        candidate = session;
+        break;
+      }
+      if (!candidate) break;
+      if (candidate.mode === 'review' && isOpenReview(candidate)) {
+        candidate.state = 'declined';
+        this.finish(candidate, { status: 'declined' }, false);
+      } else {
+        this.sessions.delete(candidate.token);
+        this.emitList();
+      }
+    }
+  }
+
+  private emitList(): void {
+    this.emit(this.list());
+  }
+
+  private snapshot(session: Session): DesktopDocumentSnapshot {
+    return {
+      token: session.token,
+      mode: session.mode,
+      format: session.format,
+      fileName: session.fileName,
+      state: session.state,
+      changes: session.changes.map((change) => ({
+        index: change.index,
+        target: change.target,
+        ...(change.section ? { section: change.section } : {}),
+        before: change.before,
+        after: change.after,
+        status: change.status,
+        ...(change.note ? { note: change.note } : {})
+      })),
+      blocks: session.blocks.map((block) => ({
+        ...block,
+        ...(block.kind === 'table'
+          ? {
+              rows: block.rows.map((row) => [...row]),
+              ...(block.cellMarks
+                ? { cellMarks: block.cellMarks.map((mark) => ({ ...mark })) }
+                : {})
+            }
+          : {})
+      })),
+      ...(session.sheets
+        ? {
+            sheets: session.sheets.map((sheet) => ({
+              ...sheet,
+              header: [...sheet.header],
+              sampleRows: sheet.sampleRows.map((row) => [...row])
+            }))
+          }
+        : {}),
+      warnings: [...session.warnings],
+      ...(session.copy ? { copy: { ...session.copy } } : {}),
+      ...(session.message ? { message: session.message } : {})
+    };
+  }
+}

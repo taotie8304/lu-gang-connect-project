@@ -6,7 +6,10 @@ import {
   type DesktopAiExecuteResponse,
   type DesktopAiState,
   type DesktopBrowserState,
+  type DesktopDocumentSnapshot,
+  type DesktopDocumentSummary,
   type DesktopSessionSyncResponse,
+  type DesktopUpdateStatus,
   type DesktopVersionInfo
 } from '../shared/ipc';
 import type { CssRect } from '../shared/geometry';
@@ -61,6 +64,40 @@ const api = {
     sync: () => ipcRenderer.invoke(IPC_CHANNELS.sessionSync) as Promise<DesktopSessionSyncResponse>,
     logout: () => ipcRenderer.invoke(IPC_CHANNELS.sessionLogout) as Promise<void>
   },
+  // 鲁港通 - 文档预览：文件只在本机解析，快照不含本机路径；老客户端没有这个对象，网页端据此降级
+  documents: {
+    openLocal: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsOpenLocal) as Promise<DesktopDocumentSnapshot | null>,
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.documentsList) as Promise<DesktopDocumentSummary[]>,
+    get: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsGet, { token }) as Promise<
+        DesktopDocumentSnapshot | null
+      >,
+    claim: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsClaim, { token }) as Promise<
+        DesktopDocumentSnapshot | null
+      >,
+    decide: (token: string, index: number, decision: 'apply' | 'skip') =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsDecide, { token, index, decision }) as Promise<
+        DesktopDocumentSnapshot | null
+      >,
+    applyAll: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsApplyAll, { token }) as Promise<
+        DesktopDocumentSnapshot | null
+      >,
+    close: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsClose, { token }) as Promise<void>,
+    openCopy: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsOpenCopy, { token }) as Promise<boolean>,
+    onChanged: (callback: (list: DesktopDocumentSummary[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, list: DesktopDocumentSummary[]) =>
+        callback(list);
+      ipcRenderer.on(IPC_CHANNELS.documentsChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.documentsChanged, listener);
+      };
+    }
+  },
   // 鲁港通 - 自绘标题栏的窗口按钮；网页端据此判定当前客户端是否支持去边框标题栏
   windowControls: {
     minimize: () => {
@@ -80,7 +117,21 @@ const api = {
       };
     }
   },
-  retryLoad: () => ipcRenderer.send(IPC_CHANNELS.retryLoad)
+  retryLoad: () => ipcRenderer.send(IPC_CHANNELS.retryLoad),
+  // 鲁港通 - 设置面板的「检查更新」：下载仍由主进程自动完成，这里只查询、重试与安装
+  update: {
+    getStatus: () => ipcRenderer.invoke(IPC_CHANNELS.updateStatus) as Promise<DesktopUpdateStatus>,
+    check: () => ipcRenderer.invoke(IPC_CHANNELS.updateCheck) as Promise<DesktopUpdateStatus>,
+    install: () => ipcRenderer.invoke(IPC_CHANNELS.updateInstall) as Promise<void>,
+    onStatusChange: (callback: (status: DesktopUpdateStatus) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, status: DesktopUpdateStatus) =>
+        callback(status);
+      ipcRenderer.on(IPC_CHANNELS.updateStatusChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.updateStatusChanged, listener);
+      };
+    }
+  }
 };
 
 // 鲁港通 - 自绘标题栏占位：首帧就抬升网页内容，避免加载完成后再整体下移

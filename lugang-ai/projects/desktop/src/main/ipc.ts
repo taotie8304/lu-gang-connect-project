@@ -12,6 +12,8 @@ import {
   booleanSchema,
   createTabSchema,
   cssRectSchema,
+  documentDecideSchema,
+  documentTokenPayloadSchema,
   navigateUrlSchema,
   tabIdSchema
 } from './ipcSchemas';
@@ -20,7 +22,9 @@ import type { BrowserManager } from './browser/manager';
 import type { AiController } from './ai/controller';
 import type { DeviceChannel } from './ai/deviceChannel';
 import type { AiCommand } from './ai/protocol';
+import type { DocumentPreviewManager } from './ai/documentPreview';
 import type { WindowControls } from './windowChrome';
+import type { UpdateController } from './update';
 
 type RegisterIpcOptions = {
   mainWindow: BrowserWindow;
@@ -29,7 +33,12 @@ type RegisterIpcOptions = {
   browser: BrowserManager;
   ai: AiController;
   deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
+  documents: Pick<
+    DocumentPreviewManager,
+    'openLocal' | 'list' | 'get' | 'claim' | 'decide' | 'applyAll' | 'close' | 'openCopy'
+  >;
   windowControls: WindowControls;
+  update: Pick<UpdateController, 'getStatus' | 'check' | 'install' | 'subscribe'>;
 };
 
 const INVALID_PAYLOAD = '请求参数无效，请刷新页面后重试';
@@ -42,7 +51,9 @@ export const registerIpc = ({
   browser,
   ai,
   deviceChannel,
-  windowControls
+  documents,
+  windowControls,
+  update
 }: RegisterIpcOptions) => {
   const appOrigin = new URL(appUrl).origin;
 
@@ -128,11 +139,57 @@ export const registerIpc = ({
   handle(IPC_CHANNELS.sessionSync, () => deviceChannel.syncSession());
   handle(IPC_CHANNELS.sessionLogout, () => deviceChannel.clearSession());
 
+  // 鲁港通 - 文档预览：右栏文件标签读取本机会话，全部参数经 schema 校验
+  handle(IPC_CHANNELS.documentsOpenLocal, () => documents.openLocal());
+  handle(IPC_CHANNELS.documentsList, () => documents.list());
+  handle(
+    IPC_CHANNELS.documentsGet,
+    (payload) => documents.get((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsClaim,
+    (payload) => documents.claim((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsDecide,
+    (payload) => {
+      const { token, index, decision } = payload as {
+        token: string;
+        index: number;
+        decision: 'apply' | 'skip';
+      };
+      return documents.decide(token, index, decision);
+    },
+    documentDecideSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsApplyAll,
+    (payload) => documents.applyAll((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsClose,
+    (payload) => documents.close((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsOpenCopy,
+    (payload) => documents.openCopy((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+
   // 鲁港通 - 自绘标题栏的窗口按钮：全部走主窗口校验，关闭仍复用收进托盘策略
   handle(IPC_CHANNELS.windowMinimize, () => windowControls.minimize());
   handle(IPC_CHANNELS.windowToggleMaximize, () => windowControls.toggleMaximize());
   handle(IPC_CHANNELS.windowIsMaximized, () => windowControls.isMaximized());
   handle(IPC_CHANNELS.windowClose, () => windowControls.close());
+
+  // 鲁港通 - 检查更新由网页端按钮触发，下载仍由 electron-updater 在后台完成
+  handle(IPC_CHANNELS.updateStatus, () => update.getStatus());
+  handle(IPC_CHANNELS.updateCheck, () => update.check());
+  handle(IPC_CHANNELS.updateInstall, () => update.install());
 
   // 鲁港通 - 控制器状态变化实时推送给网页端，停止按钮与工作状态依赖此通道
   const unsubscribe = ai.subscribe((state) => {
@@ -147,6 +204,13 @@ export const registerIpc = ({
     mainWindow.webContents.send(IPC_CHANNELS.windowMaximizeChanged, maximized);
   });
   mainWindow.on('closed', unsubscribeMaximize);
+
+  // 鲁港通 - 更新状态推送给设置面板，检查/下载/失败都实时反映
+  const unsubscribeUpdate = update.subscribe((status) => {
+    if (mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send(IPC_CHANNELS.updateStatusChanged, status);
+  });
+  mainWindow.on('closed', unsubscribeUpdate);
 
   listen(IPC_CHANNELS.setBounds, (payload) => browser.setBounds(payload as CssRect), cssRectSchema);
   listen(IPC_CHANNELS.setVisible, (payload) => browser.setVisible(payload as boolean), booleanSchema);

@@ -145,6 +145,18 @@ export type AiDocumentConfirmer = ((
   request: AiDocumentConfirmRequest
 ) => Promise<AiDocumentConfirmDecision>) & { cancel?: () => void };
 
+/** 鲁港通 - 右栏预览：逐条确认后生成副本；unavailable 时回退原确认窗 */
+export type AiDocumentPreviewOutcome =
+  | { status: 'done'; copy: EditedDocumentCopy }
+  | { status: 'no_change' }
+  | { status: 'declined' | 'timeout' | 'unavailable' }
+  | { status: 'failed'; message: string };
+
+export type AiDocumentPreviewer = ((input: {
+  document: ParsedDocument;
+  operations: DocumentEditOperation[];
+}) => Promise<AiDocumentPreviewOutcome>) & { cancel?: () => void };
+
 export type AiDocumentEditInfo = {
   applied: number;
   skipped?: string[];
@@ -353,6 +365,7 @@ export class AiExecutor {
   private readonly openDocument?: AiDocumentOpener;
   private readonly editDocument?: AiDocumentEditor;
   private readonly confirmDocument?: AiDocumentConfirmer;
+  private readonly previewDocument?: AiDocumentPreviewer;
   private readonly forms = new Map<string, ParsedForm>();
   private readonly documents = new Map<string, ParsedDocument>();
 
@@ -367,6 +380,7 @@ export class AiExecutor {
     openDocument?: AiDocumentOpener;
     editDocument?: AiDocumentEditor;
     confirmDocument?: AiDocumentConfirmer;
+    previewDocument?: AiDocumentPreviewer;
   }) {
     this.driver = options.driver;
     this.generateFile = options.generateFile;
@@ -378,6 +392,7 @@ export class AiExecutor {
     this.openDocument = options.openDocument;
     this.editDocument = options.editDocument;
     this.confirmDocument = options.confirmDocument;
+    this.previewDocument = options.previewDocument;
   }
 
   cancelConfirmation = (reason?: AiConfirmCancelReason): void => {
@@ -389,6 +404,7 @@ export class AiExecutor {
   };
 
   cancelDocumentConfirmation = (): void => {
+    this.previewDocument?.cancel?.();
     this.confirmDocument?.cancel?.();
   };
 
@@ -726,6 +742,61 @@ export class AiExecutor {
         code: 'document_expired',
         message: '这份文档已经失效或还没有打开，请先让我重新读取文档，再按修改清单操作。'
       };
+    }
+
+    // 鲁港通 - Word 优先走右栏结构化预览；右栏未挂载或读取失败时回退原确认窗
+    if (document.format === 'docx' && this.previewDocument) {
+      let outcome: AiDocumentPreviewOutcome;
+      try {
+        outcome = await this.previewDocument({
+          document,
+          operations: command.operations
+        });
+      } catch {
+        outcome = { status: 'unavailable' };
+      }
+
+      if (outcome.status === 'done') {
+        this.documents.delete(command.token);
+        const copy = outcome.copy;
+        return {
+          ok: true,
+          file: { name: copy.name, format: copy.format, folder: copy.folder },
+          edit: {
+            applied: copy.applied,
+            ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
+            ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
+          }
+        };
+      }
+      if (outcome.status === 'no_change') {
+        return {
+          ok: false,
+          code: 'confirmation_declined',
+          message: '你把这轮修改都跳过了，没有生成副本，原文件也没有变化。需要调整时请告诉我。'
+        };
+      }
+      if (outcome.status === 'declined') {
+        return {
+          ok: false,
+          code: 'confirmation_declined',
+          message: '你取消了这次修改，没有生成任何副本。需要继续时请告诉我。'
+        };
+      }
+      if (outcome.status === 'timeout') {
+        return {
+          ok: false,
+          code: 'confirmation_timeout',
+          message: '等待修改确认超时，已取消这次修改，没有生成任何副本。需要继续时请告诉我。'
+        };
+      }
+      if (outcome.status === 'failed') {
+        return {
+          ok: false,
+          code: 'document_edit_failed',
+          message: outcome.message
+        };
+      }
     }
 
     if (!this.confirmDocument) {

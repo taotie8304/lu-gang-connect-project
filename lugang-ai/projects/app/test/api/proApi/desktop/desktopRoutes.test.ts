@@ -344,6 +344,174 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
+  it('passes a document outline and token through unchanged', async () => {
+    const document = {
+      format: 'docx',
+      name: '入职登记表.docx',
+      paragraphs: [
+        { index: 0, text: '入职登记表', style: 'Heading1' },
+        { index: 1, text: '姓名：', style: 'Normal' }
+      ],
+      tables: [{ index: 0, rows: 3, cells: 4, header: ['姓名', '电话'] }],
+      paragraphsTruncated: false,
+      warnings: ['文档含 1 处批注，已忽略']
+    };
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, document, documentToken: 'doc-token-1' }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, document, documentToken: 'doc-token-1' }
+    });
+  });
+
+  it('passes a form summary, token and fill stats through unchanged', async () => {
+    const form = {
+      format: 'pdf',
+      name: '签证申请表.pdf',
+      title: '签证申请表',
+      fields: [
+        { id: 'f1', label: '姓名', kind: 'text', required: true },
+        { id: 'f2', label: '性别', kind: 'choice', options: ['男', '女'] },
+        { id: 'f3', label: '出生日期', kind: 'date', hint: 'YYYY-MM-DD' }
+      ],
+      fieldsTruncated: false,
+      warnings: ['PDF 有 2 页，只读取了前 1 页的表单域']
+    };
+    const fill = {
+      filled: 2,
+      skipped: ['「性别」的可选项里没有“未知”，已跳过'],
+      warnings: ['已另存为副本']
+    };
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, form, formToken: 'form-token-1', fill }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, form, formToken: 'form-token-1', fill }
+    });
+  });
+
+  it('passes document edit stats through unchanged', async () => {
+    const edit = {
+      applied: 3,
+      skipped: ['第 7 段找不到要替换的内容，已跳过'],
+      warnings: ['替换次数较多，本次只处理了前 200 处。']
+    };
+    const req = {
+      method: 'POST',
+      body: { deviceId, commandId, result: { ok: true, edit } },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, edit }
+    });
+  });
+
+  it('rejects a document paragraph whose text exceeds the limit', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: {
+          ok: true,
+          document: {
+            format: 'docx',
+            name: '长文.docx',
+            paragraphs: [{ index: 0, text: 'a'.repeat(501) }]
+          }
+        }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document summary without a file name', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, document: { format: 'docx', name: '' } }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects a form field with an unknown kind', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: {
+          ok: true,
+          form: {
+            format: 'docx',
+            name: '表单.docx',
+            fields: [{ id: 'f1', label: '姓名', kind: 'signature' }]
+          }
+        }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
+  it('rejects negative fill counts', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, fill: { filled: -1 } }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+      ApiRequestInputParseError
+    );
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
   it('rejects an unknown confirmation decision', async () => {
     const req = {
       method: 'POST',

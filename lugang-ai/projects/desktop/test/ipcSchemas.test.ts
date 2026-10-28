@@ -4,6 +4,8 @@ import {
   booleanSchema,
   createTabSchema,
   cssRectSchema,
+  documentDecideSchema,
+  documentTokenPayloadSchema,
   navigateUrlSchema,
   tabIdSchema
 } from '../src/main/ipcSchemas';
@@ -104,5 +106,44 @@ describe('aiExecuteSchema', () => {
         commandId: 'c'.repeat(65)
       }).success
     ).toBe(false);
+  });
+});
+
+describe('documentTokenPayloadSchema', () => {
+  const token = '3f1b8c4a-9d2e-4f6b-8a1c-5e7d9b0f2a44';
+
+  it('接受 uuid 形式的令牌并去首尾空白', () => {
+    expect(documentTokenPayloadSchema.parse({ token: `  ${token}  ` })).toEqual({ token });
+  });
+
+  it('拒绝过短、过长与含特殊字符的令牌', () => {
+    expect(documentTokenPayloadSchema.safeParse({ token: 'tok-1' }).success).toBe(false);
+    expect(documentTokenPayloadSchema.safeParse({ token: `a${'b'.repeat(70)}` }).success).toBe(false);
+    expect(documentTokenPayloadSchema.safeParse({ token: '3f1b8c4a/9d2e/4f6b/8a1c' }).success).toBe(false);
+    expect(documentTokenPayloadSchema.safeParse({ token: '3f1b8c4a 9d2e 4f6b 8a1c 5e7d9b0f2a44' }).success).toBe(false);
+  });
+
+  it('拒绝缺少令牌', () => {
+    expect(documentTokenPayloadSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('documentDecideSchema', () => {
+  const token = '3f1b8c4a-9d2e-4f6b-8a1c-5e7d9b0f2a44';
+
+  it('接受采用与跳过两种决策', () => {
+    expect(documentDecideSchema.parse({ token, index: 0, decision: 'apply' })).toEqual({
+      token,
+      index: 0,
+      decision: 'apply'
+    });
+    expect(documentDecideSchema.safeParse({ token, index: 7, decision: 'skip' }).success).toBe(true);
+  });
+
+  it('拒绝其它决策与越界序号', () => {
+    expect(documentDecideSchema.safeParse({ token, index: 0, decision: 'edit' }).success).toBe(false);
+    expect(documentDecideSchema.safeParse({ token, index: -1, decision: 'apply' }).success).toBe(false);
+    expect(documentDecideSchema.safeParse({ token, index: 60, decision: 'apply' }).success).toBe(false);
+    expect(documentDecideSchema.safeParse({ token, index: 1.5, decision: 'apply' }).success).toBe(false);
   });
 });

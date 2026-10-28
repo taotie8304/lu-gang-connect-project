@@ -1,0 +1,420 @@
+// @vitest-environment node
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow } from 'docx';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { EditedDocumentCopy } from '../src/main/ai/document/editTypes';
+import type { ParsedDocument } from '../src/main/ai/document/types';
+import {
+  DocumentPreviewManager,
+  type LocalPreviewInput,
+  type PreviewEditor
+} from '../src/main/ai/documentPreview';
+import type { DocumentEditOperation } from '../src/main/ai/protocol';
+import type { DesktopDocumentSummary } from '../src/shared/ipc';
+
+const tempDirs: string[] = [];
+
+const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
+  const dir = await mkdtemp(join(tmpdir(), 'lugang-doc-session-'));
+  tempDirs.push(dir);
+  return run(dir);
+};
+
+afterEach(async () => {
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) await rm(dir, { recursive: true, force: true });
+  }
+});
+
+const buildDocx = async (dir: string): Promise<string> => {
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({ text: '一、申请资格', heading: HeadingLevel.HEADING_1 }),
+          new Paragraph('申请人须年满十八岁。'),
+          new Paragraph('预算：100 万元。'),
+          new Table({
+            rows: [
+              new TableRow({
+                children: [new TableCell({ children: [new Paragraph('姓名')] })]
+              })
+            ]
+          })
+        ]
+      }
+    ]
+  });
+  const path = join(dir, '申请说明.docx');
+  await writeFile(path, await Packer.toBuffer(doc));
+  return path;
+};
+
+const operations: DocumentEditOperation[] = [
+  { op: 'replace_text', paragraph: 2, find: '100 万元', replace: '120 万元' },
+  { op: 'set_paragraph', paragraph: 1, text: '申请人须年满二十岁。' }
+];
+
+const createEditor = (): PreviewEditor =>
+  vi.fn(async ({ operations: applied }) => ({
+    name: '申请说明-已修改.docx',
+    format: 'docx' as const,
+    folder: '鲁港通生成文件',
+    path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请说明-已修改.docx',
+    applied: applied.length,
+    skipped: [],
+    warnings: []
+  }));
+
+const createManager = async (
+  dir: string,
+  options: {
+    editor?: PreviewEditor;
+    openLocal?: () => Promise<LocalPreviewInput | null>;
+    openCopy?: (path: string) => void | Promise<void>;
+    timeoutMs?: number;
+    claimTimeoutMs?: number;
+    maxSessions?: number;
+  } = {}
+) => {
+  const path = await buildDocx(dir);
+  const document: ParsedDocument = {
+    format: 'docx',
+    name: '申请说明.docx',
+    path,
+    warnings: []
+  };
+  const emitted: DesktopDocumentSummary[][] = [];
+  const manager = new DocumentPreviewManager({
+    editDocument: options.editor ?? createEditor(),
+    ...(options.openLocal ? { openLocal: options.openLocal } : {}),
+    ...(options.openCopy ? { openCopy: options.openCopy } : {}),
+    emit: (list) => emitted.push(list),
+    timeoutMs: options.timeoutMs ?? 2000,
+    claimTimeoutMs: options.claimTimeoutMs ?? 2000,
+    ...(options.maxSessions !== undefined ? { maxSessions: options.maxSessions } : {})
+  });
+  return { manager, document, emitted };
+};
+
+const waitForChanges = async (manager: DocumentPreviewManager, token: string, count: number) => {
+  await vi.waitFor(() => {
+    expect(manager.get(token)?.changes).toHaveLength(count);
+  });
+};
+
+describe('预览会话：认领与逐条处理', () => {
+  it('未在认领时限内认领时回退确认窗，不生成副本', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor, claimTimeoutMs: 20 });
+
+      const outcome = await manager.preview({ document, operations });
+
+      expect(outcome).toEqual({ status: 'unavailable' });
+      expect(editor).not.toHaveBeenCalled();
+      expect(manager.list()).toHaveLength(0);
+    });
+  });
+
+  it('认领后逐条跳过与采用会即时更新预览块', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir);
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token;
+      expect(token).toBeTruthy();
+
+      await waitForChanges(manager, token as string, 2);
+      expect(manager.claim(token as string)).toMatchObject({ state: 'reviewing' });
+
+      const skipped = manager.decide(token as string, 0, 'skip');
+      expect(skipped?.changes[0].status).toBe('skipped');
+      expect(skipped?.blocks[2]).toMatchObject({ text: '预算：100 万元。' });
+      expect(skipped?.changes[1].status).toBe('pending');
+
+      const applied = manager.decide(token as string, 1, 'apply');
+      expect(applied?.changes[1].status).toBe('applied');
+      expect(applied?.blocks[1]).toMatchObject({
+        text: '申请人须年满二十岁。',
+        mark: 'applied'
+      });
+
+      await expect(promise).resolves.toMatchObject({ status: 'done' });
+    });
+  });
+
+  it('只允许按顺序处理当前条目', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir);
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      const rejected = manager.decide(token, 1, 'apply');
+      expect(rejected?.changes[1].status).toBe('pending');
+      expect(rejected?.changes[0].status).toBe('pending');
+
+      manager.decide(token, 0, 'skip');
+      manager.decide(token, 1, 'skip');
+      await expect(promise).resolves.toEqual({ status: 'no_change' });
+    });
+  });
+
+  it('全部采用后只把已采用项交给编辑器并返回副本信息', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.decide(token, 0, 'apply');
+      const snapshot = manager.decide(token, 1, 'apply');
+      expect(snapshot).toMatchObject({ state: 'finalizing' });
+
+      const outcome = await promise;
+      expect(outcome).toMatchObject({
+        status: 'done',
+        copy: { name: '申请说明-已修改.docx', folder: '鲁港通生成文件' }
+      });
+      expect(editor).toHaveBeenCalledTimes(1);
+      const input = (editor as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+        operations: DocumentEditOperation[];
+      };
+      expect(input.operations).toEqual(operations);
+      expect(manager.get(token)).toMatchObject({
+        state: 'done',
+        copy: { name: '申请说明-已修改.docx', folder: '鲁港通生成文件' }
+      });
+      expect(JSON.stringify(manager.get(token))).not.toContain('C:\\\\Users');
+    });
+  });
+
+  it('部分采用时编辑器只收到采用的条目', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.decide(token, 0, 'skip');
+      manager.decide(token, 1, 'apply');
+      await expect(promise).resolves.toMatchObject({ status: 'done' });
+
+      const input = (editor as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+        operations: DocumentEditOperation[];
+      };
+      expect(input.operations).toEqual([operations[1]]);
+    });
+  });
+
+  it('全部跳过时不生成副本', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.decide(token, 0, 'skip');
+      manager.decide(token, 1, 'skip');
+      await expect(promise).resolves.toEqual({ status: 'no_change' });
+      expect(editor).not.toHaveBeenCalled();
+    });
+  });
+});
+
+describe('预览会话：全部应用、取消与超时', () => {
+  it('全部应用把剩余条目一次采用并收尾', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      const snapshot = manager.applyAll(token);
+      expect(snapshot?.changes.map((change) => change.status)).toEqual(['applied', 'applied']);
+
+      await expect(promise).resolves.toMatchObject({ status: 'done' });
+      expect(editor).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('关闭标签视为放弃，不生成副本', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.close(token);
+
+      await expect(promise).resolves.toEqual({ status: 'declined' });
+      expect(editor).not.toHaveBeenCalled();
+      expect(manager.list()).toHaveLength(0);
+    });
+  });
+
+  it('AI 停止时取消未完成会话', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.cancelAll();
+
+      await expect(promise).resolves.toEqual({ status: 'declined' });
+      expect(editor).not.toHaveBeenCalled();
+    });
+  });
+
+  it('审查超时后自动取消且不落盘', async () => {
+    await withTempDir(async (dir) => {
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor, timeoutMs: 30 });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      await expect(promise).resolves.toEqual({ status: 'timeout' });
+      expect(editor).not.toHaveBeenCalled();
+    });
+  });
+
+  it('副本生成失败时返回可读说明', async () => {
+    await withTempDir(async (dir) => {
+      const editor = vi.fn(async () => {
+        throw new Error('disk full');
+      }) as PreviewEditor;
+      const { manager, document } = await createManager(dir, { editor });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      manager.applyAll(token);
+
+      await expect(promise).resolves.toMatchObject({
+        status: 'failed',
+        message: expect.stringContaining('原文件不受影响')
+      });
+    });
+  });
+
+  it('会话超过上限时淘汰最早的一个', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir, { maxSessions: 2 });
+      const first = manager.preview({ document, operations });
+      const second = manager.preview({ document, operations });
+      const third = manager.preview({ document, operations });
+
+      await expect(first).resolves.toEqual({ status: 'declined' });
+      expect(manager.list().length).toBeLessThanOrEqual(2);
+      manager.cancelAll();
+      await expect(second).resolves.toEqual({ status: 'declined' });
+      await expect(third).resolves.toEqual({ status: 'declined' });
+    });
+  });
+});
+
+describe('预览会话：手动打开本地文件', () => {
+  it('打开 Word 时返回只读预览会话', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildDocx(dir);
+      const { manager, document } = await createManager(dir, {
+        openLocal: async () => ({ format: 'docx', document })
+      });
+
+      const snapshot = await manager.openLocal();
+
+      expect(snapshot).toMatchObject({
+        mode: 'view',
+        format: 'docx',
+        fileName: '申请说明.docx',
+        state: 'viewing'
+      });
+      expect(snapshot?.blocks).toHaveLength(4);
+      expect(snapshot?.changes).toEqual([]);
+      expect(JSON.stringify(snapshot)).not.toContain(path);
+      expect(manager.list()).toHaveLength(1);
+    });
+  });
+
+  it('打开 Excel 与 PDF 时给出兜底信息', async () => {
+    await withTempDir(async (dir) => {
+      const document: ParsedDocument = {
+        format: 'xlsx',
+        name: '预算表.xlsx',
+        path: join(dir, '预算表.xlsx'),
+        sheets: [
+          {
+            name: 'Sheet1',
+            rowCount: 2,
+            columnCount: 2,
+            header: ['项目', '金额'],
+            sampleRows: [['预算', '100']]
+          }
+        ],
+        warnings: []
+      };
+      const { manager } = await createManager(dir, {
+        openLocal: async () => ({ format: 'xlsx', document })
+      });
+
+      const snapshot = await manager.openLocal();
+      expect(snapshot).toMatchObject({ format: 'xlsx', state: 'viewing' });
+      expect(snapshot?.sheets?.[0].name).toBe('Sheet1');
+      expect(snapshot?.blocks).toEqual([]);
+
+      const pdfManager = (await createManager(dir, {
+        openLocal: async () => ({ format: 'pdf', name: '申请须知.pdf', path: join(dir, '申请须知.pdf') })
+      })).manager;
+      const pdf = await pdfManager.openLocal();
+      expect(pdf).toMatchObject({ format: 'pdf', fileName: '申请须知.pdf', state: 'viewing' });
+      expect(pdf?.blocks).toEqual([]);
+    });
+  });
+
+  it('取消选择文件时不创建会话', async () => {
+    await withTempDir(async (dir) => {
+      const { manager } = await createManager(dir, { openLocal: async () => null });
+      expect(await manager.openLocal()).toBeNull();
+      expect(manager.list()).toHaveLength(0);
+    });
+  });
+
+  it('打开副本走主进程外部打开通道', async () => {
+    await withTempDir(async (dir) => {
+      const openCopy = vi.fn();
+      const editor = createEditor();
+      const { manager, document } = await createManager(dir, { editor, openCopy });
+      const promise = manager.preview({ document, operations });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+      manager.applyAll(token);
+      await promise;
+
+      expect(manager.openCopy(token)).toBe(true);
+      expect(openCopy).toHaveBeenCalledWith(
+        'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请说明-已修改.docx'
+      );
+    });
+  });
+});

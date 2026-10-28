@@ -34,7 +34,13 @@ import { usePageOverlayOpen } from './usePageOverlayOpen';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 import { createTabRefreshScheduler } from './polling';
 import { resolveBuiltinBrowserAiBadge } from './aiStatus';
-import type { DesktopAiState } from './desktopBridge';
+import type {
+  DesktopAiState,
+  DesktopDocumentSnapshot,
+  DesktopDocumentSummary
+} from './desktopBridge';
+import { resolveActiveDocToken, resolveDocPanelView } from './documentTabs';
+import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
 import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const MINUTE_MS = 60 * 1000;
@@ -89,6 +95,14 @@ const BuiltinBrowserPanelBody = ({
   const [loadingSlow, setLoadingSlow] = useState(false);
   const [aiState, setAiState] = useState<DesktopAiState>();
   const [isStoppingAi, setIsStoppingAi] = useState(false);
+  const [docTabs, setDocTabs] = useState<DesktopDocumentSummary[]>([]);
+  const [activeDocToken, setActiveDocToken] = useState<string | null>(null);
+  // 鲁港通 - 快照带 token 缓存：切换文件时旧快照自然失效，无需在 effect 里清空
+  const [docSnapshotCache, setDocSnapshotCache] = useState<{
+    token: string;
+    snapshot: DesktopDocumentSnapshot;
+  } | null>(null);
+  const [docBusy, setDocBusy] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
@@ -109,6 +123,13 @@ const BuiltinBrowserPanelBody = ({
   const isNative = transport.usesNativeView;
   const hasPageOverlay = usePageOverlayOpen();
   const tabsFull = tabs.length >= BUILTIN_BROWSER_MAX_TABS;
+  // 鲁港通 - 文件预览桥只在新版桌面客户端存在，老客户端据此隐藏本地文件入口
+  const documents = useMemo(
+    () => (typeof window === 'undefined' ? undefined : window.lugangDesktop?.documents),
+    []
+  );
+  const currentTabUrl = tabs.find((tab) => tab.current)?.url;
+  const panelView = resolveDocPanelView({ activeDocToken, status, currentTabUrl });
 
   const { runAsync: openSession } = useRequest(transport.open, {
     manual: true,
@@ -303,10 +324,68 @@ const BuiltinBrowserPanelBody = ({
     void session?.sync().catch(() => undefined);
   }, [isNative]);
 
+  // 鲁港通 - 列表推送同时维护激活文件：仍在列表则保持，否则接管最近一个待确认的文件
+  const applyDocTabs = useCallback((list: DesktopDocumentSummary[]) => {
+    setDocTabs(list);
+    setActiveDocToken((current) => resolveActiveDocToken(list, current));
+  }, []);
+
+  // 鲁港通 - 文件标签：订阅主进程的会话摘要推送，挂载后先拉一次
+  useEffect(() => {
+    if (!documents) return;
+    let cancelled = false;
+    void documents
+      .list()
+      .then((list) => {
+        if (!cancelled) applyDocTabs(list);
+      })
+      .catch(() => undefined);
+    const unsubscribe = documents.onChanged(applyDocTabs);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [documents, applyDocTabs]);
+
+  const activeDocSummary = useMemo(
+    () => docTabs.find((item) => item.token === activeDocToken),
+    [docTabs, activeDocToken]
+  );
+  const activeDocState = activeDocSummary?.state;
+  const docSnapshot =
+    docSnapshotCache?.token === activeDocToken ? docSnapshotCache.snapshot : null;
+
+  // 鲁港通 - 拉取激活文件的完整快照；待确认会话先认领，避免 2 秒后回退旧确认窗
+  useEffect(() => {
+    if (!documents || !activeDocToken) return;
+    const token = activeDocToken;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const snapshot =
+          activeDocState === 'pending'
+            ? await documents.claim(token)
+            : await documents.get(token);
+        if (cancelled) return;
+        setDocSnapshotCache(snapshot ? { token, snapshot } : null);
+      } catch {
+        if (!cancelled) setDocSnapshotCache(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documents, activeDocToken, activeDocState]);
+
   // 鲁港通 - 面板一打开就聚焦网址栏：开台等待期间即可输入网址，就绪后自动打开
   useEffect(() => {
     urlInputRef.current?.focus();
   }, []);
+
+  // 鲁港通 - 空白落地页出现时也聚焦网址输入框，用户可直接输入
+  useEffect(() => {
+    if (panelView === 'landing') urlInputRef.current?.focus();
+  }, [panelView]);
 
   // 鲁港通 - 开台超过 5 秒追加分步提示，让用户知道仍在准备而非卡死
   useEffect(() => {
@@ -318,6 +397,7 @@ const BuiltinBrowserPanelBody = ({
   // 鲁港通 - 新建标签：云端选中新空白页，前端同步标签条并聚焦网址栏
   const handleNewTab = useCallback(async () => {
     if (tabsFull) return;
+    setActiveDocToken(null);
     try {
       applyTabs(await createTab());
       urlEditingRef.current = false;
@@ -329,6 +409,7 @@ const BuiltinBrowserPanelBody = ({
 
   const handleSelectTab = useCallback(
     async (index: number) => {
+      setActiveDocToken(null);
       try {
         const res = await selectTab(index);
         applyTabs(res.tabs);
@@ -356,6 +437,91 @@ const BuiltinBrowserPanelBody = ({
     },
     [applyTabs, closeTab, showTabActionFailed]
   );
+
+  // 鲁港通 - 文件标签：关闭后立即移出标签条，未完成的确认按放弃处理
+  const handleCloseDocTab = useCallback(
+    async (token: string) => {
+      if (!documents) return;
+      try {
+        await documents.close(token);
+      } catch {
+        // 会话可能已结束，关闭是幂等的
+      }
+      setDocTabs((prev) => prev.filter((item) => item.token !== token));
+      setActiveDocToken((current) => (current === token ? null : current));
+    },
+    [documents]
+  );
+
+  // 鲁港通 - 选择本地文件：主进程弹原生选择框，文件全程只在本机解析、不上传
+  const handlePickLocalDoc = useCallback(async () => {
+    if (!documents || docBusy) return;
+    setDocBusy(true);
+    try {
+      const snapshot = await documents.openLocal();
+      if (!snapshot) return;
+      applyDocTabs(await documents.list());
+      setActiveDocToken(snapshot.token);
+      setDocSnapshotCache({ token: snapshot.token, snapshot });
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_doc_pick_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setDocBusy(false);
+    }
+  }, [documents, docBusy, applyDocTabs, t, toast]);
+
+  const handleDecideDoc = useCallback(
+    async (index: number, decision: 'apply' | 'skip') => {
+      if (!documents || !activeDocToken || docBusy) return;
+      setDocBusy(true);
+      try {
+        const snapshot = await documents.decide(activeDocToken, index, decision);
+        if (snapshot) setDocSnapshotCache({ token: activeDocToken, snapshot });
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_doc_action_failed') as any),
+          status: 'warning'
+        });
+      } finally {
+        setDocBusy(false);
+      }
+    },
+    [documents, activeDocToken, docBusy, t, toast]
+  );
+
+  const handleApplyAllDoc = useCallback(async () => {
+    if (!documents || !activeDocToken || docBusy) return;
+    setDocBusy(true);
+    try {
+      const snapshot = await documents.applyAll(activeDocToken);
+      if (snapshot) setDocSnapshotCache({ token: activeDocToken, snapshot });
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_doc_action_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setDocBusy(false);
+    }
+  }, [documents, activeDocToken, docBusy, t, toast]);
+
+  const handleOpenCopyDoc = useCallback(async () => {
+    if (!documents || !activeDocToken) return;
+    try {
+      const opened = await documents.openCopy(activeDocToken);
+      if (!opened) {
+        toast({ title: t('common:builtin_browser_doc_open_copy_failed'), status: 'warning' });
+      }
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_doc_open_copy_failed') as any),
+        status: 'warning'
+      });
+    }
+  }, [documents, activeDocToken, t, toast]);
 
   const expiresAtMs = session ? new Date(session.expiresAt).getTime() : undefined;
 
@@ -414,11 +580,13 @@ const BuiltinBrowserPanelBody = ({
     };
   }, [status, transport]);
 
-  // 鲁港通 - 拖拽/模态层/面板收起时隐藏原生视图，避免遮挡应用 UI
+  // 鲁港通 - 拖拽/模态层/面板收起/落地页与文件预览时隐藏原生视图，避免遮挡应用 UI
   useEffect(() => {
     if (!transport.usesNativeView) return;
-    transport.setViewVisible?.(status === 'active' && !isResizing && !hasPageOverlay);
-  }, [transport, status, isResizing, hasPageOverlay]);
+    transport.setViewVisible?.(
+      status === 'active' && panelView === 'browser' && !isResizing && !hasPageOverlay
+    );
+  }, [transport, status, panelView, isResizing, hasPageOverlay]);
 
   useEffect(() => {
     if (!transport.usesNativeView) return;
@@ -759,7 +927,7 @@ const BuiltinBrowserPanelBody = ({
             />
           </MyTooltip>
         )}
-        {status === 'active' && (
+        {status === 'active' && panelView === 'browser' && (
           <MyTooltip label={t('common:builtin_browser_refresh')}>
             <MyIcon
               name={'common/refresh'}
@@ -810,9 +978,9 @@ const BuiltinBrowserPanelBody = ({
             flexShrink={0}
             px={'8px'}
             borderRadius={'6px'}
-            bg={tab.current ? 'white' : 'transparent'}
+            bg={tab.current && !activeDocToken ? 'white' : 'transparent'}
             border={'1px solid'}
-            borderColor={tab.current ? LG.line : 'transparent'}
+            borderColor={tab.current && !activeDocToken ? LG.line : 'transparent'}
             cursor={'pointer'}
             _hover={{ bg: 'white', borderColor: LG.line }}
             onClick={() => void handleSelectTab(tab.index)}
@@ -821,7 +989,7 @@ const BuiltinBrowserPanelBody = ({
               flex={'1 1 0'}
               fontSize={'10px'}
               noOfLines={1}
-              color={tab.current ? LG.ink : LG.muted}
+              color={tab.current && !activeDocToken ? LG.ink : LG.muted}
             >
               {tabLabel(tab)}
             </Text>
@@ -840,6 +1008,52 @@ const BuiltinBrowserPanelBody = ({
             />
           </Flex>
         ))}
+        {/* 鲁港通 - 文件标签与网页标签同条并存：点开看文档预览，关闭只结束该文件会话 */}
+        {docTabs.map((doc) => {
+          const isActiveDoc = doc.token === activeDocToken;
+          return (
+            <Flex
+              key={doc.token}
+              alignItems={'center'}
+              gap={1}
+              h={'24px'}
+              minW={'88px'}
+              maxW={'180px'}
+              flexShrink={0}
+              px={'6px'}
+              borderRadius={'6px'}
+              bg={isActiveDoc ? 'white' : 'transparent'}
+              border={'1px solid'}
+              borderColor={isActiveDoc ? LG.line : 'transparent'}
+              cursor={'pointer'}
+              _hover={{ bg: 'white', borderColor: LG.line }}
+              onClick={() => setActiveDocToken(doc.token)}
+            >
+              <DocumentFormatChip format={doc.format} size={13} />
+              <Text
+                flex={'1 1 0'}
+                fontSize={'10px'}
+                noOfLines={1}
+                color={isActiveDoc ? LG.ink : LG.muted}
+              >
+                {doc.fileName}
+              </Text>
+              <MyIcon
+                name={'close'}
+                w={'11px'}
+                h={'11px'}
+                flexShrink={0}
+                color={LG.mutedSoft}
+                _hover={{ color: LG.mountain }}
+                aria-label={t('common:builtin_browser_doc_close_tab')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCloseDocTab(doc.token);
+                }}
+              />
+            </Flex>
+          );
+        })}
         <MyTooltip label={t('common:builtin_browser_new_tab')}>
           <Flex
             alignItems={'center'}
@@ -865,48 +1079,50 @@ const BuiltinBrowserPanelBody = ({
       </Flex>
 
       {/* 网址栏：输入后回车让云端浏览器跳转；开台等待期间也可输入，就绪后自动打开 */}
-      <Flex
-        flexShrink={0}
-        alignItems={'center'}
-        px={'10px'}
-        py={'5px'}
-        bg={'#F5F9FE'}
-        borderBottom={'1px solid'}
-        borderBottomColor={LG.lineSoft}
-      >
-        <Input
-          ref={urlInputRef}
-          size={'sm'}
-          h={'27px'}
-          fontSize={'11px'}
-          value={urlInput}
-          onChange={(e) => setUrlInput(e.target.value)}
-          onFocus={() => {
-            urlEditingRef.current = true;
-          }}
-          onBlur={() => {
-            urlEditingRef.current = false;
-          }}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
-            void handleNavigate();
-          }}
-          placeholder={t('common:builtin_browser_url_placeholder')}
-          isDisabled={status === 'error' || isNavigating}
-          bg={'white'}
-          border={'1px solid'}
-          borderColor={LG.line}
-          borderRadius={'7px'}
-          color={'#4A5F75'}
-          _hover={{ borderColor: 'rgba(111,157,208,0.4)' }}
-          _focusVisible={{
-            bg: 'white',
-            borderColor: LG.lineStrong,
-            boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
-          }}
-          _placeholder={{ color: '#9DAFC2' }}
-        />
-      </Flex>
+      {panelView === 'browser' && (
+        <Flex
+          flexShrink={0}
+          alignItems={'center'}
+          px={'10px'}
+          py={'5px'}
+          bg={'#F5F9FE'}
+          borderBottom={'1px solid'}
+          borderBottomColor={LG.lineSoft}
+        >
+          <Input
+            ref={urlInputRef}
+            size={'sm'}
+            h={'27px'}
+            fontSize={'11px'}
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            onFocus={() => {
+              urlEditingRef.current = true;
+            }}
+            onBlur={() => {
+              urlEditingRef.current = false;
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+              void handleNavigate();
+            }}
+            placeholder={t('common:builtin_browser_url_placeholder')}
+            isDisabled={status === 'error' || isNavigating}
+            bg={'white'}
+            border={'1px solid'}
+            borderColor={LG.line}
+            borderRadius={'7px'}
+            color={'#4A5F75'}
+            _hover={{ borderColor: 'rgba(111,157,208,0.4)' }}
+            _focusVisible={{
+              bg: 'white',
+              borderColor: LG.lineStrong,
+              boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
+            }}
+            _placeholder={{ color: '#9DAFC2' }}
+          />
+        </Flex>
+      )}
 
       {/* Body：裁切容器，只显示云端浏览器页面本身（裁掉查看器工具栏与窗口外框） */}
       <Box
@@ -917,6 +1133,153 @@ const BuiltinBrowserPanelBody = ({
         overflow={'hidden'}
         bg={'white'}
       >
+        {panelView === 'doc' &&
+          (docSnapshot ? (
+            <DocumentPreviewPanel
+              snapshot={docSnapshot}
+              busy={docBusy}
+              onDecide={(index, decision) => void handleDecideDoc(index, decision)}
+              onApplyAll={() => void handleApplyAllDoc()}
+              onOpenCopy={() => void handleOpenCopyDoc()}
+            />
+          ) : (
+            <Flex
+              h={'100%'}
+              flexDirection={'column'}
+              alignItems={'center'}
+              justifyContent={'center'}
+              gap={3}
+            >
+              <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
+              <Text fontSize={'12px'} color={LG.muted}>
+                {t('common:builtin_browser_doc_loading')}
+              </Text>
+            </Flex>
+          ))}
+
+        {/* 鲁港通 - 落地页两层入口：打开互联网网址，或选择本机文档预览修改 */}
+        {panelView === 'landing' && (
+          <Flex
+            h={'100%'}
+            flexDirection={'column'}
+            alignItems={'center'}
+            justifyContent={'center'}
+            gap={'12px'}
+            px={6}
+            py={8}
+            overflowY={'auto'}
+          >
+            <Flex alignItems={'center'} gap={'6px'} mb={'1'}>
+              <MyIcon name={'common/globalLine'} w={'16px'} h={'16px'} color={LG.mountain} />
+              <Text fontSize={'13px'} fontWeight={600} color={LG.ink}>
+                {t('common:builtin_browser_doc_landing_title')}
+              </Text>
+            </Flex>
+
+            <Box
+              w={'100%'}
+              maxW={'380px'}
+              px={'14px'}
+              py={'12px'}
+              bg={'white'}
+              border={'1px solid'}
+              borderColor={LG.line}
+              borderRadius={'10px'}
+              boxShadow={'0 6px 22px rgba(78,128,178,0.06)'}
+            >
+              <Text fontSize={'11px'} fontWeight={600} color={LG.text} mb={'6px'}>
+                {t('common:builtin_browser_doc_landing_url_label')}
+              </Text>
+              <Flex gap={'6px'}>
+                <Input
+                  ref={urlInputRef}
+                  size={'sm'}
+                  h={'29px'}
+                  fontSize={'11px'}
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  onFocus={() => {
+                    urlEditingRef.current = true;
+                  }}
+                  onBlur={() => {
+                    urlEditingRef.current = false;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+                    void handleNavigate();
+                  }}
+                  placeholder={t('common:builtin_browser_url_placeholder')}
+                  isDisabled={status === 'error' || isNavigating}
+                  bg={'white'}
+                  border={'1px solid'}
+                  borderColor={LG.line}
+                  borderRadius={'7px'}
+                  color={'#4A5F75'}
+                  _hover={{ borderColor: 'rgba(111,157,208,0.4)' }}
+                  _focusVisible={{
+                    bg: 'white',
+                    borderColor: LG.lineStrong,
+                    boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
+                  }}
+                  _placeholder={{ color: '#9DAFC2' }}
+                />
+                <Button
+                  size={'sm'}
+                  h={'29px'}
+                  px={'14px'}
+                  fontSize={'11px'}
+                  borderRadius={'7px'}
+                  bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
+                  color={'white'}
+                  _hover={{ opacity: 0.9 }}
+                  isLoading={isNavigating}
+                  onClick={() => void handleNavigate()}
+                >
+                  {t('common:builtin_browser_doc_open')}
+                </Button>
+              </Flex>
+            </Box>
+
+            {documents && (
+              <Box
+                w={'100%'}
+                maxW={'380px'}
+                px={'14px'}
+                py={'12px'}
+                bg={'white'}
+                border={'1px solid'}
+                borderColor={LG.line}
+                borderRadius={'10px'}
+                boxShadow={'0 6px 22px rgba(78,128,178,0.06)'}
+              >
+                <Text fontSize={'11px'} fontWeight={600} color={LG.text} mb={'6px'}>
+                  {t('common:builtin_browser_doc_landing_file_label')}
+                </Text>
+                <Button
+                  w={'100%'}
+                  size={'sm'}
+                  h={'29px'}
+                  fontSize={'11px'}
+                  borderRadius={'7px'}
+                  variant={'outline'}
+                  color={LG.mountain}
+                  borderColor={'rgba(111,157,208,0.4)'}
+                  _hover={{ bg: 'rgba(111,157,208,0.08)' }}
+                  isLoading={docBusy}
+                  onClick={() => void handlePickLocalDoc()}
+                >
+                  {t('common:builtin_browser_doc_landing_file_action')}
+                </Button>
+                <Text mt={'6px'} fontSize={'10px'} color={LG.mutedSoft}>
+                  {t('common:builtin_browser_doc_landing_file_hint')}
+                </Text>
+              </Box>
+            )}
+          </Flex>
+        )}
+
+        {panelView === 'browser' && (
+          <>
         {status === 'loading' && (
           <Flex
             h={'100%'}
@@ -999,6 +1362,8 @@ const BuiltinBrowserPanelBody = ({
               <Text fontSize={'12px'}>{t('common:builtin_browser_resizing')}</Text>
             )}
           </Flex>
+        )}
+          </>
         )}
       </Box>
 

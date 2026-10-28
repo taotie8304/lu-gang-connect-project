@@ -3,6 +3,7 @@ import {
   AiExecutor,
   type AiDocumentConfirmer,
   type AiDocumentEditor,
+  type AiDocumentPreviewer,
   type AiFileInputState,
   type AiPageDriver
 } from '../src/main/ai/executor';
@@ -396,6 +397,241 @@ describe('文档动作：修改前确认与生成副本', () => {
       editDocument: createEditor(),
       confirmDocument: confirmer
     });
+
+    executor.cancelDocumentConfirmation();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('文档动作：右栏预览优先', () => {
+  const createPreviewer = (
+    outcome: Awaited<ReturnType<AiDocumentPreviewer>>
+  ): { previewer: AiDocumentPreviewer; calls: unknown[] } => {
+    const calls: unknown[] = [];
+    const previewer = (async (input: unknown) => {
+      calls.push(input);
+      return outcome;
+    }) as AiDocumentPreviewer;
+    return { previewer, calls };
+  };
+
+  it('右栏全部应用后直接返回副本，不再弹旧确认窗', async () => {
+    const { confirmer, calls: confirmCalls } = createConfirmer('allow');
+    const editor = createEditor();
+    const { previewer, calls } = createPreviewer({
+      status: 'done',
+      copy: {
+        name: '2024年工作计划-已修改.docx',
+        format: 'docx',
+        folder: '鲁港通生成文件',
+        path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\2024年工作计划-已修改.docx',
+        applied: 2,
+        skipped: [],
+        warnings: []
+      }
+    });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: editor,
+      confirmDocument: confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [
+        { op: 'replace_text', find: '2023年', replace: '2024年', paragraph: 1 },
+        { op: 'append_paragraph', text: '备注：待补充。' }
+      ]
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(editor).not.toHaveBeenCalled();
+    expect(confirmCalls).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      file: { name: '2024年工作计划-已修改.docx', folder: '鲁港通生成文件' },
+      edit: { applied: 2 }
+    });
+    expect(JSON.stringify(result)).not.toContain('Downloads');
+  });
+
+  it('全部跳过时不生成副本，按取消处理', async () => {
+    const editor = createEditor();
+    const { previewer } = createPreviewer({ status: 'no_change' });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: editor,
+      confirmDocument: createConfirmer('allow').confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'confirmation_declined' });
+    expect(result.message).toContain('都跳过了');
+    expect(editor).not.toHaveBeenCalled();
+  });
+
+  it('关闭预览标签按取消处理', async () => {
+    const editor = createEditor();
+    const { previewer } = createPreviewer({ status: 'declined' });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: editor,
+      confirmDocument: createConfirmer('allow').confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'confirmation_declined' });
+    expect(editor).not.toHaveBeenCalled();
+  });
+
+  it('预览超时按确认超时处理', async () => {
+    const { previewer } = createPreviewer({ status: 'timeout' });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: createEditor(),
+      confirmDocument: createConfirmer('allow').confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'confirmation_timeout' });
+  });
+
+  it('副本生成失败时透出预览层给出的说明', async () => {
+    const { previewer } = createPreviewer({
+      status: 'failed',
+      message: '副本没有生成成功，没有写入任何内容，原文件不受影响。请重试一次。'
+    });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: createEditor(),
+      confirmDocument: createConfirmer('allow').confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'document_edit_failed' });
+    expect(result.message).toContain('原文件不受影响');
+  });
+
+  it('右栏未挂载时回退原确认窗，照常生成副本', async () => {
+    const { confirmer, calls: confirmCalls } = createConfirmer('allow');
+    const editor = createEditor();
+    const { previewer } = createPreviewer({ status: 'unavailable' });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: editor,
+      confirmDocument: confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(confirmCalls).toHaveLength(1);
+    expect(editor).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ ok: true, edit: { applied: 1 } });
+  });
+
+  it('预览通道自身抛错时同样回退原确认窗', async () => {
+    const { confirmer, calls: confirmCalls } = createConfirmer('allow');
+    const editor = createEditor();
+    const previewer = (async () => {
+      throw new Error('preview crashed');
+    }) as AiDocumentPreviewer;
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: editor,
+      confirmDocument: confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(confirmCalls).toHaveLength(1);
+    expect(result.ok).toBe(true);
+  });
+
+  it('Excel 仍走原确认窗，不进入 Word 预览', async () => {
+    const { previewer, calls } = createPreviewer({ status: 'declined' });
+    const { confirmer, calls: confirmCalls } = createConfirmer('allow');
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => ({
+        format: 'xlsx',
+        name: '预算表.xlsx',
+        sheets: [{ name: '总表', rowCount: 10, columnCount: 5, header: ['项目', '金额'], sampleRows: [] }],
+        path: 'C:\\Users\\tester\\Desktop\\预算表.xlsx'
+      }),
+      editDocument: createEditor(),
+      confirmDocument: confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'set_cell', sheet: '总表', cell: 'B2', value: '5000' }]
+    });
+
+    expect(calls).toHaveLength(0);
+    expect(confirmCalls).toHaveLength(1);
+    expect(result.ok).toBe(true);
+  });
+
+  it('停止时同时取消等待中的预览会话', () => {
+    const cancel = vi.fn();
+    const previewer = Object.assign(
+      (async () => ({ status: 'declined' as const })) as AiDocumentPreviewer,
+      { cancel }
+    );
+    const executor = new AiExecutor({ driver: createDriver(), previewDocument: previewer });
 
     executor.cancelDocumentConfirmation();
     expect(cancel).toHaveBeenCalledTimes(1);

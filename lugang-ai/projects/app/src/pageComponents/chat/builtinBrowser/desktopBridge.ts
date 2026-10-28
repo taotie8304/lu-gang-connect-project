@@ -57,6 +57,134 @@ export type DesktopWindowControls = {
   onMaximizeChange(callback: (maximized: boolean) => void): () => void;
 };
 
+/** 设置面板「检查更新」；老客户端没有这个能力，网页端据此隐藏该入口 */
+export type DesktopUpdateState =
+  | 'unsupported'
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export type DesktopUpdateStatus = {
+  state: DesktopUpdateState;
+  currentVersion: string;
+  latestVersion?: string;
+};
+
+export type DesktopUpdateControls = {
+  getStatus(): Promise<DesktopUpdateStatus>;
+  check(): Promise<DesktopUpdateStatus>;
+  install(): Promise<void>;
+  onStatusChange(callback: (status: DesktopUpdateStatus) => void): () => void;
+};
+
+/** 鲁港通 - 文档预览类型镜像：与 projects/desktop/src/shared/ipc.ts 对应 */
+export type DesktopDocumentFormat = 'docx' | 'xlsx' | 'pdf';
+
+export type DesktopDocumentPreviewState =
+  | 'pending'
+  | 'reviewing'
+  | 'finalizing'
+  | 'viewing'
+  | 'done'
+  | 'no_change'
+  | 'failed'
+  | 'declined'
+  | 'timeout';
+
+export type DesktopDocumentChangeStatus = 'pending' | 'applied' | 'skipped' | 'unavailable';
+
+export type DesktopDocumentMark = 'pending' | 'applied';
+
+export type DesktopDocumentChange = {
+  index: number;
+  target: string;
+  section?: string;
+  before: string;
+  after: string;
+  status: DesktopDocumentChangeStatus;
+  note?: string;
+};
+
+export type DesktopDocumentParagraphBlock = {
+  id: string;
+  kind: 'paragraph';
+  index: number;
+  text: string;
+  heading?: number;
+  originalText?: string;
+  mark?: DesktopDocumentMark;
+};
+
+export type DesktopDocumentTableCellMark = {
+  row: number;
+  cell: number;
+  mark: DesktopDocumentMark;
+  original: string;
+};
+
+export type DesktopDocumentTableBlock = {
+  id: string;
+  kind: 'table';
+  index: number;
+  rows: string[][];
+  mark?: DesktopDocumentMark;
+  cellMarks?: DesktopDocumentTableCellMark[];
+};
+
+export type DesktopDocumentBlock = DesktopDocumentParagraphBlock | DesktopDocumentTableBlock;
+
+export type DesktopDocumentSheet = {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  header: string[];
+  sampleRows: string[][];
+};
+
+export type DesktopDocumentSnapshot = {
+  token: string;
+  mode: 'review' | 'view';
+  format: DesktopDocumentFormat;
+  fileName: string;
+  state: DesktopDocumentPreviewState;
+  changes: DesktopDocumentChange[];
+  blocks: DesktopDocumentBlock[];
+  sheets?: DesktopDocumentSheet[];
+  warnings: string[];
+  copy?: { name: string; folder: string };
+  message?: string;
+};
+
+export type DesktopDocumentSummary = {
+  token: string;
+  mode: 'review' | 'view';
+  format: DesktopDocumentFormat;
+  fileName: string;
+  state: DesktopDocumentPreviewState;
+  total: number;
+  decided: number;
+};
+
+/** 文件只在本机解析；老客户端没有这个对象，网页端据此隐藏文件入口 */
+export type DesktopDocuments = {
+  openLocal(): Promise<DesktopDocumentSnapshot | null>;
+  list(): Promise<DesktopDocumentSummary[]>;
+  get(token: string): Promise<DesktopDocumentSnapshot | null>;
+  claim(token: string): Promise<DesktopDocumentSnapshot | null>;
+  decide(
+    token: string,
+    index: number,
+    decision: 'apply' | 'skip'
+  ): Promise<DesktopDocumentSnapshot | null>;
+  applyAll(token: string): Promise<DesktopDocumentSnapshot | null>;
+  close(token: string): Promise<void>;
+  openCopy(token: string): Promise<boolean>;
+  onChanged(callback: (list: DesktopDocumentSummary[]) => void): () => void;
+};
+
 export type DesktopBridge = {
   isAvailable(): boolean;
   getVersion(): Promise<DesktopVersionInfo>;
@@ -69,6 +197,7 @@ export type DesktopBridge = {
   reload(): Promise<boolean>;
   goBack(): Promise<boolean>;
   goForward(): Promise<boolean>;
+  documents?: DesktopDocuments;
   tabs: {
     create(url?: string): Promise<DesktopBrowserState>;
     switch(id: number): Promise<DesktopBrowserState>;
@@ -87,6 +216,7 @@ export type DesktopBridge = {
     logout(): Promise<void>;
   };
   windowControls?: DesktopWindowControls;
+  update?: DesktopUpdateControls;
   retryLoad(): void;
 };
 

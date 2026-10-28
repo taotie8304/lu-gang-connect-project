@@ -26,3 +26,19 @@ export const aiExecuteSchema = z.object({
   resume: z.boolean().optional(),
   commandId: z.string().trim().min(1).max(64).optional()
 });
+
+// 鲁港通 - 文档预览：令牌只允许 uuid 级安全字符，逐条决策的序号限定在改动条数上限内
+export const documentTokenSchema = z
+  .string()
+  .trim()
+  .min(36)
+  .max(64)
+  .regex(/^[A-Za-z0-9_-]+$/);
+
+export const documentTokenPayloadSchema = z.object({ token: documentTokenSchema });
+
+export const documentDecideSchema = z.object({
+  token: documentTokenSchema,
+  index: z.number().int().min(0).max(59),
+  decision: z.enum(['apply', 'skip'])
+});

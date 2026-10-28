@@ -21,6 +21,7 @@ import { clearToken } from '@/web/support/user/auth';
 import { performLogout } from '@/web/support/user/logout';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
+import type { DesktopUpdateStatus } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
 import { getTicketUnreadCount } from '@/web/support/ticket/api';
 import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
@@ -39,6 +40,9 @@ type SettingsMenuItem = {
   icon: IconNameType;
   label: string;
   onClick: () => void;
+  /** 右侧状态提示，目前由「检查更新」使用 */
+  hint?: string;
+  hintTone?: 'muted' | 'info' | 'danger';
 };
 
 const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
@@ -73,6 +77,74 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   useEffect(() => {
     if (isOpen) refreshTicketUnread();
   }, [isOpen, refreshTicketUnread]);
+
+  // 鲁港通 - 桌面端「检查更新」：状态由主进程维护，面板挂载时取一次并订阅后续变化
+  const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus | null>(null);
+  const updateBridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.update;
+  useEffect(() => {
+    const bridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.update;
+    if (!bridge) return;
+    let cancelled = false;
+    void bridge
+      .getStatus()
+      .then((status) => {
+        if (!cancelled) setUpdateStatus(status);
+      })
+      .catch(() => undefined);
+    const unsubscribe = bridge.onStatusChange((status) => setUpdateStatus(status));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
+
+  const handleUpdateAction = useCallback(async () => {
+    const bridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.update;
+    if (!bridge || !updateStatus) return;
+    if (updateStatus.state === 'downloaded') {
+      await bridge.install().catch(() => undefined);
+      return;
+    }
+    if (updateStatus.state === 'checking' || updateStatus.state === 'downloading') return;
+    const next = await bridge.check().catch(() => null);
+    if (next) setUpdateStatus(next);
+  }, [updateStatus]);
+
+  const updateHint = (status: DesktopUpdateStatus): string => {
+    switch (status.state) {
+      case 'checking':
+        return t('common:user_settings.update_checking');
+      case 'up-to-date':
+        return t('common:user_settings.update_latest');
+      case 'downloading':
+        return t('common:user_settings.update_downloading', {
+          version: status.latestVersion ?? ''
+        });
+      case 'downloaded':
+        return t('common:user_settings.update_ready', { version: status.latestVersion ?? '' });
+      case 'error':
+        return t('common:user_settings.update_failed');
+      default:
+        return t('common:user_settings.current_version', { version: status.currentVersion });
+    }
+  };
+  const updateHintTone = (status: DesktopUpdateStatus): 'muted' | 'info' | 'danger' => {
+    if (status.state === 'error') return 'danger';
+    if (status.state === 'downloaded') return 'info';
+    return 'muted';
+  };
+  // 鲁港通 - 老客户端没有 update 能力时不渲染该行，避免出现点不动的入口
+  const updateMenuItem: SettingsMenuItem | null =
+    updateBridge && updateStatus
+      ? {
+          key: 'checkUpdate',
+          icon: 'common/refresh',
+          label: t('common:user_settings.check_update'),
+          hint: updateHint(updateStatus),
+          hintTone: updateHintTone(updateStatus),
+          onClick: handleUpdateAction
+        }
+      : null;
 
   // 鲁港通 - 桌面客户端退出时先关闭内置浏览器并撤销设备注册，避免下一位登录者看到上一位的网页会话
   const handleLogout = useCallback(() => {
@@ -209,6 +281,8 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
           title: t('common:system_content.payment_privacy_policy')
         })
     },
+    // 鲁港通 - 仅桌面客户端：检查更新（状态文案显示在行右侧）
+    ...(updateMenuItem ? [updateMenuItem] : []),
     {
       key: 'logout',
       icon: 'core/chat/sidebar/logout',
@@ -229,6 +303,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
               <React.Fragment key={item.key}>
                 <Flex
                   alignItems="center"
+                  justify="space-between"
                   cursor="pointer"
                   _hover={{ bg: 'myGray.100' }}
                   py={3}
@@ -238,12 +313,29 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
                   onClick={item.onClick}
                   {...(item.key === 'logout' ? { color: 'red.500' } : {})}
                 >
-                  <Badge count={item.key === 'ticketFeedback' ? ticketUnread : 0} max={99}>
-                    <MyIcon name={item.icon} w="20px" h="20px" />
-                  </Badge>
-                  <Text fontSize="14px" fontWeight="500">
-                    {item.label}
-                  </Text>
+                  <Flex alignItems="center" gap={3} minW={0}>
+                    <Badge count={item.key === 'ticketFeedback' ? ticketUnread : 0} max={99}>
+                      <MyIcon name={item.icon} w="20px" h="20px" />
+                    </Badge>
+                    <Text fontSize="14px" fontWeight="500">
+                      {item.label}
+                    </Text>
+                  </Flex>
+                  {item.hint && (
+                    <Text
+                      fontSize="12px"
+                      textAlign="right"
+                      color={
+                        item.hintTone === 'danger'
+                          ? 'red.500'
+                          : item.hintTone === 'info'
+                            ? 'blue.500'
+                            : 'myGray.500'
+                      }
+                    >
+                      {item.hint}
+                    </Text>
+                  )}
                 </Flex>
 
                 {/* 鲁港通 - 语言项展开时内联官方语言列表（复用 LanguageMenuItems，无需嵌套弹窗） */}

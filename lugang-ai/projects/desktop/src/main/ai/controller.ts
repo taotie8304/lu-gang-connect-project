@@ -11,6 +11,7 @@ import {
   type AiDocumentConfirmer,
   type AiDocumentEditor,
   type AiDocumentOpener,
+  type AiDocumentPreviewer,
   type AiFileGenerator,
   type AiFilePicker,
   type AiFormConfirmer,
@@ -55,6 +56,7 @@ export type AiControllerOptions = {
   openDocument?: AiDocumentOpener;
   editDocument?: AiDocumentEditor;
   confirmDocument?: AiDocumentConfirmer;
+  previewDocument?: AiDocumentPreviewer;
   now?: () => number;
   idleMs?: number;
 };
@@ -118,7 +120,8 @@ export class AiController {
       confirmForm: options.confirmForm,
       openDocument: options.openDocument,
       editDocument: options.editDocument,
-      confirmDocument: options.confirmDocument
+      confirmDocument: options.confirmDocument,
+      previewDocument: options.previewDocument
     });
   }
 

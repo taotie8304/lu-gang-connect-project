@@ -34,7 +34,20 @@ export const IPC_CHANNELS = {
   windowToggleMaximize: 'lugang:window-toggle-maximize',
   windowIsMaximized: 'lugang:window-is-maximized',
   windowClose: 'lugang:window-close',
-  windowMaximizeChanged: 'lugang:window-maximize-changed'
+  windowMaximizeChanged: 'lugang:window-maximize-changed',
+  updateStatus: 'lugang:update-status',
+  updateCheck: 'lugang:update-check',
+  updateInstall: 'lugang:update-install',
+  updateStatusChanged: 'lugang:update-status-changed',
+  documentsOpenLocal: 'lugang:documents-open-local',
+  documentsList: 'lugang:documents-list',
+  documentsGet: 'lugang:documents-get',
+  documentsClaim: 'lugang:documents-claim',
+  documentsDecide: 'lugang:documents-decide',
+  documentsApplyAll: 'lugang:documents-apply-all',
+  documentsClose: 'lugang:documents-close',
+  documentsOpenCopy: 'lugang:documents-open-copy',
+  documentsChanged: 'lugang:documents-changed'
 } as const;
 
 export type DesktopTab = { id: number; title: string; url: string; current: boolean };
@@ -83,6 +96,110 @@ export type DesktopAiExecuteResponse = {
 /** 会话同步结果：只有 registered=true 表示设备已拿到令牌并开始接收指令 */
 export type DesktopSessionSyncResponse = {
   registered: boolean;
+};
+
+/** 自动更新状态：unsupported 只在开发环境出现，网页端据此决定是否显示入口 */
+export type DesktopUpdateState =
+  | 'unsupported'
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'downloading'
+  | 'downloaded'
+  | 'error';
+
+export type DesktopUpdateStatus = {
+  state: DesktopUpdateState;
+  currentVersion: string;
+  latestVersion?: string;
+};
+
+/** 鲁港通 - 文档预览：文件标签与右栏预览共用同一份快照结构 */
+export type DesktopDocumentFormat = 'docx' | 'xlsx' | 'pdf';
+
+export type DesktopDocumentPreviewState =
+  | 'pending'
+  | 'reviewing'
+  | 'finalizing'
+  | 'viewing'
+  | 'done'
+  | 'no_change'
+  | 'failed'
+  | 'declined'
+  | 'timeout';
+
+export type DesktopDocumentChangeStatus = 'pending' | 'applied' | 'skipped' | 'unavailable';
+
+export type DesktopDocumentMark = 'pending' | 'applied';
+
+export type DesktopDocumentChange = {
+  index: number;
+  target: string;
+  section?: string;
+  before: string;
+  after: string;
+  status: DesktopDocumentChangeStatus;
+  note?: string;
+};
+
+export type DesktopDocumentParagraphBlock = {
+  id: string;
+  kind: 'paragraph';
+  index: number;
+  text: string;
+  heading?: number;
+  originalText?: string;
+  mark?: DesktopDocumentMark;
+};
+
+export type DesktopDocumentTableCellMark = {
+  row: number;
+  cell: number;
+  mark: DesktopDocumentMark;
+  original: string;
+};
+
+export type DesktopDocumentTableBlock = {
+  id: string;
+  kind: 'table';
+  index: number;
+  rows: string[][];
+  mark?: DesktopDocumentMark;
+  cellMarks?: DesktopDocumentTableCellMark[];
+};
+
+export type DesktopDocumentBlock = DesktopDocumentParagraphBlock | DesktopDocumentTableBlock;
+
+export type DesktopDocumentSheet = {
+  name: string;
+  rowCount: number;
+  columnCount: number;
+  header: string[];
+  sampleRows: string[][];
+};
+
+export type DesktopDocumentSnapshot = {
+  token: string;
+  mode: 'review' | 'view';
+  format: DesktopDocumentFormat;
+  fileName: string;
+  state: DesktopDocumentPreviewState;
+  changes: DesktopDocumentChange[];
+  blocks: DesktopDocumentBlock[];
+  sheets?: DesktopDocumentSheet[];
+  warnings: string[];
+  copy?: { name: string; folder: string };
+  message?: string;
+};
+
+export type DesktopDocumentSummary = {
+  token: string;
+  mode: 'review' | 'view';
+  format: DesktopDocumentFormat;
+  fileName: string;
+  state: DesktopDocumentPreviewState;
+  total: number;
+  decided: number;
 };
 
 export type { CssRect };
