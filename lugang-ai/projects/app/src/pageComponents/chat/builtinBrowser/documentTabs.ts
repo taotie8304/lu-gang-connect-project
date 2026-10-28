@@ -26,9 +26,11 @@ export const resolveActiveDocToken = (
   list: DesktopDocumentSummary[],
   current: string | null | undefined
 ): string | null => {
+  // 鲁港通 - 新的待审会话必须抢占激活，否则右栏停在上一轮结果上，模型拿不到这一轮确认
+  const pending = list.find((item) => item.mode === 'review' && item.state === 'pending');
+  if (pending && pending.token !== current) return pending.token;
   if (current && list.some((item) => item.token === current)) return current;
-  const review = list.find((item) => item.mode === 'review' && item.state === 'pending');
-  return review?.token ?? null;
+  return pending?.token ?? null;
 };
 
 export type PreviewDiffSegment = { kind: 'same' | 'removed' | 'added'; text: string };

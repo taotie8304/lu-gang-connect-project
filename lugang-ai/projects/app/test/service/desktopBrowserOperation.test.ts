@@ -1065,6 +1065,9 @@ describe('desktop form filling', () => {
     expect(result.response).toContain('必填');
     expect(result.response).toContain('社团');
     expect(result.response).toContain('fill_form');
+    // 鲁港通 - 表单 token 必须回显给模型，否则 fill_form 永远拿不到有效 token
+    expect(result.response).toContain('表单 token：lgform_abc');
+    expect(result.response).toContain('立即');
   });
 
   it('warns the model when the field list was truncated', async () => {
@@ -1487,7 +1490,8 @@ describe('desktop document editing', () => {
 
     expect(description).toContain('右栏');
     expect(description).toContain('不要先让用户重新选择');
-    expect(description).toContain('PDF 只能读取');
+    expect(description).toContain('带表单域');
+    expect(description).toContain('普通或扫描版 PDF 只能读取');
   });
 
   it('reads the file opened in the right panel and keeps it editable', async () => {
@@ -1528,7 +1532,8 @@ describe('desktop document editing', () => {
 
     expect(result.response).toContain('2024年報稅表.pdf');
     expect(result.response).toContain('PDF');
-    expect(result.response).toContain('不能修改');
+    expect(result.response).toContain('open_form');
+    expect(result.response).toContain('另存为 Word 或 Excel');
     expect(result.response).not.toContain('edit_document');
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
   });

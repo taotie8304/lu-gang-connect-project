@@ -32,7 +32,8 @@ import type {
 } from '../../shared/ipc';
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
-const DEFAULT_CLAIM_TIMEOUT_MS = 2000;
+// 鲁港通 - 右栏网页端要先轮询到标签、再认领审阅，给足 15 秒，不再回退任何文字确认窗
+export const DEFAULT_CLAIM_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_SESSIONS = 3;
 // 鲁港通 - PDF 预览整份读入内存，超过上限的只走系统默认程序打开
 const DEFAULT_MAX_READ_BYTES = 40 * 1024 * 1024;
@@ -46,10 +47,10 @@ export type LocalPreviewInput =
   | { format: 'docx' | 'xlsx'; document: ParsedDocument }
   | { format: 'pdf'; name: string; path: string };
 
-/** 鲁港通 - 右栏当前显示的本机文件：Word/Excel 可继续修改，PDF 只读 */
+/** 鲁港通 - 右栏当前显示的本机文件：Word/Excel 可继续修改，PDF 只读但保留路径供读取 */
 export type ActiveViewDocument =
   | { format: 'docx' | 'xlsx'; fileName: string; document: ParsedDocument }
-  | { format: 'pdf'; fileName: string };
+  | { format: 'pdf'; fileName: string; path: string };
 
 export type DocumentPreviewOutcome =
   | { status: 'done'; copy: EditedDocumentCopy }
@@ -154,7 +155,7 @@ export class DocumentPreviewManager {
       this.evict();
       this.emitList();
 
-      // 鲁港通 - 网页端 2 秒内没有认领说明右栏没挂载，回退原确认窗避免卡住 AI
+      // 鲁港通 - 15 秒内没有认领说明右栏网页端没接上，直接判不可用，绝不另弹确认窗
       session.claimTimer = setTimeout(() => {
         if (session.state !== 'pending') return;
         session.state = 'declined';
@@ -244,7 +245,10 @@ export class DocumentPreviewManager {
     const session = this.activeToken ? this.sessions.get(this.activeToken) : undefined;
     if (!session || session.mode !== 'view' || session.state !== 'viewing') return undefined;
     const format = session.format;
-    if (format === 'pdf') return { format, fileName: session.fileName };
+    if (format === 'pdf') {
+      if (!session.sourcePath) return undefined;
+      return { format, fileName: session.fileName, path: session.sourcePath };
+    }
     if (!session.document) return undefined;
     return { format, fileName: session.fileName, document: session.document };
   };
@@ -373,7 +377,7 @@ export class DocumentPreviewManager {
       session.blocks = computePreviewBlocks(model, session.operations, session.changes);
       this.emitList();
     } catch {
-      // 鲁港通 - 文档过大或读取失败时不占用右栏，交回原确认窗处理
+      // 鲁港通 - 文档过大或读取失败时不占用右栏，按不可用结束，绝不另开文字确认窗
       if (session.state !== 'pending' && session.state !== 'reviewing') return;
       session.state = 'declined';
       this.finish(session, { status: 'unavailable' }, false);

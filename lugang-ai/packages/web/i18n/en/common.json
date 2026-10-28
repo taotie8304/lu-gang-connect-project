@@ -208,6 +208,7 @@
   "builtin_browser_doc_pdf_open_failed": "Couldn't open the file. Please try again.",
   "builtin_browser_doc_pdf_page_count": "{{total}} pages",
   "builtin_browser_doc_pdf_page_limit": "Preview shows the first {{shown}} of {{total}} pages; open it with the default app to see everything.",
+  "builtin_browser_doc_pdf_readonly_hint": "PDFs are view-only here. Form PDFs with input fields can be filled into a new copy by AI; scanned or plain PDFs need converting to Word or Excel first.",
   "builtin_browser_doc_pdf_unsupported": "This client version can't preview PDFs inline. Update the app or open the file with the default app.",
   "builtin_browser_doc_pick_failed": "No file was selected or it couldn't be read. Please try again.",
   "builtin_browser_doc_review_after": "After",

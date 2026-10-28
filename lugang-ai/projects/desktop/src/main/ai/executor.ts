@@ -9,7 +9,6 @@ import type {
   ParsedForm
 } from './form/types';
 import { toFormSummary } from './form/parse';
-import { DocumentEditError } from './document/editTypes';
 import type { EditedDocumentCopy } from './document/editTypes';
 import { DocumentParseError } from './document/types';
 import type { DocumentSummary, ParsedDocument } from './document/types';
@@ -57,6 +56,7 @@ export type AiActionErrorCode =
   | 'confirmation_timeout'
   | 'unsupported_action'
   | 'form_open_failed'
+  | 'form_not_fillable'
   | 'form_cancelled'
   | 'form_expired'
   | 'form_field_not_found'
@@ -68,6 +68,7 @@ export type AiActionErrorCode =
   | 'document_expired'
   | 'document_no_change'
   | 'document_edit_failed'
+  | 'document_preview_unavailable'
   | 'timeout'
   | 'page_error';
 
@@ -96,6 +97,9 @@ export type AiFilePicker = () => Promise<string | null>;
 
 /** 鲁港通 - 表单打开与回填：路径与字段定位只留在本机，不进入指令结果 */
 export type AiFormOpener = () => Promise<ParsedForm | null>;
+
+/** 鲁港通 - 右栏已经打开的现成文件直接按路径读取，不再让用户重新选一遍 */
+export type AiFormPathOpener = (path: string) => Promise<ParsedForm>;
 
 export type AiFormFiller = (input: {
   form: ParsedForm;
@@ -129,10 +133,10 @@ export type AiDocumentOpener = () => Promise<ParsedDocument | null>;
 /** 鲁港通 - 改完后重新解析副本，让模型拿着新 token 接着改，不用再让用户选文件 */
 export type AiDocumentReloader = (path: string) => Promise<ParsedDocument>;
 
-/** 鲁港通 - 右栏正在查看的本机文件：Word/Excel 可直接继续修改，PDF 只读 */
+/** 鲁港通 - 右栏正在查看的本机文件：Word/Excel 可直接继续修改，PDF 只读但可按路径读取表单域 */
 export type AiActiveDocument =
   | { format: 'docx' | 'xlsx'; fileName: string; document: ParsedDocument }
-  | { format: 'pdf'; fileName: string };
+  | { format: 'pdf'; fileName: string; path: string };
 
 export type AiActiveDocumentReader = () => AiActiveDocument | undefined;
 
@@ -141,28 +145,7 @@ export type AiDocumentInfo = Omit<DocumentSummary, 'format'> & {
   format: DocumentSummary['format'] | 'pdf';
 };
 
-export type AiDocumentEditor = (input: {
-  document: ParsedDocument;
-  operations: DocumentEditOperation[];
-}) => Promise<EditedDocumentCopy>;
-
-export type AiDocumentConfirmItem = { target: string; before?: string; after: string };
-
-export type AiDocumentConfirmRequest = {
-  fileName: string;
-  format: ParsedDocument['format'];
-  items: AiDocumentConfirmItem[];
-  total: number;
-  warnings: string[];
-};
-
-export type AiDocumentConfirmDecision = 'allow' | 'cancel' | 'timeout' | 'unavailable';
-
-export type AiDocumentConfirmer = ((
-  request: AiDocumentConfirmRequest
-) => Promise<AiDocumentConfirmDecision>) & { cancel?: () => void };
-
-/** 鲁港通 - 右栏预览：逐条确认后生成副本；unavailable 时回退原确认窗 */
+/** 鲁港通 - 右栏预览：用户只在源文件黄底标记里逐条确认后生成副本 */
 export type AiDocumentPreviewOutcome =
   | { status: 'done'; copy: EditedDocumentCopy }
   | { status: 'no_change' }
@@ -322,45 +305,6 @@ const MAX_FORM_TOKENS = 3;
 const MAX_FORM_CONFIRM_ITEMS = 50;
 const MAX_DOCUMENT_TOKENS = 3;
 
-// 鲁港通 - 把改动翻译成用户看得懂的确认清单条目
-const buildDocumentConfirmItems = (
-  document: ParsedDocument,
-  operations: DocumentEditOperation[]
-): AiDocumentConfirmItem[] =>
-  operations.map((operation) => {
-    switch (operation.op) {
-      case 'replace_text': {
-        const target = operation.paragraph !== undefined
-          ? `第 ${operation.paragraph + 1} 段`
-          : operation.sheet !== undefined
-            ? `工作表「${operation.sheet}」`
-            : '全篇';
-        return { target, before: operation.find, after: operation.replace };
-      }
-      case 'set_paragraph': {
-        const before = document.paragraphs?.[operation.paragraph]?.text;
-        return {
-          target: `第 ${operation.paragraph + 1} 段`,
-          ...(before !== undefined ? { before } : {}),
-          after: operation.text
-        };
-      }
-      case 'insert_paragraph':
-        return { target: `第 ${operation.after + 1} 段之后`, after: operation.text };
-      case 'append_paragraph':
-        return { target: '文末', after: operation.text };
-      case 'set_table_cell':
-        return {
-          target: `第 ${operation.table + 1} 张表 第 ${operation.row + 1} 行第 ${operation.cell + 1} 格`,
-          after: operation.text
-        };
-      case 'set_cell':
-        return { target: `工作表「${operation.sheet}」${operation.cell}`, after: operation.value };
-      default:
-        return { target: `工作表「${operation.sheet}」末尾`, after: operation.values.join(' | ') };
-    }
-  });
-
 const parseHttpUrl = (input: string): URL | null => {
   try {
     const url = new URL(input);
@@ -377,13 +321,12 @@ export class AiExecutor {
   private readonly pickFile?: AiFilePicker;
   private readonly confirm?: AiConfirmer;
   private readonly openForm?: AiFormOpener;
+  private readonly openFormAtPath?: AiFormPathOpener;
   private readonly fillForm?: AiFormFiller;
   private readonly confirmForm?: AiFormConfirmer;
   private readonly openDocument?: AiDocumentOpener;
   private readonly readActiveDocument?: AiActiveDocumentReader;
   private readonly reloadDocument?: AiDocumentReloader;
-  private readonly editDocument?: AiDocumentEditor;
-  private readonly confirmDocument?: AiDocumentConfirmer;
   private readonly previewDocument?: AiDocumentPreviewer;
   private readonly forms = new Map<string, ParsedForm>();
   private readonly documents = new Map<string, ParsedDocument>();
@@ -394,13 +337,12 @@ export class AiExecutor {
     pickFile?: AiFilePicker;
     confirm?: AiConfirmer;
     openForm?: AiFormOpener;
+    openFormAtPath?: AiFormPathOpener;
     fillForm?: AiFormFiller;
     confirmForm?: AiFormConfirmer;
     openDocument?: AiDocumentOpener;
     readActiveDocument?: AiActiveDocumentReader;
     reloadDocument?: AiDocumentReloader;
-    editDocument?: AiDocumentEditor;
-    confirmDocument?: AiDocumentConfirmer;
     previewDocument?: AiDocumentPreviewer;
   }) {
     this.driver = options.driver;
@@ -408,13 +350,12 @@ export class AiExecutor {
     this.pickFile = options.pickFile;
     this.confirm = options.confirm;
     this.openForm = options.openForm;
+    this.openFormAtPath = options.openFormAtPath;
     this.fillForm = options.fillForm;
     this.confirmForm = options.confirmForm;
     this.openDocument = options.openDocument;
     this.readActiveDocument = options.readActiveDocument;
     this.reloadDocument = options.reloadDocument;
-    this.editDocument = options.editDocument;
-    this.confirmDocument = options.confirmDocument;
     this.previewDocument = options.previewDocument;
   }
 
@@ -428,7 +369,6 @@ export class AiExecutor {
 
   cancelDocumentConfirmation = (): void => {
     this.previewDocument?.cancel?.();
-    this.confirmDocument?.cancel?.();
   };
 
   async execute(command: AiCommand): Promise<AiCommandResult> {
@@ -548,6 +488,25 @@ export class AiExecutor {
   }
 
   private async openFormLocally(): Promise<AiCommandResult> {
+    // 鲁港通 - 右栏已经打开文件时直接按该文件读取，不再弹没有上下文的选择窗口
+    const active = this.readActiveDocument?.();
+    const activePath =
+      active?.format === 'pdf' ? active.path : active?.document.path;
+    if (activePath && this.openFormAtPath) {
+      try {
+        return this.registerForm(await this.openFormAtPath(activePath));
+      } catch (error) {
+        // 鲁港通 - 右栏这份文件本身不是可填写表单时要直接说清楚，不能换个窗口再问一次
+        if (error instanceof FormParseError && error.code === 'form_not_fillable') {
+          return {
+            ok: false,
+            code: 'form_not_fillable',
+            message: `右栏的「${active?.fileName ?? '这份文件'}」${error.message}`
+          };
+        }
+      }
+    }
+
     if (!this.openForm) {
       return {
         ok: false,
@@ -562,7 +521,10 @@ export class AiExecutor {
     } catch (error) {
       return {
         ok: false,
-        code: 'form_open_failed',
+        code:
+          error instanceof FormParseError && error.code === 'form_not_fillable'
+            ? 'form_not_fillable'
+            : 'form_open_failed',
         message:
           error instanceof FormParseError
             ? error.message
@@ -577,6 +539,10 @@ export class AiExecutor {
       };
     }
 
+    return this.registerForm(form);
+  }
+
+  private registerForm(form: ParsedForm): AiCommandResult {
     const token = randomUUID();
     this.forms.set(token, form);
     // 鲁港通 - 只保留最近打开的几份表单，避免长期持有本机文件结构
@@ -835,118 +801,29 @@ export class AiExecutor {
       };
     }
 
-    // 鲁港通 - Word/Excel 都走右栏源文件预览 + 黄底差异逐条确认；右栏未挂载或读取失败时回退原确认窗
-    if (this.previewDocument) {
-      let outcome: AiDocumentPreviewOutcome;
-      try {
-        outcome = await this.previewDocument({
-          document,
-          operations: command.operations
-        });
-      } catch {
-        outcome = { status: 'unavailable' };
-      }
-
-      if (outcome.status === 'done') {
-        this.documents.delete(command.token);
-        const copy = outcome.copy;
-        return {
-          ok: true,
-          file: { name: copy.name, format: copy.format, folder: copy.folder },
-          edit: {
-            applied: copy.applied,
-            ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
-            ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
-          },
-          ...(await this.continueAfterEdit(copy))
-        };
-      }
-      if (outcome.status === 'no_change') {
-        return {
-          ok: false,
-          code: 'confirmation_declined',
-          message: '你把这轮修改都跳过了，没有生成副本，原文件也没有变化。需要调整时请告诉我。'
-        };
-      }
-      if (outcome.status === 'declined') {
-        return {
-          ok: false,
-          code: 'confirmation_declined',
-          message: '你取消了这次修改，没有生成任何副本。需要继续时请告诉我。'
-        };
-      }
-      if (outcome.status === 'timeout') {
-        return {
-          ok: false,
-          code: 'confirmation_timeout',
-          message: '等待修改确认超时，已取消这次修改，没有生成任何副本。需要继续时请告诉我。'
-        };
-      }
-      if (outcome.status === 'failed') {
-        return {
-          ok: false,
-          code: 'document_edit_failed',
-          message: outcome.message
-        };
-      }
-    }
-
-    if (!this.confirmDocument) {
+    // 鲁港通 - 修改只能在右栏源文件预览里确认，不存在第二套确认或写盘路径
+    if (!this.previewDocument) {
       return {
         ok: false,
-        code: 'confirmation_unavailable',
-        message: '当前客户端无法弹出修改确认框，还没有写入任何内容。请升级到最新版本后再试。'
+        code: 'document_preview_unavailable',
+        message:
+          '当前客户端版本还没有接入右栏文件预览，无法确认这次修改，也没有写入任何内容。请升级到最新版桌面客户端后重试。'
       };
     }
 
-    // 鲁港通 - 生成副本前先展示每一条改动，确认框只传摘要不传本机路径
-    const items = buildDocumentConfirmItems(document, command.operations);
-    let decision: AiDocumentConfirmDecision;
+    let outcome: AiDocumentPreviewOutcome;
     try {
-      decision = await this.confirmDocument({
-        fileName: document.name,
-        format: document.format,
-        items,
-        total: command.operations.length,
-        warnings: document.warnings ?? []
+      outcome = await this.previewDocument({
+        document,
+        operations: command.operations
       });
     } catch {
-      decision = 'unavailable';
+      outcome = { status: 'unavailable' };
     }
 
-    if (decision === 'cancel') {
-      return {
-        ok: false,
-        code: 'confirmation_declined',
-        message: '你取消了这次修改，没有生成任何副本。需要继续时请告诉我。'
-      };
-    }
-    if (decision === 'timeout') {
-      return {
-        ok: false,
-        code: 'confirmation_timeout',
-        message: '等待修改确认超时，已取消这次修改，没有生成任何副本。需要继续时请告诉我。'
-      };
-    }
-    if (decision === 'unavailable') {
-      return {
-        ok: false,
-        code: 'confirmation_unavailable',
-        message: '当前客户端无法弹出修改确认框，还没有写入任何内容。请升级到最新版本后再试。'
-      };
-    }
-
-    if (!this.editDocument) {
-      return {
-        ok: false,
-        code: 'document_edit_failed',
-        message: '当前客户端版本不支持修改本机文档，请升级到最新版本后重试。'
-      };
-    }
-
-    try {
-      const copy = await this.editDocument({ document, operations: command.operations });
+    if (outcome.status === 'done') {
       this.documents.delete(command.token);
+      const copy = outcome.copy;
       return {
         ok: true,
         file: { name: copy.name, format: copy.format, folder: copy.folder },
@@ -957,19 +834,41 @@ export class AiExecutor {
         },
         ...(await this.continueAfterEdit(copy))
       };
-    } catch (error) {
+    }
+    if (outcome.status === 'no_change') {
       return {
         ok: false,
-        code:
-          error instanceof DocumentEditError && error.code === 'document_no_change'
-            ? 'document_no_change'
-            : 'document_edit_failed',
-        message:
-          error instanceof DocumentEditError
-            ? error.message
-            : '修改副本没有生成成功，请重试一次；如果仍然失败，请手动修改原文档。'
+        code: 'confirmation_declined',
+        message: '你把这轮修改都跳过了，没有生成副本，原文件也没有变化。需要调整时请告诉我。'
       };
     }
+    if (outcome.status === 'declined') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: '你取消了这次修改，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (outcome.status === 'timeout') {
+      return {
+        ok: false,
+        code: 'confirmation_timeout',
+        message: '等待修改确认超时，已取消这次修改，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (outcome.status === 'failed') {
+      return {
+        ok: false,
+        code: 'document_edit_failed',
+        message: outcome.message
+      };
+    }
+    return {
+      ok: false,
+      code: 'document_preview_unavailable',
+      message:
+        '右栏没有接上这份文件的修改预览，已停止，没有生成副本，原文件也没有变化。请确认右栏打开的是这份文件后再试。'
+    };
   }
 
   private async upload(

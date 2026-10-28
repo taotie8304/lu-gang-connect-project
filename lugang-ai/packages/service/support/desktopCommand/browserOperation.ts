@@ -256,11 +256,17 @@ const FORM_FORMAT_LABELS: Record<DesktopFormSummary['format'], string> = {
 };
 
 /** open_form 只返回结构摘要，这里把它转成模型能直接照着填的字段清单 */
-const formatFormSummary = (form: DesktopFormSummary): string => {
+const formatFormSummary = (form: DesktopFormSummary, formToken?: string): string => {
   const lines: string[] = [];
   lines.push(
     `表单已读取：${form.name}（${FORM_FORMAT_LABELS[form.format]}）${form.title ? `，标题「${form.title}」` : ''}，共 ${form.fields.length} 个字段。`
   );
+  // 鲁港通 - 表单 token 必须回显给模型，否则 fill_form 永远拿不到有效 token
+  if (formToken) {
+    lines.push(
+      `表单 token：${formToken}。确认好填写内容后，立即用该 token 调 fill_form，不要重新用 open_form 打开，也不要让用户再选一次文件。`
+    );
+  }
 
   if (form.fields.length > 0) {
     lines.push('可填写字段（fill_form 时用字段 id）：');
@@ -286,7 +292,7 @@ const formatFormSummary = (form: DesktopFormSummary): string => {
     lines.push(`提示：${form.warnings.join('；')}`);
   }
   lines.push(
-    '下一步：结合用户资料和办理要求，用 fill_form 按字段 id 填写；资料不全或没有把握的字段留空，并告诉用户还需要补充什么，不要编造证件号、电话、地址等个人信息。'
+    '下一步：结合用户资料和办理要求，立即用 fill_form 按字段 id 填写（token 用上面给出的表单 token）；不要先反问或等用户再次确认，右栏的填写清单就是确认环节。资料不全或没有把握的字段留空，并告诉用户还需要补充什么，不要编造证件号、电话、地址等个人信息。'
   );
 
   return lines.join('\n');
@@ -612,11 +618,12 @@ const formatDocumentSummary = (
       ? `右栏打开的文件已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`
       : `文档已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`;
 
-  // 鲁港通 - PDF 只能读，不能作为 edit_document 的修改目标
+  // 鲁港通 - PDF 不能在原位修改：带输入框的走 fill_form，普通/扫描版只能读
   if (document.format === 'pdf') {
     return [
       heading,
-      'PDF 只能读取，不能修改。需要修改时，请让用户先把文件另存为 Word 或 Excel，再用 open_document 打开。'
+      'PDF 不能在原位修改：带表单域的表单 PDF，请直接用 open_form 读取（右栏已打开时会直接读这份文件，不会再让用户选文件），再按字段 id 用 fill_form 生成已填写的副本；普通或扫描版 PDF 只能读取、不能填写也不能修改，需要改动时请让用户把内容另存为 Word 或 Excel，再用 open_document 打开。',
+      '不要因为 PDF 读取成功就承诺「已经修改」，也不要让用户再选一次同一份文件。'
     ].join('\n');
   }
 
@@ -744,11 +751,13 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
     case 'unsupported_action':
       return '当前桌面客户端版本不支持这个操作。请让用户把客户端升级到最新版本后再试，不要重复调用。';
     case 'form_open_failed':
-      return '表单文件没有读取成功。请让用户确认文件能正常打开（支持 Word、Excel 和可填写 PDF，扫描件和图片 PDF 不支持）后重新选择。';
+      return '表单文件没有读取成功。请让用户确认文件能正常打开（支持 Word、Excel 和带输入框的表单 PDF，扫描件和普通 PDF 不能填写）后重新读取。';
+    case 'form_not_fillable':
+      return '这份文件没有可填写的表单域：扫描版或普通 PDF 只能读取、不能填写。请不要重复调用 open_form 或 fill_form，直接告诉用户这份文件无法直接填写，请用户换一份带输入框的表单 PDF，或提供 Word、Excel 格式的表单后再继续；如果用户只是要修改内容，可以改用 open_document + edit_document 处理 Word、Excel 文件。';
     case 'form_cancelled':
       return '用户取消了选择表单，本次没有填写任何内容。请不要重试；等用户准备好表单并明确要求后再继续。';
     case 'form_expired':
-      return '这份表单已经失效（可能已经填写过，或上一次读取已经过期）。请重新用 open_form 让用户选择同一份表单，再按返回的新字段清单填写。';
+      return '这份表单已经失效（可能已经填写过，或上一次读取已经过期）。请重新用 open_form 读取同一份表单：右栏已经打开这个文件时会直接读取它，不会再让用户选文件；拿到新的字段清单和表单 token 后立即提交 fill_form。';
     case 'form_field_blocked':
       return '表单里有密码、验证码或银行卡类字段，这类信息必须由用户本人填写，本次没有生成副本。请让用户手动填写这些字段。';
     case 'form_field_not_found':
@@ -759,8 +768,10 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
       return '这台电脑缺少填写 PDF 需要的中文字体，副本没有生成。请让用户手动填写这份 PDF，或改用 Word、Excel 格式的表单。';
     case 'desktop_upgrade_required':
       return '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试，升级前不要改用其他方式自行改写用户文件。';
+    case 'document_preview_unavailable':
+      return '右栏没有接上这份文件的修改预览，本次没有生成副本，原文件也没有变化。请让用户确认右栏打开的就是这份文件后再调用 edit_document；如果仍然接不上，请让用户把桌面客户端升级到最新版后重启再试，不要改为让用户手动修改。';
     case 'document_open_failed':
-      return '这份文档没有读取成功。请让用户确认文件能正常打开（目前支持 Word .docx 与 Excel .xlsx）后重新用 open_document 选择。';
+      return '这份文档没有读取成功。请让用户确认文件能正常打开（目前支持 Word .docx 与 Excel .xlsx）后重新读取；PDF 不能作为编辑目标，带输入框的表单 PDF 请改用 open_form + fill_form。';
     case 'document_cancelled':
       return '用户取消了选择文档，本次没有做任何修改。请不要重试；等用户准备好文件并明确要求后再继续。';
     case 'document_expired':
@@ -1158,7 +1169,7 @@ export const createDesktopBrowserOperationExecutor = ({
           : '';
     const formNote =
       result.form && action === 'open_form'
-        ? formatFormSummary(result.form)
+        ? formatFormSummary(result.form, result.formToken)
         : result.fill && result.file && action === 'fill_form'
           ? formatFillResult(result.file, result.fill)
           : '';

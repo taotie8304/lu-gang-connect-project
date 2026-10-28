@@ -9,8 +9,6 @@ import {
   type AiActiveDocumentReader,
   type AiCommandResult,
   type AiConfirmer,
-  type AiDocumentConfirmer,
-  type AiDocumentEditor,
   type AiDocumentOpener,
   type AiDocumentPreviewer,
   type AiDocumentReloader,
@@ -19,6 +17,7 @@ import {
   type AiFormConfirmer,
   type AiFormFiller,
   type AiFormOpener,
+  type AiFormPathOpener,
   type AiPageDriver
 } from './executor';
 import {
@@ -68,13 +67,12 @@ export type AiControllerOptions = {
   pickFile?: AiFilePicker;
   confirm?: AiConfirmer;
   openForm?: AiFormOpener;
+  openFormAtPath?: AiFormPathOpener;
   fillForm?: AiFormFiller;
   confirmForm?: AiFormConfirmer;
   openDocument?: AiDocumentOpener;
   readActiveDocument?: AiActiveDocumentReader;
   reloadDocument?: AiDocumentReloader;
-  editDocument?: AiDocumentEditor;
-  confirmDocument?: AiDocumentConfirmer;
   previewDocument?: AiDocumentPreviewer;
   hasLocalDocuments?: () => boolean;
   actionTimeoutMs?: number;
@@ -147,13 +145,12 @@ export class AiController {
       pickFile: options.pickFile,
       confirm: options.confirm,
       openForm: options.openForm,
+      openFormAtPath: options.openFormAtPath,
       fillForm: options.fillForm,
       confirmForm: options.confirmForm,
       openDocument: options.openDocument,
       readActiveDocument: options.readActiveDocument,
       reloadDocument: options.reloadDocument,
-      editDocument: options.editDocument,
-      confirmDocument: options.confirmDocument,
       previewDocument: options.previewDocument
     });
   }

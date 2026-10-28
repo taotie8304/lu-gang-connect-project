@@ -208,6 +208,7 @@
   "builtin_browser_doc_pdf_open_failed": "檔案沒有開啟，請重試一次",
   "builtin_browser_doc_pdf_page_count": "共 {{total}} 頁",
   "builtin_browser_doc_pdf_page_limit": "預覽顯示前 {{shown}} 頁，共 {{total}} 頁；要查看全部內容請用系統預設程式開啟。",
+  "builtin_browser_doc_pdf_readonly_hint": "PDF 在這裡只能查看、不能直接修改：帶輸入框的表單 PDF 可以讓 AI 生成已填寫的副本；掃描版或普通 PDF 請先轉成 Word 或 Excel。",
   "builtin_browser_doc_pdf_unsupported": "目前客戶端版本暫不支援頁內預覽，請升級到最新版，或用系統預設程式開啟。",
   "builtin_browser_doc_pick_failed": "檔案沒有選取或讀取失敗，請重試一次",
   "builtin_browser_doc_review_after": "修改後",

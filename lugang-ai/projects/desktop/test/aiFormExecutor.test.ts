@@ -119,7 +119,7 @@ describe('表单动作：打开本机表单', () => {
     expect(JSON.stringify(result)).not.toContain('C:\\\\Users');
   });
 
-  it('文件读不出来时透出可操作的中文说明', async () => {
+  it('选中的文件不可填写时透出可操作的中文说明', async () => {
     const executor = new AiExecutor({
       driver: createDriver(),
       openForm: async () => {
@@ -131,7 +131,7 @@ describe('表单动作：打开本机表单', () => {
     });
     const result = await executor.execute({ action: 'open_form' });
 
-    expect(result).toMatchObject({ ok: false, code: 'form_open_failed' });
+    expect(result).toMatchObject({ ok: false, code: 'form_not_fillable' });
     expect(result.message).toContain('可填写的空白位置');
   });
 
@@ -382,5 +382,99 @@ describe('表单动作：填写前确认与生成副本', () => {
 
     expect(result).toMatchObject({ ok: false, code: 'pdf_font_missing' });
     expect(result.message).toContain('中文字体');
+  });
+});
+
+describe('表单动作：优先读取右栏已打开的文件', () => {
+  it('右栏是可填写 PDF 时直接按该文件读取，不再弹选择窗口', async () => {
+    const opener = vi.fn(async () => makeForm());
+    const openFormAtPath = vi.fn(async () => makeForm());
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openForm: opener,
+      openFormAtPath,
+      readActiveDocument: () => ({
+        format: 'pdf',
+        fileName: '慈善组织申请表.pdf',
+        path: 'C:\\Users\\tester\\Desktop\\慈善组织申请表.pdf'
+      })
+    });
+
+    const result = await executor.execute({ action: 'open_form' });
+
+    expect(openFormAtPath).toHaveBeenCalledWith('C:\\Users\\tester\\Desktop\\慈善组织申请表.pdf');
+    expect(opener).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.formToken).toBeTruthy();
+    expect(JSON.stringify(result)).not.toContain('C:\\\\Users');
+  });
+
+  it('右栏是 Excel 时同样直接读取', async () => {
+    const opener = vi.fn(async () => makeForm());
+    const openFormAtPath = vi.fn(async () => ({ ...makeForm(), format: 'xlsx' as const }));
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openForm: opener,
+      openFormAtPath,
+      readActiveDocument: () => ({
+        format: 'xlsx',
+        fileName: '预算表.xlsx',
+        document: {
+          format: 'xlsx',
+          name: '预算表.xlsx',
+          path: 'C:\\Users\\tester\\Desktop\\预算表.xlsx'
+        }
+      })
+    });
+
+    const result = await executor.execute({ action: 'open_form' });
+
+    expect(openFormAtPath).toHaveBeenCalledWith('C:\\Users\\tester\\Desktop\\预算表.xlsx');
+    expect(opener).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+  });
+
+  it('右栏文件不是可填写表单时直接说明原因，不再弹选择窗口', async () => {
+    const opener = vi.fn(async () => makeForm());
+    const openFormAtPath = vi.fn(async () => {
+      throw new FormParseError(
+        'form_not_fillable',
+        '这个 PDF 没有可填写的表单域，可能是扫描件或普通 PDF；请选择可填写（带输入框）的 PDF。'
+      );
+    });
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openForm: opener,
+      openFormAtPath,
+      readActiveDocument: () => ({
+        format: 'pdf',
+        fileName: '出行人员信息收集.pdf',
+        path: 'C:\\Users\\tester\\Desktop\\出行人员信息收集.pdf'
+      })
+    });
+
+    const result = await executor.execute({ action: 'open_form' });
+
+    expect(openFormAtPath).toHaveBeenCalledTimes(1);
+    expect(opener).not.toHaveBeenCalled();
+    expect(result).toMatchObject({ ok: false, code: 'form_not_fillable' });
+    expect(result.message).toContain('出行人员信息收集.pdf');
+  });
+
+  it('右栏没有打开文件时仍走选择窗口', async () => {
+    const opener = vi.fn(async () => makeForm());
+    const openFormAtPath = vi.fn(async () => makeForm());
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openForm: opener,
+      openFormAtPath,
+      readActiveDocument: () => undefined
+    });
+
+    const result = await executor.execute({ action: 'open_form' });
+
+    expect(openFormAtPath).not.toHaveBeenCalled();
+    expect(opener).toHaveBeenCalledTimes(1);
+    expect(result.ok).toBe(true);
   });
 });

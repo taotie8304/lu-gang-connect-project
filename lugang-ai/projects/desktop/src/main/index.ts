@@ -18,7 +18,6 @@ import { createWindowControls } from './windowChrome';
 import { createAiAuditStore } from './ai/auditWriter';
 import { CdpPageDriver } from './ai/cdpDriver';
 import { createAiConfirmer } from './ai/confirmDialog';
-import { createAiDocumentConfirmer } from './ai/documentConfirm';
 import { createAiFormConfirmer } from './ai/formConfirm';
 import { AiController } from './ai/controller';
 import type { AiDocumentPreviewer } from './ai/executor';
@@ -235,6 +234,8 @@ if (!gotLock) {
           if (!picked) return null;
           return parseFormFile(picked);
         },
+        // 鲁港通 - 右栏已经打开文件时按该文件路径直接读取，不再弹选择窗口
+        openFormAtPath: parseFormFile,
         fillForm: async ({ form, values }) => {
           const copy = await fillFormCopy({
             form,
@@ -259,13 +260,7 @@ if (!gotLock) {
           if (!picked) return null;
           return parseDocumentFile(picked);
         },
-        editDocument: editDocumentCopy,
-        confirmDocument: createAiDocumentConfirmer({
-          getParentWindow: () => mainWindow,
-          preloadPath: join(__dirname, '../preload/documentConfirm.cjs'),
-          rendererDir
-        }),
-        // 鲁港通 - 右栏挂载时走结构化预览，2 秒未认领自动回退上面的原生确认窗
+        // 鲁港通 - 修改只能在右栏源文件预览里逐条确认，没有第二套文字确认窗
         previewDocument,
         // 鲁港通 - 供读取失败时区分「右栏是文件」与「右栏没有网页」
         hasLocalDocuments: () => documents.list().length > 0,

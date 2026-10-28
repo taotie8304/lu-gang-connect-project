@@ -96,6 +96,42 @@ describe('resolveActiveDocToken', () => {
     ).toBe('review');
   });
 
+  it('上一轮审阅已完成后，新的待审会话必须抢占激活', () => {
+    expect(
+      resolveActiveDocToken(
+        [
+          summary({ token: 'done', mode: 'review', state: 'done', total: 2, decided: 2 }),
+          summary({ token: 'next', mode: 'review', state: 'pending', total: 3 })
+        ],
+        'done'
+      )
+    ).toBe('next');
+  });
+
+  it('用户正在查看文件时，新的待审会话同样抢占激活', () => {
+    expect(
+      resolveActiveDocToken(
+        [
+          summary({ token: 'view', mode: 'view', state: 'viewing' }),
+          summary({ token: 'review', mode: 'review', state: 'pending', total: 1 })
+        ],
+        'view'
+      )
+    ).toBe('review');
+  });
+
+  it('当前就是待审会话时保持不变，避免认领过程中来回切换', () => {
+    expect(
+      resolveActiveDocToken(
+        [
+          summary({ token: 'first', mode: 'review', state: 'pending', total: 1 }),
+          summary({ token: 'second', mode: 'review', state: 'pending', total: 1 })
+        ],
+        'first'
+      )
+    ).toBe('first');
+  });
+
   it('没有待审会话且当前失效时回到空', () => {
     expect(resolveActiveDocToken([summary({ token: 'view' })], 'closed')).toBeNull();
     expect(resolveActiveDocToken([], undefined)).toBeNull();

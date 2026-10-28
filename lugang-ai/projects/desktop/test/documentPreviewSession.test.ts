@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EditedDocumentCopy } from '../src/main/ai/document/editTypes';
 import type { ParsedDocument } from '../src/main/ai/document/types';
 import {
+  DEFAULT_CLAIM_TIMEOUT_MS,
   DocumentPreviewManager,
   type LocalPreviewInput,
   type PreviewEditor
@@ -113,7 +114,7 @@ const createManager = async (
     ...(options.openCopy ? { openCopy: options.openCopy } : {}),
     emit: (list) => emitted.push(list),
     timeoutMs: options.timeoutMs ?? 2000,
-    claimTimeoutMs: options.claimTimeoutMs ?? 2000,
+    ...(options.claimTimeoutMs !== undefined ? { claimTimeoutMs: options.claimTimeoutMs } : {}),
     ...(options.maxSessions !== undefined ? { maxSessions: options.maxSessions } : {}),
     ...(options.maxReadBytes !== undefined ? { maxReadBytes: options.maxReadBytes } : {})
   });
@@ -127,7 +128,11 @@ const waitForChanges = async (manager: DocumentPreviewManager, token: string, co
 };
 
 describe('预览会话：认领与逐条处理', () => {
-  it('未在认领时限内认领时回退确认窗，不生成副本', async () => {
+  it('认领窗口默认给右栏 15 秒，不再按 2 秒仓促放弃', () => {
+    expect(DEFAULT_CLAIM_TIMEOUT_MS).toBe(15000);
+  });
+
+  it('未在认领时限内认领时返回 unavailable 且不生成副本', async () => {
     await withTempDir(async (dir) => {
       const editor = createEditor();
       const { manager, document } = await createManager(dir, { editor, claimTimeoutMs: 20 });
@@ -537,7 +542,7 @@ describe('预览会话：右栏活动文件', () => {
     });
   });
 
-  it('活动 PDF 只返回名称与只读格式，不暴露本机路径', async () => {
+  it('活动 PDF 返回名称、只读格式与主进程内部路径，渲染层快照不含路径', async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, '申请须知.pdf');
       await writeFile(path, 'PDF-BYTES');
@@ -549,8 +554,10 @@ describe('预览会话：右栏活动文件', () => {
 
       const active = manager.readActiveDocument();
 
-      expect(active).toEqual({ format: 'pdf', fileName: '申请须知.pdf' });
-      expect(JSON.stringify(active)).not.toContain(dir);
+      // 鲁港通 - 路径只在主进程内用于「按右栏文件读取可填写表单」，不进渲染层
+      expect(active).toEqual({ format: 'pdf', fileName: '申请须知.pdf', path });
+      expect(JSON.stringify(snapshot)).not.toContain(dir);
+      expect(JSON.stringify(manager.list())).not.toContain(dir);
     });
   });
 

@@ -753,7 +753,11 @@ describe('AI 桌面控制器 · 卡死自愈与读取边界', () => {
       browser,
       driver: harness.driver,
       hasLocalDocuments: () => true,
-      readActiveDocument: () => ({ format: 'pdf', fileName: '申请须知.pdf' })
+      readActiveDocument: () => ({
+        format: 'pdf',
+        fileName: '申请须知.pdf',
+        path: 'C:\\Users\\tester\\Desktop\\申请须知.pdf'
+      })
     });
 
     const result = await controller.execute({ action: 'read' });

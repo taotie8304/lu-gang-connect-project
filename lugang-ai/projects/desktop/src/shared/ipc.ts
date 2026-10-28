@@ -28,8 +28,6 @@ export const IPC_CHANNELS = {
   confirmDecision: 'lugang:confirm-decision',
   formConfirmDecision: 'lugang:form-confirm-decision',
   formConfirmPayload: 'lugang:form-confirm-payload',
-  documentConfirmDecision: 'lugang:document-confirm-decision',
-  documentConfirmPayload: 'lugang:document-confirm-payload',
   windowMinimize: 'lugang:window-minimize',
   windowToggleMaximize: 'lugang:window-toggle-maximize',
   windowIsMaximized: 'lugang:window-is-maximized',

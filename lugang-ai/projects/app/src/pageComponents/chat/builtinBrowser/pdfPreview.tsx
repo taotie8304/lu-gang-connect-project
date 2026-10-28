@@ -180,6 +180,8 @@ const PdfPreview = ({
           total: totalPages
         })
       : '';
+  // 鲁港通 - PDF 不支持原地修改，右栏必须直接说清边界，避免用户以为 AI 能改 PDF
+  const readonlyHint = t('common:builtin_browser_doc_pdf_readonly_hint' as any);
 
   return (
     <Box ref={containerRef} maxW={'820px'} mx={'auto'}>
@@ -211,6 +213,23 @@ const PdfPreview = ({
           </Button>
         )}
       </Flex>
+
+      {readonlyHint && (
+        <Text
+          mb={'8px'}
+          px={'9px'}
+          py={'6px'}
+          borderRadius={'5px'}
+          border={'1px solid'}
+          borderColor={LG.line}
+          bg={LG.paleSoft}
+          color={LG.muted}
+          fontSize={'10px'}
+          lineHeight={'1.6'}
+        >
+          {readonlyHint}
+        </Text>
+      )}
 
       {limitText && (
         <Text

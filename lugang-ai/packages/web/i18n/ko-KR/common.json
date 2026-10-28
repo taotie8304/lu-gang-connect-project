@@ -208,6 +208,7 @@
   "builtin_browser_doc_pdf_open_failed": "파일을 열지 못했습니다. 다시 시도해 주세요.",
   "builtin_browser_doc_pdf_page_count": "총 {{total}}페이지",
   "builtin_browser_doc_pdf_page_limit": "미리보기는 전체 {{total}}페이지 중 처음 {{shown}}페이지를 표시합니다. 전체 내용은 기본 프로그램으로 열어 확인하세요.",
+  "builtin_browser_doc_pdf_readonly_hint": "PDF는 여기서 보기만 가능하며 직접 수정할 수 없습니다. 입력란이 있는 양식 PDF는 AI가 작성된 사본을 만들 수 있고, 스캔본이나 일반 PDF는 먼저 Word/Excel로 변환해야 합니다.",
   "builtin_browser_doc_pdf_unsupported": "현재 클라이언트 버전은 페이지 내 미리보기를 지원하지 않습니다. 최신 버전으로 업데이트하거나 기본 프로그램으로 여세요.",
   "builtin_browser_doc_pick_failed": "파일이 선택되지 않았거나 읽지 못했습니다. 다시 시도해 주세요.",
   "builtin_browser_doc_review_after": "변경 후",

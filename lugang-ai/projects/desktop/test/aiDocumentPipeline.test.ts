@@ -18,11 +18,10 @@ import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import {
   AiExecutor,
-  type AiDocumentConfirmer,
-  type AiDocumentConfirmRequest,
   type AiFileInputState,
   type AiPageDriver
 } from '../src/main/ai/executor';
+import { DocumentPreviewManager } from '../src/main/ai/documentPreview';
 import { editDocxCopy } from '../src/main/ai/document/docxEdit';
 import { parseDocumentFile } from '../src/main/ai/document/parse';
 import { editXlsxCopy } from '../src/main/ai/document/xlsxEdit';
@@ -65,27 +64,46 @@ const createDriver = (): AiPageDriver => ({
   settle: async () => undefined
 });
 
-// 鲁港通 - 与主进程 index.ts 的接线保持一致：真实解析 + 真实副本编辑 + 确认窗
+const editCopy = (outputDir: string) => async ({
+  document,
+  operations
+}: {
+  document: Awaited<ReturnType<typeof parseDocumentFile>>;
+  operations: Parameters<typeof editDocxCopy>[0]['operations'];
+}) =>
+  document.format === 'docx'
+    ? editDocxCopy({ document, operations, outputDir })
+    : editXlsxCopy({ document, operations, outputDir });
+
+// 鲁港通 - 与主进程 index.ts 的接线保持一致：真实解析 + 真实右栏预览会话 + 真实副本编辑
 const createPipeline = (
   sourcePath: string,
   outputDir: string,
   decision: 'allow' | 'cancel' = 'allow'
 ) => {
-  const confirmations: AiDocumentConfirmRequest[] = [];
-  const confirmer = (async (request: AiDocumentConfirmRequest) => {
-    confirmations.push(request);
-    return decision;
-  }) as AiDocumentConfirmer;
+  let manager: DocumentPreviewManager;
+  manager = new DocumentPreviewManager({
+    editDocument: editCopy(outputDir),
+    // 鲁港通 - 模拟网页端右栏：认领这一轮审阅，然后整轮应用或整轮取消
+    emit: (list) => {
+      for (const item of list) {
+        if (item.mode !== 'review' || item.state !== 'pending') continue;
+        if (decision === 'cancel') {
+          manager.close(item.token);
+          continue;
+        }
+        if (item.total === 0) continue;
+        manager.claim(item.token);
+        manager.applyAll(item.token);
+      }
+    }
+  });
   const executor = new AiExecutor({
     driver: createDriver(),
     openDocument: async () => parseDocumentFile(sourcePath),
-    editDocument: async ({ document, operations }) =>
-      document.format === 'docx'
-        ? editDocxCopy({ document, operations, outputDir })
-        : editXlsxCopy({ document, operations, outputDir }),
-    confirmDocument: confirmer
+    previewDocument: (input) => manager.preview(input)
   });
-  return { executor, confirmations };
+  return { executor, manager };
 };
 
 const writeDocx = async (path: string) => {
@@ -173,7 +191,7 @@ describe('文档修改全链：真实 Word 文件', () => {
       const outputDir = join(dir, 'out');
       await writeDocx(source);
       const before = await sha256(source);
-      const { executor, confirmations } = createPipeline(source, outputDir);
+      const { executor, manager } = createPipeline(source, outputDir);
 
       const opened = await executor.execute({ action: 'open_document' });
       expect(opened.ok).toBe(true);
@@ -196,15 +214,20 @@ describe('文档修改全链：真实 Word 文件', () => {
         ]
       });
 
-      expect(confirmations).toHaveLength(1);
-      expect(confirmations[0]).toMatchObject({ fileName: '申请须知.docx', format: 'docx', total: 4 });
-      expect(confirmations[0].items.map((item) => item.target)).toEqual([
+      // 鲁港通 - 用户只在右栏源文件预览里确认，不再有文字清单确认窗
+      const reviews = manager.list().filter((item) => item.mode === 'review');
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]).toMatchObject({ state: 'done', total: 4, decided: 4 });
+      const reviewed = manager.get(reviews[0].token);
+      expect(reviewed?.changes.map((item) => item.target)).toEqual([
         '第 2 段',
         '第 2 段之后',
         '文末',
         '第 1 张表 第 2 行第 2 格'
       ]);
-      expect(JSON.stringify(confirmations[0])).not.toContain(dir);
+      expect(reviewed?.changes.every((item) => item.status === 'applied')).toBe(true);
+      expect(reviewed?.blocks.length).toBeGreaterThan(0);
+      expect(JSON.stringify(reviewed)).not.toContain(dir);
 
       expect(result).toMatchObject({
         ok: true,
@@ -234,7 +257,7 @@ describe('文档修改全链：真实 Word 文件', () => {
       const outputDir = join(dir, 'out');
       await writeDocx(source);
       const before = await sha256(source);
-      const { executor } = createPipeline(source, outputDir, 'cancel');
+      const { executor, manager } = createPipeline(source, outputDir, 'cancel');
 
       const opened = await executor.execute({ action: 'open_document' });
       const result = await executor.execute({
@@ -244,6 +267,7 @@ describe('文档修改全链：真实 Word 文件', () => {
       });
 
       expect(result).toMatchObject({ ok: false, code: 'confirmation_declined' });
+      expect(manager.list().filter((item) => item.mode === 'review')).toHaveLength(0);
       expect(await listGeneratedFiles(outputDir)).toEqual([]);
       expect(await sha256(source)).toBe(before);
     });
@@ -257,7 +281,7 @@ describe('文档修改全链：真实 Excel 文件', () => {
       const outputDir = join(dir, 'out');
       await writeXlsx(source);
       const before = await sha256(source);
-      const { executor, confirmations } = createPipeline(source, outputDir);
+      const { executor, manager } = createPipeline(source, outputDir);
 
       const opened = await executor.execute({ action: 'open_document' });
       expect(opened.ok).toBe(true);
@@ -274,13 +298,19 @@ describe('文档修改全链：真实 Excel 文件', () => {
         ]
       });
 
-      expect(confirmations).toHaveLength(1);
-      expect(confirmations[0]).toMatchObject({ fileName: '成绩表.xlsx', format: 'xlsx', total: 3 });
-      expect(confirmations[0].items.map((item) => item.target)).toEqual([
+      // 鲁港通 - 用户只在右栏源文件预览里确认，不再有文字清单确认窗
+      const reviews = manager.list().filter((item) => item.mode === 'review');
+      expect(reviews).toHaveLength(1);
+      expect(reviews[0]).toMatchObject({ state: 'done', total: 3, decided: 3 });
+      const reviewed = manager.get(reviews[0].token);
+      expect(reviewed?.changes.map((item) => item.target)).toEqual([
         '工作表「名单」B2',
-        '工作表「名单」末尾',
-        '工作表「说明」'
+        '工作表「名单」新增第 4 行',
+        '工作表「说明」共 1 处'
       ]);
+      expect(reviewed?.changes.every((item) => item.status === 'applied')).toBe(true);
+      expect(reviewed?.sheets?.length).toBeGreaterThan(0);
+      expect(JSON.stringify(reviewed)).not.toContain(dir);
 
       expect(result).toMatchObject({
         ok: true,
