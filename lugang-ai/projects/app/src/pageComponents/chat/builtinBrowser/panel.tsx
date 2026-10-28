@@ -1158,7 +1158,9 @@ const BuiltinBrowserPanelBody = ({
               onApplyAll={() => void handleApplyAllDoc()}
               onOpenCopy={() => void handleOpenCopyDoc()}
               readBytes={documents?.read}
-              onOpenExternal={() => void handleOpenExternalDoc()}
+              onOpenExternal={
+                documents?.openExternal ? () => void handleOpenExternalDoc() : undefined
+              }
             />
           ) : (
             <Flex
