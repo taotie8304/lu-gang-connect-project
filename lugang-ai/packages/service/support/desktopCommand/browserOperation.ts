@@ -329,6 +329,9 @@ const parseVersion = (input?: string): number[] | undefined => {
   return nums;
 };
 
+export const isDesktopDocumentAction = (action: string): boolean =>
+  action === 'open_document' || action === 'edit_document';
+
 export const isDesktopDocumentVersionSupported = (
   version: string | undefined,
   minimum: string = DESKTOP_DOCUMENT_MIN_VERSION
@@ -341,6 +344,213 @@ export const isDesktopDocumentVersionSupported = (
     if (current[index] < required[index]) return false;
   }
   return true;
+};
+
+// 鲁港通 - 桌面端会整条丢弃校验失败的修改：下发前把模型常见写法归一化，并明确指出哪一项不合法
+type NormalizedEditOperation = Record<string, unknown> & { op: string };
+
+type EditOperationNormalizeResult =
+  | { ok: true; operations: NormalizedEditOperation[] }
+  | { ok: false; message: string };
+
+const EDIT_OPERATION_NAMES =
+  'replace_text、set_paragraph、insert_paragraph、append_paragraph、set_table_cell、set_cell、append_row';
+
+const toEditIndex = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : undefined;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return undefined;
+};
+
+const editColumnLettersToIndex = (letters: string): number =>
+  letters
+    .toUpperCase()
+    .split('')
+    .reduce((total, character) => total * 26 + (character.charCodeAt(0) - 64), 0) - 1;
+
+const toEditColumn = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 && value <= 100 ? value : undefined;
+  }
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  const letters = /^[A-Za-z]+/.exec(trimmed)?.[0];
+  if (letters) {
+    const index = editColumnLettersToIndex(letters);
+    return index <= 100 ? index : undefined;
+  }
+  return /^\d+$/.test(trimmed) ? Number(trimmed) : undefined;
+};
+
+const toEditCell = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const match = /^([A-Za-z]{1,3})([1-9]\d{0,5})$/.exec(value.trim());
+  return match ? `${match[1].toUpperCase()}${match[2]}` : undefined;
+};
+
+const toEditText = (value: unknown): string | undefined => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'boolean') return String(value);
+  return undefined;
+};
+
+const toEditSheet = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const name = value.trim();
+  return name && name.length <= 31 ? name : undefined;
+};
+
+const normalizeEditDocumentOperations = (raw: unknown): EditOperationNormalizeResult => {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, message: `缺少 operations 修改清单，至少要有一条修改项（可用：${EDIT_OPERATION_NAMES}）` };
+  }
+  if (raw.length > 60) {
+    return { ok: false, message: '单次修改不能超过 60 条，请分次提交' };
+  }
+
+  const operations: NormalizedEditOperation[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const item = raw[index];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { ok: false, message: `operations.${index} 不是有效的修改项` };
+    }
+    const record = item as Record<string, unknown>;
+    const op = typeof record.op === 'string' ? record.op : '';
+    const label = `operations.${index}（${op || '缺少 op'}）`;
+
+    switch (op) {
+      case 'replace_text': {
+        const find = toEditText(record.find);
+        if (!find || !find.trim()) {
+          return { ok: false, message: `${label} 需要 find：要查找的原文，不能为空` };
+        }
+        const replace = toEditText(record.replace);
+        if (replace === undefined) {
+          return { ok: false, message: `${label} 需要 replace：替换后的文字，可以是空字符串` };
+        }
+        const operation: NormalizedEditOperation = { op, find, replace };
+        if (record.paragraph !== undefined) {
+          const paragraph = toEditIndex(record.paragraph);
+          if (paragraph === undefined) {
+            return { ok: false, message: `${label} 的 paragraph 需要是 0 开始的段落序号` };
+          }
+          operation.paragraph = paragraph;
+        }
+        if (record.sheet !== undefined) {
+          const sheet = toEditSheet(record.sheet);
+          if (!sheet) {
+            return { ok: false, message: `${label} 的 sheet 需要是工作表名称（最多 31 字）` };
+          }
+          operation.sheet = sheet;
+        }
+        if (operation.paragraph !== undefined && operation.sheet !== undefined) {
+          return { ok: false, message: `${label} 不能同时指定 paragraph 与 sheet` };
+        }
+        operations.push(operation);
+        break;
+      }
+      case 'set_paragraph': {
+        const paragraph = toEditIndex(record.paragraph);
+        if (paragraph === undefined) {
+          return { ok: false, message: `${label} 的 paragraph 需要是 0 开始的段落序号` };
+        }
+        const text = toEditText(record.text);
+        if (text === undefined) {
+          return { ok: false, message: `${label} 需要 text：改写后的段落文字` };
+        }
+        operations.push({ op, paragraph, text });
+        break;
+      }
+      case 'insert_paragraph': {
+        const after = toEditIndex(record.after);
+        if (after === undefined) {
+          return { ok: false, message: `${label} 的 after 需要是 0 开始的段落序号` };
+        }
+        const text = toEditText(record.text);
+        if (text === undefined) {
+          return { ok: false, message: `${label} 需要 text：要插入的段落文字` };
+        }
+        operations.push({ op, after, text });
+        break;
+      }
+      case 'append_paragraph': {
+        const text = toEditText(record.text);
+        if (text === undefined) {
+          return { ok: false, message: `${label} 需要 text：要追加的段落文字` };
+        }
+        operations.push({ op, text });
+        break;
+      }
+      case 'set_table_cell': {
+        const table = toEditIndex(record.table);
+        if (table === undefined) {
+          return { ok: false, message: `${label} 的 table 需要是 0 开始的表格序号` };
+        }
+        const row = toEditIndex(record.row);
+        if (row === undefined) {
+          return { ok: false, message: `${label} 的 row 需要是 0 开始的行号` };
+        }
+        const cell = toEditColumn(record.cell);
+        if (cell === undefined) {
+          return { ok: false, message: `${label} 的 cell 需要是 0 开始的列号或 B 这样的列字母` };
+        }
+        const text = toEditText(record.text);
+        if (text === undefined) {
+          return { ok: false, message: `${label} 需要 text：单元格要写入的文字` };
+        }
+        operations.push({ op, table, row, cell, text });
+        break;
+      }
+      case 'set_cell': {
+        const sheet = toEditSheet(record.sheet);
+        if (!sheet) {
+          return { ok: false, message: `${label} 的 sheet 需要是工作表名称（最多 31 字）` };
+        }
+        const cell = toEditCell(record.cell);
+        if (!cell) {
+          return { ok: false, message: `${label} 需要 cell：单元格地址要写成 B10 这样的格式` };
+        }
+        const value = toEditText(record.value);
+        if (value === undefined) {
+          return { ok: false, message: `${label} 需要 value：要写入单元格的内容` };
+        }
+        operations.push({ op, sheet, cell, value });
+        break;
+      }
+      case 'append_row': {
+        const sheet = toEditSheet(record.sheet);
+        if (!sheet) {
+          return { ok: false, message: `${label} 的 sheet 需要是工作表名称（最多 31 字）` };
+        }
+        if (!Array.isArray(record.values) || record.values.length === 0) {
+          return { ok: false, message: `${label} 需要 values：按列顺序给出这一行的内容` };
+        }
+        if (record.values.length > 50) {
+          return { ok: false, message: `${label} 的 values 不能超过 50 列` };
+        }
+        const values: string[] = [];
+        for (const cellValue of record.values) {
+          const text = toEditText(cellValue);
+          if (text === undefined) {
+            return { ok: false, message: `${label} 的 values 只能包含文字或数字` };
+          }
+          values.push(text);
+        }
+        operations.push({ op, sheet, values });
+        break;
+      }
+      default:
+        return {
+          ok: false,
+          message: `${label} 不是支持的修改方式（可用：${EDIT_OPERATION_NAMES}）`
+        };
+    }
+  }
+
+  return { ok: true, operations };
 };
 
 /** open_document 与 read 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
@@ -380,14 +590,19 @@ const formatDocumentSummary = (
     }
   }
   if (document.sheets?.length) {
-    lines.push('工作表：');
+    lines.push('工作表（单元格地址按工作表真实列字母与行号书写，例如 B11）：');
     for (const sheet of document.sheets) {
-      lines.push(
-        `- 「${sheet.name}」${sheet.rowCount} 行 ${sheet.columnCount} 列${sheet.header.length ? `，表头：${sheet.header.join(' | ')}` : ''}`
-      );
-      for (const row of sheet.sampleRows) {
-        lines.push(`  ${row.join(' | ')}`);
-      }
+      const headerRow = sheet.headerRow && sheet.headerRow > 0 ? sheet.headerRow : 1;
+      const headerNote = sheet.header.length
+        ? `，表头在第 ${headerRow} 行：${sheet.header.join(' | ')}`
+        : '';
+      lines.push(`- 「${sheet.name}」${sheet.rowCount} 行 ${sheet.columnCount} 列${headerNote}`);
+      const rowNumbers = sheet.sampleRowNumbers ?? sheet.sampleRows.map((_, index) => index + 2);
+      sheet.sampleRows.forEach((row, index) => {
+        const cells = [...row];
+        while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
+        lines.push(`  第 ${rowNumbers[index] ?? index + 2} 行：${cells.join(' | ')}`);
+      });
     }
   }
   if (document.paragraphsTruncated) {
@@ -400,7 +615,7 @@ const formatDocumentSummary = (
     lines.push(`提示：${document.warnings.join('；')}`);
   }
   lines.push(
-    '下一步：按用户要求用 edit_document 提交修改，token 用这次返回的值。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell）、工作表追加一行（append_row）。只写副本，原文件不会被改动；桌面客户端会先列出改动清单让用户确认。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。'
+    '下一步：直接按用户要求用 edit_document 提交修改，token 用这次返回的值；不要先反问，也不要等用户再次确认，右栏的改动清单就是修改前的确认环节，由用户确认后才会写入。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell，地址按真实行号与列字母书写）、工作表追加一行（append_row）。只写副本，原文件不会被改动。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。如果客户端指出参数问题，按提示修正后立即重新发送，不要改为让用户手动修改。'
   );
 
   return lines.join('\n');
@@ -483,6 +698,8 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
       return '文档里没有找到需要修改的内容，本次没有生成副本，原文件也没有变化。请重新用 open_document 读取文档，确认要修改的段落或文字后再试，不要反复重试。';
     case 'document_edit_failed':
       return '修改副本没有生成成功。请不要反复重试，改为让用户手动修改原文档；如果用户愿意，也可以换一份 Word 或 Excel 文件再试。';
+    case 'invalid_command':
+      return '桌面客户端没有接受这条指令，参数不符合要求。请按提示修正后立即重新发送，不要重复发送同一条指令，也不要改为让用户手动修改。';
     case 'confirmation_unavailable':
       return isFormFill
         ? '桌面客户端无法弹出填写确认框，本次没有写入任何内容。请不要重试，改为让用户自己填写原表单。'
@@ -691,7 +908,7 @@ export const createDesktopBrowserOperationExecutor = ({
     }
 
     // 鲁港通 - 文档修改依赖 0.6.0 起的桌面端，旧客户端直接引导升级而不是下发无法执行的指令
-    if (action === 'open_document' || action === 'edit_document') {
+    if (isDesktopDocumentAction(action)) {
       const appVersion = await store.getDeviceAppVersionByOwner(identity.tmbId);
       if (!isDesktopDocumentVersionSupported(appVersion)) {
         return finish({
@@ -707,7 +924,33 @@ export const createDesktopBrowserOperationExecutor = ({
     }
 
     let command: DesktopAiCommand;
-    if (action === 'wait') {
+    if (action === 'edit_document') {
+      // 鲁港通 - 先归一化再下发：桌面端整条丢弃的指令在这里就修正或明确指出来
+      const token = typeof args.token === 'string' ? args.token.trim() : '';
+      if (!token) {
+        return finish({
+          response:
+            '修改指令缺少 token。请先用 open_document 打开要修改的文档，再用返回的 token 立即重新发送 edit_document。',
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'invalid_args'
+        });
+      }
+      const normalized = normalizeEditDocumentOperations(args.operations);
+      if (!normalized.ok) {
+        return finish({
+          response: `这条修改指令格式不正确：${normalized.message}。请修正后立即重新发送，不要改为让用户手动修改文件。`,
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'invalid_args'
+        });
+      }
+      command = { action, token, operations: normalized.operations };
+    } else if (action === 'wait') {
       const seconds = typeof args.seconds === 'number' ? args.seconds : 1;
       await sleep(Math.max(1, Math.min(10, seconds)) * 1000);
 
@@ -799,8 +1042,15 @@ export const createDesktopBrowserOperationExecutor = ({
         guidanceForCode(result.code, action) ??
         (result.stopped
           ? `${result.message ?? '操作已被桌面客户端停止。'}\n\n请先询问用户接下来怎么做，得到确认后再继续，不要自行重试。`
-          : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
-      const message = `${prefix}${guidance}${snapshotBlock}`;
+          : isDesktopDocumentAction(action)
+            ? '操作没有成功。请按提示调整参数后立即重新发送，不要改为让用户手动修改文件。'
+            : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
+      // 鲁港通 - 客户端会回传具体是哪一项不合法，原样带给模型才能照着改
+      const detail =
+        result.code === 'invalid_command' && result.message
+          ? `\n错误原因：${result.message}`
+          : '';
+      const message = `${prefix}${guidance}${detail}${snapshotBlock}`;
 
       return finish({
         response: message,

@@ -160,6 +160,32 @@ describe('本机文档提纲解析', () => {
     });
   });
 
+  it('Excel 表头不在第一行时按数据区识别，并给出每行的真实行号', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '收支預算表.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('收支預算');
+      sheet.getCell('A1').value = '附件三　收支預算表';
+      sheet.mergeCells('A1:E1');
+      sheet.getCell('A2').value = '團體名稱：';
+      sheet.getCell('B2').value = 'xxxx';
+      sheet.getRow(10).values = ['項目', '預算金額', '實際金額', '備註'];
+      sheet.getRow(11).values = ['場地租金', '10000', '', '按實際'];
+      sheet.getRow(12).values = ['宣傳費用', '5000', '', ''];
+      sheet.getRow(20).values = ['合計', '15000', '', ''];
+      await workbook.xlsx.writeFile(path);
+
+      const parsed = await parseDocumentFile(path);
+      const first = parsed.sheets?.[0];
+
+      expect(first?.headerRow).toBe(10);
+      expect(first?.header).toEqual(['項目', '預算金額', '實際金額', '備註']);
+      expect(first?.sampleRowNumbers).toEqual([1, 2, 11, 12, 20]);
+      expect(first?.sampleRows?.[0]).toEqual(['附件三　收支預算表']);
+      expect(first?.sampleRows?.[2]).toEqual(['場地租金', '10000', '', '按實際']);
+    });
+  });
+
   it('Excel 含图表或数据透视表时给出副本丢失提醒', async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, '带图表.xlsx');

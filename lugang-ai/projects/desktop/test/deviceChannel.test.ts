@@ -248,6 +248,8 @@ describe('桌面设备通道 · 指令执行', () => {
     expect(harness.executeCommand).not.toHaveBeenCalled();
     const result = JSON.parse(String(harness.calls[2].init?.body)).result;
     expect(result).toMatchObject({ ok: false, code: 'invalid_command' });
+    // 鲁港通 - 回传具体原因，模型才能照着改，而不是反复让用户确认
+    expect(result.message).toContain('不支持的操作：submit');
 
     harness.channel.stop();
   });

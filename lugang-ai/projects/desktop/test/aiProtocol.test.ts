@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAiCommand } from '../src/main/ai/protocol';
+import { parseAiCommand, parseAiCommandDetailed } from '../src/main/ai/protocol';
 
 describe('AI 指令协议', () => {
   it('接受读取、导航、点击、输入、下拉、滚动与停止指令', () => {
@@ -310,5 +310,60 @@ describe('AI 指令协议', () => {
         }))
       )
     ).toBeNull();
+  });
+});
+
+describe('AI 指令协议 · 模型常见写法兼容', () => {
+  it('接受数字型文字、字符串型序号与列字母，并规范成统一结构', () => {
+    const command = parseAiCommand({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: [
+        { op: 'set_cell', sheet: '总表', cell: 'b10', value: 5000 },
+        { op: 'set_table_cell', table: '0', row: '1', cell: 'B', text: 300 },
+        { op: 'append_row', sheet: '总表', values: ['场地租金', 10000] }
+      ]
+    });
+
+    expect(command).toMatchObject({
+      action: 'edit_document',
+      operations: [
+        { op: 'set_cell', sheet: '总表', cell: 'B10', value: '5000' },
+        { op: 'set_table_cell', table: 0, row: 1, cell: 1, text: '300' },
+        { op: 'append_row', sheet: '总表', values: ['场地租金', '10000'] }
+      ]
+    });
+  });
+
+  it('接受整段改写为空文字，与服务端校验保持一致', () => {
+    expect(
+      parseAiCommand({
+        action: 'edit_document',
+        token: 'lgdoc_abc',
+        operations: [{ op: 'set_paragraph', paragraph: 0, text: '' }]
+      })
+    ).not.toBeNull();
+  });
+
+  it('参数不合法时给出具体字段与修改方向', () => {
+    const empty = parseAiCommandDetailed({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: []
+    });
+    expect(empty.success).toBe(false);
+    if (!empty.success) expect(empty.message).toContain('至少需要一条修改项');
+
+    const badCell = parseAiCommandDetailed({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: [{ op: 'set_cell', sheet: '总表', cell: '第二行', value: '1' }]
+    });
+    expect(badCell.success).toBe(false);
+    if (!badCell.success) expect(badCell.message).toContain('operations.0.cell');
+
+    const unsupported = parseAiCommandDetailed({ action: 'submit' });
+    expect(unsupported.success).toBe(false);
+    if (!unsupported.success) expect(unsupported.message).toContain('不支持的操作');
   });
 });

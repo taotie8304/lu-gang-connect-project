@@ -4,9 +4,47 @@ import ExcelJS from 'exceljs';
 import { DocumentParseError, type RawDocumentOutline } from './types';
 
 const MAX_SHEETS = 12;
-const MAX_SHEET_COLUMNS = 8;
-const MAX_SAMPLE_ROWS = 3;
+const MAX_SHEET_COLUMNS = 12;
+const MAX_SAMPLE_ROWS = 8;
+const MAX_CONTEXT_ROWS = 2;
 const MAX_CELL_PREVIEW = 60;
+const HEADER_SCAN_ROWS = 50;
+const MAX_DATA_SCAN_ROWS = 500;
+const MAX_TAIL_SCAN_ROWS = 200;
+
+type ContentRow = {
+  rowNumber: number;
+  cells: string[];
+  nonEmpty: number;
+};
+
+const readContentRow = (
+  sheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  columnCount: number
+): ContentRow => {
+  const cells = readRow(sheet, rowNumber, columnCount);
+  return {
+    rowNumber,
+    cells,
+    nonEmpty: cells.reduce((total, cell) => (cell === '' ? total : total + 1), 0)
+  };
+};
+
+// 鲁港通 - 表格上方常有合并标题与说明行：取列数最多的内容行当表头，紧邻数据行的行优先
+const pickHeaderRow = (rows: ContentRow[]): ContentRow | undefined => {
+  let best: ContentRow | undefined;
+  let bestScore = 0;
+  rows.forEach((row, index) => {
+    const nextIsContent = rows[index + 1]?.rowNumber === row.rowNumber + 1;
+    const score = row.nonEmpty * 2 + (nextIsContent ? 1 : 0);
+    if (!best || score > bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  });
+  return best;
+};
 
 const readCellText = (cell: ExcelJS.Cell): string => {
   const value = cell.value;
@@ -34,7 +72,11 @@ const readCellText = (cell: ExcelJS.Cell): string => {
 const readRow = (sheet: ExcelJS.Worksheet, rowIndex: number, columnCount: number): string[] => {
   const values: string[] = [];
   for (let column = 1; column <= columnCount; column += 1) {
-    values.push(readCellText(sheet.getRow(rowIndex).getCell(column)).slice(0, MAX_CELL_PREVIEW));
+    const cell = sheet.getRow(rowIndex).getCell(column);
+    // 鲁港通 - 合并区域的从属格会镜像主格的值，只保留主格，避免一行标题被算成多列
+    values.push(
+      cell.master === cell ? readCellText(cell).slice(0, MAX_CELL_PREVIEW) : ''
+    );
   }
   while (values.length > 0 && values[values.length - 1] === '') values.pop();
   return values;
@@ -79,15 +121,50 @@ export const parseXlsxDocument = async (filePath: string): Promise<RawDocumentOu
       const rowCount = sheet.rowCount || 0;
       const columnCount = sheet.columnCount || 0;
       const previewColumns = Math.min(columnCount, MAX_SHEET_COLUMNS);
-      const sampleRows: string[][] = [];
-      for (
-        let rowIndex = 2;
-        rowIndex <= Math.min(rowCount, 1 + MAX_SAMPLE_ROWS);
-        rowIndex += 1
-      ) {
-        const row = readRow(sheet, rowIndex, previewColumns);
-        if (row.length > 0) sampleRows.push(row);
+
+      const contentRows: ContentRow[] = [];
+      for (let rowNumber = 1; rowNumber <= Math.min(rowCount, HEADER_SCAN_ROWS); rowNumber += 1) {
+        const row = readContentRow(sheet, rowNumber, previewColumns);
+        if (row.nonEmpty > 0) contentRows.push(row);
       }
+
+      const headerRow = pickHeaderRow(contentRows);
+      const headerRowNumber = headerRow?.rowNumber ?? 0;
+
+      const contextRows: ContentRow[] = [];
+      const headerIndex = headerRow ? contentRows.indexOf(headerRow) : -1;
+      for (let index = headerIndex - 1; index >= 0 && contextRows.length < MAX_CONTEXT_ROWS; index -= 1) {
+        contextRows.unshift(contentRows[index]);
+      }
+
+      const dataRows: ContentRow[] = [];
+      const dataStart = headerRowNumber + 1;
+      const dataScanEnd = Math.min(rowCount, dataStart + MAX_DATA_SCAN_ROWS);
+      for (let rowNumber = dataStart; rowNumber <= dataScanEnd; rowNumber += 1) {
+        if (dataRows.length >= MAX_SAMPLE_ROWS) break;
+        const row = readContentRow(sheet, rowNumber, previewColumns);
+        if (row.nonEmpty > 0) dataRows.push(row);
+      }
+
+      // 鲁港通 - 数据行多时保留末尾合计行，模型才能看到总计口径
+      const lastIncluded = dataRows[dataRows.length - 1]?.rowNumber ?? 0;
+      if (rowCount > lastIncluded) {
+        for (
+          let rowNumber = rowCount;
+          rowNumber > lastIncluded && rowNumber > rowCount - MAX_TAIL_SCAN_ROWS;
+          rowNumber -= 1
+        ) {
+          const row = readContentRow(sheet, rowNumber, previewColumns);
+          if (row.nonEmpty === 0) continue;
+          if (rowNumber > lastIncluded) {
+            if (dataRows.length >= MAX_SAMPLE_ROWS) dataRows.pop();
+            dataRows.push(row);
+          }
+          break;
+        }
+      }
+
+      const sampleRows = [...contextRows, ...dataRows];
       if (sheet.getImages().length > 0) {
         warnings.add('工作表含图片，副本会尽量保留图片，请完成后核对版面。');
       }
@@ -95,8 +172,10 @@ export const parseXlsxDocument = async (filePath: string): Promise<RawDocumentOu
         name: sheet.name,
         rowCount,
         columnCount,
-        header: rowCount > 0 ? readRow(sheet, 1, previewColumns) : [],
-        sampleRows
+        headerRow: headerRowNumber,
+        header: headerRow?.cells ?? [],
+        sampleRows: sampleRows.map((row) => row.cells),
+        sampleRowNumbers: sampleRows.map((row) => row.rowNumber)
       };
     });
 

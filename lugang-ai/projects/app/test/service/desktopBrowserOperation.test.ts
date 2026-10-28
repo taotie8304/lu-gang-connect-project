@@ -1501,3 +1501,120 @@ describe('desktop document editing', () => {
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
   });
 });
+
+describe('desktop document editing · 参数容错与自主执行', () => {
+  const editFileResult = {
+    ok: true,
+    file: { name: '预算表-已修改.xlsx', format: 'xlsx', folder: '鲁港通生成文件' },
+    edit: { applied: 2 }
+  };
+
+  it('tells the model to act first and treat the panel list as the confirmation', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('不要先反问');
+    expect(description).toContain('改动清单');
+    expect(description).toContain('按提示修正');
+  });
+
+  it('normalizes string indexes, numeric text and column letters before dispatch', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue(editFileResult as any);
+    const execute = createExecutor({ store });
+
+    await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: [
+        { op: 'set_cell', sheet: '总表', cell: 'b10', value: 5000 },
+        { op: 'set_table_cell', table: '0', row: '1', cell: 'B', text: 300 },
+        { op: 'append_row', sheet: '总表', values: ['场地租金', 10000] }
+      ]
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: {
+        action: 'edit_document',
+        token: 'lgdoc_abc',
+        operations: [
+          { op: 'set_cell', sheet: '总表', cell: 'B10', value: '5000' },
+          { op: 'set_table_cell', table: 0, row: 1, cell: 1, text: '300' },
+          { op: 'append_row', sheet: '总表', values: ['场地租金', '10000'] }
+        ]
+      }
+    });
+  });
+
+  it('explains which field is wrong instead of dispatching an unusable edit', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: [{ op: 'set_cell', sheet: '总表', value: '5000' }]
+    });
+
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(result.response).toContain('set_cell');
+    expect(result.response).toContain('cell');
+    expect(result.response).toContain('立即重新发送');
+  });
+
+  it('tells the model to fix and resend when the client rejects the command', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'invalid_command',
+      message: 'operations.0.text 需要填写文字内容'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: [{ op: 'append_paragraph', text: '补充说明' }]
+    });
+
+    expect(result.response).toContain('operations.0.text');
+    expect(result.response).toContain('立即重新发送');
+    expect(result.response).not.toContain('确认页面状态');
+  });
+
+  it('prints the header row and sample row numbers so cell addresses are unambiguous', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: {
+        format: 'xlsx',
+        name: '收支預算表.xlsx',
+        sheets: [
+          {
+            name: '收支預算',
+            rowCount: 20,
+            columnCount: 4,
+            header: ['項目', '預算金額', '實際金額', '備註'],
+            headerRow: 10,
+            sampleRows: [
+              ['場地租金', '10000', '', '按實際'],
+              ['宣傳費用', '5000', '', ''],
+              ['合計', '15000', '', '']
+            ],
+            sampleRowNumbers: [11, 12, 20]
+          }
+        ]
+      },
+      documentToken: 'lgdoc_budget'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('表头在第 10 行');
+    expect(result.response).toContain('第 11 行：場地租金 | 10000');
+    expect(result.response).toContain('第 20 行：合計 | 15000');
+    expect(result.response).toContain('由用户确认');
+    expect(result.response).toContain('set_cell');
+  });
+});

@@ -1,6 +1,6 @@
 // 鲁港通 - 桌面设备通道：用应用会话 Cookie 注册设备，长轮询取指令并回传结果
 import type { DesktopAiState } from '../../shared/ipc';
-import { parseAiCommand, type AiCommand } from './protocol';
+import { parseAiCommandDetailed, type AiCommand } from './protocol';
 
 export type DeviceChannelTokenStore = {
   load: () => string | undefined;
@@ -140,15 +140,16 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
   };
 
   const handleEnvelope = async (envelope: DeviceCommandEnvelope, token: string) => {
-    const command = parseAiCommand(envelope.command);
-    if (!command) {
+    const parsed = parseAiCommandDetailed(envelope.command);
+    if (!parsed.success) {
       await postResult(token, envelope.id, {
         ok: false,
         code: 'invalid_command',
-        message: '操作指令无效，已忽略'
+        message: `操作指令无效：${parsed.message}`
       });
       return;
     }
+    const command = parsed.command;
 
     const handle: ActiveCommand = { commandId: envelope.id, token, stopped: false };
     active = handle;

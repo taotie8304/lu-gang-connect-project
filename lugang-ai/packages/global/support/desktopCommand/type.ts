@@ -118,8 +118,11 @@ export type DesktopDocumentSheet = {
   name: string;
   rowCount: number;
   columnCount: number;
+  // 鲁港通 - 旧客户端不带这两个字段，服务端按第 1 行表头兜底
+  headerRow?: number;
   header: string[];
   sampleRows: string[][];
+  sampleRowNumbers?: number[];
 };
 
 /** open_document 与 read 返回的文档提纲：不含整篇正文与文件路径；PDF 只有名称 */

@@ -19,8 +19,10 @@ export type DocumentSheet = {
   name: string;
   rowCount: number;
   columnCount: number;
+  headerRow?: number;
   header: string[];
   sampleRows: string[][];
+  sampleRowNumbers?: number[];
 };
 
 export type DocumentSummary = {

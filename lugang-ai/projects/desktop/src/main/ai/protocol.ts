@@ -164,15 +164,52 @@ const openDocumentCommand = z.object({
   hint: z.string().trim().max(100).optional()
 });
 
-const documentParagraphIndex = z.number().int().min(0).max(4000);
+// 鲁港通 - 模型常把序号写成字符串、金额写成数字：协议层先归一化再校验，避免整条修改被静默丢弃
+const documentParagraphIndex = z
+  .union([z.number(), z.string().trim().regex(/^\d+$/, { message: '需要是数字' })])
+  .transform((value) => (typeof value === 'string' ? Number(value) : value))
+  .pipe(
+    z
+      .number()
+      .int()
+      .min(0, { message: '序号需要是 0 开始的数字' })
+      .max(4000, { message: '序号不能超过 4000' })
+  );
 const documentSheetName = z.string().trim().min(1).max(31);
-const documentText = z.string().max(4000);
+const documentText = (max: number) =>
+  z
+    .union([z.string(), z.number(), z.boolean()])
+    .transform((value) => String(value))
+    .pipe(z.string().max(max, { message: `文字不能超过 ${max} 字` }));
+
+const columnLettersToIndex = (letters: string): number =>
+  letters
+    .toUpperCase()
+    .split('')
+    .reduce((total, character) => total * 26 + (character.charCodeAt(0) - 64), 0) - 1;
+
+// 鲁港通 - 列号兼容 0 开始数字、列字母（B）与 A1 地址（B2 只取列）
+const documentColumnIndex = z
+  .union([z.number(), z.string().trim().min(1).max(8)])
+  .transform((value) => {
+    if (typeof value === 'number') return value;
+    const letters = /^[A-Za-z]+/.exec(value)?.[0];
+    if (letters) return columnLettersToIndex(letters);
+    return /^\d+$/.test(value) ? Number(value) : -1;
+  })
+  .pipe(
+    z
+      .number()
+      .int()
+      .min(0, { message: '列号需要是 0 开始的数字，或 A、B 这样的列字母' })
+      .max(100, { message: '列号不能超过 100' })
+  );
 
 const documentReplaceTextOp = z
   .object({
     op: z.literal('replace_text'),
-    find: z.string().min(1).max(200),
-    replace: z.string().max(600),
+    find: documentText(200).pipe(z.string().min(1, { message: '要查找的原文不能为空' })),
+    replace: documentText(600),
     paragraph: documentParagraphIndex.optional(),
     sheet: documentSheetName.optional()
   })
@@ -183,44 +220,45 @@ const documentReplaceTextOp = z
 const documentSetParagraphOp = z.object({
   op: z.literal('set_paragraph'),
   paragraph: documentParagraphIndex,
-  text: documentText.min(1)
+  text: documentText(4000)
 });
 
 const documentInsertParagraphOp = z.object({
   op: z.literal('insert_paragraph'),
   after: documentParagraphIndex,
-  text: documentText.min(1)
+  text: documentText(4000)
 });
 
 const documentAppendParagraphOp = z.object({
   op: z.literal('append_paragraph'),
-  text: documentText.min(1)
+  text: documentText(4000)
 });
 
 const documentSetTableCellOp = z.object({
   op: z.literal('set_table_cell'),
-  table: z.number().int().min(0).max(50),
-  row: z.number().int().min(0).max(500),
-  cell: z.number().int().min(0).max(100),
-  text: z.string().max(2000)
+  table: documentParagraphIndex,
+  row: documentParagraphIndex,
+  cell: documentColumnIndex,
+  text: documentText(2000)
 });
 
 const documentCellRefSchema = z
   .string()
   .trim()
-  .regex(/^[A-Za-z]{1,3}[1-9]\d{0,5}$/, { message: '单元格格式应为 B2' });
+  .regex(/^[A-Za-z]{1,3}[1-9]\d{0,5}$/, { message: '单元格格式应为 B2' })
+  .transform((value) => value.toUpperCase());
 
 const documentSetCellOp = z.object({
   op: z.literal('set_cell'),
   sheet: documentSheetName,
   cell: documentCellRefSchema,
-  value: z.string().max(2000)
+  value: documentText(2000)
 });
 
 const documentAppendRowOp = z.object({
   op: z.literal('append_row'),
   sheet: documentSheetName,
-  values: z.array(z.string().max(2000)).min(1).max(50)
+  values: z.array(documentText(2000)).min(1).max(50)
 });
 
 const documentOperationSchema = z.discriminatedUnion('op', [
@@ -240,7 +278,10 @@ const editDocumentCommand = z
   .object({
     action: z.literal('edit_document'),
     token: z.string().trim().min(1).max(64),
-    operations: z.array(documentOperationSchema).min(1).max(60)
+    operations: z
+      .array(documentOperationSchema)
+      .min(1, { message: '至少需要一条修改项' })
+      .max(60, { message: '单次修改项不能超过 60 条' })
   })
   .refine(
     (value) => {
@@ -287,6 +328,39 @@ export const aiCommandSchema = z.discriminatedUnion('action', [
 ]);
 
 export type AiCommand = z.infer<typeof aiCommandSchema>;
+
+const supportedActions = new Set<string>(
+  aiCommandSchema.options.map((option) => option.shape.action.value)
+);
+
+export type AiCommandParseResult =
+  | { success: true; command: AiCommand }
+  | { success: false; message: string };
+
+const formatIssuePath = (path: PropertyKey[]): string =>
+  path.reduce<string>(
+    (total, segment) => (total ? `${total}.${String(segment)}` : String(segment)),
+    ''
+  );
+
+// 鲁港通 - 把校验失败的具体原因带回去，模型才能照着改指令，而不是反复让用户确认
+export const parseAiCommandDetailed = (input: unknown): AiCommandParseResult => {
+  const action =
+    input && typeof input === 'object' ? (input as { action?: unknown }).action : undefined;
+  if (typeof action !== 'string' || !supportedActions.has(action)) {
+    return {
+      success: false,
+      message: typeof action === 'string' ? `不支持的操作：${action}` : '缺少操作类型 action'
+    };
+  }
+
+  const result = aiCommandSchema.safeParse(input);
+  if (result.success) return { success: true, command: result.data };
+
+  const issue = result.error.issues[0];
+  const path = formatIssuePath(issue.path);
+  return { success: false, message: path ? `${path}：${issue.message}` : issue.message };
+};
 
 export const parseAiCommand = (input: unknown): AiCommand | null => {
   const result = aiCommandSchema.safeParse(input);
