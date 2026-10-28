@@ -3,6 +3,7 @@ import {
   AiExecutor,
   type AiActiveDocument,
   type AiDocumentPreviewer,
+  type AiDocumentPreviewOutcome,
   type AiFileInputState,
   type AiPageDriver
 } from '../src/main/ai/executor';
@@ -640,5 +641,190 @@ describe('文档动作：改完可继续改，不再重复弹选择窗口', () =
     expect(result.documentToken).toBeTruthy();
     expect(result.document?.name).toBe('2024年工作计划.docx');
     expect(picker).not.toHaveBeenCalled();
+  });
+});
+
+describe('PDF：原样副本叠加内容', () => {
+  const activePdf = () => ({
+    format: 'pdf' as const,
+    fileName: '慈善组织申请表.pdf',
+    path: 'C:\\Users\\tester\\Desktop\\慈善组织申请表.pdf'
+  });
+
+  const createPdfPreviewer = (
+    outcome: AiDocumentPreviewOutcome
+  ): {
+    previewer: AiDocumentPreviewer;
+    calls: Array<{ path: string; fileName: string; entries: unknown[] }>;
+  } => {
+    const calls: Array<{ path: string; fileName: string; entries: unknown[] }> = [];
+    const base = (async () => ({ status: 'unavailable' as const })) as AiDocumentPreviewer;
+    base.previewPdf = async (input) => {
+      calls.push(input);
+      return outcome;
+    };
+    return { previewer: base, calls };
+  };
+
+  const openPdfToken = async (
+    executor: AiExecutor,
+    read: () => Promise<{ ok: boolean; documentToken?: string }>
+  ): Promise<string> => {
+    const opened = await read();
+    expect(opened.ok).toBe(true);
+    expect(opened.documentToken).toBeTruthy();
+    return opened.documentToken as string;
+  };
+
+  const createPdfExecutor = (
+    extra: Partial<ConstructorParameters<typeof AiExecutor>[0]> = {}
+  ): AiExecutor =>
+    new AiExecutor({
+      driver: createDriver(),
+      readActiveDocument: () => activePdf(),
+      readPdfOutline: async () => ({ pages: 2, labels: ['姓名：', '日期：', '申请类别：'] }),
+      ...extra
+    });
+
+  it('右栏是 PDF 时 open_document 直接返回标签提纲，不弹 Word/Excel 选择窗口', async () => {
+    const picker = vi.fn(async () => makeDocument());
+    const executor = createPdfExecutor({ openDocument: picker });
+
+    const result = await executor.execute({ action: 'open_document' });
+
+    expect(result.ok).toBe(true);
+    expect(result.documentToken).toBeTruthy();
+    expect(result.document).toMatchObject({
+      format: 'pdf',
+      name: '慈善组织申请表.pdf',
+      pdfPages: 2,
+      pdfLabels: ['姓名：', '日期：', '申请类别：']
+    });
+    expect(JSON.stringify(result)).not.toContain('C:\\\\Users');
+    expect(picker).not.toHaveBeenCalled();
+  });
+
+  it('PDF 提纲读不出来时也只返回文件名，仍然不弹选择窗口', async () => {
+    const picker = vi.fn(async () => makeDocument());
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: picker,
+      readActiveDocument: () => activePdf(),
+      readPdfOutline: async () => {
+        throw new Error('parse failed');
+      }
+    });
+
+    const result = await executor.execute({ action: 'open_document' });
+
+    expect(result.ok).toBe(true);
+    expect(result.document).toEqual({ format: 'pdf', name: '慈善组织申请表.pdf' });
+    expect(result.documentToken).toBeUndefined();
+    expect(picker).not.toHaveBeenCalled();
+  });
+
+  it('对 PDF 引用发 edit_document 时明确拒绝并指向 fill_pdf', async () => {
+    const executor = createPdfExecutor();
+    const token = await openPdfToken(executor, () => executor.execute({ action: 'read' }));
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'pdf_readonly' });
+    expect(result.message).toContain('fill_pdf');
+  });
+
+  it('fill_pdf 把标签清单交给右栏黄底预览，并返回副本信息', async () => {
+    const { previewer, calls } = createPdfPreviewer({
+      status: 'done',
+      copy: doneCopy({
+        name: '慈善组织申请表-已填写.pdf',
+        format: 'pdf',
+        applied: 2,
+        skipped: ['申请类别：']
+      })
+    });
+    const executor = createPdfExecutor({ previewDocument: previewer });
+    const token = await openPdfToken(executor, () => executor.execute({ action: 'read' }));
+
+    const result = await executor.execute({
+      action: 'fill_pdf',
+      token,
+      entries: [
+        { label: '姓名：', value: '张三' },
+        { page: 2, label: '日期：', value: '2026-10-28' }
+      ]
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.file).toMatchObject({ name: '慈善组织申请表-已填写.pdf', format: 'pdf' });
+    expect(result.edit).toMatchObject({ applied: 2, skipped: ['申请类别：'] });
+    expect(calls).toEqual([
+      {
+        path: 'C:\\Users\\tester\\Desktop\\慈善组织申请表.pdf',
+        fileName: '慈善组织申请表.pdf',
+        entries: [
+          { label: '姓名：', value: '张三' },
+          { page: 2, label: '日期：', value: '2026-10-28' }
+        ]
+      }
+    ]);
+
+    const again = await executor.execute({
+      action: 'fill_pdf',
+      token,
+      entries: [{ label: '姓名：', value: '李四' }]
+    });
+    expect(again).toMatchObject({ ok: false, code: 'document_expired' });
+  });
+
+  it('扫描件没有文字层时透出明确原因，不生成任何副本', async () => {
+    const { previewer } = createPdfPreviewer({
+      status: 'failed',
+      code: 'pdf_no_text_layer',
+      message: '这份 PDF 没有可定位的文字层（可能是扫描件），无法在原样副本上标注内容。'
+    });
+    const executor = createPdfExecutor({ previewDocument: previewer });
+    const token = await openPdfToken(executor, () => executor.execute({ action: 'read' }));
+
+    const result = await executor.execute({
+      action: 'fill_pdf',
+      token,
+      entries: [{ label: '姓名：', value: '张三' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'pdf_no_text_layer' });
+    expect(result.message).toContain('扫描件');
+  });
+
+  it('本轮全部跳过时不生成副本', async () => {
+    const { previewer } = createPdfPreviewer({ status: 'no_change' });
+    const executor = createPdfExecutor({ previewDocument: previewer });
+    const token = await openPdfToken(executor, () => executor.execute({ action: 'read' }));
+
+    const result = await executor.execute({
+      action: 'fill_pdf',
+      token,
+      entries: [{ label: '姓名：', value: '张三' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'confirmation_declined' });
+  });
+
+  it('客户端还没接入 PDF 叠加预览时提示升级', async () => {
+    const executor = createPdfExecutor();
+    const token = await openPdfToken(executor, () => executor.execute({ action: 'read' }));
+
+    const result = await executor.execute({
+      action: 'fill_pdf',
+      token,
+      entries: [{ label: '姓名：', value: '张三' }]
+    });
+
+    expect(result).toMatchObject({ ok: false, code: 'document_preview_unavailable' });
+    expect(result.message).toContain('升级');
   });
 });

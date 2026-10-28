@@ -186,6 +186,9 @@ catalogs:
     pdf-lib:
       specifier: ^1.17.1
       version: 1.17.1
+    pdfjs-dist:
+      specifier: 4.10.38
+      version: 4.10.38
     postcss:
       specifier: ^8.5.12
       version: 8.5.22
@@ -1368,6 +1371,9 @@ importers:
       pdf-lib:
         specifier: 'catalog:'
         version: 1.17.1
+      pdfjs-dist:
+        specifier: 'catalog:'
+        version: 4.10.38
     devDependencies:
       '@types/adm-zip':
         specifier: 'catalog:'

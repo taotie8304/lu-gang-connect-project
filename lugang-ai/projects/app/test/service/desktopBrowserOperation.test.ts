@@ -128,6 +128,7 @@ describe('browser operation tool schema', () => {
       'fill_form',
       'open_document',
       'edit_document',
+      'fill_pdf',
       'wait'
     ]);
   });
@@ -1490,8 +1491,9 @@ describe('desktop document editing', () => {
 
     expect(description).toContain('右栏');
     expect(description).toContain('不要先让用户重新选择');
-    expect(description).toContain('带表单域');
-    expect(description).toContain('普通或扫描版 PDF 只能读取');
+    expect(description).toContain('标签提纲');
+    expect(description).toContain('fill_pdf');
+    expect(description).toContain('扫描');
   });
 
   it('reads the file opened in the right panel and keeps it editable', async () => {
@@ -1520,7 +1522,7 @@ describe('desktop document editing', () => {
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
   });
 
-  it('reports a pdf opened in the right panel as read only', async () => {
+  it('stops honestly when a pdf opened in the panel has no label outline', async () => {
     const store = createFakeStore();
     store.waitForResult.mockResolvedValue({
       ok: true,
@@ -1532,8 +1534,8 @@ describe('desktop document editing', () => {
 
     expect(result.response).toContain('2024年報稅表.pdf');
     expect(result.response).toContain('PDF');
-    expect(result.response).toContain('open_form');
-    expect(result.response).toContain('另存为 Word 或 Excel');
+    expect(result.response).toContain('扫描');
+    expect(result.response).toContain('不要仿制');
     expect(result.response).not.toContain('edit_document');
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
   });
@@ -1755,18 +1757,25 @@ describe('desktop document editing · 首次即改与独立填写', () => {
     expect(result.response).toContain('原样');
   });
 
-  it('never offers a token for a read only pdf', async () => {
+  it('offers the pdf token so the model can fill the copy directly', async () => {
     const store = createFakeStore();
     store.waitForResult.mockResolvedValue({
       ok: true,
-      document: { format: 'pdf', name: '申請須知.pdf' }
+      document: {
+        format: 'pdf',
+        name: '申請須知.pdf',
+        pdfPages: 2,
+        pdfLabels: ['申請人姓名：', '聯絡電話：']
+      },
+      documentToken: 'lgpdf_read'
     } as any);
     const execute = createExecutor({ store });
 
     const result = await execute({ action: 'read' });
 
-    expect(result.response).not.toContain('token：');
-    expect(result.response).toContain('不能修改');
+    expect(result.response).toContain('lgpdf_read');
+    expect(result.response).toContain('申請人姓名：');
+    expect(result.response).toContain('fill_pdf');
   });
 
   it('does not claim success when open_document returns no document content', async () => {
@@ -1833,5 +1842,273 @@ describe('desktop document editing · 首次即改与独立填写', () => {
 
     expect(store.enqueue).not.toHaveBeenCalled();
     expect(result.response).toContain('分两次');
+  });
+});
+
+describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => {
+  const pdfSummary = {
+    format: 'pdf' as const,
+    name: '慈善组织申请表.pdf',
+    pdfPages: 2,
+    pdfLabels: ['團體名稱：', '申請金額：', '日期：']
+  };
+
+  const pdfFile = {
+    name: '慈善组织申请表-已填写.pdf',
+    format: 'pdf',
+    folder: '鲁港通生成文件'
+  };
+
+  it('exposes fill_pdf with entries in the tool schema', () => {
+    const tool = createBrowserOperationTool();
+    const parameters = tool.function.parameters as any;
+
+    expect(parameters.properties.action.enum).toContain('fill_pdf');
+    expect(parameters.properties.entries).toBeDefined();
+    expect(parameters.properties.entries.items.properties.label).toBeDefined();
+    expect(parameters.properties.entries.items.properties.page).toBeDefined();
+  });
+
+  it('parses fill_pdf and keeps page strings tolerant', () => {
+    const parsed = parseBrowserOperationArgs({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc123',
+      entries: [
+        { label: '團體名稱：', value: '香港山東僑界聯合會' },
+        { page: '2', label: '日期：', value: '20261028' }
+      ]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'fill_pdf') return;
+    expect(parsed.args.entries[1]).toMatchObject({ page: 2, label: '日期：' });
+  });
+
+  it('rejects fill_pdf without a token, entries or valid labels', () => {
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'fill_pdf',
+        entries: [{ label: '日期：', value: '20261028' }]
+      }).success
+    ).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({ action: 'fill_pdf', token: 'lgpdf_abc', entries: [] }).success
+    ).toBe(false);
+    expect(
+      BrowserOperationArgsSchema.safeParse({
+        action: 'fill_pdf',
+        token: 'lgpdf_abc',
+        entries: Array.from({ length: 41 }, () => ({ label: '日期：', value: 'x' }))
+      }).success
+    ).toBe(false);
+  });
+
+  it('renders the pdf label outline with the token and fill_pdf guidance', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: pdfSummary,
+      documentToken: 'lgpdf_panel'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('lgpdf_panel');
+    expect(result.response).toContain('團體名稱：');
+    expect(result.response).toContain('fill_pdf');
+    expect(result.response).toContain('副本');
+    expect(result.response).toContain('原文件');
+    expect(result.response).not.toContain('另存为 Word 或 Excel');
+    expect(result.response).not.toContain('open_form');
+  });
+
+  it('requires a 0.8.7 client before filling a pdf', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.6');
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ label: '團體名稱：', value: '香港山東僑界聯合會' }]
+    });
+
+    expect(result.response).toContain('升级');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'fill_pdf', ok: false, code: 'desktop_upgrade_required' })
+    );
+  });
+
+  it('normalizes pdf entries before dispatch', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    const execute = createExecutor({ store });
+
+    await execute({
+      action: 'fill_pdf',
+      token: ' lgpdf_abc ',
+      entries: [
+        { label: ' 團體名稱： ', value: '香港山東僑界聯合會' },
+        { page: '2', label: '日期：', value: 20261028 }
+      ]
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: {
+        action: 'fill_pdf',
+        token: 'lgpdf_abc',
+        entries: [
+          { label: '團體名稱：', value: '香港山東僑界聯合會' },
+          { page: 2, label: '日期：', value: '20261028' }
+        ]
+      }
+    });
+  });
+
+  it('rejects invalid pdf entries with actionable messages', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    const execute = createExecutor({ store });
+
+    const missingToken = await execute({
+      action: 'fill_pdf',
+      entries: [{ label: '日期：', value: '20261028' }]
+    });
+    expect(missingToken.response).toContain('open_document');
+
+    const emptyEntries = await execute({ action: 'fill_pdf', token: 'lgpdf_abc', entries: [] });
+    expect(emptyEntries.response).toContain('至少');
+
+    const badPage = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ page: 0, label: '日期：', value: 'x' }]
+    });
+    expect(badPage.response).toContain('page');
+
+    const emptyLabel = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ label: '  ', value: 'x' }]
+    });
+    expect(emptyLabel.response).toContain('label');
+
+    const tooMany = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: Array.from({ length: 41 }, () => ({ label: '日期：', value: 'x' }))
+    });
+    expect(tooMany.response).toContain('40');
+
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('reports the pdf copy without claiming the original was changed', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      file: pdfFile,
+      edit: { applied: 2, skipped: ['日期：'] }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [
+        { label: '團體名稱：', value: '香港山東僑界聯合會' },
+        { label: '申請金額：', value: '50000' }
+      ]
+    });
+
+    expect(result.response).toContain('慈善组织申请表-已填写.pdf');
+    expect(result.response).toContain('共叠加 2 项');
+    expect(result.response).toContain('原 PDF 没有被改动');
+    expect(result.response).toContain('日期：');
+    expect(result.response).not.toContain('操作已执行');
+  });
+
+  it('forbids rebuilding a lookalike when the pdf cannot be read', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'pdf_no_text_layer' } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ label: '日期：', value: '20261028' }]
+    });
+
+    expect(result.response).toContain('扫描');
+    expect(result.response).toContain('不要仿制');
+  });
+
+  it('redirects edit_document on a pdf token to fill_pdf', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'pdf_readonly',
+      message: 'PDF 不能像 Word/Excel 那样直接改结构'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgpdf_abc',
+      operations: [{ op: 'append_paragraph', text: '补充说明' }]
+    });
+
+    expect(result.response).toContain('fill_pdf');
+    expect(result.response).toContain('不要仿制');
+  });
+
+  it('waits long enough for the user to confirm pdf items', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    const execute = createExecutor({ store });
+
+    await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ label: '日期：', value: '20261028' }]
+    });
+
+    expect((store.waitForResult as any).mock.calls[0][0].timeoutMs).toBeGreaterThan(5 * 60 * 1000);
+    expect(getDesktopCommandBusyTtlMs('fill_pdf')).toBe(DESKTOP_BUSY_LONG_TTL_MS);
+  });
+
+  it('does not overwrite the page resume state with a pdf fill', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    store.getBrowserResume.mockResolvedValue({
+      goal: '填写申请表',
+      url: 'https://www.immd.gov.hk/hkt/apply.html',
+      updatedAt: 1
+    } as any);
+    store.waitForResult.mockResolvedValue({ ok: true, file: pdfFile, edit: { applied: 1 } } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ label: '日期：', value: '20261028' }]
+    });
+
+    expect(store.saveBrowserResume).not.toHaveBeenCalled();
+    expect(result.response).not.toContain('上一轮浏览器任务');
+  });
+
+  it('tells the model never to rebuild a lookalike file', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('不要仿制');
+    expect(description).toContain('generate_file');
+    expect(description).toContain('标签');
   });
 });

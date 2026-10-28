@@ -9,7 +9,7 @@ export type DocumentEditOutcome = {
 
 export type EditedDocumentCopy = {
   name: string;
-  format: 'docx' | 'xlsx';
+  format: 'docx' | 'xlsx' | 'pdf';
   folder: string;
   path: string;
   applied: number;

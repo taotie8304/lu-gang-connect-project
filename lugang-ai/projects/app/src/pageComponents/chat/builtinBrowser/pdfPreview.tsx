@@ -6,7 +6,23 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import type { PDFDocumentProxy, RenderTask } from 'pdfjs-dist';
 import type { DesktopDocumentBytes, DesktopDocumentSnapshot } from './desktopBridge';
 import { resolvePdfPageCount, resolvePdfViewportScale } from './pdfPages';
+import { findActivePdfChangeIndex, pdfOverlayBoxes } from './pdfOverlay';
 import { LG } from '@/pageComponents/chat/lugangTheme';
+
+const OVERLAY_TONE = {
+  pending: {
+    bg: 'rgba(246,201,120,0.32)',
+    border: 'rgba(217,164,65,0.65)',
+    activeBorder: '#C2871F',
+    text: '#8A6118'
+  },
+  applied: {
+    bg: 'rgba(116,186,140,0.26)',
+    border: 'rgba(111,185,138,0.7)',
+    activeBorder: '#4F9169',
+    text: '#3F7A56'
+  }
+} as const;
 
 type PdfjsModule = typeof import('pdfjs-dist');
 
@@ -180,8 +196,13 @@ const PdfPreview = ({
           total: totalPages
         })
       : '';
-  // 鲁港通 - PDF 不支持原地修改，右栏必须直接说清边界，避免用户以为 AI 能改 PDF
-  const readonlyHint = t('common:builtin_browser_doc_pdf_readonly_hint' as any);
+  // 鲁港通 - 0.8.7 起评审模式直接在源文件上黄底确认，旧只读提示只在查看模式出现
+  const readonlyHint =
+    snapshot.mode === 'view' ? t('common:builtin_browser_doc_pdf_readonly_hint' as any) : '';
+  const activeIndex = findActivePdfChangeIndex(snapshot);
+  // 鲁港通 - 叠加文字按页面实际渲染高度换算字号，避免跟着窗口宽度乱跳
+  const pageHeightPx =
+    pageSize && pageSize.width > 0 && width > 0 ? (width * pageSize.height) / pageSize.width : 0;
 
   return (
     <Box ref={containerRef} maxW={'820px'} mx={'auto'}>
@@ -319,29 +340,71 @@ const PdfPreview = ({
           </Text>
         </Flex>
       ) : (
-        Array.from({ length: shownPages }, (_, index) => (
-          <Box
-            key={index}
-            mb={'10px'}
-            bg={'white'}
-            border={'1px solid'}
-            borderColor={LG.line}
-            borderRadius={'4px'}
-            boxShadow={'0 6px 22px rgba(78,128,178,0.08)'}
-            overflow={'hidden'}
-            style={{
-              aspectRatio: pageSize ? `${pageSize.width} / ${pageSize.height}` : '210 / 297'
-            }}
-          >
-            <canvas
-              ref={(node) => {
-                canvasRefs.current[index] = node;
+        Array.from({ length: shownPages }, (_, index) => {
+          const boxes = pdfOverlayBoxes(snapshot.pdf?.items, index + 1);
+          return (
+            <Box
+              key={index}
+              position={'relative'}
+              mb={'10px'}
+              bg={'white'}
+              border={'1px solid'}
+              borderColor={LG.line}
+              borderRadius={'4px'}
+              boxShadow={'0 6px 22px rgba(78,128,178,0.08)'}
+              overflow={'hidden'}
+              style={{
+                aspectRatio: pageSize ? `${pageSize.width} / ${pageSize.height}` : '210 / 297'
               }}
-              data-page={index + 1}
-              style={{ width: '100%', height: '100%', display: 'block' }}
-            />
-          </Box>
-        ))
+            >
+              <canvas
+                ref={(node) => {
+                  canvasRefs.current[index] = node;
+                }}
+                data-page={index + 1}
+                style={{ width: '100%', height: '100%', display: 'block' }}
+              />
+              {boxes.length > 0 && (
+                <Box position={'absolute'} inset={0} pointerEvents={'none'}>
+                  {boxes.map((box) => {
+                    const tone = OVERLAY_TONE[box.tone];
+                    const active = box.index === activeIndex;
+                    const heightPx =
+                      pageHeightPx > 0 ? (parseFloat(box.style.height) / 100) * pageHeightPx : 0;
+                    return (
+                      <Box
+                        key={box.key}
+                        position={'absolute'}
+                        {...box.style}
+                        bg={tone.bg}
+                        border={'1px solid'}
+                        borderColor={active ? tone.activeBorder : tone.border}
+                        borderRadius={'2px'}
+                        boxShadow={active ? `0 0 0 2px ${tone.activeBorder}33` : undefined}
+                        px={box.kind === 'value' ? '2px' : 0}
+                        py={box.kind === 'value' ? '1px' : 0}
+                        overflow={'hidden'}
+                      >
+                        {box.kind === 'value' && (
+                          <Text
+                            fontSize={`${Math.max(7, Math.min(12, heightPx * 0.7 || 10))}px`}
+                            lineHeight={1.15}
+                            color={tone.text}
+                            whiteSpace={'pre-wrap'}
+                            wordBreak={'break-word'}
+                            title={box.value}
+                          >
+                            {box.value}
+                          </Text>
+                        )}
+                      </Box>
+                    );
+                  })}
+                </Box>
+              )}
+            </Box>
+          );
+        })
       )}
     </Box>
   );

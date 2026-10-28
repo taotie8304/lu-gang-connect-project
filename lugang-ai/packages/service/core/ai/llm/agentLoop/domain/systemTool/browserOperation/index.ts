@@ -24,6 +24,7 @@ export const BROWSER_OPERATION_ACTIONS = [
   'fill_form',
   'open_document',
   'edit_document',
+  'fill_pdf',
   'wait'
 ] as const;
 
@@ -47,6 +48,10 @@ const MAX_DOCUMENT_CELL_CHARS = 2000;
 const MAX_DOCUMENT_REPLACEMENTS = 50;
 const MAX_DOCUMENT_INSERTS = 20;
 const MAX_DOCUMENT_CELLS = 200;
+const MAX_PDF_ENTRIES = 40;
+const MAX_PDF_LABEL_CHARS = 60;
+const MAX_PDF_VALUE_CHARS = 2000;
+const MAX_PDF_PAGE = 500;
 
 const locateSchema = {
   ref: refSchema.optional(),
@@ -377,6 +382,28 @@ const editDocumentAction = z.object({
   operations: documentOperationsSchema
 });
 
+// 鲁港通 - PDF 叠加填写（0.8.7 起）：按右栏提纲里的标签把内容叠印到原样副本上
+const pdfPageSchema = z
+  .union([z.number(), z.string().trim().regex(/^\d+$/, { message: 'PDF 页码需要是数字' })])
+  .transform((value) => (typeof value === 'string' ? Number(value) : value))
+  .pipe(z.number().int().min(1).max(MAX_PDF_PAGE, { message: `PDF 页码超出范围（1-${MAX_PDF_PAGE}）` }))
+  .optional();
+
+const fillPdfAction = z.object({
+  action: z.literal('fill_pdf'),
+  token: z.string().trim().min(1).max(64),
+  entries: z
+    .array(
+      z.object({
+        page: pdfPageSchema,
+        label: z.string().trim().min(1).max(MAX_PDF_LABEL_CHARS),
+        value: z.string().max(MAX_PDF_VALUE_CHARS)
+      })
+    )
+    .min(1, { message: '至少需要一条 PDF 填写内容' })
+    .max(MAX_PDF_ENTRIES, { message: `单项 PDF 填写不能超过 ${MAX_PDF_ENTRIES} 条` })
+});
+
 export const BrowserOperationArgsSchema = z.discriminatedUnion('action', [
   readAction,
   navigateAction,
@@ -390,6 +417,7 @@ export const BrowserOperationArgsSchema = z.discriminatedUnion('action', [
   fillFormAction,
   openDocumentAction,
   editDocumentAction,
+  fillPdfAction,
   waitAction
 ]);
 
@@ -497,7 +525,7 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
   function: {
     name: BROWSER_OPERATION_TOOL_NAME,
     description:
-      '操作桌面客户端中打开的浏览器页面，替用户完成在线办理。仅在桌面客户端内可用；除本机、内网和本地文件地址会被拦截外，任何公网站点都可以打开并操作，不要以「不在允许范围」或「只能操作政府网站」为由拒绝用户。当用户需要在线办理、填写表单、查询进度或上传材料时，默认主动使用本工具，无需用户提示，也不要先让用户自己打开网页或自己输入网址；按用户提供的网址或页面名称直接 navigate 过去，入口不确定时先按用户给出的信息打开确认。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read。页面被关闭或刷新后，客户端会自动重开一次，先 read 确认已恢复，再从中断的步骤继续，不要从头重做。可以生成 Word/Excel/PDF 文件（generate_file，文件只保存在用户电脑上）。写文档时用 blocks 按顺序组织内容：多级标题、正文段落、有序或无序列表、表格、分隔线、分页，Word 与 PDF 会自动加上页眉标题和「第X页/共Y页」页脚，Word 使用 A4 纸、宋体小五正文、首行缩进两字、黑体标题；写表格时用 sheets 组织最多 5 个工作表，表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式；只有一两段简单内容时才用 content 或 rows。标题里不要带 Markdown 井号，正文里不要写表格竖线和分隔线符号。遇到上传入口时用 upload，桌面客户端会弹出文件选择框让用户亲自选择文件，你不能指定本机路径。点击提交、发布、删除、注销等按钮时，桌面客户端会自动弹出原生确认框，由用户决定是否提交、自己提交或取消；不要绕过确认，也不要重复提交。用户要填写本机的空白表单（Word、Excel 或带输入框的表单 PDF）时，先用 open_form 读取：右栏已经打开这份文件时客户端会直接读取它，不会再弹选择窗口；按返回的字段清单和表单 token 立即用 fill_form 填写，不要先反问或等用户再次确认。桌面客户端会先在右栏源文件上逐项确认，再把副本保存到「鲁港通生成文件」，不会修改原文件，也不会自动上传；扫描版或普通 PDF 没有输入框，不能填写，只能读取。资料不全时先请用户补齐，不要编造或猜测证件号、电话、地址、金额等个人信息；没有把握的字段可以留空。填写完成后请用户打开副本核对，只有用户明确要求时才继续上传。用户已经在右栏打开了本机 Word、Excel 或 PDF 文件时，先用 read 直接读取这份文件（只在本机解析，只把提纲回传给你），不要先让用户重新选择；读到的 Word 或 Excel 可以接着用 edit_document 修改；PDF 不能在原位修改——带表单域的表单 PDF 用 open_form + fill_form 生成已填写副本，普通或扫描版 PDF 只能读取，需要改动内容时请用户另存为 Word 或 Excel 后再打开。用户要修改自己电脑上的 Word 或 Excel 文件时，先用 open_document 打开：右栏已经打开了这份文件时客户端会直接读取它，不会弹选择窗口；只有右栏没有文件时才让用户自己选择。客户端只把提纲发回给你（段落序号、表格与工作表结构，读不到本机路径）；按提纲用 edit_document 提交修改（替换文字、整段改写、插入段落、文末追加、改表格单元格、改 Excel 单元格、工作表追加一行），token 用 read 或 open_document 返回的文档 token，不要复用旧 token。填写 Excel 时按提纲的「列对照」和带行号的现有行用 set_cell 写进对应单元格：只填空白输入格，公式列（标着「（公式）」）与「并入 X 列」的从属列不要写，要写进主列 X；不要把示范内容用 append_row 堆在表尾，也不要用 generate_file 另建新文件代替修改；用户没提供的数字可以按合理估计先填，并在备注列标注「待核对」。一次提交的改动控制在 30 条以内，改动多就分两次提交，避免参数过长被截断。修改只写入副本，原文件不会被改动，也不会自动上传；客户端会把源文件原文显示在右栏，用黄色标出每一处将要写入副本的改动（也就是改动清单），由用户逐条「应用/跳过」，这就是修改前的确认环节，模型不要先反问，也不要等用户再次同意，拿到提纲就直接提交。Word 和 Excel 都是这样确认，不要指望或要求用户看纯文字清单。改完后客户端会返回副本的新 token，要接着改就直接用这个新 token 提交 edit_document，不要重新 open_document，也不要再让用户选文件。如果客户端返回参数错误或指出某条修改无效，按提示修正后立即重新发送，不要改为让用户手动修改。不要编造原文里没有的内容，也不要为了省事重写整份文档；替换改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。不要填写密码、验证码、银行卡或支付信息，也不要发起支付、转账或购买；遇到这类字段就停下，请用户本人填写。',
+      '操作桌面客户端中打开的浏览器页面，替用户完成在线办理。仅在桌面客户端内可用；除本机、内网和本地文件地址会被拦截外，任何公网站点都可以打开并操作，不要以「不在允许范围」或「只能操作政府网站」为由拒绝用户。当用户需要在线办理、填写表单、查询进度或上传材料时，默认主动使用本工具，无需用户提示，也不要先让用户自己打开网页或自己输入网址；按用户提供的网址或页面名称直接 navigate 过去，入口不确定时先按用户给出的信息打开确认。一次只做一个动作，每次动作后会返回最新页面快照（标题、地址、文本、可操作元素）。操作前先用 read 了解页面；找不到元素时先重新 read。页面被关闭或刷新后，客户端会自动重开一次，先 read 确认已恢复，再从中断的步骤继续，不要从头重做。可以生成 Word/Excel/PDF 文件（generate_file，文件只保存在用户电脑上）。写文档时用 blocks 按顺序组织内容：多级标题、正文段落、有序或无序列表、表格、分隔线、分页，Word 与 PDF 会自动加上页眉标题和「第X页/共Y页」页脚，Word 使用 A4 纸、宋体小五正文、首行缩进两字、黑体标题；写表格时用 sheets 组织最多 5 个工作表，表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式；只有一两段简单内容时才用 content 或 rows。标题里不要带 Markdown 井号，正文里不要写表格竖线和分隔线符号。遇到上传入口时用 upload，桌面客户端会弹出文件选择框让用户亲自选择文件，你不能指定本机路径。点击提交、发布、删除、注销等按钮时，桌面客户端会自动弹出原生确认框，由用户决定是否提交、自己提交或取消；不要绕过确认，也不要重复提交。用户要填写本机的空白表单（Word、Excel 或带输入框的表单 PDF）时，先用 open_form 读取：右栏已经打开这份文件时客户端会直接读取它，不会再弹选择窗口；按返回的字段清单和表单 token 立即用 fill_form 填写，不要先反问或等用户再次确认。桌面客户端会先在右栏源文件上逐项确认，再把副本保存到「鲁港通生成文件」，不会修改原文件，也不会自动上传；扫描版 PDF 没有文字层和输入框，不能填写，只能读取。资料不全时先请用户补齐，不要编造或猜测证件号、电话、地址、金额等个人信息；没有把握的字段可以留空。填写完成后请用户打开副本核对，只有用户明确要求时才继续上传。用户已经在右栏打开了本机 Word、Excel 或 PDF 文件时，先用 read 直接读取这份文件（只在本机解析，只把提纲回传给你），不要先让用户重新选择；读到的 Word 或 Excel 可以接着用 edit_document 修改。读到的 PDF 会返回页数和「标签提纲」（文本层里的字段名），这时直接用 fill_pdf 把内容叠印到副本上：entries 里每条给出 label（与提纲里的标签文字完全一致）和 value，跨页表单可以带 page。桌面客户端会复制原 PDF，在保留原件排版、字体和线条的前提下把内容叠印到标签旁的副本上，只保存副本，原文件不动；右栏源文件上的黄底标记就是确认环节，由用户逐条「应用/跳过」，不要先反问，也不要等用户再次同意。PDF 只能这样叠加内容：不要用 edit_document、generate_file 或 fill_form 代替，更不要以任何方式仿制、重排一份外观相似的文件。标签对不上时挑最接近的标签填写，确实没有对应位置的内容如实告诉用户。PDF 提纲为空说明是扫描件或纯图片，无法叠加内容，也不要仿制，如实告诉用户这份 PDF 无法直接填写、由用户决定下一步。用户要修改自己电脑上的 Word 或 Excel 文件时，先用 open_document 打开：右栏已经打开了这份文件时客户端会直接读取它，不会弹选择窗口；只有右栏没有文件时才让用户自己选择。客户端只把提纲发回给你（段落序号、表格与工作表结构，读不到本机路径）；按提纲用 edit_document 提交修改（替换文字、整段改写、插入段落、文末追加、改表格单元格、改 Excel 单元格、工作表追加一行），token 用 read 或 open_document 返回的文档 token，不要复用旧 token。填写 Excel 时按提纲的「列对照」和带行号的现有行用 set_cell 写进对应单元格：只填空白输入格，公式列（标着「（公式）」）与「并入 X 列」的从属列不要写，要写进主列 X；不要把示范内容用 append_row 堆在表尾，也不要用 generate_file 另建新文件代替修改；用户没提供的数字可以按合理估计先填，并在备注列标注「待核对」。一次提交的改动控制在 30 条以内，改动多就分两次提交，避免参数过长被截断。修改只写入副本，原文件不会被改动，也不会自动上传；客户端会把源文件原文显示在右栏，用黄色标出每一处将要写入副本的改动（也就是改动清单），由用户逐条「应用/跳过」，这就是修改前的确认环节，模型不要先反问，也不要等用户再次同意，拿到提纲就直接提交。Word 和 Excel 都是这样确认，不要指望或要求用户看纯文字清单。改完后客户端会返回副本的新 token，要接着改就直接用这个新 token 提交 edit_document，不要重新 open_document，也不要再让用户选文件。如果客户端返回参数错误或指出某条修改无效，按提示修正后立即重新发送，不要改为让用户手动修改。不要编造原文里没有的内容，也不要为了省事重写整份文档；替换改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。不要填写密码、验证码、银行卡或支付信息，也不要发起支付、转账或购买；遇到这类字段就停下，请用户本人填写。',
     parameters: {
       type: 'object',
       properties: {
@@ -665,7 +693,30 @@ export const createBrowserOperationTool = (): ChatCompletionTool => ({
         token: {
           type: 'string',
           description:
-            'open_form 或 open_document 返回的令牌（返回内容里写明「表单 token：…」或「文档 token：…」），fill_form 或 edit_document 时必须原样带回'
+            'open_form、open_document 或 read 返回的令牌（返回内容里写明「表单 token：…」或「文档 token：…」），fill_form、edit_document 或 fill_pdf 时必须原样带回'
+        },
+        entries: {
+          type: 'array',
+          description:
+            'fill_pdf 的填写清单，最多 40 条；按 read 返回的 PDF 标签提纲逐条给出 label 与 value，桌面客户端会把内容叠印到原样副本上',
+          items: {
+            type: 'object',
+            properties: {
+              page: {
+                type: 'number',
+                description: '可选，内容所属页码（1 开始）；跨页表单时填写，单页 PDF 可以不填'
+              },
+              label: {
+                type: 'string',
+                description: '标签文字，必须与 PDF 提纲里的标签完全一致，最多 60 字'
+              },
+              value: {
+                type: 'string',
+                description: '要叠加到该标签旁的内容，最多 2000 字'
+              }
+            },
+            required: ['label', 'value']
+          }
         },
         fields: {
           type: 'array',
@@ -779,7 +830,7 @@ export const parseBrowserOperationArgs = (raw: unknown): BrowserOperationParseRe
   if (!isSupportedAction(action)) {
     return {
       success: false,
-      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/upload/generate_file/open_form/fill_form/open_document/edit_document/wait。`
+      error: `不支持的浏览器操作：${typeof action === 'string' ? action : '未知'}。仅支持 read/navigate/click/type/select/scroll/upload/generate_file/open_form/fill_form/open_document/edit_document/fill_pdf/wait。`
     };
   }
 

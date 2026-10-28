@@ -30,6 +30,14 @@ import type {
   DesktopDocumentSnapshot,
   DesktopDocumentSummary
 } from '../../shared/ipc';
+import {
+  extractPdfTextPages,
+  planPdfOverlay,
+  PdfOverlayError,
+  type PdfOverlayEntry,
+  type PdfOverlayPlacement,
+  type PdfOverlayPlan
+} from './document/pdfOverlay';
 
 const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
 // 鲁港通 - 右栏网页端要先轮询到标签、再认领审阅，给足 15 秒，不再回退任何文字确认窗
@@ -41,6 +49,14 @@ const DEFAULT_MAX_READ_BYTES = 40 * 1024 * 1024;
 export type PreviewEditor = (input: {
   document: ParsedDocument;
   operations: DocumentEditOperation[];
+}) => Promise<EditedDocumentCopy>;
+
+/** 鲁港通 - PDF 叠加副本：只写用户逐条应用的内容，原文件不动 */
+export type PreviewPdfWriter = (input: {
+  pdfBytes: Uint8Array;
+  fileName: string;
+  sourcePath: string;
+  placements: PdfOverlayPlacement[];
 }) => Promise<EditedDocumentCopy>;
 
 export type LocalPreviewInput =
@@ -58,7 +74,11 @@ export type DocumentPreviewOutcome =
   | { status: 'declined' }
   | { status: 'timeout' }
   | { status: 'unavailable' }
-  | { status: 'failed'; message: string };
+  | {
+      status: 'failed';
+      message: string;
+      code?: 'pdf_no_text_layer' | 'pdf_font_missing' | 'document_edit_failed';
+    };
 
 type Session = {
   token: string;
@@ -78,6 +98,8 @@ type Session = {
   message?: string;
   model?: DocxPreviewModel;
   xlsx?: XlsxPreviewModel;
+  pdf?: PdfOverlayPlan;
+  pdfBytes?: Uint8Array;
   resolve?: (outcome: DocumentPreviewOutcome) => void;
   claimTimer?: ReturnType<typeof setTimeout>;
   reviewTimer?: ReturnType<typeof setTimeout>;
@@ -85,6 +107,7 @@ type Session = {
 
 export type DocumentPreviewManagerOptions = {
   editDocument: PreviewEditor;
+  writePdf?: PreviewPdfWriter;
   openLocal?: () => Promise<LocalPreviewInput | null>;
   openCopy?: (path: string) => void | Promise<void>;
   emit?: (list: DesktopDocumentSummary[]) => void;
@@ -113,6 +136,7 @@ const xlsxPreviewWarnings = (model: XlsxPreviewModel): string[] => {
 export class DocumentPreviewManager {
   private readonly sessions = new Map<string, Session>();
   private readonly editDocument: PreviewEditor;
+  private readonly writePdf?: PreviewPdfWriter;
   private readonly pickLocal?: () => Promise<LocalPreviewInput | null>;
   private readonly openCopyPath?: (path: string) => void | Promise<void>;
   private readonly emit: (list: DesktopDocumentSummary[]) => void;
@@ -124,6 +148,7 @@ export class DocumentPreviewManager {
 
   constructor(options: DocumentPreviewManagerOptions) {
     this.editDocument = options.editDocument;
+    this.writePdf = options.writePdf;
     this.pickLocal = options.openLocal;
     this.openCopyPath = options.openCopy;
     this.emit = options.emit ?? (() => undefined);
@@ -163,6 +188,39 @@ export class DocumentPreviewManager {
       }, this.claimTimeoutMs);
 
       void this.loadReview(session);
+    });
+
+  // 鲁港通 - PDF 叠加：先在原文件文本层里定位标签，再在右栏逐条确认，最后只写副本
+  previewPdf = (input: {
+    path: string;
+    fileName: string;
+    entries: PdfOverlayEntry[];
+  }): Promise<DocumentPreviewOutcome> =>
+    new Promise((resolve) => {
+      const session: Session = {
+        token: randomUUID(),
+        mode: 'review',
+        format: 'pdf',
+        fileName: input.fileName,
+        state: 'pending',
+        changes: [],
+        blocks: [],
+        operations: [],
+        sourcePath: input.path,
+        warnings: [],
+        resolve
+      };
+      this.sessions.set(session.token, session);
+      this.evict();
+      this.emitList();
+
+      session.claimTimer = setTimeout(() => {
+        if (session.state !== 'pending') return;
+        session.state = 'declined';
+        this.finish(session, { status: 'unavailable' }, false);
+      }, this.claimTimeoutMs);
+
+      void this.loadPdfReview(session, input.entries);
     });
 
   openLocal = async (): Promise<DesktopDocumentSnapshot | null> => {
@@ -335,10 +393,10 @@ export class DocumentPreviewManager {
     return true;
   };
 
-  // 鲁港通 - 只给 PDF 查看会话发字节：网页端用内置渲染，原文件路径不出主进程
+  // 鲁港通 - 只给 PDF 会话发字节（查看或叠加审核）：网页端用内置渲染，原文件路径不出主进程
   readDocument = async (token: string): Promise<DesktopDocumentBytes | null> => {
     const session = this.sessions.get(token);
-    if (session?.mode !== 'view' || session.format !== 'pdf' || !session.sourcePath) return null;
+    if (!session || session.format !== 'pdf' || !session.sourcePath) return null;
     try {
       const info = await stat(session.sourcePath);
       if (!info.isFile() || info.size > this.maxReadBytes) return null;
@@ -384,8 +442,90 @@ export class DocumentPreviewManager {
     }
   };
 
+  // 鲁港通 - PDF 叠加加载：文本层定位标签 → 生成黄底条目；扫描件与找不到标签直接给出可操作原因
+  private loadPdfReview = async (
+    session: Session,
+    entries: PdfOverlayEntry[]
+  ): Promise<void> => {
+    if (!session.sourcePath) return;
+    try {
+      const info = await stat(session.sourcePath);
+      if (!info.isFile() || info.size > this.maxReadBytes) {
+        this.failPdfReview(
+          session,
+          '这个 PDF 文件太大，右栏暂时无法标注；请先压缩或拆分后再试。',
+          'document_edit_failed'
+        );
+        return;
+      }
+      const bytes = new Uint8Array(await readFile(session.sourcePath));
+      if (!isOpenReview(session)) return;
+      const pages = await extractPdfTextPages(bytes);
+      if (!isOpenReview(session)) return;
+      if (pages.every((page) => page.items.length === 0)) {
+        this.failPdfReview(
+          session,
+          '这份 PDF 没有可定位的文字层（可能是扫描件），无法在原样副本上标注内容。',
+          'pdf_no_text_layer'
+        );
+        return;
+      }
+      const plan = planPdfOverlay(pages, entries);
+      if (plan.placements.every((placement) => placement.status === 'missing')) {
+        this.failPdfReview(
+          session,
+          '这份 PDF 里没有找到这些标签，请确认标签文字与文件里的写法一致（例如「姓名：」）。',
+          'document_edit_failed'
+        );
+        return;
+      }
+      session.pdf = plan;
+      session.pdfBytes = bytes;
+      session.changes = plan.placements.map((placement, index) => ({
+        index,
+        target: placement.label,
+        section: `第 ${placement.page} 页`,
+        before: '',
+        after: placement.value,
+        status: placement.status === 'placed' ? 'pending' : 'unavailable',
+        scope: 'none',
+        ...(placement.note ? { note: placement.note } : {})
+      }));
+      const missing = plan.placements.filter(
+        (placement) => placement.status === 'missing'
+      ).length;
+      if (missing > 0) {
+        session.warnings.push(`有 ${missing} 条内容在 PDF 里找不到对应标签，已标为不可应用。`);
+      }
+      this.emitList();
+    } catch (error) {
+      const message =
+        error instanceof PdfOverlayError
+          ? error.message
+          : '这个 PDF 没有读取成功，请确认文件能正常打开后再试。';
+      const code =
+        error instanceof PdfOverlayError && error.code === 'pdf_no_text_layer'
+          ? 'pdf_no_text_layer'
+          : 'document_edit_failed';
+      this.failPdfReview(session, message, code);
+    }
+  };
+
+  private failPdfReview(
+    session: Session,
+    message: string,
+    code: 'pdf_no_text_layer' | 'document_edit_failed'
+  ): void {
+    if (!isOpenReview(session)) return;
+    session.state = 'failed';
+    session.message = message;
+    this.finish(session, { status: 'failed', message, code }, true);
+  }
+
   private afterDecision(session: Session): void {
-    if (session.xlsx) {
+    if (session.pdf) {
+      // 鲁港通 - PDF 叠加没有正文重排，黄底条目状态由 changes 直接反映
+    } else if (session.xlsx) {
       session.sheets = computeXlsxPreviewSheets(session.xlsx, session.operations, session.changes);
     } else if (session.model) {
       session.blocks = computePreviewBlocks(session.model, session.operations, session.changes);
@@ -406,6 +546,10 @@ export class DocumentPreviewManager {
   }
 
   private finalize = async (session: Session): Promise<void> => {
+    if (session.pdf) {
+      await this.finalizePdf(session);
+      return;
+    }
     const applied = session.operations.filter(
       (_operation, index) => session.changes[index]?.status === 'applied'
     );
@@ -428,6 +572,60 @@ export class DocumentPreviewManager {
       session.state = 'failed';
       session.message = '副本没有生成成功，没有写入任何内容，原文件不受影响。请重试一次。';
       this.finish(session, { status: 'failed', message: session.message }, true);
+    }
+  };
+
+  // 鲁港通 - PDF 副本只叠加用户逐条应用的内容，原文件始终不动
+  private finalizePdf = async (session: Session): Promise<void> => {
+    const plan = session.pdf;
+    if (!plan) return;
+    const applied = plan.placements.filter(
+      (_placement, index) => session.changes[index]?.status === 'applied'
+    );
+    if (applied.length === 0) {
+      session.state = 'no_change';
+      this.finish(session, { status: 'no_change' }, true);
+      return;
+    }
+    if (!this.writePdf || !session.pdfBytes || !session.sourcePath) {
+      session.state = 'failed';
+      session.message = '副本没有生成成功，没有写入任何内容，原文件不受影响。请重试一次。';
+      this.finish(session, { status: 'failed', message: session.message }, true);
+      return;
+    }
+
+    try {
+      const skipped = plan.placements
+        .filter((_placement, index) => session.changes[index]?.status === 'unavailable')
+        .map((placement) => placement.label);
+      const copy = await this.writePdf({
+        pdfBytes: session.pdfBytes,
+        fileName: session.fileName,
+        sourcePath: session.sourcePath,
+        placements: applied
+      });
+      session.state = 'done';
+      session.copy = { name: copy.name, folder: copy.folder };
+      session.copyPath = copy.path;
+      this.finish(
+        session,
+        {
+          status: 'done',
+          copy: { ...copy, ...(skipped.length ? { skipped } : {}) }
+        },
+        true
+      );
+    } catch (error) {
+      const code =
+        error instanceof PdfOverlayError && error.code === 'pdf_font_missing'
+          ? 'pdf_font_missing'
+          : 'document_edit_failed';
+      session.state = 'failed';
+      session.message =
+        error instanceof PdfOverlayError
+          ? error.message
+          : '副本没有生成成功，没有写入任何内容，原文件不受影响。请重试一次。';
+      this.finish(session, { status: 'failed', message: session.message, code }, true);
     }
   };
 
@@ -537,6 +735,23 @@ export class DocumentPreviewManager {
           }
         : {}),
       warnings: [...session.warnings],
+      ...(session.pdf
+        ? {
+            pdf: {
+              pages: session.pdf.pages.length,
+              items: session.pdf.placements.map((placement, index) => ({
+                index,
+                page: placement.page,
+                label: placement.label,
+                value: placement.value,
+                status: session.changes[index]?.status ?? 'unavailable',
+                ...(placement.labelRect ? { labelRect: { ...placement.labelRect } } : {}),
+                ...(placement.valueRect ? { valueRect: { ...placement.valueRect } } : {}),
+                ...(placement.note ? { note: placement.note } : {})
+              }))
+            }
+          }
+        : {}),
       ...(session.copy ? { copy: { ...session.copy } } : {}),
       ...(session.message ? { message: session.message } : {})
     };

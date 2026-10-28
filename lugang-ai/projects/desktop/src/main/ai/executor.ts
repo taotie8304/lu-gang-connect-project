@@ -63,6 +63,8 @@ export type AiActionErrorCode =
   | 'form_field_blocked'
   | 'form_fill_failed'
   | 'pdf_font_missing'
+  | 'pdf_readonly'
+  | 'pdf_no_text_layer'
   | 'document_open_failed'
   | 'document_cancelled'
   | 'document_expired'
@@ -140,22 +142,46 @@ export type AiActiveDocument =
 
 export type AiActiveDocumentReader = () => AiActiveDocument | undefined;
 
-/** 鲁港通 - 回传给模型的文档信息：PDF 只有名称，不能作为修改目标 */
+/** 鲁港通 - 回传给模型的文档信息：PDF 只给页码与标签提纲，改内容只能走 fill_pdf 叠加副本 */
 export type AiDocumentInfo = Omit<DocumentSummary, 'format'> & {
   format: DocumentSummary['format'] | 'pdf';
+  pdfPages?: number;
+  pdfLabels?: string[];
 };
+
+/** 鲁港通 - PDF 叠加填写条目：标签来自提纲，页码可选用于跨页表单 */
+export type AiPdfOverlayEntry = {
+  page?: number;
+  label: string;
+  value: string;
+};
+
+/** 鲁港通 - 右栏 PDF 提纲：只读文本层标签，不把 PDF 正文整篇带出 */
+export type AiPdfOutlineReader = (path: string) => Promise<{ pages: number; labels: string[] }>;
 
 /** 鲁港通 - 右栏预览：用户只在源文件黄底标记里逐条确认后生成副本 */
 export type AiDocumentPreviewOutcome =
   | { status: 'done'; copy: EditedDocumentCopy }
   | { status: 'no_change' }
   | { status: 'declined' | 'timeout' | 'unavailable' }
-  | { status: 'failed'; message: string };
+  | {
+      status: 'failed';
+      message: string;
+      code?: 'pdf_no_text_layer' | 'pdf_font_missing' | 'document_edit_failed';
+    };
 
 export type AiDocumentPreviewer = ((input: {
   document: ParsedDocument;
   operations: DocumentEditOperation[];
-}) => Promise<AiDocumentPreviewOutcome>) & { cancel?: () => void };
+}) => Promise<AiDocumentPreviewOutcome>) & {
+  cancel?: () => void;
+  /** 鲁港通 - PDF 叠加预览：与 Word/Excel 共用右栏逐条确认，字节只在主进程 */
+  previewPdf?: (input: {
+    path: string;
+    fileName: string;
+    entries: AiPdfOverlayEntry[];
+  }) => Promise<AiDocumentPreviewOutcome>;
+};
 
 export type AiDocumentEditInfo = {
   applied: number;
@@ -304,6 +330,7 @@ const FORM_BLOCKED_LABEL = /密码|验证码|动态码|银行卡|卡号|信用�
 const MAX_FORM_TOKENS = 3;
 const MAX_FORM_CONFIRM_ITEMS = 50;
 const MAX_DOCUMENT_TOKENS = 3;
+const MAX_PDF_TOKENS = 3;
 
 const parseHttpUrl = (input: string): URL | null => {
   try {
@@ -326,10 +353,15 @@ export class AiExecutor {
   private readonly confirmForm?: AiFormConfirmer;
   private readonly openDocument?: AiDocumentOpener;
   private readonly readActiveDocument?: AiActiveDocumentReader;
+  private readonly readPdfOutline?: AiPdfOutlineReader;
   private readonly reloadDocument?: AiDocumentReloader;
   private readonly previewDocument?: AiDocumentPreviewer;
   private readonly forms = new Map<string, ParsedForm>();
   private readonly documents = new Map<string, ParsedDocument>();
+  private readonly pdfs = new Map<
+    string,
+    { path: string; fileName: string; pages: number; labels: string[] }
+  >();
 
   constructor(options: {
     driver: AiPageDriver;
@@ -342,6 +374,7 @@ export class AiExecutor {
     confirmForm?: AiFormConfirmer;
     openDocument?: AiDocumentOpener;
     readActiveDocument?: AiActiveDocumentReader;
+    readPdfOutline?: AiPdfOutlineReader;
     reloadDocument?: AiDocumentReloader;
     previewDocument?: AiDocumentPreviewer;
   }) {
@@ -355,6 +388,7 @@ export class AiExecutor {
     this.confirmForm = options.confirmForm;
     this.openDocument = options.openDocument;
     this.readActiveDocument = options.readActiveDocument;
+    this.readPdfOutline = options.readPdfOutline;
     this.reloadDocument = options.reloadDocument;
     this.previewDocument = options.previewDocument;
   }
@@ -399,10 +433,11 @@ export class AiExecutor {
     if (command.action === 'fill_form') return this.fillFormLocally(command);
     if (command.action === 'open_document') return this.openDocumentLocally();
     if (command.action === 'edit_document') return this.editDocumentLocally(command);
+    if (command.action === 'fill_pdf') return this.fillPdfLocally(command);
 
     if (command.action === 'read') {
       // 鲁港通 - 右栏打开的是本机文件时直接读文件，不去读网页
-      const local = this.readActiveDocumentLocally();
+      const local = await this.readActiveDocumentLocally();
       if (local) return local;
       const read = await this.readSnapshot({ fullText: command.fullText === true });
       if ('result' in read) return read.result;
@@ -702,6 +737,23 @@ export class AiExecutor {
     return token;
   }
 
+  // 鲁港通 - PDF 令牌只记路径与标签提纲，正文与字节都不进令牌表
+  private storePdf(pdf: {
+    path: string;
+    fileName: string;
+    pages: number;
+    labels: string[];
+  }): string {
+    const token = randomUUID();
+    this.pdfs.set(token, pdf);
+    while (this.pdfs.size > MAX_PDF_TOKENS) {
+      const oldest = this.pdfs.keys().next().value;
+      if (!oldest) break;
+      this.pdfs.delete(oldest);
+    }
+    return token;
+  }
+
   // 鲁港通 - 副本写好后重新读取它，让模型拿着新 token 接着改，用户不用再选一次文件
   private async continueAfterEdit(
     copy: EditedDocumentCopy
@@ -719,9 +771,9 @@ export class AiExecutor {
   }
 
   private async openDocumentLocally(): Promise<AiCommandResult> {
-    // 鲁港通 - 右栏已经打开 Word/Excel 时直接读它，不再弹没有上下文的选择窗口
-    const active = this.readActiveDocumentLocally();
-    if (active?.documentToken) return active;
+    // 鲁港通 - 右栏已打开文件时直接读它（PDF 也一样），不再弹没有上下文的选择窗口
+    const active = await this.readActiveDocumentLocally();
+    if (active) return active;
 
     if (!this.openDocument) {
       return {
@@ -764,7 +816,7 @@ export class AiExecutor {
     return { ok: true, document: toDocumentSummary(document), documentToken: token };
   }
 
-  private readActiveDocumentLocally(): AiCommandResult | undefined {
+  private async readActiveDocumentLocally(): Promise<AiCommandResult | undefined> {
     if (!this.readActiveDocument) return undefined;
     let active: AiActiveDocument | undefined;
     try {
@@ -774,9 +826,9 @@ export class AiExecutor {
     }
     if (!active) return undefined;
 
-    // 鲁港通 - PDF 只给文件名，不发放修改引用
+    // 鲁港通 - 右栏是 PDF 时不再回落 Word/Excel 选择框：读出标签提纲并发放叠加填写令牌
     if (active.format === 'pdf') {
-      return { ok: true, document: { format: 'pdf', name: active.fileName } };
+      return this.readActivePdfLocally(active);
     }
 
     const token = randomUUID();
@@ -789,9 +841,48 @@ export class AiExecutor {
     return { ok: true, document: toDocumentSummary(active.document), documentToken: token };
   }
 
+  // 鲁港通 - PDF 只读标签提纲；读不到也直接返回文件名，绝不弹文件选择框
+  private async readActivePdfLocally(
+    active: Extract<AiActiveDocument, { format: 'pdf' }>
+  ): Promise<AiCommandResult> {
+    if (!this.readPdfOutline) {
+      return { ok: true, document: { format: 'pdf', name: active.fileName } };
+    }
+    try {
+      const outline = await this.readPdfOutline(active.path);
+      const token = this.storePdf({
+        path: active.path,
+        fileName: active.fileName,
+        pages: outline.pages,
+        labels: outline.labels
+      });
+      return {
+        ok: true,
+        document: {
+          format: 'pdf',
+          name: active.fileName,
+          pdfPages: outline.pages,
+          pdfLabels: outline.labels
+        },
+        documentToken: token
+      };
+    } catch {
+      return { ok: true, document: { format: 'pdf', name: active.fileName } };
+    }
+  }
+
   private async editDocumentLocally(
     command: Extract<AiCommand, { action: 'edit_document' }>
   ): Promise<AiCommandResult> {
+    // 鲁港通 - PDF 不能像 Word/Excel 那样改写结构，只能叠加内容：把模型引到 fill_pdf
+    if (this.pdfs.has(command.token)) {
+      return {
+        ok: false,
+        code: 'pdf_readonly',
+        message:
+          'PDF 不能像 Word/Excel 那样直接改结构，也没有写入任何内容。请在原样副本上叠加内容：改用 fill_pdf，按 PDF 提纲里的标签逐条给出内容。'
+      };
+    }
     const document = this.documents.get(command.token);
     if (!document) {
       return {
@@ -868,6 +959,90 @@ export class AiExecutor {
       code: 'document_preview_unavailable',
       message:
         '右栏没有接上这份文件的修改预览，已停止，没有生成副本，原文件也没有变化。请确认右栏打开的是这份文件后再试。'
+    };
+  }
+
+  // 鲁港通 - PDF 叠加填写：走同一套右栏黄底逐条确认，只写副本、原文件不动
+  private async fillPdfLocally(
+    command: Extract<AiCommand, { action: 'fill_pdf' }>
+  ): Promise<AiCommandResult> {
+    const pdf = this.pdfs.get(command.token);
+    if (!pdf) {
+      return {
+        ok: false,
+        code: 'document_expired',
+        message: '这份 PDF 已经失效或还没有打开，请先让我重新读取右栏里的 PDF，再按标签填写内容。'
+      };
+    }
+    const previewPdf = this.previewDocument?.previewPdf;
+    if (!previewPdf) {
+      return {
+        ok: false,
+        code: 'document_preview_unavailable',
+        message:
+          '当前客户端版本还没有接入 PDF 叠加预览，无法确认这次填写，也没有写入任何内容。请升级到最新版桌面客户端后重试。'
+      };
+    }
+
+    let outcome: AiDocumentPreviewOutcome;
+    try {
+      outcome = await previewPdf.call(this.previewDocument, {
+        path: pdf.path,
+        fileName: pdf.fileName,
+        entries: command.entries
+      });
+    } catch {
+      outcome = { status: 'unavailable' };
+    }
+
+    if (outcome.status === 'done') {
+      this.pdfs.delete(command.token);
+      const copy = outcome.copy;
+      return {
+        ok: true,
+        file: { name: copy.name, format: copy.format, folder: copy.folder },
+        edit: {
+          applied: copy.applied,
+          ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
+          ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
+        }
+      };
+    }
+    if (outcome.status === 'no_change') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: '你把这轮填写都跳过了，没有生成副本，原文件也没有变化。需要调整时请告诉我。'
+      };
+    }
+    if (outcome.status === 'declined') {
+      return {
+        ok: false,
+        code: 'confirmation_declined',
+        message: '你取消了这次填写，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (outcome.status === 'timeout') {
+      return {
+        ok: false,
+        code: 'confirmation_timeout',
+        message: '等待填写确认超时，已取消这次填写，没有生成任何副本。需要继续时请告诉我。'
+      };
+    }
+    if (outcome.status === 'failed') {
+      const code: AiActionErrorCode =
+        outcome.code === 'pdf_no_text_layer'
+          ? 'pdf_no_text_layer'
+          : outcome.code === 'pdf_font_missing'
+            ? 'pdf_font_missing'
+            : 'document_edit_failed';
+      return { ok: false, code, message: outcome.message };
+    }
+    return {
+      ok: false,
+      code: 'document_preview_unavailable',
+      message:
+        '右栏没有接上这份 PDF 的叠加预览，已停止，没有生成副本，原文件也没有变化。请确认右栏打开的是这份 PDF 后再试。'
     };
   }
 

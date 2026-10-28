@@ -18,7 +18,8 @@ import {
   type AiFormFiller,
   type AiFormOpener,
   type AiFormPathOpener,
-  type AiPageDriver
+  type AiPageDriver,
+  type AiPdfOutlineReader
 } from './executor';
 import {
   createAiSessionGuard,
@@ -46,7 +47,8 @@ const LONG_WAIT_ACTIONS = new Set<AiCommand['action']>([
   'open_form',
   'fill_form',
   'open_document',
-  'edit_document'
+  'edit_document',
+  'fill_pdf'
 ]);
 
 export type AiControllerBrowser = {
@@ -72,6 +74,7 @@ export type AiControllerOptions = {
   confirmForm?: AiFormConfirmer;
   openDocument?: AiDocumentOpener;
   readActiveDocument?: AiActiveDocumentReader;
+  readPdfOutline?: AiPdfOutlineReader;
   reloadDocument?: AiDocumentReloader;
   previewDocument?: AiDocumentPreviewer;
   hasLocalDocuments?: () => boolean;
@@ -150,6 +153,7 @@ export class AiController {
       confirmForm: options.confirmForm,
       openDocument: options.openDocument,
       readActiveDocument: options.readActiveDocument,
+      readPdfOutline: options.readPdfOutline,
       reloadDocument: options.reloadDocument,
       previewDocument: options.previewDocument
     });

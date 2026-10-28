@@ -24,11 +24,13 @@ import type { AiDocumentPreviewer } from './ai/executor';
 import { createDeviceChannel, type DeviceChannel } from './ai/deviceChannel';
 import { editDocxCopy } from './ai/document/docxEdit';
 import { editXlsxCopy } from './ai/document/xlsxEdit';
+import { extractPdfOutline, writePdfOverlayCopy } from './ai/document/pdfOverlay';
 import { parseDocumentFile } from './ai/document/parse';
 import { createFileGenerator } from './ai/fileGenerator';
 import { createFilePicker } from './ai/filePicker';
 import { fillFormCopy } from './ai/form/fill';
 import { parseFormFile } from './ai/form/parse';
+import { readFile } from 'node:fs/promises';
 
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
@@ -178,9 +180,24 @@ if (!gotLock) {
         lastGeneratedPath = copy.path;
         return copy;
       };
+      // 鲁港通 - PDF 叠加同样只写副本：原文件保持原样，副本落到下载目录
+      const writePdfCopy = async (input: {
+        pdfBytes: Uint8Array;
+        fileName: string;
+        sourcePath: string;
+        placements: Parameters<typeof writePdfOverlayCopy>[0]['placements'];
+      }) => {
+        const copy = await writePdfOverlayCopy({
+          ...input,
+          outputDir: app.getPath('downloads')
+        });
+        lastGeneratedPath = copy.path;
+        return copy;
+      };
       // 鲁港通 - 右栏文件标签与逐条确认：会话只在本机主进程，快照不含本机路径
       const documents = new DocumentPreviewManager({
         editDocument: editDocumentCopy,
+        writePdf: writePdfCopy,
         openLocal: async () => {
           const picked = await pickFile({
             title: '选择要打开的文件',
@@ -204,10 +221,13 @@ if (!gotLock) {
           }
         }
       });
-      // 鲁港通 - 停止 AI 或关闭面板时一并放弃未完成的预览会话
+      // 鲁港通 - 停止 AI 或关闭面板时一并放弃未完成的预览会话（含 PDF 叠加）
       const previewDocument: AiDocumentPreviewer = Object.assign(
         (input: Parameters<AiDocumentPreviewer>[0]) => documents.preview(input),
-        { cancel: () => documents.cancelAll() }
+        {
+          cancel: () => documents.cancelAll(),
+          previewPdf: documents.previewPdf
+        }
       );
       const aiController = new AiController({
         browser,
@@ -266,6 +286,9 @@ if (!gotLock) {
         hasLocalDocuments: () => documents.list().length > 0,
         // 鲁港通 - AI 读取时优先读右栏当前打开的文件
         readActiveDocument: () => documents.readActiveDocument(),
+        // 鲁港通 - 右栏是 PDF 时只提取标签提纲，模型据此决定 fill_pdf 的内容
+        readPdfOutline: async (path: string) =>
+          extractPdfOutline(new Uint8Array(await readFile(path))),
         // 鲁港通 - 改完副本后重新解析，让模型接着改同一份副本
         reloadDocument: parseDocumentFile
       });

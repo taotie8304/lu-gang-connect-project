@@ -139,7 +139,7 @@ export type DesktopDocumentSheet = {
   rowLabelsTruncated?: boolean;
 };
 
-/** open_document 与 read 返回的文档提纲：不含整篇正文与文件路径；PDF 只有名称 */
+/** open_document 与 read 返回的文档提纲：不含整篇正文与文件路径；PDF 只给页数与标签提纲 */
 export type DesktopDocumentSummary = {
   format: 'docx' | 'xlsx' | 'pdf';
   name: string;
@@ -148,6 +148,9 @@ export type DesktopDocumentSummary = {
   paragraphsTruncated?: boolean;
   sheets?: DesktopDocumentSheet[];
   sheetsTruncated?: boolean;
+  // 鲁港通 - PDF 叠加填写（0.8.7 起）：标签来自文本层，模型按标签给内容
+  pdfPages?: number;
+  pdfLabels?: string[];
   warnings?: string[];
 };
 

@@ -42,14 +42,15 @@ export const DESKTOP_BROWSER_UPLOAD_RESULT_TIMEOUT_MS =
 export const DESKTOP_BUSY_TTL_MS = DESKTOP_BROWSER_RESULT_TIMEOUT_MS + 30_000;
 export const DESKTOP_BUSY_LONG_TTL_MS = DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS + 30_000;
 
-/** 需要等用户亲手操作的动作：确认提交、选择上传文件、选择表单、确认填写、选择与修改文档 */
+/** 需要等用户亲手操作的动作：确认提交、选择上传文件、选择表单、确认填写、选择与修改文档、确认 PDF 叠加 */
 export const DESKTOP_LONG_WAIT_ACTIONS = [
   'click',
   'upload',
   'open_form',
   'fill_form',
   'open_document',
-  'edit_document'
+  'edit_document',
+  'fill_pdf'
 ] as const;
 
 export const isDesktopLongWaitAction = (action?: string): boolean =>

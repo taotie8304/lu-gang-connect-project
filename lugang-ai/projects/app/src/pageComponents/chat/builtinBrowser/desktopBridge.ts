@@ -155,6 +155,23 @@ export type DesktopDocumentSheet = {
   appendedRows?: DesktopDocumentAppendedRow[];
 };
 
+/** 鲁港通 - PDF 黄底叠加：矩形按页面宽高归一化（0~1，原点左上），网页端按渲染尺寸直接换算 */
+export type DesktopPdfOverlayItem = {
+  index: number;
+  page: number;
+  label: string;
+  value: string;
+  status: DesktopDocumentChangeStatus;
+  labelRect?: DesktopCssRect;
+  valueRect?: DesktopCssRect;
+  note?: string;
+};
+
+export type DesktopPdfOverlay = {
+  pages: number;
+  items: DesktopPdfOverlayItem[];
+};
+
 export type DesktopDocumentSnapshot = {
   token: string;
   mode: 'review' | 'view';
@@ -164,6 +181,7 @@ export type DesktopDocumentSnapshot = {
   changes: DesktopDocumentChange[];
   blocks: DesktopDocumentBlock[];
   sheets?: DesktopDocumentSheet[];
+  pdf?: DesktopPdfOverlay;
   warnings: string[];
   copy?: { name: string; folder: string };
   message?: string;

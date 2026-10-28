@@ -311,6 +311,26 @@ const editDocumentCommand = z
     { message: '改动条数超出上限，请分次修改' }
   );
 
+// 鲁港通 - PDF 叠加填写：按标签定位后写进原样副本，不改 PDF 原有排版
+const pdfOverlayEntrySchema = z.object({
+  page: z
+    .union([z.number(), z.string().trim().regex(/^\d+$/, { message: '页码需要是数字' })])
+    .transform((value) => (typeof value === 'string' ? Number(value) : value))
+    .pipe(z.number().int().min(1).max(500, { message: '页码超出范围' }))
+    .optional(),
+  label: z.string().trim().min(1).max(60),
+  value: documentText(2000)
+});
+
+const fillPdfCommand = z.object({
+  action: z.literal('fill_pdf'),
+  token: z.string().trim().min(1).max(64),
+  entries: z
+    .array(pdfOverlayEntrySchema)
+    .min(1, { message: '至少需要一条填写内容' })
+    .max(40, { message: '单次填写不能超过 40 条' })
+});
+
 export const aiCommandSchema = z.discriminatedUnion('action', [
   readCommand,
   navigateCommand,
@@ -324,6 +344,7 @@ export const aiCommandSchema = z.discriminatedUnion('action', [
   fillFormCommand,
   openDocumentCommand,
   editDocumentCommand,
+  fillPdfCommand,
   stopCommand
 ]);
 

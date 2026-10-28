@@ -26,7 +26,7 @@ const fontPaths = (): string[] => {
   );
 };
 
-const embedCjkFont = async (document: PDFDocument): Promise<PDFFont> => {
+export const embedCjkFont = async (document: PDFDocument): Promise<PDFFont> => {
   document.registerFontkit(fontkit);
   for (const path of fontPaths()) {
     try {

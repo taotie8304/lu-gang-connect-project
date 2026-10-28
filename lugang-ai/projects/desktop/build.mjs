@@ -57,5 +57,12 @@ await mkdir(qpdfTarget, { recursive: true });
 for (const file of ['package.json', 'qpdf.js', 'qpdf.wasm']) {
   await cp(join(qpdfSource, file), join(qpdfTarget, file));
 }
+// 鲁港通 - pdfjs 运行时资源（worker/cmaps/标准字体）必须随 dist 分发，否则 PDF 标签定位在安装包里不可用
+const pdfjsSource = join(root, 'node_modules/pdfjs-dist');
+const pdfjsTarget = join(dist, 'main/pdfjs');
+await mkdir(join(pdfjsTarget, 'legacy/build'), { recursive: true });
+await cp(join(pdfjsSource, 'legacy/build/pdf.worker.mjs'), join(pdfjsTarget, 'legacy/build/pdf.worker.mjs'));
+await cp(join(pdfjsSource, 'cmaps'), join(pdfjsTarget, 'cmaps'), { recursive: true });
+await cp(join(pdfjsSource, 'standard_fonts'), join(pdfjsTarget, 'standard_fonts'), { recursive: true });
 
 console.log('[lugang-desktop] build complete');

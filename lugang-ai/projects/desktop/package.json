@@ -1,6 +1,6 @@
 {
   "name": "@lugang/desktop",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "description": "鲁港通 Windows 桌面客户端（P1）",
   "main": "dist/main/index.cjs",
@@ -71,6 +71,7 @@
     "adm-zip": "catalog:",
     "docx": "catalog:",
     "exceljs": "catalog:",
-    "pdf-lib": "catalog:"
+    "pdf-lib": "catalog:",
+    "pdfjs-dist": "catalog:"
   }
 }

@@ -326,6 +326,8 @@ const DOCUMENT_FORMAT_LABELS: Record<DesktopDocumentSummary['format'], string> =
 
 /** 鲁港通 - 文档修改从桌面端 0.6.0 起支持，服务端按注册上报的版本识别 */
 export const DESKTOP_DOCUMENT_MIN_VERSION = '0.6.0';
+/** 鲁港通 - PDF 原样副本叠加（fill_pdf）与 PDF 标签提纲从 0.8.7 起支持 */
+export const DESKTOP_PDF_OVERLAY_MIN_VERSION = '0.8.7';
 
 const parseVersion = (input?: string): number[] | undefined => {
   const text = (input ?? '').trim().replace(/^v/i, '');
@@ -339,6 +341,9 @@ const parseVersion = (input?: string): number[] | undefined => {
 
 export const isDesktopDocumentAction = (action: string): boolean =>
   action === 'open_document' || action === 'edit_document';
+
+/** 鲁港通 - 只写本机文件、不改变页面位置的动作（PDF 叠加也在其中） */
+export const isDesktopPdfOverlayAction = (action: string): boolean => action === 'fill_pdf';
 
 export const isDesktopDocumentVersionSupported = (
   version: string | undefined,
@@ -561,6 +566,87 @@ const normalizeEditDocumentOperations = (raw: unknown): EditOperationNormalizeRe
   return { ok: true, operations };
 };
 
+// 鲁港通 - PDF 叠加填写：模型常把页码写成字符串、数值写成数字，下发前统一归一化并明确指出不合法项
+type NormalizedPdfEntry = { label: string; value: string; page?: number };
+
+type PdfEntriesNormalizeResult =
+  | { ok: true; entries: NormalizedPdfEntry[] }
+  | { ok: false; message: string };
+
+const PDF_ENTRY_LIMIT = 40;
+const PDF_LABEL_MAX_CHARS = 60;
+const PDF_VALUE_MAX_CHARS = 2000;
+const PDF_PAGE_MAX = 500;
+
+const toPdfPage = (value: unknown): number | undefined => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 1 && value <= PDF_PAGE_MAX ? value : undefined;
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const page = Number(value.trim());
+    return page >= 1 && page <= PDF_PAGE_MAX ? page : undefined;
+  }
+  return undefined;
+};
+
+const normalizeFillPdfEntries = (raw: unknown): PdfEntriesNormalizeResult => {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return { ok: false, message: '缺少 entries 填写清单，至少需要一条「标签 + 内容」' };
+  }
+  if (raw.length > PDF_ENTRY_LIMIT) {
+    return { ok: false, message: `单次填写不能超过 ${PDF_ENTRY_LIMIT} 条，请分次提交` };
+  }
+
+  const entries: NormalizedPdfEntry[] = [];
+  for (let index = 0; index < raw.length; index += 1) {
+    const item = raw[index];
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return { ok: false, message: `entries.${index} 不是有效的填写项` };
+    }
+    const record = item as Record<string, unknown>;
+    const label = typeof record.label === 'string' ? record.label.trim() : '';
+    if (!label) {
+      return {
+        ok: false,
+        message: `entries.${index} 缺少 label：要填写位置的标签文字，必须与 PDF 提纲里的标签一致`
+      };
+    }
+    if (label.length > PDF_LABEL_MAX_CHARS) {
+      return { ok: false, message: `entries.${index} 的 label 不能超过 ${PDF_LABEL_MAX_CHARS} 字` };
+    }
+    const value = toEditText(record.value);
+    if (value === undefined) {
+      return { ok: false, message: `entries.${index}（${label}）需要 value：要写入的内容` };
+    }
+    if (!value.trim()) {
+      return {
+        ok: false,
+        message: `entries.${index}（${label}）的 value 不能为空；这一项不需要填写时请不要放进 entries`
+      };
+    }
+    if (value.length > PDF_VALUE_MAX_CHARS) {
+      return {
+        ok: false,
+        message: `entries.${index}（${label}）的 value 不能超过 ${PDF_VALUE_MAX_CHARS} 字`
+      };
+    }
+    const entry: NormalizedPdfEntry = { label, value };
+    if (record.page !== undefined) {
+      const page = toPdfPage(record.page);
+      if (page === undefined) {
+        return {
+          ok: false,
+          message: `entries.${index} 的 page 需要是 1 到 ${PDF_PAGE_MAX} 之间的页码`
+        };
+      }
+      entry.page = page;
+    }
+    entries.push(entry);
+  }
+
+  return { ok: true, entries };
+};
+
 /** open_document 与 read 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
 const columnLettersAt = (index: number): string => {
   let letters = '';
@@ -618,13 +704,41 @@ const formatDocumentSummary = (
       ? `右栏打开的文件已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`
       : `文档已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`;
 
-  // 鲁港通 - PDF 不能在原位修改：带输入框的走 fill_form，普通/扫描版只能读
+  // 鲁港通 - PDF 只能叠加填写：复印副本后在原标签旁加上内容，不重排、不仿制
   if (document.format === 'pdf') {
-    return [
-      heading,
-      'PDF 不能在原位修改：带表单域的表单 PDF，请直接用 open_form 读取（右栏已打开时会直接读这份文件，不会再让用户选文件），再按字段 id 用 fill_form 生成已填写的副本；普通或扫描版 PDF 只能读取、不能填写也不能修改，需要改动时请让用户把内容另存为 Word 或 Excel，再用 open_document 打开。',
-      '不要因为 PDF 读取成功就承诺「已经修改」，也不要让用户再选一次同一份文件。'
-    ].join('\n');
+    const lines: string[] = [heading];
+    const labels = document.pdfLabels ?? [];
+
+    if (documentToken) {
+      lines.push(
+        `文档 token：${documentToken}。这就是右栏打开的这份 PDF；提交 fill_pdf 时把这个值原样放进 token 字段，不要重新打开，也不要让用户再选一次文件。`
+      );
+    }
+    if (document.pdfPages) {
+      lines.push(`共 ${document.pdfPages} 页。`);
+    }
+
+    if (labels.length > 0) {
+      lines.push('可叠加填写的标签（fill_pdf 的 label 要与这里完全一致）：');
+      for (const label of labels) {
+        lines.push(`- ${label}`);
+      }
+      lines.push(
+        '下一步：按用户要求立即用 fill_pdf 提交，entries 里每条给出 label 与 value；跨页表单可以带 page。桌面客户端会保留原 PDF 的排版、字体和线条，把你的内容叠印在副本上，只保存副本，原文件不动。右栏源文件上的黄色标记就是确认环节，由用户逐条「应用/跳过」，不要先反问，也不要等用户再次同意。'
+      );
+      lines.push(
+        'PDF 只能这样叠加内容：不要用 edit_document、generate_file 或 fill_form 代替，也不要以任何方式仿制或重排一份外观相似的文件。标签对不上时可以挑最接近的标签填写；确实没有对应标签的内容，如实告诉用户这份 PDF 里找不到可填写的位置。'
+      );
+    } else {
+      lines.push(
+        '这份 PDF 没有提取到可填写的标签文字（可能是扫描件、纯图片版，或桌面客户端版本较旧）。不要填写，也不要仿制：不要用 generate_file 或任何方式重排一份外观相似的文件；请如实告诉用户这份 PDF 无法直接叠加内容（如果是带文字的电子版，可以先让用户把客户端升级到最新版再读取），由用户决定下一步。'
+      );
+    }
+
+    if (document.warnings?.length) {
+      lines.push(`提示：${document.warnings.join('；')}`);
+    }
+    return lines.join('\n');
   }
 
   const lines: string[] = [heading];
@@ -719,9 +833,31 @@ const formatEditResult = (
   return lines.join('\n');
 };
 
+/** 鲁港通 - PDF 叠加回执：强调副本沿用原排版、原文件未改，避免模型声称直接改了原件 */
+const formatPdfFillResult = (
+  file: DesktopCommandFileResult,
+  edit: DesktopDocumentEditResult | undefined
+): string => {
+  const lines = [
+    `已生成填写后的 PDF 副本：${file.name}${file.folder ? `，保存在「${file.folder}」` : ''}，共叠加 ${edit?.applied ?? 0} 项内容。`,
+    '原 PDF 没有被改动，副本保留了原来的排版、字体和线条，只保存在你的电脑上，不会上传到服务器。'
+  ];
+  if (edit?.skipped?.length) {
+    lines.push(`以下内容没有写入：${edit.skipped.join('；')}`);
+  }
+  if (edit?.warnings?.length) {
+    lines.push(`提示：${edit.warnings.join('；')}`);
+  }
+  lines.push(
+    '请让用户打开副本核对填写结果。需要调整时，先重新用 open_document 打开这份 PDF 拿到新的文档 token，再提交 fill_pdf；不要仿制或重排文件。'
+  );
+  return lines.join('\n');
+};
+
 const guidanceForCode = (code?: string, action?: string): string | undefined => {
   const isFormFill = action === 'fill_form';
   const isDocumentEdit = action === 'edit_document';
+  const isPdfFill = isDesktopPdfOverlayAction(action ?? '');
 
   switch (code) {
     case 'not_found':
@@ -765,21 +901,29 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
     case 'form_fill_failed':
       return '已填写的副本没有生成成功。请不要反复重试，改为让用户手动填写原表单；如果用户愿意，也可以换一份 Word 或 Excel 表单再试。';
     case 'pdf_font_missing':
-      return '这台电脑缺少填写 PDF 需要的中文字体，副本没有生成。请让用户手动填写这份 PDF，或改用 Word、Excel 格式的表单。';
+      return '这台电脑缺少填写 PDF 需要的中文字体，副本没有生成，原 PDF 也没有变化。请不要仿制或重排文件；请让用户手动填写这份 PDF，或改用 Word、Excel 格式的表单。';
+    case 'pdf_readonly':
+      return 'PDF 不能像 Word/Excel 那样直接改结构，本次没有写入任何内容。请改用 fill_pdf，按 PDF 提纲里的标签把内容叠加到副本上；不要仿制：不要用 generate_file 另建一个外观相似的文件，也不要让用户手动修改。';
+    case 'pdf_no_text_layer':
+      return '这份 PDF 是扫描件或纯图片，没有可定位的文字层，无法叠加内容，本次没有生成副本，原文件也没有变化。不要仿制、重排或另建外观相似的文件；请如实告诉用户这份 PDF 无法直接填写，由用户决定是否提供带文字层的电子版。';
     case 'desktop_upgrade_required':
-      return '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试，升级前不要改用其他方式自行改写用户文件。';
+      return '当前桌面客户端版本较旧，还不支持这个操作（PDF 叠加填写需要最新版客户端）。请让用户把客户端升级到最新版本（客户端内检查更新）后再试，升级前不要改用其他方式自行改写或仿制用户文件。';
     case 'document_preview_unavailable':
-      return '右栏没有接上这份文件的修改预览，本次没有生成副本，原文件也没有变化。请让用户确认右栏打开的就是这份文件后再调用 edit_document；如果仍然接不上，请让用户把桌面客户端升级到最新版后重启再试，不要改为让用户手动修改。';
+      return '右栏没有接上这份文件的预览，本次没有生成副本，原文件也没有变化。请让用户确认右栏打开的就是这份文件后再调用一次；如果仍然接不上，请让用户把桌面客户端升级到最新版后重启再试，不要改为让用户手动修改，也不要仿制文件。';
     case 'document_open_failed':
-      return '这份文档没有读取成功。请让用户确认文件能正常打开（目前支持 Word .docx 与 Excel .xlsx）后重新读取；PDF 不能作为编辑目标，带输入框的表单 PDF 请改用 open_form + fill_form。';
+      return '这份文档没有读取成功。请让用户确认文件能正常打开（支持 Word .docx、Excel .xlsx 和带文字层的 PDF）后重新读取；扫描版 PDF 没有文字层，读不到标签就如实告诉用户，不要仿制或重排生成外观相似的文件。';
     case 'document_cancelled':
       return '用户取消了选择文档，本次没有做任何修改。请不要重试；等用户准备好文件并明确要求后再继续。';
     case 'document_expired':
-      return '这份文档已经失效（可能已经修改过，或上一次读取已经过期）。请重新用 open_document 打开同一份文档：右栏已经打开这个文件时会直接读取它，不会再让用户选文件；然后按返回的段落序号提交 edit_document。';
+      return isPdfFill
+        ? '这份 PDF 已经失效（可能已经填写过，或上一次读取已经过期）。请重新用 open_document 打开右栏的同一份 PDF，拿到新的文档 token 后再提交 fill_pdf，不要复用旧 token，也不要仿制文件。'
+        : '这份文档已经失效（可能已经修改过，或上一次读取已经过期）。请重新用 open_document 打开同一份文档：右栏已经打开这个文件时会直接读取它，不会再让用户选文件；然后按返回的段落序号提交 edit_document。';
     case 'document_no_change':
       return '文档里没有找到需要修改的内容，本次没有生成副本，原文件也没有变化。请重新用 open_document 读取文档，确认要修改的段落或文字后再试，不要反复重试。';
     case 'document_edit_failed':
-      return '修改副本没有生成成功。请不要反复重试，改为让用户手动修改原文档；如果用户愿意，也可以换一份 Word 或 Excel 文件再试。';
+      return isPdfFill
+        ? 'PDF 副本没有生成成功，原文件也没有变化。请不要反复重试，也不要仿制或重排文件；让用户确认 PDF 能正常打开后再试，或由用户手动填写。'
+        : '修改副本没有生成成功。请不要反复重试，改为让用户手动修改原文档；如果用户愿意，也可以换一份 Word 或 Excel 文件再试。';
     case 'invalid_command':
       return '桌面客户端没有接受这条指令，参数不符合要求。请按提示修正后立即重新发送，不要重复发送同一条指令，也不要改为让用户手动修改。';
     case 'confirmation_unavailable':
@@ -787,7 +931,9 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
         ? '桌面客户端无法弹出填写确认框，本次没有写入任何内容。请不要重试，改为让用户自己填写原表单。'
         : isDocumentEdit
           ? '桌面客户端无法弹出修改确认框，本次没有改动任何文件。请不要重试，改为让用户手动修改原文档。'
-          : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
+          : isPdfFill
+            ? '桌面客户端无法弹出 PDF 填写确认界面，本次没有写入任何内容，原文件也没有变化。请不要重试，也不要仿制文件，改为让用户手动填写这份 PDF。'
+            : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
     case 'handed_over':
       return '用户选择了自己提交，页面已交还给你本人，AI 不会重试或再次提交。请不要重试；等用户反馈结果后再继续。';
     case 'confirmation_declined':
@@ -795,13 +941,17 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
         ? '用户取消了这次填写确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 fill_form；等用户明确要求后再继续。'
         : isDocumentEdit
           ? '用户取消了这次修改确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 edit_document；等用户明确要求后再继续。'
-          : '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
+          : isPdfFill
+            ? '用户取消了这次填写确认，没有生成副本，原 PDF 也没有变化。请不要重试，也不要再次调用 fill_pdf；等用户明确要求后再继续。'
+            : '用户取消了这次提交，页面没有变化。请不要重试，也不要再次提交；等用户明确要求后再继续。';
     case 'confirmation_timeout':
       return isFormFill
         ? '填写确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
         : isDocumentEdit
           ? '修改确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
-          : '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
+          : isPdfFill
+            ? 'PDF 填写确认等待超过 5 分钟，已自动取消，本次没有生成副本。请不要重试；如需继续，请让用户重新发起并确认。'
+            : '提交确认等待超过 5 分钟，已自动取消，本次没有提交。请不要重试；如需提交，请让用户重新发起并确认。';
     default:
       return undefined;
   }
@@ -990,13 +1140,17 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
-    // 鲁港通 - 文档修改依赖 0.6.0 起的桌面端，旧客户端直接引导升级而不是下发无法执行的指令
-    if (isDesktopDocumentAction(action)) {
+    // 鲁港通 - 文档修改依赖 0.6.0、PDF 叠加填写依赖 0.8.7 的桌面端，旧客户端直接引导升级而不是下发无法执行的指令
+    if (isDesktopDocumentAction(action) || isDesktopPdfOverlayAction(action)) {
+      const minimum = isDesktopPdfOverlayAction(action)
+        ? DESKTOP_PDF_OVERLAY_MIN_VERSION
+        : DESKTOP_DOCUMENT_MIN_VERSION;
       const appVersion = await store.getDeviceAppVersionByOwner(identity.tmbId);
-      if (!isDesktopDocumentVersionSupported(appVersion)) {
+      if (!isDesktopDocumentVersionSupported(appVersion, minimum)) {
         return finish({
-          response:
-            '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试。',
+          response: isDesktopPdfOverlayAction(action)
+            ? '当前桌面客户端版本较旧，还不支持在 PDF 原件上叠加内容。请让用户把客户端升级到最新版本（客户端内检查更新，需要 0.8.7 或更高）后再试，升级前不要改用仿制或重排文件的方式。'
+            : '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试。',
           action,
           deviceId,
           url: requestUrl,
@@ -1033,6 +1187,32 @@ export const createDesktopBrowserOperationExecutor = ({
         });
       }
       command = { action, token, operations: normalized.operations };
+    } else if (action === 'fill_pdf') {
+      // 鲁港通 - PDF 只叠加内容：标签必须可定位、页码与内容先归一化，避免桌面端整条丢弃
+      const token = typeof args.token === 'string' ? args.token.trim() : '';
+      if (!token) {
+        return finish({
+          response:
+            '填写指令缺少 token。请先用 open_document 打开右栏里的这份 PDF，再用返回的文档 token 立即重新发送 fill_pdf。',
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'invalid_args'
+        });
+      }
+      const normalized = normalizeFillPdfEntries(args.entries);
+      if (!normalized.ok) {
+        return finish({
+          response: `这条 PDF 填写指令格式不正确：${normalized.message}。请修正后立即重新发送，不要改为让用户手动修改文件，也不要仿制文件。`,
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'invalid_args'
+        });
+      }
+      command = { action, token, entries: normalized.entries };
     } else if (action === 'wait') {
       const seconds = typeof args.seconds === 'number' ? args.seconds : 1;
       await sleep(Math.max(1, Math.min(10, seconds)) * 1000);
@@ -1102,12 +1282,13 @@ export const createDesktopBrowserOperationExecutor = ({
 
     const snapshot = result.snapshot;
     const resultUrl = snapshot?.url || requestUrl;
-    // 鲁港通 - 表单与文档动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
+    // 鲁港通 - 表单、文档与 PDF 动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
     const touchesPage =
       action !== 'open_form' &&
       action !== 'fill_form' &&
       action !== 'open_document' &&
       action !== 'edit_document' &&
+      action !== 'fill_pdf' &&
       // read 读到的是右栏本机文件时同样不涉及网页
       !(action === 'read' && result.document);
     const resume = await loadResume();
@@ -1125,8 +1306,8 @@ export const createDesktopBrowserOperationExecutor = ({
         guidanceForCode(result.code, action) ??
         (result.stopped
           ? `${result.message ?? '操作已被桌面客户端停止。'}\n\n请先询问用户接下来怎么做，得到确认后再继续，不要自行重试。`
-          : isDesktopDocumentAction(action)
-            ? '操作没有成功。请按提示调整参数后立即重新发送，不要改为让用户手动修改文件。'
+          : isDesktopDocumentAction(action) || isDesktopPdfOverlayAction(action)
+            ? '操作没有成功。请按提示调整参数后立即重新发送，不要改为让用户手动修改文件，也不要仿制文件。'
             : '浏览器操作没有成功。请先重新读取页面，确认页面状态后再试。');
       // 鲁港通 - 客户端会回传具体是哪一项不合法，原样带给模型才能照着改
       const detail =
@@ -1182,7 +1363,9 @@ export const createDesktopBrowserOperationExecutor = ({
           )
         : result.edit && result.file && action === 'edit_document'
           ? formatEditResult(result.file, result.edit, result.documentToken)
-          : '';
+          : result.edit && result.file && action === 'fill_pdf'
+            ? formatPdfFillResult(result.file, result.edit)
+            : '';
     const confirmationNote =
       result.confirmation?.required && result.confirmation.decision === 'allow'
         ? '你已确认，页面已提交并执行。本轮操作到此结束，不要再次提交。'

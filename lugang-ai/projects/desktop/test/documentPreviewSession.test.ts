@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow } from 'docx';
 import ExcelJS from 'exceljs';
+import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EditedDocumentCopy } from '../src/main/ai/document/editTypes';
 import type { ParsedDocument } from '../src/main/ai/document/types';
@@ -11,7 +12,8 @@ import {
   DEFAULT_CLAIM_TIMEOUT_MS,
   DocumentPreviewManager,
   type LocalPreviewInput,
-  type PreviewEditor
+  type PreviewEditor,
+  type PreviewPdfWriter
 } from '../src/main/ai/documentPreview';
 import type { DocumentEditOperation } from '../src/main/ai/protocol';
 import type { DesktopDocumentSummary } from '../src/shared/ipc';
@@ -92,6 +94,7 @@ const createManager = async (
   dir: string,
   options: {
     editor?: PreviewEditor;
+    writePdf?: PreviewPdfWriter;
     openLocal?: () => Promise<LocalPreviewInput | null>;
     openCopy?: (path: string) => void | Promise<void>;
     timeoutMs?: number;
@@ -110,6 +113,7 @@ const createManager = async (
   const emitted: DesktopDocumentSummary[][] = [];
   const manager = new DocumentPreviewManager({
     editDocument: options.editor ?? createEditor(),
+    ...(options.writePdf ? { writePdf: options.writePdf } : {}),
     ...(options.openLocal ? { openLocal: options.openLocal } : {}),
     ...(options.openCopy ? { openCopy: options.openCopy } : {}),
     emit: (list) => emitted.push(list),
@@ -671,6 +675,135 @@ describe('预览会话：PDF 字节读取与系统打开', () => {
 
       manager.cancelAll();
       await promise;
+    });
+  });
+});
+
+describe('预览会话：PDF 原样副本叠加', () => {
+  const buildTextPdf = async (dir: string): Promise<string> => {
+    const document = await PDFDocument.create();
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const page = document.addPage([595.28, 841.89]);
+    page.drawText('Name:', { x: 100, y: 700, size: 12, font });
+    page.drawText('Phone:', { x: 100, y: 670, size: 12, font });
+    const path = join(dir, '申请表.pdf');
+    await writeFile(path, await document.save());
+    return path;
+  };
+
+  const buildBlankPdf = async (dir: string): Promise<string> => {
+    const document = await PDFDocument.create();
+    document.addPage([595.28, 841.89]);
+    const path = join(dir, '扫描件.pdf');
+    await writeFile(path, await document.save());
+    return path;
+  };
+
+  const pdfCopy = (applied: number): EditedDocumentCopy => ({
+    name: '申请表-已填写.pdf',
+    format: 'pdf',
+    folder: '鲁港通生成文件',
+    path: 'C:\Users\tester\Downloads\鲁港通生成文件\申请表-已填写.pdf',
+    applied,
+    skipped: [],
+    warnings: []
+  });
+
+  it('逐条确认后只把采用的内容写进副本，缺标签标为不可应用', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildTextPdf(dir);
+      const writePdf = vi.fn(async ({ placements }: Parameters<PreviewPdfWriter>[0]) =>
+        pdfCopy(placements.length)
+      );
+      const { manager } = await createManager(dir, { writePdf });
+      const promise = manager.previewPdf({
+        path,
+        fileName: '申请表.pdf',
+        entries: [
+          { label: 'Name：', value: 'Zhang San' },
+          { label: 'Phone：', value: '12345678' },
+          { label: 'Email：', value: 'a@b.com' }
+        ]
+      });
+      const token = manager.list()[0]?.token as string;
+      await vi.waitFor(() => {
+        expect(manager.get(token)?.changes).toHaveLength(3);
+      });
+
+      const snapshot = manager.get(token);
+      expect(snapshot?.pdf).toMatchObject({ pages: 1 });
+      expect(snapshot?.pdf?.items.map((item) => item.status)).toEqual([
+        'pending',
+        'pending',
+        'unavailable'
+      ]);
+      expect(snapshot?.pdf?.items[0].labelRect).toBeTruthy();
+      expect(snapshot?.pdf?.items[0].valueRect).toBeTruthy();
+      expect(snapshot?.warnings?.[0]).toContain('1 条');
+
+      // 鲁港通 - 审阅中的 PDF 也要能读字节，右栏才能画出黄色叠加
+      expect(await manager.readDocument(token)).not.toBeNull();
+
+      manager.claim(token);
+      manager.decide(token, 0, 'apply');
+      manager.decide(token, 1, 'skip');
+
+      const outcome = await promise;
+      expect(outcome).toMatchObject({ status: 'done' });
+      expect(writePdf).toHaveBeenCalledTimes(1);
+      const input = writePdf.mock.calls[0][0];
+      expect(input.placements).toHaveLength(1);
+      expect(input.placements[0]).toMatchObject({ label: 'Name：', value: 'Zhang San' });
+      expect(input.pdfBytes).toBeInstanceOf(Uint8Array);
+      expect(
+        outcome.status === 'done' ? outcome.copy.skipped : []
+      ).toContain('Email：');
+    });
+  });
+
+  it('扫描件没有文字层时直接失败并给出可操作原因', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildBlankPdf(dir);
+      const writePdf = vi.fn(async () => pdfCopy(0));
+      const { manager } = await createManager(dir, { writePdf });
+
+      const outcome = await manager.previewPdf({
+        path,
+        fileName: '扫描件.pdf',
+        entries: [{ label: 'Name：', value: 'Zhang San' }]
+      });
+
+      expect(outcome).toMatchObject({ status: 'failed', code: 'pdf_no_text_layer' });
+      expect(outcome.status === 'failed' ? outcome.message : '').toContain('扫描件');
+      expect(writePdf).not.toHaveBeenCalled();
+    });
+  });
+
+  it('副本写入失败时不产生副本记录并提示原文件不受影响', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildTextPdf(dir);
+      const { manager } = await createManager(dir, {
+        writePdf: async () => {
+          throw new Error('disk full');
+        }
+      });
+      const promise = manager.previewPdf({
+        path,
+        fileName: '申请表.pdf',
+        entries: [{ label: 'Name：', value: 'Zhang San' }]
+      });
+      const token = manager.list()[0]?.token as string;
+      await vi.waitFor(() => {
+        expect(manager.get(token)?.changes).toHaveLength(1);
+      });
+      manager.claim(token);
+      manager.decide(token, 0, 'apply');
+
+      const outcome = await promise;
+      expect(outcome).toMatchObject({ status: 'failed', code: 'document_edit_failed' });
+      expect(outcome.status === 'failed' ? outcome.message : '').toContain('原文件不受影响');
+      expect(manager.get(token)).toMatchObject({ state: 'failed' });
+      expect(manager.get(token)?.copy).toBeUndefined();
     });
   });
 });

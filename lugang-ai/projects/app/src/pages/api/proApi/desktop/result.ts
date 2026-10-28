@@ -137,13 +137,16 @@ const documentSheetSchema = z.object({
 });
 
 const documentSummarySchema = z.object({
-  format: z.enum(['docx', 'xlsx']),
+  format: z.enum(['docx', 'xlsx', 'pdf']),
   name: z.string().trim().min(1).max(120),
   paragraphs: z.array(documentParagraphSchema).max(500, '段落数量超出上限').optional(),
   tables: z.array(documentTableSchema).max(50).optional(),
   paragraphsTruncated: z.boolean().optional(),
   sheets: z.array(documentSheetSchema).max(50).optional(),
   sheetsTruncated: z.boolean().optional(),
+  // 鲁港通 - PDF 叠加填写（0.8.7 起）：只透传页数与标签提纲，正文仍留在本机
+  pdfPages: z.number().int().min(0).max(5000).optional(),
+  pdfLabels: z.array(z.string().max(120)).max(400).optional(),
   warnings: warningsSchema.optional()
 });
 

@@ -280,6 +280,52 @@ describe('AI 指令协议', () => {
     ).toBeNull();
   });
 
+  it('接受 PDF 叠加填写指令并归一化页码', () => {
+    const command = parseAiCommand({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc123',
+      entries: [
+        { label: '姓名', value: '张三' },
+        { page: '2', label: '日期', value: 20261028 }
+      ]
+    }) as { action?: string; entries?: unknown[] } | null;
+
+    expect(command?.action).toBe('fill_pdf');
+    expect(command?.entries).toEqual([
+      { label: '姓名', value: '张三' },
+      { page: 2, label: '日期', value: '20261028' }
+    ]);
+  });
+
+  it('PDF 叠加填写必须有令牌、标签与数量上限', () => {
+    expect(parseAiCommand({ action: 'fill_pdf', entries: [{ label: '姓名', value: '张三' }] })).toBeNull();
+    expect(parseAiCommand({ action: 'fill_pdf', token: 'lgpdf_abc', entries: [] })).toBeNull();
+    expect(
+      parseAiCommand({ action: 'fill_pdf', token: 'lgpdf_abc', entries: [{ label: '', value: 'x' }] })
+    ).toBeNull();
+    expect(
+      parseAiCommand({ action: 'fill_pdf', token: 'lgpdf_abc', entries: [{ page: 0, label: '姓名', value: 'x' }] })
+    ).toBeNull();
+    expect(
+      parseAiCommand({
+        action: 'fill_pdf',
+        token: 'lgpdf_abc',
+        entries: Array.from({ length: 41 }, () => ({ label: '姓名', value: 'x' }))
+      })
+    ).toBeNull();
+  });
+
+  it('PDF 叠加填写不携带本机路径', () => {
+    const withPath = parseAiCommand({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      path: 'C:\\Users\\tester\\Desktop\\申请表.pdf',
+      entries: [{ label: '姓名', value: '张三' }]
+    }) as Record<string, unknown> | null;
+    expect(withPath?.action).toBe('fill_pdf');
+    expect(withPath?.path).toBeUndefined();
+  });
+
   it('拒绝非法或超量的文档修改操作', () => {
     const edit = (operations: unknown[]) =>
       parseAiCommand({ action: 'edit_document', token: 'lgdoc_abc', operations });

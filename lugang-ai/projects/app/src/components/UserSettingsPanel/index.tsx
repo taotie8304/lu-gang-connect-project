@@ -78,6 +78,22 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     if (isOpen) refreshTicketUnread();
   }, [isOpen, refreshTicketUnread]);
 
+  // 鲁港通 - 0.8.7 起面板底部常显客户端版本号，不随检查更新状态变化
+  const [desktopVersion, setDesktopVersion] = useState('');
+  useEffect(() => {
+    if (!isDesktop) return;
+    let cancelled = false;
+    void window.lugangDesktop
+      ?.getVersion()
+      .then((info) => {
+        if (!cancelled) setDesktopVersion(info?.appVersion ?? '');
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isDesktop]);
+
   // 鲁港通 - 桌面端「检查更新」：状态由主进程维护，面板挂载时取一次并订阅后续变化
   const [updateStatus, setUpdateStatus] = useState<DesktopUpdateStatus | null>(null);
   const updateBridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.update;
@@ -125,7 +141,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       case 'error':
         return t('common:user_settings.update_failed');
       default:
-        return t('common:user_settings.current_version', { version: status.currentVersion });
+        return '';
     }
   };
   const updateHintTone = (status: DesktopUpdateStatus): 'muted' | 'info' | 'danger' => {
@@ -356,6 +372,19 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
               </React.Fragment>
             ))}
           </Flex>
+          {desktopVersion && (
+            <Text
+              mt={3}
+              pt={3}
+              textAlign="center"
+              fontSize="11px"
+              color="myGray.500"
+              borderTop="1px solid"
+              borderColor="myGray.200"
+            >
+              {t('common:user_settings.current_version', { version: desktopVersion })}
+            </Text>
+          )}
         </ModalBody>
       </MyModal>
 
