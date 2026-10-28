@@ -186,6 +186,40 @@ describe('本机文档提纲解析', () => {
     });
   });
 
+  it('Excel 提纲给出真实列字母、并入列与公式列', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '附表.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Form');
+      sheet.getCell('B12').value = '支出項目';
+      sheet.mergeCells('B12:D12');
+      sheet.getCell('E12').value = '單價(元)';
+      // 鲁港通 - 表头跨行合并（真实範本即如此）不能被误判成并入其他列
+      sheet.mergeCells('E12:E14');
+      sheet.getCell('F12').value = '數量';
+      sheet.getCell('G12').value = '數額(元)';
+      sheet.getCell('B16').value = '1. 往返交通費';
+      sheet.mergeCells('B16:D16');
+      sheet.getCell('E16').value = 30;
+      sheet.getCell('F16').value = 2;
+      sheet.getCell('G16').value = { formula: 'E16*F16', result: 60 };
+      await workbook.xlsx.writeFile(path);
+
+      const parsed = await parseDocumentFile(path);
+      const columns = parsed.sheets?.[0]?.columns ?? [];
+
+      expect(parsed.sheets?.[0]?.headerRow).toBe(12);
+      expect(columns[1]).toMatchObject({ col: 'B', header: '支出項目' });
+      expect(columns[2]).toMatchObject({ col: 'C', mergedTo: 'B' });
+      expect(columns[3]).toMatchObject({ col: 'D', mergedTo: 'B' });
+      expect(columns[4]).toMatchObject({ col: 'E', header: '單價(元)' });
+      expect(columns[4]?.mergedTo).toBeUndefined();
+      expect(columns[5]).toMatchObject({ col: 'F', header: '數量' });
+      expect(columns[6]).toMatchObject({ col: 'G', header: '數額(元)', formula: true });
+      expect(columns[6]?.mergedTo).toBeUndefined();
+    });
+  });
+
   it('Excel 表单类工作表补充首列行标签，供模型按行填写', async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, '申請表.xlsx');

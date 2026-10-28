@@ -12,6 +12,8 @@ import type {
   DesktopCommandFileResult,
   DesktopCommandResult,
   DesktopDocumentEditResult,
+  DesktopDocumentSheet,
+  DesktopDocumentSheetColumn,
   DesktopDocumentSummary,
   DesktopFormField,
   DesktopFormFillResult,
@@ -554,6 +556,52 @@ const normalizeEditDocumentOperations = (raw: unknown): EditOperationNormalizeRe
 };
 
 /** open_document 与 read 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
+const columnLettersAt = (index: number): string => {
+  let letters = '';
+  let value = index;
+  while (value > 0) {
+    letters = String.fromCharCode(65 + ((value - 1) % 26)) + letters;
+    value = Math.floor((value - 1) / 26);
+  }
+  return letters;
+};
+
+// 鲁港通 - 旧客户端只回传表头：按表头与样例行宽度补出列字母，模型才知道该填哪一列
+const resolveSheetColumns = (sheet: DesktopDocumentSheet): DesktopDocumentSheetColumn[] => {
+  if (sheet.columns?.length) return sheet.columns;
+  const width = Math.max(
+    sheet.header.length,
+    ...sheet.sampleRows.map((row) => row.length)
+  );
+  return Array.from({ length: width }, (_, index) => ({
+    col: columnLettersAt(index + 1),
+    header: sheet.header[index] ?? ''
+  }));
+};
+
+const describeSheetColumn = (column: DesktopDocumentSheetColumn): string => {
+  if (column.mergedTo) {
+    return `${column.col}=（并入 ${column.mergedTo} 列，填写用 ${column.mergedTo}）`;
+  }
+  const header = column.header || '（无表头）';
+  return column.formula ? `${column.col}=${header}（公式列，不要填写）` : `${column.col}=${header}`;
+};
+
+const formatSampleRow = (
+  row: string[],
+  rowNumber: number,
+  columns: DesktopDocumentSheetColumn[]
+): string => {
+  const parts: string[] = [];
+  row.forEach((cell, index) => {
+    if (cell === '') return;
+    const column = columns[index];
+    const ref = `${column?.col ?? columnLettersAt(index + 1)}${rowNumber}`;
+    parts.push(`${ref}=${cell}${column?.formula ? '（公式）' : ''}`);
+  });
+  return parts.length > 0 ? parts.join('；') : '（空行）';
+};
+
 const formatDocumentSummary = (
   document: DesktopDocumentSummary,
   source: 'open_document' | 'read',
@@ -601,15 +649,15 @@ const formatDocumentSummary = (
     lines.push('工作表（单元格地址按工作表真实列字母与行号书写，例如 B11）：');
     for (const sheet of document.sheets) {
       const headerRow = sheet.headerRow && sheet.headerRow > 0 ? sheet.headerRow : 1;
-      const headerNote = sheet.header.length
-        ? `，表头在第 ${headerRow} 行：${sheet.header.join(' | ')}`
-        : '';
-      lines.push(`- 「${sheet.name}」${sheet.rowCount} 行 ${sheet.columnCount} 列${headerNote}`);
+      lines.push(`- 「${sheet.name}」${sheet.rowCount} 行 ${sheet.columnCount} 列，表头在第 ${headerRow} 行`);
+      const columns = resolveSheetColumns(sheet);
+      if (columns.length > 0) {
+        lines.push(`  列对照：${columns.map(describeSheetColumn).join('；')}`);
+      }
       const rowNumbers = sheet.sampleRowNumbers ?? sheet.sampleRows.map((_, index) => index + 2);
       sheet.sampleRows.forEach((row, index) => {
-        const cells = [...row];
-        while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
-        lines.push(`  第 ${rowNumbers[index] ?? index + 2} 行：${cells.join(' | ')}`);
+        const rowNumber = rowNumbers[index] ?? index + 2;
+        lines.push(`  第 ${rowNumber} 行：${formatSampleRow(row, rowNumber, columns)}`);
       });
       if (sheet.rowLabels?.length) {
         lines.push(
@@ -633,7 +681,7 @@ const formatDocumentSummary = (
     lines.push(`提示：${document.warnings.join('；')}`);
   }
   lines.push(
-    '下一步：直接按用户要求用 edit_document 提交修改，token 用上面给出的文档 token；不要先反问，也不要等用户再次确认，右栏的改动清单就是修改前的确认环节，由用户确认后才会写入。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell，地址按真实行号与列字母书写）、工作表追加一行（append_row）。只写副本，原文件不会被改动。填写 Excel 时，按提纲里带行号的现有行用 set_cell 把内容写进对应单元格，不要用 append_row 把示范内容堆在表尾，也不要用 generate_file 另建文件代替修改；用户没提供的数字可以按合理估计先填，并在备注列标注「待核对」，不要停下来反复确认。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，一次提交的改动控制在 30 条以内，多了就分两次提交，避免参数过长被截断。如果客户端指出参数问题，按提示修正后立即重新发送，不要改为让用户手动修改。'
+    '下一步：直接按用户要求用 edit_document 提交修改，token 用上面给出的文档 token；不要先反问，也不要等用户再次确认，右栏的改动清单就是修改前的确认环节，由用户确认后才会写入。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell，地址按真实行号与列字母书写）、工作表追加一行（append_row）。只写副本，原文件不会被改动。填写 Excel 时，严格按「列对照」与样例行的「地址=值」写入：只填空白输入格，不写标着「（公式）」的公式列，也不改表头与合计行；标着「并入 X 列」的列不要再写，把内容写进主列 X；按提纲里带行号的现有行用 set_cell 把内容写进对应单元格，不要用 append_row 把示范内容堆在表尾，也不要用 generate_file 另建文件代替修改；用户没提供的数字可以按合理估计先填，并在备注列标注「待核对」，不要停下来反复确认。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，一次提交的改动控制在 30 条以内，多了就分两次提交，避免参数过长被截断。如果客户端指出参数问题，按提示修正后立即重新发送，不要改为让用户手动修改。'
   );
 
   return lines.join('\n');

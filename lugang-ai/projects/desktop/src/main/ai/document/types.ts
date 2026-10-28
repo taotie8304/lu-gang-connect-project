@@ -15,12 +15,21 @@ export type DocumentTable = {
   header: string[];
 };
 
+// 鲁港通 - 列对照：模型按真实列字母填写，合并列的从属格与公式列必须显式标出
+export type DocumentSheetColumn = {
+  col: string;
+  header: string;
+  mergedTo?: string;
+  formula?: boolean;
+};
+
 export type DocumentSheet = {
   name: string;
   rowCount: number;
   columnCount: number;
   headerRow?: number;
   header: string[];
+  columns?: DocumentSheetColumn[];
   sampleRows: string[][];
   sampleRowNumbers?: number[];
   // 鲁港通 - 表单类工作表行数多时补充首列标签，模型才能按行填写

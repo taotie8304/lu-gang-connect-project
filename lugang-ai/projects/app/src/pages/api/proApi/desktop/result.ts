@@ -107,6 +107,13 @@ const documentTableSchema = z.object({
   header: z.array(z.string().max(120)).max(20)
 });
 
+const documentSheetColumnSchema = z.object({
+  col: z.string().trim().min(1).max(3),
+  header: z.string().max(120),
+  mergedTo: z.string().trim().min(1).max(3).optional(),
+  formula: z.boolean().optional()
+});
+
 const documentSheetSchema = z.object({
   name: z.string().trim().min(1).max(120),
   rowCount: z.number().int().min(0),
@@ -114,6 +121,7 @@ const documentSheetSchema = z.object({
   // 鲁港通 - 这些字段要原样透传，zod 默认会剥离未声明字段
   headerRow: z.number().int().min(0).max(1_000_000).optional(),
   header: z.array(z.string().max(120)).max(50),
+  columns: z.array(documentSheetColumnSchema).max(50).optional(),
   sampleRows: z.array(z.array(z.string().max(300)).max(50)).max(20),
   sampleRowNumbers: z.array(z.number().int().min(0).max(1_000_000)).max(20).optional(),
   rowLabels: z

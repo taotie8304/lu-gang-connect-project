@@ -8,12 +8,8 @@ import {
   MAX_REPLACEMENTS,
   MAX_SCAN_COLUMNS,
   MAX_SCAN_ROWS,
-  columnIndex,
-  findSheet,
-  isFormulaCell,
-  isMergedSlave,
-  readCellText
-} from './xlsxEdit';
+  columnIndex
+} from './xlsxRefs';
 
 export const MAX_XLSX_PREVIEW_ROWS = 200;
 export const MAX_XLSX_PREVIEW_COLUMNS = 26;
@@ -56,6 +52,43 @@ const unavailable = (index: number, note: string): PreviewChange => ({
   scope: 'none',
   note
 });
+
+const readCellText = (cell: ExcelJS.Cell): string => {
+  const value = cell.value;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') {
+    const record = value as {
+      richText?: Array<{ text?: string }>;
+      text?: unknown;
+      result?: unknown;
+    };
+    if (Array.isArray(record.richText)) {
+      return record.richText.map((item) => item.text ?? '').join('');
+    }
+    if (typeof record.text === 'string') return record.text;
+    if (record.result !== undefined && record.result !== null) return String(record.result);
+  }
+  return '';
+};
+
+const isFormulaCell = (cell: ExcelJS.Cell): boolean =>
+  Boolean(cell.value && typeof cell.value === 'object' && 'formula' in cell.value);
+
+const isMergedSlave = (cell: ExcelJS.Cell): boolean =>
+  cell.isMerged && cell.master !== undefined && cell.master.address !== cell.address;
+
+const findSheet = (
+  workbook: ExcelJS.Workbook,
+  name: string
+): ExcelJS.Worksheet | undefined => {
+  const exact = workbook.getWorksheet(name);
+  if (exact) return exact;
+  const lower = name.trim().toLowerCase();
+  return workbook.worksheets.find((sheet) => sheet.name.trim().toLowerCase() === lower);
+};
 
 const sheetText = (sheet: ExcelJS.Worksheet, row: number, column: number): string =>
   readCellText(sheet.getCell(row, column));

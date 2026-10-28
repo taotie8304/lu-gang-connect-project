@@ -374,7 +374,7 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
-  it('keeps excel row numbers and row labels from the client outline', async () => {
+  it('keeps excel row numbers, row labels and column map from the client outline', async () => {
     const document = {
       format: 'xlsx',
       name: '民青局交流項目申請表.xlsx',
@@ -385,6 +385,13 @@ describe('POST /api/proApi/desktop/result', () => {
           columnCount: 10,
           headerRow: 40,
           header: ['支出項目', '單位', '數量', '單價', '小計'],
+          columns: [
+            { col: 'A', header: '支出項目' },
+            { col: 'B', header: '單位' },
+            { col: 'C', header: '數量' },
+            { col: 'D', header: '單價' },
+            { col: 'E', header: '小計', formula: true }
+          ],
           sampleRows: [['1. 往返交通費', '人／程', '33', '3200', '105600']],
           sampleRowNumbers: [41],
           rowLabels: [

@@ -1,7 +1,8 @@
 // 鲁港通 - Excel 文档提纲：列出工作表、表头与样例行，并提示副本可能丢失的对象
 import AdmZip from 'adm-zip';
 import ExcelJS from 'exceljs';
-import { DocumentParseError, type RawDocumentOutline } from './types';
+import { columnLetters } from './xlsxRefs';
+import { DocumentParseError, type DocumentSheetColumn, type RawDocumentOutline } from './types';
 
 const MAX_SHEETS = 12;
 const MAX_SHEET_COLUMNS = 12;
@@ -13,6 +14,7 @@ const MAX_CELL_PREVIEW = 60;
 const HEADER_SCAN_ROWS = 50;
 const MAX_DATA_SCAN_ROWS = 500;
 const MAX_TAIL_SCAN_ROWS = 200;
+const MAX_COLUMN_SCAN_ROWS = 30;
 
 type ContentRow = {
   rowNumber: number;
@@ -82,6 +84,76 @@ const readRow = (sheet: ExcelJS.Worksheet, rowIndex: number, columnCount: number
   }
   while (values.length > 0 && values[values.length - 1] === '') values.pop();
   return values;
+};
+
+const isFormulaValue = (value: ExcelJS.CellValue): boolean => {
+  if (value === null || value === undefined || typeof value !== 'object') return false;
+  if (value instanceof Date) return false;
+  const record = value as { formula?: unknown; sharedFormula?: unknown };
+  return typeof record.formula === 'string' || typeof record.sharedFormula === 'string';
+};
+
+// 鲁港通 - 列对照：告诉模型每一列的真实字母、哪几列并入主列、哪一列由公式算出
+const buildColumns = (
+  sheet: ExcelJS.Worksheet,
+  headerRowNumber: number,
+  columnCount: number,
+  rowCount: number
+): DocumentSheetColumn[] => {
+  const columns: DocumentSheetColumn[] = [];
+  const scanStart = headerRowNumber + 1;
+  const scanEnd = Math.min(rowCount, scanStart + MAX_COLUMN_SCAN_ROWS - 1);
+  for (let column = 1; column <= columnCount; column += 1) {
+    const headerCell =
+      headerRowNumber > 0 ? sheet.getRow(headerRowNumber).getCell(column) : undefined;
+    const header =
+      headerCell && headerCell.master === headerCell
+        ? readCellText(headerCell).replace(/\s+/g, ' ').slice(0, MAX_CELL_PREVIEW)
+        : '';
+    // 鲁港通 - 并入列只看表头行的横向合并：表头跨行合并是同列延伸，不是并入别的列
+    const headerMasterCol = headerCell?.master.fullAddress.col;
+    let mergedTo =
+      headerCell && headerCell.master !== headerCell && headerMasterCol !== column
+        ? columnLetters(headerMasterCol!)
+        : undefined;
+    let formulas = 0;
+    let filled = 0;
+    let writable = 0;
+    let horizontalSlaves = 0;
+    const slaveTargets = new Map<number, number>();
+    for (let rowNumber = scanStart; rowNumber <= scanEnd; rowNumber += 1) {
+      const cell = sheet.getRow(rowNumber).getCell(column);
+      const master = cell.master;
+      // 鲁港通 - 表头跨行合并的续行属于表头，不能算作数据行
+      if (headerRowNumber > 0 && master !== cell && master.fullAddress.row === headerRowNumber) {
+        continue;
+      }
+      if (master !== cell) {
+        const masterCol = master.fullAddress.col;
+        if (master.fullAddress.row === rowNumber && masterCol !== column) {
+          horizontalSlaves += 1;
+          slaveTargets.set(masterCol, (slaveTargets.get(masterCol) ?? 0) + 1);
+        }
+        continue;
+      }
+      writable += 1;
+      if (readCellText(cell) !== '') filled += 1;
+      if (isFormulaValue(cell.value)) formulas += 1;
+    }
+    // 鲁港通 - 没有表头可依据时，按数据区里横向合并占多数来认定并入列
+    if (!mergedTo && horizontalSlaves > writable && slaveTargets.size > 0) {
+      const [target] = [...slaveTargets.entries()].sort((a, b) => b[1] - a[1]);
+      mergedTo = columnLetters(target![0]);
+    }
+    const formula = formulas > 0 && formulas >= Math.max(1, Math.ceil((formulas + filled) / 2));
+    columns.push({
+      col: columnLetters(column),
+      header,
+      ...(mergedTo ? { mergedTo } : {}),
+      ...(formula ? { formula: true } : {})
+    });
+  }
+  return columns;
 };
 
 const detectObjectRisks = (filePath: string): string[] => {
@@ -194,6 +266,7 @@ export const parseXlsxDocument = async (filePath: string): Promise<RawDocumentOu
         columnCount,
         headerRow: headerRowNumber,
         header: headerRow?.cells ?? [],
+        columns: buildColumns(sheet, headerRowNumber, previewColumns, rowCount),
         sampleRows: sampleRows.map((row) => row.cells),
         sampleRowNumbers: sampleRows.map((row) => row.rowNumber),
         ...(rowLabels.length > 0 ? { rowLabels } : {}),

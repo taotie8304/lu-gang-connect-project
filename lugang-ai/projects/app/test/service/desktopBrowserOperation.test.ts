@@ -1310,7 +1310,8 @@ describe('desktop document editing', () => {
     expect(result.response).toContain('预算表.xlsx');
     expect(result.response).toContain('Excel');
     expect(result.response).toContain('「总表」');
-    expect(result.response).toContain('交通 | 5000 | 4200');
+    expect(result.response).toContain('列对照：A=项目；B=预算；C=实际');
+    expect(result.response).toContain('第 2 行：A2=交通；B2=5000；C2=4200');
     expect(result.response).toContain('set_cell');
   });
 
@@ -1612,10 +1613,53 @@ describe('desktop document editing · 参数容错与自主执行', () => {
     const result = await execute({ action: 'open_document' });
 
     expect(result.response).toContain('表头在第 10 行');
-    expect(result.response).toContain('第 11 行：場地租金 | 10000');
-    expect(result.response).toContain('第 20 行：合計 | 15000');
+    expect(result.response).toContain('列对照：A=項目；B=預算金額；C=實際金額；D=備註');
+    expect(result.response).toContain('第 11 行：A11=場地租金；B11=10000；D11=按實際');
+    expect(result.response).toContain('第 20 行：A20=合計；B20=15000');
     expect(result.response).toContain('由用户确认');
     expect(result.response).toContain('set_cell');
+  });
+
+  it('prints merged and formula columns so the model never guesses the input column', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: {
+        format: 'xlsx',
+        name: '附件三_收支預算表範本.xlsx',
+        sheets: [
+          {
+            name: 'Form',
+            rowCount: 83,
+            columnCount: 7,
+            headerRow: 12,
+            header: ['', '支出項目', '', '', '單價(元)', '數量', '數額(元)'],
+            columns: [
+              { col: 'A', header: '' },
+              { col: 'B', header: '支出項目' },
+              { col: 'C', header: '', mergedTo: 'B' },
+              { col: 'D', header: '', mergedTo: 'B' },
+              { col: 'E', header: '單價(元)' },
+              { col: 'F', header: '數量' },
+              { col: 'G', header: '數額(元)', formula: true }
+            ],
+            sampleRows: [['', '1. 往返交通費', '', '', '30', '2', '60']],
+            sampleRowNumbers: [16]
+          }
+        ]
+      },
+      documentToken: 'lgdoc_columns'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('列对照：A=（无表头）');
+    expect(result.response).toContain('B=支出項目');
+    expect(result.response).toContain('C=（并入 B 列，填写用 B）');
+    expect(result.response).toContain('G=數額(元)（公式列，不要填写）');
+    expect(result.response).toContain('第 16 行：B16=1. 往返交通費；E16=30；F16=2；G16=60（公式）');
+    expect(result.response).toContain('只填空白输入格');
   });
 });
 

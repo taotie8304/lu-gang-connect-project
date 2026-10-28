@@ -114,6 +114,15 @@ export type DesktopDocumentTable = {
   header: string[];
 };
 
+export type DesktopDocumentSheetColumn = {
+  col: string;
+  header: string;
+  /** 该列是合并区域的从属格，实际填写要写进主列 */
+  mergedTo?: string;
+  /** 该列由公式算出，不要写入普通值 */
+  formula?: boolean;
+};
+
 export type DesktopDocumentSheet = {
   name: string;
   rowCount: number;
@@ -121,6 +130,8 @@ export type DesktopDocumentSheet = {
   // 鲁港通 - 旧客户端不带这两个字段，服务端按第 1 行表头兜底
   headerRow?: number;
   header: string[];
+  // 鲁港通 - 列对照：模型按真实列字母填写，合并列与公式列必须显式标出
+  columns?: DesktopDocumentSheetColumn[];
   sampleRows: string[][];
   sampleRowNumbers?: number[];
   // 鲁港通 - 表单类工作表行数多时补充首列标签，模型才能按行填写
