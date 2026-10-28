@@ -625,7 +625,7 @@ const formatDocumentSummary = (
   // 鲁港通 - 提纲必须带上 token，否则模型只能凭空猜，第一次修改一定失败
   if (documentToken) {
     lines.push(
-      `文档 token：${documentToken}。调用 edit_document 时必须把这个值原样放进 token 字段；每次读取都会换新 token，修改成功后旧 token 失效，需要接着改就重新读取。`
+      `文档 token：${documentToken}。调用 edit_document 时必须把这个值原样放进 token 字段；修改成功后旧 token 失效，直接改用修改结果里返回的新 token 继续，不需要重新打开文档。`
     );
   }
 
@@ -689,7 +689,8 @@ const formatDocumentSummary = (
 
 const formatEditResult = (
   file: DesktopCommandFileResult,
-  edit: DesktopDocumentEditResult | undefined
+  edit: DesktopDocumentEditResult | undefined,
+  documentToken?: string
 ): string => {
   const lines = [
     `已生成修改后的副本：${file.name}${file.folder ? `，保存在「${file.folder}」` : ''}，共完成 ${edit?.applied ?? 0} 处修改。`,
@@ -701,8 +702,12 @@ const formatEditResult = (
   if (edit?.warnings?.length) {
     lines.push(`提示：${edit.warnings.join('；')}`);
   }
+  lines.push('请让用户打开副本核对修改结果。');
+  // 鲁港通 - 改完直接给副本的新 token，模型可以接着改，不用再弹选择文件的窗口
   lines.push(
-    '请让用户打开副本核对修改结果。需要继续修改同一份文档时，先重新用 open_document 打开（副本或原文件）再提交，不要复用旧 token。'
+    documentToken
+      ? `需要继续修改时，直接对这份副本提交 edit_document，token 用：${documentToken}，不要重新打开文档，也不要再让用户选文件。`
+      : '需要继续修改同一份文档时，先重新用 open_document 打开副本再提交，不要复用旧 token。'
   );
   return lines.join('\n');
 };
@@ -759,7 +764,7 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
     case 'document_cancelled':
       return '用户取消了选择文档，本次没有做任何修改。请不要重试；等用户准备好文件并明确要求后再继续。';
     case 'document_expired':
-      return '这份文档已经失效（可能已经修改过，或上一次读取已经过期）。请重新用 open_document 让用户选择同一份文档，再按返回的段落序号提交 edit_document。';
+      return '这份文档已经失效（可能已经修改过，或上一次读取已经过期）。请重新用 open_document 打开同一份文档：右栏已经打开这个文件时会直接读取它，不会再让用户选文件；然后按返回的段落序号提交 edit_document。';
     case 'document_no_change':
       return '文档里没有找到需要修改的内容，本次没有生成副本，原文件也没有变化。请重新用 open_document 读取文档，确认要修改的段落或文字后再试，不要反复重试。';
     case 'document_edit_failed':
@@ -1165,7 +1170,7 @@ export const createDesktopBrowserOperationExecutor = ({
             result.documentToken
           )
         : result.edit && result.file && action === 'edit_document'
-          ? formatEditResult(result.file, result.edit)
+          ? formatEditResult(result.file, result.edit, result.documentToken)
           : '';
     const confirmationNote =
       result.confirmation?.required && result.confirmation.decision === 'allow'

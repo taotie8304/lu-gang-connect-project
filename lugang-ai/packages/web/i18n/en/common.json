@@ -219,6 +219,7 @@
   "builtin_browser_doc_review_preparing": "Preparing the preview…",
   "builtin_browser_doc_review_progress": "Change {{current}} of {{total}}",
   "builtin_browser_doc_review_skip": "Skip this",
+  "builtin_browser_doc_review_source_hint": "Highlighted cells and text are changes to be written into the copy. The original file is not modified.",
   "builtin_browser_doc_sheet_empty": "This worksheet is empty.",
   "builtin_browser_doc_sheet_new_row": "New",
   "builtin_browser_doc_sheet_size": "{{rows}} rows × {{columns}} columns",

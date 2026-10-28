@@ -4,7 +4,11 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, extname, join } from 'node:path';
 import { GENERATED_FILE_FOLDER, resolveGeneratedFileName } from '../fileNaming';
 import type { DocumentEditOperation } from '../protocol';
-import { DocumentEditError, type EditedDocumentCopy } from './editTypes';
+import {
+  assertCopyPathDistinct,
+  DocumentEditError,
+  type EditedDocumentCopy
+} from './editTypes';
 import { XlsxPatchWorkbook } from './xlsxPatch';
 import type { ParsedDocument } from './types';
 
@@ -87,6 +91,8 @@ export const editXlsxCopy = async (options: EditXlsxCopyOptions): Promise<Edited
     ...(options.now ? { now: options.now } : {})
   });
   const path = join(folder, name);
+  // 鲁港通 - 只写副本：解析出来的目标路径与原文件相同时拒绝写入
+  assertCopyPathDistinct(options.document.path, path);
 
   try {
     await writeFile(path, workbook.toBuffer());

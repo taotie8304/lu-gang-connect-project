@@ -7,6 +7,7 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { GENERATED_FILE_FOLDER, resolveGeneratedFileName } from '../fileNaming';
 import type { DocumentEditOperation } from '../protocol';
 import {
+  assertCopyPathDistinct,
   DocumentEditError,
   type DocumentEditOutcome,
   type EditedDocumentCopy
@@ -366,6 +367,8 @@ export const editDocxCopy = async (options: EditDocxCopyOptions): Promise<Edited
     ...(options.now ? { now: options.now } : {})
   });
   const path = join(folder, name);
+  // 鲁港通 - 只写副本：解析出来的目标路径与原文件相同时拒绝写入
+  assertCopyPathDistinct(options.document.path, path);
 
   try {
     zip.updateFile('word/document.xml', Buffer.from(outcome.xml, 'utf8'));

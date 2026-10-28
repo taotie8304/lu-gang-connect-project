@@ -703,8 +703,19 @@ describe('文档动作：右栏预览优先', () => {
     expect(result.ok).toBe(true);
   });
 
-  it('Excel 仍走原确认窗，不进入 Word 预览', async () => {
-    const { previewer, calls } = createPreviewer({ status: 'declined' });
+  it('Excel 也走右栏预览：全部应用后直接生成副本，不弹文本确认窗', async () => {
+    const { previewer, calls } = createPreviewer({
+      status: 'done',
+      copy: {
+        name: '预算表-已修改.xlsx',
+        format: 'xlsx',
+        folder: '鲁港通生成文件',
+        path: 'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\预算表-已修改.xlsx',
+        applied: 1,
+        skipped: [],
+        warnings: []
+      }
+    });
     const { confirmer, calls: confirmCalls } = createConfirmer('allow');
     const executor = new AiExecutor({
       driver: createDriver(),
@@ -726,8 +737,42 @@ describe('文档动作：右栏预览优先', () => {
       operations: [{ op: 'set_cell', sheet: '总表', cell: 'B2', value: '5000' }]
     });
 
-    expect(calls).toHaveLength(0);
+    expect(calls).toHaveLength(1);
+    expect((calls[0] as { document: ParsedDocument }).document.format).toBe('xlsx');
+    expect(confirmCalls).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      file: { name: '预算表-已修改.xlsx', format: 'xlsx' },
+      edit: { applied: 1 }
+    });
+  });
+
+  it('Excel 右栏预览不可用时回退文本确认窗', async () => {
+    const { previewer } = createPreviewer({ status: 'unavailable' });
+    const { confirmer, calls: confirmCalls } = createConfirmer('allow');
+    const editor = createEditor();
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => ({
+        format: 'xlsx',
+        name: '预算表.xlsx',
+        sheets: [{ name: '总表', rowCount: 10, columnCount: 5, header: ['项目', '金额'], sampleRows: [] }],
+        path: 'C:\\Users\\tester\\Desktop\\预算表.xlsx'
+      }),
+      editDocument: editor,
+      confirmDocument: confirmer,
+      previewDocument: previewer
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'set_cell', sheet: '总表', cell: 'B2', value: '5000' }]
+    });
+
     expect(confirmCalls).toHaveLength(1);
+    expect(editor).toHaveBeenCalledTimes(1);
     expect(result.ok).toBe(true);
   });
 
@@ -741,5 +786,89 @@ describe('文档动作：右栏预览优先', () => {
 
     executor.cancelDocumentConfirmation();
     expect(cancel).toHaveBeenCalledTimes(1);
+  });
+});
+describe('文档动作：改完可继续改，不再重复弹选择窗口', () => {
+  it('修改成功后回传副本的新 token，接着改直接用新 token', async () => {
+    const editor = createEditor();
+    const picker = vi.fn(async () => makeDocument());
+    const reloadDocument = vi.fn(async (path: string): Promise<ParsedDocument> => ({
+      ...makeDocument(),
+      name: '2024年工作计划-已修改.docx',
+      path
+    }));
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: picker,
+      editDocument: editor,
+      confirmDocument: createConfirmer('allow').confirmer,
+      reloadDocument
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const first = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(first.ok).toBe(true);
+    expect(first.document).toMatchObject({ name: '2024年工作计划-已修改.docx' });
+    expect(first.documentToken).toBeTruthy();
+    expect(reloadDocument).toHaveBeenCalledTimes(1);
+    expect(reloadDocument.mock.calls[0][0]).toContain('2024年工作计划-已修改.docx');
+    expect(JSON.stringify(first)).not.toContain('Downloads');
+
+    const second = await executor.execute({
+      action: 'edit_document',
+      token: first.documentToken as string,
+      operations: [{ op: 'append_paragraph', text: '再补充一行。' }]
+    });
+
+    expect(second.ok).toBe(true);
+    // 整个过程只在最开始选择过一次文件，中途没有再弹选择窗口
+    expect(picker).toHaveBeenCalledTimes(1);
+  });
+
+  it('副本重新解析失败时仍按成功回执，只是不发新 token', async () => {
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: async () => makeDocument(),
+      editDocument: createEditor(),
+      confirmDocument: createConfirmer('allow').confirmer,
+      reloadDocument: async () => {
+        throw new DocumentParseError('document_parse_failed', '无法读取这个文件。');
+      }
+    });
+    const token = await openDocumentAndGetToken(executor);
+
+    const result = await executor.execute({
+      action: 'edit_document',
+      token,
+      operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.documentToken).toBeUndefined();
+  });
+
+  it('右栏已打开 Word 时 open_document 直接使用右栏文件，不弹选择窗口', async () => {
+    const picker = vi.fn(async () => makeDocument());
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      openDocument: picker,
+      readActiveDocument: () => ({
+        format: 'docx',
+        fileName: '2024年工作计划.docx',
+        document: makeDocument()
+      })
+    });
+
+    const result = await executor.execute({ action: 'open_document' });
+
+    expect(result.ok).toBe(true);
+    expect(result.documentToken).toBeTruthy();
+    expect(result.document?.name).toBe('2024年工作计划.docx');
+    expect(picker).not.toHaveBeenCalled();
   });
 });

@@ -219,6 +219,7 @@
   "builtin_browser_doc_review_preparing": "正在准备预览…",
   "builtin_browser_doc_review_progress": "第 {{current}} / {{total}} 处",
   "builtin_browser_doc_review_skip": "跳过这处",
+  "builtin_browser_doc_review_source_hint": "黄底标出的是准备写入副本的改动，原文件不会被修改。",
   "builtin_browser_doc_sheet_empty": "这个工作表没有内容。",
   "builtin_browser_doc_sheet_new_row": "新增",
   "builtin_browser_doc_sheet_size": "{{rows}} 行 × {{columns}} 列",

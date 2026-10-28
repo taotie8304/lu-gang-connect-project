@@ -8,6 +8,7 @@ import ExcelJS from 'exceljs';
 import { describe, expect, it } from 'vitest';
 import { parseDocumentFile } from '../src/main/ai/document/parse';
 import { editXlsxCopy } from '../src/main/ai/document/xlsxEdit';
+import { assertCopyPathDistinct } from '../src/main/ai/document/editTypes';
 import type { DocumentEditOperation } from '../src/main/ai/protocol';
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -125,6 +126,14 @@ const createOptions = async (
 });
 
 describe('Excel 副本编辑', () => {
+  it('副本路径与源文件相同时拒绝写入', () => {
+    const source = 'C:\\Users\\tester\\Desktop\\预算表.xlsx';
+    expect(() => assertCopyPathDistinct(source, source)).toThrowError(/原文件/);
+    expect(() =>
+      assertCopyPathDistinct(source, 'C:\\Users\\tester\\Desktop\\预算表-已修改.xlsx')
+    ).not.toThrow();
+  });
+
   it('写入单元格并把数字按数值保存', async () => {
     await withTempDir(async (dir) => {
       const source = join(dir, '成绩表.xlsx');

@@ -126,6 +126,9 @@ export type AiFormFillInfo = {
 /** 鲁港通 - 文档打开与修改：路径与正文只留在本机，不进入指令结果 */
 export type AiDocumentOpener = () => Promise<ParsedDocument | null>;
 
+/** 鲁港通 - 改完后重新解析副本，让模型拿着新 token 接着改，不用再让用户选文件 */
+export type AiDocumentReloader = (path: string) => Promise<ParsedDocument>;
+
 /** 鲁港通 - 右栏正在查看的本机文件：Word/Excel 可直接继续修改，PDF 只读 */
 export type AiActiveDocument =
   | { format: 'docx' | 'xlsx'; fileName: string; document: ParsedDocument }
@@ -378,6 +381,7 @@ export class AiExecutor {
   private readonly confirmForm?: AiFormConfirmer;
   private readonly openDocument?: AiDocumentOpener;
   private readonly readActiveDocument?: AiActiveDocumentReader;
+  private readonly reloadDocument?: AiDocumentReloader;
   private readonly editDocument?: AiDocumentEditor;
   private readonly confirmDocument?: AiDocumentConfirmer;
   private readonly previewDocument?: AiDocumentPreviewer;
@@ -394,6 +398,7 @@ export class AiExecutor {
     confirmForm?: AiFormConfirmer;
     openDocument?: AiDocumentOpener;
     readActiveDocument?: AiActiveDocumentReader;
+    reloadDocument?: AiDocumentReloader;
     editDocument?: AiDocumentEditor;
     confirmDocument?: AiDocumentConfirmer;
     previewDocument?: AiDocumentPreviewer;
@@ -407,6 +412,7 @@ export class AiExecutor {
     this.confirmForm = options.confirmForm;
     this.openDocument = options.openDocument;
     this.readActiveDocument = options.readActiveDocument;
+    this.reloadDocument = options.reloadDocument;
     this.editDocument = options.editDocument;
     this.confirmDocument = options.confirmDocument;
     this.previewDocument = options.previewDocument;
@@ -718,7 +724,39 @@ export class AiExecutor {
     }
   }
 
+  // 鲁港通 - 只保留最近打开的几份文档，避免长期持有本机文件结构
+  private storeDocument(document: ParsedDocument): string {
+    const token = randomUUID();
+    this.documents.set(token, document);
+    while (this.documents.size > MAX_DOCUMENT_TOKENS) {
+      const oldest = this.documents.keys().next().value;
+      if (!oldest) break;
+      this.documents.delete(oldest);
+    }
+    return token;
+  }
+
+  // 鲁港通 - 副本写好后重新读取它，让模型拿着新 token 接着改，用户不用再选一次文件
+  private async continueAfterEdit(
+    copy: EditedDocumentCopy
+  ): Promise<Pick<AiCommandResult, 'document' | 'documentToken'>> {
+    if (!this.reloadDocument) return {};
+    try {
+      const parsed = await this.reloadDocument(copy.path);
+      return {
+        document: toDocumentSummary(parsed),
+        documentToken: this.storeDocument(parsed)
+      };
+    } catch {
+      return {};
+    }
+  }
+
   private async openDocumentLocally(): Promise<AiCommandResult> {
+    // 鲁港通 - 右栏已经打开 Word/Excel 时直接读它，不再弹没有上下文的选择窗口
+    const active = this.readActiveDocumentLocally();
+    if (active?.documentToken) return active;
+
     if (!this.openDocument) {
       return {
         ok: false,
@@ -797,8 +835,8 @@ export class AiExecutor {
       };
     }
 
-    // 鲁港通 - Word 优先走右栏结构化预览；右栏未挂载或读取失败时回退原确认窗
-    if (document.format === 'docx' && this.previewDocument) {
+    // 鲁港通 - Word/Excel 都走右栏源文件预览 + 黄底差异逐条确认；右栏未挂载或读取失败时回退原确认窗
+    if (this.previewDocument) {
       let outcome: AiDocumentPreviewOutcome;
       try {
         outcome = await this.previewDocument({
@@ -819,7 +857,8 @@ export class AiExecutor {
             applied: copy.applied,
             ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
             ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
-          }
+          },
+          ...(await this.continueAfterEdit(copy))
         };
       }
       if (outcome.status === 'no_change') {
@@ -915,7 +954,8 @@ export class AiExecutor {
           applied: copy.applied,
           ...(copy.skipped.length > 0 ? { skipped: copy.skipped } : {}),
           ...(copy.warnings.length > 0 ? { warnings: copy.warnings } : {})
-        }
+        },
+        ...(await this.continueAfterEdit(copy))
       };
     } catch (error) {
       return {

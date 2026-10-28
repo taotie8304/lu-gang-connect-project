@@ -219,6 +219,7 @@
   "builtin_browser_doc_review_preparing": "미리보기를 준비하는 중…",
   "builtin_browser_doc_review_progress": "{{current}} / {{total}}번째",
   "builtin_browser_doc_review_skip": "이 항목 건너뛰기",
+  "builtin_browser_doc_review_source_hint": "노란색으로 표시된 부분은 사본에 기록될 변경 사항이며 원본 파일은 수정되지 않습니다.",
   "builtin_browser_doc_sheet_empty": "이 워크시트에는 내용이 없습니다.",
   "builtin_browser_doc_sheet_new_row": "추가",
   "builtin_browser_doc_sheet_size": "{{rows}}행 × {{columns}}열",

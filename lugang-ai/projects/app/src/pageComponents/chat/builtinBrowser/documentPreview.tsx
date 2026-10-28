@@ -640,6 +640,9 @@ const ReviewCard = ({
           transition={'width 0.2s ease'}
         />
       </Box>
+      <Text fontSize={'10px'} color={PENDING_TONE.text} mb={'5px'}>
+        {t('common:builtin_browser_doc_review_source_hint' as any)}
+      </Text>
       <Text fontSize={'11px'} color={LG.muted} mb={'6px'} noOfLines={1}>
         {position}
       </Text>

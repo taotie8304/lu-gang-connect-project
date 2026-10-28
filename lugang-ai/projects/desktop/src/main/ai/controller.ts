@@ -13,6 +13,7 @@ import {
   type AiDocumentEditor,
   type AiDocumentOpener,
   type AiDocumentPreviewer,
+  type AiDocumentReloader,
   type AiFileGenerator,
   type AiFilePicker,
   type AiFormConfirmer,
@@ -71,6 +72,7 @@ export type AiControllerOptions = {
   confirmForm?: AiFormConfirmer;
   openDocument?: AiDocumentOpener;
   readActiveDocument?: AiActiveDocumentReader;
+  reloadDocument?: AiDocumentReloader;
   editDocument?: AiDocumentEditor;
   confirmDocument?: AiDocumentConfirmer;
   previewDocument?: AiDocumentPreviewer;
@@ -149,6 +151,7 @@ export class AiController {
       confirmForm: options.confirmForm,
       openDocument: options.openDocument,
       readActiveDocument: options.readActiveDocument,
+      reloadDocument: options.reloadDocument,
       editDocument: options.editDocument,
       confirmDocument: options.confirmDocument,
       previewDocument: options.previewDocument

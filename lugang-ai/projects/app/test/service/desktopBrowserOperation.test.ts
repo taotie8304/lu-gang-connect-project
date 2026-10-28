@@ -1348,6 +1348,37 @@ describe('desktop document editing', () => {
     expect(JSON.stringify(audit.mock.calls[0][0])).not.toContain('2024年');
   });
 
+  it('回传副本的新 token，让模型接着改而不再弹选择窗口', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      file: { name: '2024年工作计划-已修改.docx', format: 'docx', folder: '鲁港通生成文件' },
+      edit: { applied: 1 },
+      document: { ...documentSummary, name: '2024年工作计划-已修改.docx' },
+      documentToken: 'lgdoc_copy'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'edit_document',
+      token: 'lgdoc_abc',
+      operations: editOperations
+    });
+
+    expect(result.response).toContain('lgdoc_copy');
+    expect(result.response).toContain('继续');
+    expect(result.response).not.toContain('先重新用 open_document 打开');
+  });
+
+  it('工具说明：Excel 也在右栏逐条确认，改完不要重新打开', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('Excel');
+    expect(description).toContain('右栏');
+    expect(description).toContain('副本');
+    expect(description).not.toContain('同一份文档要接着改时，先重新 open_document');
+  });
+
   it('tells the model to reopen the document when the token expired', async () => {
     const store = createFakeStore();
     store.waitForResult.mockResolvedValue({ ok: false, code: 'document_expired' } as any);
