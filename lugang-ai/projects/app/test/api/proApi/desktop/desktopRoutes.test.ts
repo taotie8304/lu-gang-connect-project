@@ -374,6 +374,45 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
+  it('keeps excel row numbers and row labels from the client outline', async () => {
+    const document = {
+      format: 'xlsx',
+      name: '民青局交流項目申請表.xlsx',
+      sheets: [
+        {
+          name: 'Form',
+          rowCount: 83,
+          columnCount: 10,
+          headerRow: 40,
+          header: ['支出項目', '單位', '數量', '單價', '小計'],
+          sampleRows: [['1. 往返交通費', '人／程', '33', '3200', '105600']],
+          sampleRowNumbers: [41],
+          rowLabels: [
+            { row: 2, text: '團體名稱' },
+            { row: 41, text: '往返交通費' }
+          ],
+          rowLabelsTruncated: false
+        }
+      ]
+    };
+    const req = {
+      method: 'POST',
+      body: {
+        deviceId,
+        commandId,
+        result: { ok: true, document, documentToken: 'doc-token-1' }
+      },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, document, documentToken: 'doc-token-1' }
+    });
+  });
+
   it('passes a form summary, token and fill stats through unchanged', async () => {
     const form = {
       format: 'pdf',

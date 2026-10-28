@@ -556,7 +556,8 @@ const normalizeEditDocumentOperations = (raw: unknown): EditOperationNormalizeRe
 /** open_document 与 read 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
 const formatDocumentSummary = (
   document: DesktopDocumentSummary,
-  source: 'open_document' | 'read'
+  source: 'open_document' | 'read',
+  documentToken?: string
 ): string => {
   const heading =
     source === 'read'
@@ -572,6 +573,13 @@ const formatDocumentSummary = (
   }
 
   const lines: string[] = [heading];
+
+  // 鲁港通 - 提纲必须带上 token，否则模型只能凭空猜，第一次修改一定失败
+  if (documentToken) {
+    lines.push(
+      `文档 token：${documentToken}。调用 edit_document 时必须把这个值原样放进 token 字段；每次读取都会换新 token，修改成功后旧 token 失效，需要接着改就重新读取。`
+    );
+  }
 
   if (document.paragraphs?.length) {
     lines.push('段落（方括号内是段落序号，修改时直接使用）：');
@@ -603,6 +611,16 @@ const formatDocumentSummary = (
         while (cells.length > 0 && cells[cells.length - 1] === '') cells.pop();
         lines.push(`  第 ${rowNumbers[index] ?? index + 2} 行：${cells.join(' | ')}`);
       });
+      if (sheet.rowLabels?.length) {
+        lines.push(
+          `  行标签（可直接按行号用 set_cell 填写）：${sheet.rowLabels
+            .map((item) => `第 ${item.row} 行 ${item.text}`)
+            .join('；')}`
+        );
+        if (sheet.rowLabelsTruncated) {
+          lines.push('  （标签行较多，只列出前一部分；其余行可按行号继续填写）');
+        }
+      }
     }
   }
   if (document.paragraphsTruncated) {
@@ -615,7 +633,7 @@ const formatDocumentSummary = (
     lines.push(`提示：${document.warnings.join('；')}`);
   }
   lines.push(
-    '下一步：直接按用户要求用 edit_document 提交修改，token 用这次返回的值；不要先反问，也不要等用户再次确认，右栏的改动清单就是修改前的确认环节，由用户确认后才会写入。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell，地址按真实行号与列字母书写）、工作表追加一行（append_row）。只写副本，原文件不会被改动。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，超出请分次修改。如果客户端指出参数问题，按提示修正后立即重新发送，不要改为让用户手动修改。'
+    '下一步：直接按用户要求用 edit_document 提交修改，token 用上面给出的文档 token；不要先反问，也不要等用户再次确认，右栏的改动清单就是修改前的确认环节，由用户确认后才会写入。可改：替换文字（replace_text，可按段落限定）、整段改写（set_paragraph）、在某段后插入（insert_paragraph）、文末追加（append_paragraph）、改表格单元格（set_table_cell）、改 Excel 单元格（set_cell，地址按真实行号与列字母书写）、工作表追加一行（append_row）。只写副本，原文件不会被改动。填写 Excel 时，按提纲里带行号的现有行用 set_cell 把内容写进对应单元格，不要用 append_row 把示范内容堆在表尾，也不要用 generate_file 另建文件代替修改；用户没提供的数字可以按合理估计先填，并在备注列标注「待核对」，不要停下来反复确认。替换与改写合计最多 50 处、插入追加最多 20 段、Excel 单元格最多 200 个，一次提交的改动控制在 30 条以内，多了就分两次提交，避免参数过长被截断。如果客户端指出参数问题，按提示修正后立即重新发送，不要改为让用户手动修改。'
   );
 
   return lines.join('\n');
@@ -836,7 +854,8 @@ export const createDesktopBrowserOperationExecutor = ({
       args = parsed as BrowserOperationToolArgs;
     } catch {
       return finish({
-        response: '浏览器操作参数不是有效的 JSON，请重新整理参数后再试。',
+        response:
+          '浏览器操作参数不是有效的 JSON。请检查引号与括号，并把改动拆小、分两次提交（一次 20 条以内），整理后立即重新发送，不要改为让用户手动修改文件。',
         action: 'unknown',
         ok: false,
         code: 'invalid_args'
@@ -1065,6 +1084,19 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
+    // 鲁港通 - 读取文件成功却没带回内容时不能说「操作已执行」，否则模型会误以为已经拿到提纲
+    if (action === 'open_document' && !result.document) {
+      return finish({
+        response:
+          '客户端没有返回文档内容，这次读取没有成功。请重新用 open_document 打开要修改的文件；如果反复没有返回内容，请让用户确认文件能正常打开后再试。',
+        action,
+        deviceId,
+        url: resultUrl || resume?.url,
+        ok: false,
+        code: 'document_missing'
+      });
+    }
+
     const fileNote =
       result.file && action === 'generate_file'
         ? `文件已生成：${result.file.name}${result.file.folder ? `，保存在「${result.file.folder}」` : ''}。文件只保存在你的电脑上，不会上传到服务器，也不会进入知识库。请让用户确认内容后再用于上传。`
@@ -1079,7 +1111,11 @@ export const createDesktopBrowserOperationExecutor = ({
           : '';
     const documentNote =
       result.document && (action === 'open_document' || action === 'read')
-        ? formatDocumentSummary(result.document, action === 'read' ? 'read' : 'open_document')
+        ? formatDocumentSummary(
+            result.document,
+            action === 'read' ? 'read' : 'open_document',
+            result.documentToken
+          )
         : result.edit && result.file && action === 'edit_document'
           ? formatEditResult(result.file, result.edit)
           : '';

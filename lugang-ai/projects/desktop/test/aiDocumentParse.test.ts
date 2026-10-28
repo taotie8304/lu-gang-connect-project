@@ -186,6 +186,37 @@ describe('本机文档提纲解析', () => {
     });
   });
 
+  it('Excel 表单类工作表补充首列行标签，供模型按行填写', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '申請表.xlsx');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Form');
+      for (let row = 1; row <= 60; row += 1) {
+        sheet.getCell(`A${row}`).value = `欄位${row}`;
+        sheet.getCell(`B${row}`).value = row;
+      }
+      await workbook.xlsx.writeFile(path);
+
+      const parsed = await parseDocumentFile(path);
+      const first = parsed.sheets?.[0];
+
+      expect(first?.rowLabels?.[0]).toEqual({ row: 9, text: '欄位9' });
+      expect(first?.rowLabels).toHaveLength(40);
+      expect(first?.rowLabelsTruncated).toBe(true);
+    });
+  });
+
+  it('Excel 行数不多时不需要行标签', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '成绩表.xlsx');
+      await writeXlsx(path);
+
+      const parsed = await parseDocumentFile(path);
+
+      expect(parsed.sheets?.[0]?.rowLabels).toBeUndefined();
+    });
+  });
+
   it('Excel 含图表或数据透视表时给出副本丢失提醒', async () => {
     await withTempDir(async (dir) => {
       const path = join(dir, '带图表.xlsx');

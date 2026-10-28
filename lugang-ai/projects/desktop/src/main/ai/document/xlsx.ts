@@ -7,6 +7,8 @@ const MAX_SHEETS = 12;
 const MAX_SHEET_COLUMNS = 12;
 const MAX_SAMPLE_ROWS = 8;
 const MAX_CONTEXT_ROWS = 2;
+const MAX_ROW_LABELS = 40;
+const MAX_ROW_LABEL_CHARS = 40;
 const MAX_CELL_PREVIEW = 60;
 const HEADER_SCAN_ROWS = 50;
 const MAX_DATA_SCAN_ROWS = 500;
@@ -165,6 +167,24 @@ export const parseXlsxDocument = async (filePath: string): Promise<RawDocumentOu
       }
 
       const sampleRows = [...contextRows, ...dataRows];
+
+      // 鲁港通 - 表单类工作表行数多时样例窗口看不到逐行标签，补一份首列标签清单
+      const sampledRows = new Set(sampleRows.map((row) => row.rowNumber));
+      const rowLabels: Array<{ row: number; text: string }> = [];
+      let rowLabelsTruncated = false;
+      const labelScanEnd = Math.min(rowCount, HEADER_SCAN_ROWS + MAX_DATA_SCAN_ROWS);
+      for (let rowNumber = 1; rowNumber <= labelScanEnd; rowNumber += 1) {
+        if (rowNumber === headerRowNumber || sampledRows.has(rowNumber)) continue;
+        const labelCell = sheet.getRow(rowNumber).getCell(1);
+        const label = labelCell.master === labelCell ? readCellText(labelCell) : '';
+        if (!label) continue;
+        if (rowLabels.length >= MAX_ROW_LABELS) {
+          rowLabelsTruncated = true;
+          break;
+        }
+        rowLabels.push({ row: rowNumber, text: label.slice(0, MAX_ROW_LABEL_CHARS) });
+      }
+
       if (sheet.getImages().length > 0) {
         warnings.add('工作表含图片，副本会尽量保留图片，请完成后核对版面。');
       }
@@ -175,7 +195,9 @@ export const parseXlsxDocument = async (filePath: string): Promise<RawDocumentOu
         headerRow: headerRowNumber,
         header: headerRow?.cells ?? [],
         sampleRows: sampleRows.map((row) => row.cells),
-        sampleRowNumbers: sampleRows.map((row) => row.rowNumber)
+        sampleRowNumbers: sampleRows.map((row) => row.rowNumber),
+        ...(rowLabels.length > 0 ? { rowLabels } : {}),
+        ...(rowLabelsTruncated ? { rowLabelsTruncated: true } : {})
       };
     });
 

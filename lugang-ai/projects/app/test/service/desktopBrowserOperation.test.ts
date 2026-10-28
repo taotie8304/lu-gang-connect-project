@@ -1618,3 +1618,140 @@ describe('desktop document editing · 参数容错与自主执行', () => {
     expect(result.response).toContain('set_cell');
   });
 });
+
+describe('desktop document editing · 首次即改与独立填写', () => {
+  const formSummary = {
+    format: 'xlsx',
+    name: '民青局交流項目申請表.xlsx',
+    sheets: [
+      {
+        name: 'Form',
+        rowCount: 83,
+        columnCount: 10,
+        headerRow: 40,
+        header: ['支出項目', '單位', '數量', '單價', '小計'],
+        sampleRows: [
+          ['團體名稱', '香港山東僑界聯合會', '', '', ''],
+          ['1. 往返交通費', '人／程', '', '', '']
+        ],
+        sampleRowNumbers: [41, 42],
+        rowLabels: [
+          { row: 2, text: '團體名稱' },
+          { row: 40, text: '支出項目' },
+          { row: 42, text: '往返交通費' }
+        ]
+      }
+    ]
+  };
+
+  it('prints the document token so the model can submit the first edit directly', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: formSummary,
+      documentToken: 'lgdoc_form'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('lgdoc_form');
+    expect(result.response).toContain('token');
+    expect(result.response).toContain('原样');
+  });
+
+  it('prints the token when reading the file opened in the right panel', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: formSummary,
+      documentToken: 'lgdoc_panel_form'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('lgdoc_panel_form');
+    expect(result.response).toContain('原样');
+  });
+
+  it('never offers a token for a read only pdf', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: { format: 'pdf', name: '申請須知.pdf' }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).not.toContain('token：');
+    expect(result.response).toContain('不能修改');
+  });
+
+  it('does not claim success when open_document returns no document content', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).not.toContain('操作已执行');
+    expect(result.response).toContain('没有返回文档内容');
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'open_document', ok: false, code: 'document_missing' })
+    );
+  });
+
+  it('renders row labels for form sheets whose rows are beyond the sample window', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: formSummary,
+      documentToken: 'lgdoc_form'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('行标签');
+    expect(result.response).toContain('第 2 行 團體名稱');
+  });
+
+  it('forbids demo appends and separate files when the task is filling a real sheet', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('表尾');
+    expect(description).toContain('另建');
+    expect(description).toContain('待核对');
+    expect(description).toContain('分两次');
+  });
+
+  it('asks the model to split the batch when the raw arguments are not valid json', async () => {
+    const store = createFakeStore();
+    const executor = createDesktopBrowserOperationExecutor({
+      store: store as any,
+      identity,
+      chatId: 'chat-1',
+      isStopped: () => false,
+      audit: vi.fn(async () => {}),
+      sleep: vi.fn(async () => {}),
+      now: () => 1
+    });
+
+    const result = await executor({
+      call: {
+        id: 'call_1',
+        type: 'function',
+        function: {
+          name: BROWSER_OPERATION_TOOL_NAME,
+          arguments: '{"action":"edit_document","token":"lgdoc_abc","operations":[{"op":"set_cell"'
+        }
+      },
+      messages: [userMessage('请直接填写右侧表格')]
+    } as any);
+
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(result.response).toContain('分两次');
+  });
+});

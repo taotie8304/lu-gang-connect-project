@@ -123,6 +123,9 @@ export type DesktopDocumentSheet = {
   header: string[];
   sampleRows: string[][];
   sampleRowNumbers?: number[];
+  // 鲁港通 - 表单类工作表行数多时补充首列标签，模型才能按行填写
+  rowLabels?: Array<{ row: number; text: string }>;
+  rowLabelsTruncated?: boolean;
 };
 
 /** open_document 与 read 返回的文档提纲：不含整篇正文与文件路径；PDF 只有名称 */

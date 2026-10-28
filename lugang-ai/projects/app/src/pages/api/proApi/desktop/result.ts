@@ -111,8 +111,21 @@ const documentSheetSchema = z.object({
   name: z.string().trim().min(1).max(120),
   rowCount: z.number().int().min(0),
   columnCount: z.number().int().min(0),
+  // 鲁港通 - 这些字段要原样透传，zod 默认会剥离未声明字段
+  headerRow: z.number().int().min(0).max(1_000_000).optional(),
   header: z.array(z.string().max(120)).max(50),
-  sampleRows: z.array(z.array(z.string().max(300)).max(50)).max(20)
+  sampleRows: z.array(z.array(z.string().max(300)).max(50)).max(20),
+  sampleRowNumbers: z.array(z.number().int().min(0).max(1_000_000)).max(20).optional(),
+  rowLabels: z
+    .array(
+      z.object({
+        row: z.number().int().min(0).max(1_000_000),
+        text: z.string().max(120)
+      })
+    )
+    .max(80)
+    .optional(),
+  rowLabelsTruncated: z.boolean().optional()
 });
 
 const documentSummarySchema = z.object({
