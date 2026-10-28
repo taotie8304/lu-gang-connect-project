@@ -3,11 +3,16 @@ import {
   canReviewNow,
   diffPreviewText,
   findPendingChange,
+  findSheetCellMark,
+  readSheetCell,
   resolveActiveDocToken,
   resolveDocPanelView,
-  resolveReviewProgress
+  resolveReviewProgress,
+  resolveSheetWidth,
+  xlsxColumnLabel
 } from '@/pageComponents/chat/builtinBrowser/documentTabs';
 import type {
+  DesktopDocumentSheet,
   DesktopDocumentSnapshot,
   DesktopDocumentSummary
 } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
@@ -188,5 +193,45 @@ describe('canReviewNow', () => {
     expect(canReviewNow(snapshot({ state: 'pending' }))).toBe(false);
     expect(canReviewNow(snapshot({ state: 'finalizing' }))).toBe(false);
     expect(canReviewNow(snapshot({ state: 'viewing', mode: 'view' }))).toBe(false);
+  });
+});
+
+const sheet = (overrides: Partial<DesktopDocumentSheet>): DesktopDocumentSheet => ({
+  name: '预算表',
+  rowCount: 2,
+  columnCount: 2,
+  header: ['项目', '金额'],
+  sampleRows: [['预算', '100']],
+  ...overrides
+});
+
+describe('Excel 网格辅助', () => {
+  it('列名从 A 递增，跨 26 列进位', () => {
+    expect(xlsxColumnLabel(0)).toBe('A');
+    expect(xlsxColumnLabel(25)).toBe('Z');
+    expect(xlsxColumnLabel(26)).toBe('AA');
+    expect(xlsxColumnLabel(27)).toBe('AB');
+  });
+
+  it('网格宽度取内容与新增行的最大列数', () => {
+    expect(resolveSheetWidth(sheet({ rows: [['a', 'b', 'c'], ['d']] }))).toBe(3);
+    expect(resolveSheetWidth(sheet({ rows: [['a']], appendedRows: [
+      { rowNumber: 3, values: ['x', 'y', 'z'], mark: 'pending' }
+    ] }))).toBe(3);
+    expect(resolveSheetWidth(sheet({}))).toBe(0);
+  });
+
+  it('读取单元格缺失时返回空串', () => {
+    const value = sheet({ rows: [['项目', '金额']] });
+    expect(readSheetCell(value, 0, 1)).toBe('金额');
+    expect(readSheetCell(value, 1, 1)).toBe('');
+  });
+
+  it('只返回命中的单元格标记', () => {
+    const value = sheet({
+      cellMarks: [{ row: 1, cell: 1, mark: 'pending', original: '100' }]
+    });
+    expect(findSheetCellMark(value, 1, 1)).toMatchObject({ mark: 'pending' });
+    expect(findSheetCellMark(value, 0, 0)).toBeUndefined();
   });
 });

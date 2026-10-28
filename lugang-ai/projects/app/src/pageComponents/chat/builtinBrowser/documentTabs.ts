@@ -1,6 +1,7 @@
 // 鲁港通 - 右栏文件标签纯逻辑：内容区路由、自动认领、文本差异与审阅进度
 import type {
   DesktopDocumentChange,
+  DesktopDocumentSheet,
   DesktopDocumentSnapshot,
   DesktopDocumentSummary
 } from './desktopBridge';
@@ -78,3 +79,32 @@ export const findPendingChange = (
 
 export const canReviewNow = (snapshot: DesktopDocumentSnapshot): boolean =>
   snapshot.mode === 'review' && snapshot.state === 'reviewing';
+
+// 鲁港通 - Excel 网格列名：0 → A，26 → AA
+export const xlsxColumnLabel = (index: number): string => {
+  let label = '';
+  let value = index + 1;
+  while (value > 0) {
+    const remainder = (value - 1) % 26;
+    label = String.fromCharCode(65 + remainder) + label;
+    value = Math.floor((value - 1) / 26);
+  }
+  return label;
+};
+
+// 鲁港通 - 网格宽度取已渲染内容与新增行的最大列数，缺失单元格补空串
+export const resolveSheetWidth = (sheet: DesktopDocumentSheet): number => {
+  let width = 0;
+  for (const row of sheet.rows ?? []) width = Math.max(width, row.length);
+  for (const row of sheet.appendedRows ?? []) width = Math.max(width, row.values.length);
+  return width;
+};
+
+export const readSheetCell = (
+  sheet: DesktopDocumentSheet,
+  row: number,
+  cell: number
+): string => sheet.rows?.[row]?.[cell] ?? '';
+
+export const findSheetCellMark = (sheet: DesktopDocumentSheet, row: number, cell: number) =>
+  sheet.cellMarks?.find((mark) => mark.row === row && mark.cell === cell);

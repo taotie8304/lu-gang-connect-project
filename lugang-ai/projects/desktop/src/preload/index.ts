@@ -6,6 +6,7 @@ import {
   type DesktopAiExecuteResponse,
   type DesktopAiState,
   type DesktopBrowserState,
+  type DesktopDocumentBytes,
   type DesktopDocumentSnapshot,
   type DesktopDocumentSummary,
   type DesktopSessionSyncResponse,
@@ -89,6 +90,12 @@ const api = {
       ipcRenderer.invoke(IPC_CHANNELS.documentsClose, { token }) as Promise<void>,
     openCopy: (token: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.documentsOpenCopy, { token }) as Promise<boolean>,
+    read: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsRead, { token }) as Promise<
+        DesktopDocumentBytes | null
+      >,
+    openExternal: (token: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.documentsOpenExternal, { token }) as Promise<boolean>,
     onChanged: (callback: (list: DesktopDocumentSummary[]) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, list: DesktopDocumentSummary[]) =>
         callback(list);

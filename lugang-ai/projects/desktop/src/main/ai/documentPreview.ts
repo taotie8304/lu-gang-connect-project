@@ -1,8 +1,9 @@
 // 鲁港通 - 文档预览会话：右栏逐条确认、全部应用、超时与副本生成都只在本机完成
 import { randomUUID } from 'node:crypto';
+import { readFile, stat } from 'node:fs/promises';
 import type { DocumentEditOperation } from './protocol';
 import type { EditedDocumentCopy } from './document/editTypes';
-import type { DocumentSheet, ParsedDocument } from './document/types';
+import type { ParsedDocument } from './document/types';
 import { DocumentParseError } from './document/types';
 import {
   buildPreviewChanges,
@@ -11,8 +12,19 @@ import {
   type DocxPreviewModel,
   type PreviewChange
 } from './document/docxPreview';
+import {
+  buildXlsxPreviewChanges,
+  computeXlsxPreviewSheets,
+  extractXlsxPreview,
+  MAX_XLSX_PREVIEW_COLUMNS,
+  MAX_XLSX_PREVIEW_ROWS,
+  MAX_XLSX_PREVIEW_SHEETS,
+  type XlsxPreviewModel,
+  type XlsxSheetView
+} from './document/xlsxPreview';
 import type {
   DesktopDocumentBlock,
+  DesktopDocumentBytes,
   DesktopDocumentFormat,
   DesktopDocumentPreviewState,
   DesktopDocumentSnapshot,
@@ -22,6 +34,8 @@ import type {
 const DEFAULT_REVIEW_TIMEOUT_MS = 5 * 60 * 1000;
 const DEFAULT_CLAIM_TIMEOUT_MS = 2000;
 const DEFAULT_MAX_SESSIONS = 3;
+// 鲁港通 - PDF 预览整份读入内存，超过上限的只走系统默认程序打开
+const DEFAULT_MAX_READ_BYTES = 40 * 1024 * 1024;
 
 export type PreviewEditor = (input: {
   document: ParsedDocument;
@@ -50,12 +64,14 @@ type Session = {
   blocks: DesktopDocumentBlock[];
   operations: DocumentEditOperation[];
   document?: ParsedDocument;
-  sheets?: DocumentSheet[];
+  sourcePath?: string;
+  sheets?: XlsxSheetView[];
   warnings: string[];
   copy?: { name: string; folder: string };
   copyPath?: string;
   message?: string;
   model?: DocxPreviewModel;
+  xlsx?: XlsxPreviewModel;
   resolve?: (outcome: DocumentPreviewOutcome) => void;
   claimTimer?: ReturnType<typeof setTimeout>;
   reviewTimer?: ReturnType<typeof setTimeout>;
@@ -69,10 +85,24 @@ export type DocumentPreviewManagerOptions = {
   timeoutMs?: number;
   claimTimeoutMs?: number;
   maxSessions?: number;
+  maxReadBytes?: number;
 };
 
 const isOpenReview = (session: Session): boolean =>
   session.state === 'pending' || session.state === 'reviewing';
+
+const xlsxPreviewWarnings = (model: XlsxPreviewModel): string[] => {
+  const warnings: string[] = [];
+  if (model.workbook.worksheets.length > MAX_XLSX_PREVIEW_SHEETS) {
+    warnings.push(`工作表较多，预览只显示前 ${MAX_XLSX_PREVIEW_SHEETS} 个；副本仍会完整写入。`);
+  }
+  if (model.sheets.some((sheet) => sheet.truncatedRows || sheet.truncatedColumns)) {
+    warnings.push(
+      `部分工作表较大，预览只显示前 ${MAX_XLSX_PREVIEW_ROWS} 行、${MAX_XLSX_PREVIEW_COLUMNS} 列；副本仍会完整写入。`
+    );
+  }
+  return warnings;
+};
 
 export class DocumentPreviewManager {
   private readonly sessions = new Map<string, Session>();
@@ -83,6 +113,7 @@ export class DocumentPreviewManager {
   private readonly timeoutMs: number;
   private readonly claimTimeoutMs: number;
   private readonly maxSessions: number;
+  private readonly maxReadBytes: number;
 
   constructor(options: DocumentPreviewManagerOptions) {
     this.editDocument = options.editDocument;
@@ -92,6 +123,7 @@ export class DocumentPreviewManager {
     this.timeoutMs = options.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
     this.claimTimeoutMs = options.claimTimeoutMs ?? DEFAULT_CLAIM_TIMEOUT_MS;
     this.maxSessions = options.maxSessions ?? DEFAULT_MAX_SESSIONS;
+    this.maxReadBytes = options.maxReadBytes ?? DEFAULT_MAX_READ_BYTES;
   }
 
   preview = (input: {
@@ -102,7 +134,7 @@ export class DocumentPreviewManager {
       const session: Session = {
         token: randomUUID(),
         mode: 'review',
-        format: 'docx',
+        format: input.document.format,
         fileName: input.document.name,
         state: 'pending',
         changes: [],
@@ -146,6 +178,7 @@ export class DocumentPreviewManager {
       blocks: [],
       operations: [],
       warnings: input.format === 'pdf' ? [] : [...(input.document.warnings ?? [])],
+      sourcePath: input.format === 'pdf' ? input.path : input.document.path,
       ...(input.format === 'pdf' ? {} : { document: input.document })
     };
     this.sessions.set(session.token, session);
@@ -166,7 +199,18 @@ export class DocumentPreviewManager {
       }
       this.emitList();
     } else if (input.format === 'xlsx') {
-      session.sheets = input.document.sheets ?? [];
+      try {
+        const model = await extractXlsxPreview(input.document.path);
+        session.xlsx = model;
+        session.sheets = computeXlsxPreviewSheets(model, [], []);
+        session.warnings = [...new Set([...session.warnings, ...xlsxPreviewWarnings(model)])];
+      } catch (error) {
+        session.state = 'failed';
+        session.message =
+          error instanceof DocumentParseError
+            ? error.message
+            : '这个表格没有读取成功，请确认文件能正常打开后再选一次。';
+      }
       this.emitList();
     }
 
@@ -266,9 +310,41 @@ export class DocumentPreviewManager {
     return true;
   };
 
+  // 鲁港通 - 只给 PDF 查看会话发字节：网页端用内置渲染，原文件路径不出主进程
+  readDocument = async (token: string): Promise<DesktopDocumentBytes | null> => {
+    const session = this.sessions.get(token);
+    if (session?.mode !== 'view' || session.format !== 'pdf' || !session.sourcePath) return null;
+    try {
+      const info = await stat(session.sourcePath);
+      if (!info.isFile() || info.size > this.maxReadBytes) return null;
+      const data = await readFile(session.sourcePath);
+      return { name: session.fileName, data: new Uint8Array(data) };
+    } catch {
+      return null;
+    }
+  };
+
+  // 鲁港通 - 查看会话可交回系统默认程序打开原文件，审阅中的文件不允许
+  openExternal = (token: string): boolean => {
+    const session = this.sessions.get(token);
+    if (session?.mode !== 'view' || !session.sourcePath || !this.openCopyPath) return false;
+    void this.openCopyPath(session.sourcePath);
+    return true;
+  };
+
   private loadReview = async (session: Session): Promise<void> => {
     if (!session.document) return;
     try {
+      if (session.document.format === 'xlsx') {
+        const model = await extractXlsxPreview(session.document.path);
+        if (!isOpenReview(session)) return;
+        session.xlsx = model;
+        session.changes = buildXlsxPreviewChanges(model, session.operations);
+        session.sheets = computeXlsxPreviewSheets(model, session.operations, session.changes);
+        session.warnings = [...new Set([...session.warnings, ...xlsxPreviewWarnings(model)])];
+        this.emitList();
+        return;
+      }
       const model = await extractDocxPreview(session.document.path);
       if (!isOpenReview(session)) return;
       session.model = model;
@@ -284,8 +360,13 @@ export class DocumentPreviewManager {
   };
 
   private afterDecision(session: Session): void {
-    if (!session.model) return;
-    session.blocks = computePreviewBlocks(session.model, session.operations, session.changes);
+    if (session.xlsx) {
+      session.sheets = computeXlsxPreviewSheets(session.xlsx, session.operations, session.changes);
+    } else if (session.model) {
+      session.blocks = computePreviewBlocks(session.model, session.operations, session.changes);
+    } else {
+      return;
+    }
 
     if (session.changes.some((change) => change.status === 'pending')) {
       this.resetReviewTimer(session);
@@ -409,7 +490,19 @@ export class DocumentPreviewManager {
             sheets: session.sheets.map((sheet) => ({
               ...sheet,
               header: [...sheet.header],
-              sampleRows: sheet.sampleRows.map((row) => [...row])
+              sampleRows: sheet.sampleRows.map((row) => [...row]),
+              rows: sheet.rows.map((row) => [...row]),
+              ...(sheet.cellMarks
+                ? { cellMarks: sheet.cellMarks.map((mark) => ({ ...mark })) }
+                : {}),
+              ...(sheet.appendedRows
+                ? {
+                    appendedRows: sheet.appendedRows.map((row) => ({
+                      ...row,
+                      values: [...row.values]
+                    }))
+                  }
+                : {})
             }))
           }
         : {}),

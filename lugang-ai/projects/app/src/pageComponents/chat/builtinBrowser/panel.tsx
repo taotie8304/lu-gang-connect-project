@@ -523,6 +523,22 @@ const BuiltinBrowserPanelBody = ({
     }
   }, [documents, activeDocToken, t, toast]);
 
+  // 鲁港通 - PDF 回退：交回系统默认程序打开原文件，老客户端没有此能力时给出提示
+  const handleOpenExternalDoc = useCallback(async () => {
+    if (!documents || !activeDocToken) return;
+    try {
+      const opened = await documents.openExternal?.(activeDocToken);
+      if (!opened) {
+        toast({ title: t('common:builtin_browser_doc_pdf_open_failed'), status: 'warning' });
+      }
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_doc_pdf_open_failed') as any),
+        status: 'warning'
+      });
+    }
+  }, [documents, activeDocToken, t, toast]);
+
   const expiresAtMs = session ? new Date(session.expiresAt).getTime() : undefined;
 
   // 鲁港通 - 本地倒计时展示剩余时长；到点自动收起面板（云端会话由服务端巡检回收）
@@ -1141,6 +1157,8 @@ const BuiltinBrowserPanelBody = ({
               onDecide={(index, decision) => void handleDecideDoc(index, decision)}
               onApplyAll={() => void handleApplyAllDoc()}
               onOpenCopy={() => void handleOpenCopyDoc()}
+              readBytes={documents?.read}
+              onOpenExternal={() => void handleOpenExternalDoc()}
             />
           ) : (
             <Flex

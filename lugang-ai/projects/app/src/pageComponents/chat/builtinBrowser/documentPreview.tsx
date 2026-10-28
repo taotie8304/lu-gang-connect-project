@@ -4,8 +4,11 @@ import { Box, Button, Flex, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import type {
+  DesktopDocumentAppendedRow,
+  DesktopDocumentBytes,
   DesktopDocumentFormat,
   DesktopDocumentParagraphBlock,
+  DesktopDocumentSheet,
   DesktopDocumentSnapshot,
   DesktopDocumentTableBlock
 } from './desktopBridge';
@@ -13,8 +16,13 @@ import {
   canReviewNow,
   diffPreviewText,
   findPendingChange,
-  resolveReviewProgress
+  findSheetCellMark,
+  readSheetCell,
+  resolveReviewProgress,
+  resolveSheetWidth,
+  xlsxColumnLabel
 } from './documentTabs';
+import PdfPreview from './pdfPreview';
 import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const PENDING_TONE = {
@@ -217,60 +225,307 @@ const TableView = ({ block }: { block: DesktopDocumentTableBlock }) => (
   </Box>
 );
 
-const Paper = ({ children }: { children: ReactNode }) => (
+const Paper = ({ children, wide = false }: { children: ReactNode; wide?: boolean }) => (
   <Box
-    maxW={'720px'}
+    maxW={wide ? '980px' : '720px'}
     mx={'auto'}
     bg={'white'}
     borderRadius={'4px'}
     border={'1px solid'}
     borderColor={LG.line}
     boxShadow={'0 6px 22px rgba(78,128,178,0.08)'}
-    px={{ base: '18px', md: '30px' }}
-    py={'26px'}
+    px={wide ? { base: '10px', md: '14px' } : { base: '18px', md: '30px' }}
+    py={wide ? '14px' : '26px'}
     minH={'520px'}
   >
     {children}
   </Box>
 );
 
-const SheetSummary = ({ snapshot }: { snapshot: DesktopDocumentSnapshot }) => {
-  const { t } = useTranslation();
-  const sheets = snapshot.sheets ?? [];
+const sheetCellBase = {
+  px: '6px',
+  py: '4px',
+  verticalAlign: 'top',
+  borderRight: '1px solid',
+  borderRightColor: LG.lineSoft,
+  borderBottom: '1px solid',
+  borderBottomColor: LG.lineSoft,
+  maxW: '220px',
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word'
+} as const;
+
+const SheetCellContent = ({
+  sheet,
+  row,
+  cell
+}: {
+  sheet: DesktopDocumentSheet;
+  row: number;
+  cell: number;
+}) => {
+  const mark = findSheetCellMark(sheet, row, cell);
+  const value = readSheetCell(sheet, row, cell);
+  if (!mark) return <>{value}</>;
+  const tone = mark.mark === 'applied' ? APPLIED_TONE : PENDING_TONE;
   return (
-    <Box>
-      <Text fontSize={'12px'} fontWeight={600} color={LG.ink} mb={'3'}>
-        {t('common:builtin_browser_doc_xlsx_hint' as any)}
-      </Text>
-      {sheets.map((sheet) => (
-        <Box
-          key={sheet.name}
-          mb={'2'}
-          p={'10px'}
-          bg={'white'}
-          border={'1px solid'}
-          borderColor={LG.line}
-          borderRadius={'6px'}
+    <>
+      {mark.original && (
+        <Text
+          as={'span'}
+          textDecorationLine={'line-through'}
+          textDecorationColor={'rgba(196,130,120,0.75)'}
+          color={LG.mutedSoft}
+          mr={'4px'}
         >
-          <Flex alignItems={'center'} gap={2}>
-            <Text fontSize={'12px'} fontWeight={600} color={LG.text} noOfLines={1}>
-              {sheet.name}
-            </Text>
-            <Text fontSize={'10px'} color={LG.muted}>
-              {t('common:builtin_browser_doc_sheet_size' as any, {
-                rows: sheet.rowCount,
-                columns: sheet.columnCount
+          {mark.original}
+        </Text>
+      )}
+      <Text as={'span'} bg={tone.strong} borderRadius={'2px'} px={'1px'}>
+        {value}
+      </Text>
+    </>
+  );
+};
+
+const SheetRowNumber = ({
+  value,
+  bg,
+  badge
+}: {
+  value: number;
+  bg: string;
+  badge?: { text: string; tone: { soft: string; strong: string; text: string } };
+}) => (
+  <Box
+    as={'td'}
+    position={'sticky'}
+    left={0}
+    zIndex={1}
+    w={'36px'}
+    minW={'36px'}
+    px={'4px'}
+    py={'4px'}
+    textAlign={'center'}
+    verticalAlign={'top'}
+    bg={bg}
+    fontSize={'9.5px'}
+    color={badge ? badge.tone.text : LG.mutedSoft}
+    borderRight={'1px solid'}
+    borderRightColor={LG.line}
+    borderBottom={'1px solid'}
+    borderBottomColor={LG.lineSoft}
+  >
+    <Flex flexDirection={'column'} alignItems={'center'} gap={'1px'}>
+      <Text as={'span'}>{value}</Text>
+      {badge && (
+        <Text
+          as={'span'}
+          px={'3px'}
+          borderRadius={'2px'}
+          bg={badge.tone.strong}
+          color={badge.tone.text}
+          fontSize={'8px'}
+          lineHeight={'11px'}
+          whiteSpace={'nowrap'}
+        >
+          {badge.text}
+        </Text>
+      )}
+    </Flex>
+  </Box>
+);
+
+const SheetGrid = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
+  const { t } = useTranslation();
+  const width = resolveSheetWidth(sheet);
+  const labels = Array.from({ length: width }, (_, index) => xlsxColumnLabel(index));
+  const rows = sheet.rows ?? [];
+  const appendedRows: DesktopDocumentAppendedRow[] = sheet.appendedRows ?? [];
+  const newRowBadge = t('common:builtin_browser_doc_sheet_new_row' as any);
+
+  return (
+    <Box overflowX={'auto'}>
+      <Box as={'table'} minW={'100%'} fontSize={'11px'} sx={{ borderCollapse: 'collapse' }}>
+        <Box as={'thead'}>
+          <Box as={'tr'}>
+            <Box
+              as={'th'}
+              position={'sticky'}
+              left={0}
+              zIndex={2}
+              w={'36px'}
+              minW={'36px'}
+              px={'4px'}
+              py={'3px'}
+              bg={LG.paleSoft}
+              color={LG.mutedSoft}
+              fontSize={'9px'}
+              fontWeight={500}
+              borderRight={'1px solid'}
+              borderRightColor={LG.line}
+              borderBottom={'1px solid'}
+              borderBottomColor={LG.line}
+            />
+            {labels.map((label) => (
+              <Box
+                as={'th'}
+                key={label}
+                px={'6px'}
+                py={'3px'}
+                bg={LG.paleSoft}
+                color={LG.mutedSoft}
+                fontSize={'9px'}
+                fontWeight={500}
+                borderRight={'1px solid'}
+                borderRightColor={LG.lineSoft}
+                borderBottom={'1px solid'}
+                borderBottomColor={LG.line}
+                minW={'48px'}
+              >
+                {label}
+              </Box>
+            ))}
+          </Box>
+        </Box>
+        <Box as={'tbody'}>
+          {rows.map((_row, rowIndex) => (
+            <Box as={'tr'} key={rowIndex}>
+              <SheetRowNumber value={rowIndex + 1} bg={LG.paleSoft} />
+              {labels.map((label, cellIndex) => {
+                const mark = findSheetCellMark(sheet, rowIndex, cellIndex);
+                const tone = mark?.mark === 'applied' ? APPLIED_TONE : PENDING_TONE;
+                return (
+                  <Box
+                    as={'td'}
+                    key={label}
+                    {...sheetCellBase}
+                    bg={mark ? tone.soft : rowIndex === 0 ? LG.paleSoft : undefined}
+                    color={mark ? tone.text : LG.text}
+                    fontWeight={rowIndex === 0 ? 600 : 400}
+                  >
+                    <SheetCellContent sheet={sheet} row={rowIndex} cell={cellIndex} />
+                  </Box>
+                );
               })}
-            </Text>
-          </Flex>
-          {sheet.header.length > 0 && (
-            <Text mt={'1'} fontSize={'10px'} color={LG.muted} noOfLines={2}>
+            </Box>
+          ))}
+          {appendedRows.map((row) => {
+            const tone = row.mark === 'applied' ? APPLIED_TONE : PENDING_TONE;
+            return (
+              <Box as={'tr'} key={`append-${row.rowNumber}`} bg={tone.soft}>
+                <SheetRowNumber
+                  value={row.rowNumber}
+                  bg={tone.soft}
+                  badge={{ text: newRowBadge, tone }}
+                />
+                {labels.map((label, cellIndex) => (
+                  <Box
+                    as={'td'}
+                    key={label}
+                    {...sheetCellBase}
+                    bg={tone.soft}
+                    color={tone.text}
+                    fontWeight={500}
+                  >
+                    {row.values[cellIndex] ?? ''}
+                  </Box>
+                ))}
+              </Box>
+            );
+          })}
+        </Box>
+      </Box>
+    </Box>
+  );
+};
+
+const SheetCard = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
+  const { t } = useTranslation();
+  const rows = sheet.rows ?? [];
+  const width = resolveSheetWidth(sheet);
+  const hasContent = width > 0;
+  const truncated = sheet.truncatedRows || sheet.truncatedColumns;
+
+  return (
+    <Box
+      mb={'3'}
+      border={'1px solid'}
+      borderColor={LG.line}
+      borderRadius={'6px'}
+      overflow={'hidden'}
+      bg={'white'}
+    >
+      <Flex
+        alignItems={'center'}
+        gap={2}
+        px={'10px'}
+        py={'6px'}
+        bg={LG.paleSoft}
+        borderBottom={hasContent ? '1px solid' : undefined}
+        borderBottomColor={LG.lineSoft}
+      >
+        <Text fontSize={'12px'} fontWeight={600} color={LG.text} noOfLines={1}>
+          {sheet.name}
+        </Text>
+        <Text fontSize={'10px'} color={LG.muted} flexShrink={0}>
+          {t('common:builtin_browser_doc_sheet_size' as any, {
+            rows: sheet.rowCount,
+            columns: sheet.columnCount
+          })}
+        </Text>
+      </Flex>
+      {hasContent ? (
+        <SheetGrid sheet={sheet} />
+      ) : (
+        <Box px={'10px'} py={'8px'}>
+          {sheet.header.length > 0 ? (
+            <Text fontSize={'10px'} color={LG.muted} noOfLines={2}>
               {sheet.header.join(' / ')}
+            </Text>
+          ) : (
+            <Text fontSize={'10.5px'} color={LG.mutedSoft}>
+              {t('common:builtin_browser_doc_sheet_empty' as any)}
             </Text>
           )}
         </Box>
-      ))}
+      )}
+      {truncated && (
+        <Text
+          px={'10px'}
+          py={'5px'}
+          fontSize={'9.5px'}
+          color={PENDING_TONE.text}
+          bg={PENDING_TONE.soft}
+          borderTop={'1px solid'}
+          borderTopColor={PENDING_TONE.border}
+        >
+          {t('common:builtin_browser_doc_sheet_truncated' as any, {
+            rows: rows.length,
+            columns: width
+          })}
+        </Text>
+      )}
     </Box>
+  );
+};
+
+const SheetPreview = ({ snapshot }: { snapshot: DesktopDocumentSnapshot }) => {
+  const { t } = useTranslation();
+  const sheets = snapshot.sheets ?? [];
+  return (
+    <Paper wide>
+      <Text fontSize={'12px'} fontWeight={600} color={LG.ink} mb={'8px'}>
+        {t('common:builtin_browser_doc_xlsx_hint' as any)}
+      </Text>
+      {sheets.length > 0 ? (
+        sheets.map((sheet) => <SheetCard key={sheet.name} sheet={sheet} />)
+      ) : (
+        <Text fontSize={'11px'} color={LG.mutedSoft}>
+          {t('common:builtin_browser_doc_unavailable' as any)}
+        </Text>
+      )}
+    </Paper>
   );
 };
 
@@ -561,13 +816,17 @@ const DocumentPreviewPanel = ({
   busy = false,
   onDecide,
   onApplyAll,
-  onOpenCopy
+  onOpenCopy,
+  readBytes,
+  onOpenExternal
 }: {
   snapshot: DesktopDocumentSnapshot;
   busy?: boolean;
   onDecide: (index: number, decision: 'apply' | 'skip') => void;
   onApplyAll: () => void;
   onOpenCopy: () => void;
+  readBytes?: (token: string) => Promise<DesktopDocumentBytes | null>;
+  onOpenExternal?: () => void;
 }) => {
   const { t } = useTranslation();
   const isReview = snapshot.mode === 'review';
@@ -596,19 +855,14 @@ const DocumentPreviewPanel = ({
         )}
 
         {snapshot.format === 'pdf' ? (
-          <Paper>
-            <Flex flexDirection={'column'} alignItems={'center'} justifyContent={'center'} h={'460px'} gap={3}>
-              <DocumentFormatChip format={'pdf'} size={30} />
-              <Text fontSize={'13px'} fontWeight={600} color={LG.text} textAlign={'center'}>
-                {snapshot.fileName}
-              </Text>
-              <Text fontSize={'11px'} color={LG.muted} textAlign={'center'} px={'6'}>
-                {t('common:builtin_browser_doc_pdf_hint' as any)}
-              </Text>
-            </Flex>
-          </Paper>
+          <PdfPreview
+            key={snapshot.token}
+            snapshot={snapshot}
+            readBytes={readBytes}
+            onOpenExternal={onOpenExternal}
+          />
         ) : snapshot.format === 'xlsx' ? (
-          <SheetSummary snapshot={snapshot} />
+          <SheetPreview snapshot={snapshot} />
         ) : snapshot.blocks.length > 0 ? (
           <Paper>
             {snapshot.blocks.map((block) =>

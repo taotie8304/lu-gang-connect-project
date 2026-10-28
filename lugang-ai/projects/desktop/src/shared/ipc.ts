@@ -47,6 +47,8 @@ export const IPC_CHANNELS = {
   documentsApplyAll: 'lugang:documents-apply-all',
   documentsClose: 'lugang:documents-close',
   documentsOpenCopy: 'lugang:documents-open-copy',
+  documentsRead: 'lugang:documents-read',
+  documentsOpenExternal: 'lugang:documents-open-external',
   documentsChanged: 'lugang:documents-changed'
 } as const;
 
@@ -176,6 +178,17 @@ export type DesktopDocumentSheet = {
   columnCount: number;
   header: string[];
   sampleRows: string[][];
+  rows?: string[][];
+  truncatedRows?: boolean;
+  truncatedColumns?: boolean;
+  cellMarks?: DesktopDocumentTableCellMark[];
+  appendedRows?: DesktopDocumentAppendedRow[];
+};
+
+export type DesktopDocumentAppendedRow = {
+  rowNumber: number;
+  values: string[];
+  mark: DesktopDocumentMark;
 };
 
 export type DesktopDocumentSnapshot = {
@@ -201,5 +214,8 @@ export type DesktopDocumentSummary = {
   total: number;
   decided: number;
 };
+
+/** 鲁港通 - PDF 查看只把文件字节交给本机渲染进程，返回值里不出现本机路径 */
+export type DesktopDocumentBytes = { name: string; data: Uint8Array };
 
 export type { CssRect };

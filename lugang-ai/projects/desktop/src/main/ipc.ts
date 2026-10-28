@@ -35,7 +35,16 @@ type RegisterIpcOptions = {
   deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
   documents: Pick<
     DocumentPreviewManager,
-    'openLocal' | 'list' | 'get' | 'claim' | 'decide' | 'applyAll' | 'close' | 'openCopy'
+    | 'openLocal'
+    | 'list'
+    | 'get'
+    | 'claim'
+    | 'decide'
+    | 'applyAll'
+    | 'close'
+    | 'openCopy'
+    | 'readDocument'
+    | 'openExternal'
   >;
   windowControls: WindowControls;
   update: Pick<UpdateController, 'getStatus' | 'check' | 'install' | 'subscribe'>;
@@ -177,6 +186,16 @@ export const registerIpc = ({
   handle(
     IPC_CHANNELS.documentsOpenCopy,
     (payload) => documents.openCopy((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsRead,
+    (payload) => documents.readDocument((payload as { token: string }).token),
+    documentTokenPayloadSchema
+  );
+  handle(
+    IPC_CHANNELS.documentsOpenExternal,
+    (payload) => documents.openExternal((payload as { token: string }).token),
     documentTokenPayloadSchema
   );
 

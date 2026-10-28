@@ -3,6 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow } from 'docx';
+import ExcelJS from 'exceljs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { EditedDocumentCopy } from '../src/main/ai/document/editTypes';
 import type { ParsedDocument } from '../src/main/ai/document/types';
@@ -53,6 +54,23 @@ const buildDocx = async (dir: string): Promise<string> => {
   return path;
 };
 
+const buildXlsx = async (dir: string): Promise<string> => {
+  const workbook = new ExcelJS.Workbook();
+  const sheet = workbook.addWorksheet('预算表');
+  sheet.addRow(['项目', '金额']);
+  sheet.addRow(['预算', '100']);
+  const path = join(dir, '预算表.xlsx');
+  await workbook.xlsx.writeFile(path);
+  return path;
+};
+
+const xlsxDocument = (path: string): ParsedDocument => ({
+  format: 'xlsx',
+  name: '预算表.xlsx',
+  path,
+  warnings: []
+});
+
 const operations: DocumentEditOperation[] = [
   { op: 'replace_text', paragraph: 2, find: '100 万元', replace: '120 万元' },
   { op: 'set_paragraph', paragraph: 1, text: '申请人须年满二十岁。' }
@@ -78,6 +96,7 @@ const createManager = async (
     timeoutMs?: number;
     claimTimeoutMs?: number;
     maxSessions?: number;
+    maxReadBytes?: number;
   } = {}
 ) => {
   const path = await buildDocx(dir);
@@ -95,7 +114,8 @@ const createManager = async (
     emit: (list) => emitted.push(list),
     timeoutMs: options.timeoutMs ?? 2000,
     claimTimeoutMs: options.claimTimeoutMs ?? 2000,
-    ...(options.maxSessions !== undefined ? { maxSessions: options.maxSessions } : {})
+    ...(options.maxSessions !== undefined ? { maxSessions: options.maxSessions } : {}),
+    ...(options.maxReadBytes !== undefined ? { maxReadBytes: options.maxReadBytes } : {})
   });
   return { manager, document, emitted };
 };
@@ -356,38 +376,104 @@ describe('预览会话：手动打开本地文件', () => {
     });
   });
 
-  it('打开 Excel 与 PDF 时给出兜底信息', async () => {
+  it('打开 Excel 时返回工作表网格预览', async () => {
     await withTempDir(async (dir) => {
-      const document: ParsedDocument = {
-        format: 'xlsx',
-        name: '预算表.xlsx',
-        path: join(dir, '预算表.xlsx'),
-        sheets: [
-          {
-            name: 'Sheet1',
-            rowCount: 2,
-            columnCount: 2,
-            header: ['项目', '金额'],
-            sampleRows: [['预算', '100']]
-          }
-        ],
-        warnings: []
-      };
+      const path = await buildXlsx(dir);
       const { manager } = await createManager(dir, {
-        openLocal: async () => ({ format: 'xlsx', document })
+        openLocal: async () => ({ format: 'xlsx', document: xlsxDocument(path) })
       });
 
       const snapshot = await manager.openLocal();
-      expect(snapshot).toMatchObject({ format: 'xlsx', state: 'viewing' });
-      expect(snapshot?.sheets?.[0].name).toBe('Sheet1');
-      expect(snapshot?.blocks).toEqual([]);
 
-      const pdfManager = (await createManager(dir, {
-        openLocal: async () => ({ format: 'pdf', name: '申请须知.pdf', path: join(dir, '申请须知.pdf') })
-      })).manager;
-      const pdf = await pdfManager.openLocal();
+      expect(snapshot).toMatchObject({ format: 'xlsx', state: 'viewing' });
+      expect(snapshot?.sheets?.[0]).toMatchObject({
+        name: '预算表',
+        rowCount: 2,
+        columnCount: 2,
+        rows: [
+          ['项目', '金额'],
+          ['预算', '100']
+        ]
+      });
+      expect(snapshot?.blocks).toEqual([]);
+      expect(JSON.stringify(snapshot)).not.toContain(path);
+    });
+  });
+
+  it('Excel 文件无法读取时给出可操作说明', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '损坏.xlsx');
+      await writeFile(path, 'not an xlsx');
+      const { manager } = await createManager(dir, {
+        openLocal: async () => ({ format: 'xlsx', document: xlsxDocument(path) })
+      });
+
+      const snapshot = await manager.openLocal();
+
+      expect(snapshot).toMatchObject({ format: 'xlsx', state: 'failed' });
+      expect(snapshot?.message).toContain('另存为 .xlsx');
+    });
+  });
+
+  it('打开 PDF 时只返回查看会话', async () => {
+    await withTempDir(async (dir) => {
+      const { manager } = await createManager(dir, {
+        openLocal: async () => ({
+          format: 'pdf',
+          name: '申请须知.pdf',
+          path: join(dir, '申请须知.pdf')
+        })
+      });
+
+      const pdf = await manager.openLocal();
       expect(pdf).toMatchObject({ format: 'pdf', fileName: '申请须知.pdf', state: 'viewing' });
       expect(pdf?.blocks).toEqual([]);
+    });
+  });
+
+  it('Excel 审阅按条目更新网格并在全部采用后生成副本', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildXlsx(dir);
+      const editor = vi.fn(async ({ operations: applied }) => ({
+        name: '预算表-已修改.xlsx',
+        format: 'xlsx' as const,
+        folder: '鲁港通生成文件',
+        path: join(dir, '预算表-已修改.xlsx'),
+        applied: applied.length,
+        skipped: [],
+        warnings: []
+      }));
+      const { manager } = await createManager(dir, { editor });
+      const xlsxOperations: DocumentEditOperation[] = [
+        { op: 'set_cell', sheet: '预算表', cell: 'B2', value: '120' },
+        { op: 'append_row', sheet: '预算表', values: ['材料费', '30'] }
+      ];
+      const promise = manager.preview({
+        document: xlsxDocument(path),
+        operations: xlsxOperations
+      });
+      const token = manager.list()[0]?.token as string;
+      await waitForChanges(manager, token, 2);
+      manager.claim(token);
+
+      const applied = manager.decide(token, 0, 'apply');
+      expect(applied?.sheets?.[0].rows?.[1]).toEqual(['预算', '120']);
+      expect(applied?.sheets?.[0].cellMarks).toEqual([
+        { row: 1, cell: 1, mark: 'applied', original: '100' }
+      ]);
+      expect(applied?.sheets?.[0].appendedRows?.[0]).toMatchObject({
+        rowNumber: 3,
+        values: ['材料费', '30'],
+        mark: 'pending'
+      });
+
+      manager.applyAll(token);
+      await expect(promise).resolves.toMatchObject({ status: 'done' });
+      expect(editor).toHaveBeenCalledTimes(1);
+      const input = (editor as ReturnType<typeof vi.fn>).mock.calls[0][0] as {
+        operations: DocumentEditOperation[];
+      };
+      expect(input.operations).toEqual(xlsxOperations);
     });
   });
 
@@ -415,6 +501,84 @@ describe('预览会话：手动打开本地文件', () => {
       expect(openCopy).toHaveBeenCalledWith(
         'C:\\Users\\tester\\Downloads\\鲁港通生成文件\\申请说明-已修改.docx'
       );
+    });
+  });
+});
+
+describe('预览会话：PDF 字节读取与系统打开', () => {
+  const openPdf = (path: string, name = '申请须知.pdf') =>
+    (async () => ({ format: 'pdf' as const, name, path }));
+
+  it('PDF 查看会话按令牌返回字节且不含本机路径', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '申请须知.pdf');
+      await writeFile(path, 'PDF-BYTES');
+      const { manager } = await createManager(dir, { openLocal: openPdf(path) });
+
+      const snapshot = await manager.openLocal();
+      const bytes = await manager.readDocument(snapshot?.token as string);
+
+      expect(bytes?.name).toBe('申请须知.pdf');
+      expect(Buffer.from(bytes?.data as Uint8Array).toString()).toBe('PDF-BYTES');
+      expect(Object.keys(bytes ?? {})).toEqual(['name', 'data']);
+    });
+  });
+
+  it('超过读取上限的 PDF 不返回字节', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '大文件.pdf');
+      await writeFile(path, 'x'.repeat(64));
+      const { manager } = await createManager(dir, {
+        openLocal: openPdf(path, '大文件.pdf'),
+        maxReadBytes: 32
+      });
+
+      const snapshot = await manager.openLocal();
+
+      expect(await manager.readDocument(snapshot?.token as string)).toBeNull();
+    });
+  });
+
+  it('只有 PDF 查看会话可以读取字节', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir, {
+        openLocal: async () => ({ format: 'docx', document })
+      });
+
+      const viewing = await manager.openLocal();
+      expect(await manager.readDocument(viewing?.token as string)).toBeNull();
+
+      const promise = manager.preview({ document, operations });
+      const token = manager.list().find((item) => item.mode === 'review')?.token as string;
+      await waitForChanges(manager, token, 2);
+      expect(await manager.readDocument(token)).toBeNull();
+
+      manager.cancelAll();
+      await promise;
+    });
+  });
+
+  it('查看会话可用系统默认程序打开原文件，审阅会话不允许', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '申请须知.pdf');
+      await writeFile(path, 'PDF-BYTES');
+      const openCopy = vi.fn();
+      const { manager, document } = await createManager(dir, {
+        openCopy,
+        openLocal: openPdf(path)
+      });
+
+      const viewing = await manager.openLocal();
+      expect(manager.openExternal(viewing?.token as string)).toBe(true);
+      expect(openCopy).toHaveBeenCalledWith(path);
+
+      const promise = manager.preview({ document, operations });
+      const token = manager.list().find((item) => item.mode === 'review')?.token as string;
+      await waitForChanges(manager, token, 2);
+      expect(manager.openExternal(token)).toBe(false);
+
+      manager.cancelAll();
+      await promise;
     });
   });
 });

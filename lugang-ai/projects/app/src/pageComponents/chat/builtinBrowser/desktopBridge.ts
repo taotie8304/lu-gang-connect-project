@@ -136,12 +136,23 @@ export type DesktopDocumentTableBlock = {
 
 export type DesktopDocumentBlock = DesktopDocumentParagraphBlock | DesktopDocumentTableBlock;
 
+export type DesktopDocumentAppendedRow = {
+  rowNumber: number;
+  values: string[];
+  mark: DesktopDocumentMark;
+};
+
 export type DesktopDocumentSheet = {
   name: string;
   rowCount: number;
   columnCount: number;
   header: string[];
   sampleRows: string[][];
+  rows?: string[][];
+  truncatedRows?: boolean;
+  truncatedColumns?: boolean;
+  cellMarks?: DesktopDocumentTableCellMark[];
+  appendedRows?: DesktopDocumentAppendedRow[];
 };
 
 export type DesktopDocumentSnapshot = {
@@ -168,6 +179,9 @@ export type DesktopDocumentSummary = {
   decided: number;
 };
 
+/** 鲁港通 - PDF 查看只把文件字节交给本机渲染进程，返回值里不出现本机路径 */
+export type DesktopDocumentBytes = { name: string; data: Uint8Array };
+
 /** 文件只在本机解析；老客户端没有这个对象，网页端据此隐藏文件入口 */
 export type DesktopDocuments = {
   openLocal(): Promise<DesktopDocumentSnapshot | null>;
@@ -182,6 +196,9 @@ export type DesktopDocuments = {
   applyAll(token: string): Promise<DesktopDocumentSnapshot | null>;
   close(token: string): Promise<void>;
   openCopy(token: string): Promise<boolean>;
+  /** 0.8.0 起支持；老客户端缺少此能力时 PDF 回退到系统默认程序 */
+  read?(token: string): Promise<DesktopDocumentBytes | null>;
+  openExternal?(token: string): Promise<boolean>;
   onChanged(callback: (list: DesktopDocumentSummary[]) => void): () => void;
 };
 

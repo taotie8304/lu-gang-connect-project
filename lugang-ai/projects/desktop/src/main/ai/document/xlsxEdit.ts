@@ -13,13 +13,13 @@ import {
 } from './editTypes';
 import type { ParsedDocument } from './types';
 
-const CELL_REFERENCE = /^([A-Za-z]{1,3})([1-9]\d{0,5})$/;
+export const CELL_REFERENCE = /^([A-Za-z]{1,3})([1-9]\d{0,5})$/;
 const PLAIN_NUMBER = /^(0|-?[1-9]\d*)(\.\d+)?$/;
-const MAX_REPLACEMENTS = 500;
-const MAX_SCAN_ROWS = 5000;
-const MAX_SCAN_COLUMNS = 100;
+export const MAX_REPLACEMENTS = 500;
+export const MAX_SCAN_ROWS = 5000;
+export const MAX_SCAN_COLUMNS = 100;
 
-const columnIndex = (letters: string): number => {
+export const columnIndex = (letters: string): number => {
   let index = 0;
   for (const letter of letters.toUpperCase()) {
     index = index * 26 + (letter.charCodeAt(0) - 64);
@@ -27,28 +27,34 @@ const columnIndex = (letters: string): number => {
   return index;
 };
 
-const readCellText = (cell: ExcelJS.Cell): string => {
+export const readCellText = (cell: ExcelJS.Cell): string => {
   const value = cell.value;
   if (value === null || value === undefined) return '';
   if (typeof value === 'string') return value;
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value instanceof Date) return value.toISOString();
   if (typeof value === 'object') {
-    const record = value as { richText?: Array<{ text?: string }> };
+    const record = value as {
+      richText?: Array<{ text?: string }>;
+      text?: unknown;
+      result?: unknown;
+    };
     if (Array.isArray(record.richText)) {
       return record.richText.map((item) => item.text ?? '').join('');
     }
+    if (typeof record.text === 'string') return record.text;
+    if (record.result !== undefined && record.result !== null) return String(record.result);
   }
   return '';
 };
 
-const isFormulaCell = (cell: ExcelJS.Cell): boolean =>
+export const isFormulaCell = (cell: ExcelJS.Cell): boolean =>
   Boolean(cell.value && typeof cell.value === 'object' && 'formula' in cell.value);
 
-const isMergedSlave = (cell: ExcelJS.Cell): boolean =>
+export const isMergedSlave = (cell: ExcelJS.Cell): boolean =>
   cell.isMerged && cell.master !== undefined && cell.master.address !== cell.address;
 
-const findSheet = (workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet | undefined => {
+export const findSheet = (workbook: ExcelJS.Workbook, name: string): ExcelJS.Worksheet | undefined => {
   const exact = workbook.getWorksheet(name);
   if (exact) return exact;
   const lower = name.trim().toLowerCase();
