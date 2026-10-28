@@ -1,5 +1,6 @@
 // 鲁港通 - AI 指令执行器：定位、动作前安全拦截、动作后页面校验
 import { randomUUID } from 'node:crypto';
+import { AiDriverError } from './cdpDriver';
 import { FormFillError, FormParseError } from './form/types';
 import type {
   FilledFormCopy,
@@ -67,6 +68,7 @@ export type AiActionErrorCode =
   | 'document_expired'
   | 'document_no_change'
   | 'document_edit_failed'
+  | 'timeout'
   | 'page_error';
 
 export type AiFileFormat = 'docx' | 'xlsx' | 'pdf';
@@ -123,6 +125,18 @@ export type AiFormFillInfo = {
 
 /** 鲁港通 - 文档打开与修改：路径与正文只留在本机，不进入指令结果 */
 export type AiDocumentOpener = () => Promise<ParsedDocument | null>;
+
+/** 鲁港通 - 右栏正在查看的本机文件：Word/Excel 可直接继续修改，PDF 只读 */
+export type AiActiveDocument =
+  | { format: 'docx' | 'xlsx'; fileName: string; document: ParsedDocument }
+  | { format: 'pdf'; fileName: string };
+
+export type AiActiveDocumentReader = () => AiActiveDocument | undefined;
+
+/** 鲁港通 - 回传给模型的文档信息：PDF 只有名称，不能作为修改目标 */
+export type AiDocumentInfo = Omit<DocumentSummary, 'format'> & {
+  format: DocumentSummary['format'] | 'pdf';
+};
 
 export type AiDocumentEditor = (input: {
   document: ParsedDocument;
@@ -206,7 +220,7 @@ export type AiCommandResult = {
   form?: FormSummary;
   formToken?: string;
   fill?: AiFormFillInfo;
-  document?: DocumentSummary;
+  document?: AiDocumentInfo;
   documentToken?: string;
   edit?: AiDocumentEditInfo;
 };
@@ -363,6 +377,7 @@ export class AiExecutor {
   private readonly fillForm?: AiFormFiller;
   private readonly confirmForm?: AiFormConfirmer;
   private readonly openDocument?: AiDocumentOpener;
+  private readonly readActiveDocument?: AiActiveDocumentReader;
   private readonly editDocument?: AiDocumentEditor;
   private readonly confirmDocument?: AiDocumentConfirmer;
   private readonly previewDocument?: AiDocumentPreviewer;
@@ -378,6 +393,7 @@ export class AiExecutor {
     fillForm?: AiFormFiller;
     confirmForm?: AiFormConfirmer;
     openDocument?: AiDocumentOpener;
+    readActiveDocument?: AiActiveDocumentReader;
     editDocument?: AiDocumentEditor;
     confirmDocument?: AiDocumentConfirmer;
     previewDocument?: AiDocumentPreviewer;
@@ -390,6 +406,7 @@ export class AiExecutor {
     this.fillForm = options.fillForm;
     this.confirmForm = options.confirmForm;
     this.openDocument = options.openDocument;
+    this.readActiveDocument = options.readActiveDocument;
     this.editDocument = options.editDocument;
     this.confirmDocument = options.confirmDocument;
     this.previewDocument = options.previewDocument;
@@ -412,7 +429,15 @@ export class AiExecutor {
     if (command.action === 'stop') return { ok: true, stopped: true };
     try {
       return await this.run(command);
-    } catch {
+    } catch (error) {
+      // 鲁港通 - 页面驱动的超时/未打开页面等具体原因要透出，避免统一成一句泛化文案
+      if (error instanceof AiDriverError) {
+        return {
+          ok: false,
+          code: error.timeout ? 'timeout' : 'page_error',
+          message: error.message
+        };
+      }
       return {
         ok: false,
         code: 'page_error',
@@ -430,6 +455,9 @@ export class AiExecutor {
     if (command.action === 'edit_document') return this.editDocumentLocally(command);
 
     if (command.action === 'read') {
+      // 鲁港通 - 右栏打开的是本机文件时直接读文件，不去读网页
+      const local = this.readActiveDocumentLocally();
+      if (local) return local;
       const read = await this.readSnapshot({ fullText: command.fullText === true });
       if ('result' in read) return read.result;
       return { ok: true, snapshot: read.snapshot };
@@ -730,6 +758,31 @@ export class AiExecutor {
     }
 
     return { ok: true, document: toDocumentSummary(document), documentToken: token };
+  }
+
+  private readActiveDocumentLocally(): AiCommandResult | undefined {
+    if (!this.readActiveDocument) return undefined;
+    let active: AiActiveDocument | undefined;
+    try {
+      active = this.readActiveDocument();
+    } catch {
+      return undefined;
+    }
+    if (!active) return undefined;
+
+    // 鲁港通 - PDF 只给文件名，不发放修改引用
+    if (active.format === 'pdf') {
+      return { ok: true, document: { format: 'pdf', name: active.fileName } };
+    }
+
+    const token = randomUUID();
+    this.documents.set(token, active.document);
+    while (this.documents.size > MAX_DOCUMENT_TOKENS) {
+      const oldest = this.documents.keys().next().value;
+      if (!oldest) break;
+      this.documents.delete(oldest);
+    }
+    return { ok: true, document: toDocumentSummary(active.document), documentToken: token };
   }
 
   private async editDocumentLocally(

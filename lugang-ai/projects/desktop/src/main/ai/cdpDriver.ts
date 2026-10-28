@@ -25,8 +25,12 @@ export type CdpPageDriverOptions = {
   getSession: () => AiCdpSession | null;
   navigate: (url: string) => Promise<void>;
   settleMs?: number;
+  commandTimeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
 };
+
+const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
+export const AI_CDP_TIMEOUT_MESSAGE = '页面响应超时，页面可能正在跳转或已经卡住，请稍后重试。';
 
 type EvaluatePayload = {
   result?: { value?: unknown };
@@ -64,15 +68,17 @@ const normalizeRect = (raw: unknown): AiResolvedElement['rect'] => {
   return { x, y, width, height };
 };
 
-const isCommandError = (error: unknown): error is Error =>
+const isCommandError = (error: unknown): error is AiDriverError =>
   error instanceof Error && error.name === 'AiDriverError';
 
 export class AiDriverError extends Error {
   readonly code = 'page_error';
+  readonly timeout: boolean;
 
-  constructor(message: string) {
+  constructor(message: string, options: { timeout?: boolean } = {}) {
     super(message);
     this.name = 'AiDriverError';
+    this.timeout = options.timeout === true;
   }
 }
 
@@ -80,12 +86,14 @@ export class CdpPageDriver implements AiPageDriver {
   private readonly getSession: () => AiCdpSession | null;
   private readonly navigateUrl: (url: string) => Promise<void>;
   private readonly settleMs: number;
+  private readonly commandTimeoutMs: number;
   private readonly sleep: (ms: number) => Promise<void>;
 
   constructor(options: CdpPageDriverOptions) {
     this.getSession = options.getSession;
     this.navigateUrl = options.navigate;
     this.settleMs = options.settleMs ?? 250;
+    this.commandTimeoutMs = options.commandTimeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS;
     this.sleep = options.sleep ?? defaultSleep;
   }
 
@@ -270,6 +278,8 @@ export class CdpPageDriver implements AiPageDriver {
         if (state === 'complete') return;
       } catch (error) {
         if (!isCommandError(error)) throw error;
+        // 鲁港通 - 页面无响应时不再重试，避免把等待时间成倍拉长
+        if (error.timeout) return;
       }
       await this.sleep(200);
     }
@@ -278,7 +288,31 @@ export class CdpPageDriver implements AiPageDriver {
   private requireSession(): AiCdpSession {
     const session = this.getSession();
     if (!session) throw new AiDriverError('当前没有可操作的页面，请先打开浏览器页面。');
-    return session;
+    return {
+      sendCommand: (method, params) => this.sendWithTimeout(session, method, params)
+    };
+  }
+
+  // 鲁港通 - 页面命令必须有超时：页面卡住或从未渲染时 CDP 会一直不回包
+  private async sendWithTimeout(
+    session: AiCdpSession,
+    method: string,
+    params?: Record<string, unknown>
+  ): Promise<unknown> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        session.sendCommand(method, params),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new AiDriverError(AI_CDP_TIMEOUT_MESSAGE, { timeout: true })),
+            this.commandTimeoutMs
+          );
+        })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private async evaluate<T>(expression: string): Promise<T> {

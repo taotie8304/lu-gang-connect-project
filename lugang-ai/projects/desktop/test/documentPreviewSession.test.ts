@@ -505,6 +505,91 @@ describe('预览会话：手动打开本地文件', () => {
   });
 });
 
+describe('预览会话：右栏活动文件', () => {
+  it('活动 Word 文件返回可继续修改的文档内容', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir, {
+        openLocal: async () => ({ format: 'docx', document })
+      });
+      const snapshot = await manager.openLocal();
+      manager.setActive(snapshot?.token as string);
+
+      const active = manager.readActiveDocument();
+
+      expect(active).toMatchObject({ format: 'docx', fileName: '申请说明.docx' });
+      expect(active && 'document' in active ? active.document.name : '').toBe('申请说明.docx');
+    });
+  });
+
+  it('活动 Excel 文件返回工作簿结构', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildXlsx(dir);
+      const { manager } = await createManager(dir, {
+        openLocal: async () => ({ format: 'xlsx', document: xlsxDocument(path) })
+      });
+      const snapshot = await manager.openLocal();
+      manager.setActive(snapshot?.token as string);
+
+      const active = manager.readActiveDocument();
+
+      expect(active).toMatchObject({ format: 'xlsx', fileName: '预算表.xlsx' });
+      expect(active && 'document' in active ? active.document.format : '').toBe('xlsx');
+    });
+  });
+
+  it('活动 PDF 只返回名称与只读格式，不暴露本机路径', async () => {
+    await withTempDir(async (dir) => {
+      const path = join(dir, '申请须知.pdf');
+      await writeFile(path, 'PDF-BYTES');
+      const { manager } = await createManager(dir, {
+        openLocal: async () => ({ format: 'pdf', name: '申请须知.pdf', path })
+      });
+      const snapshot = await manager.openLocal();
+      manager.setActive(snapshot?.token as string);
+
+      const active = manager.readActiveDocument();
+
+      expect(active).toEqual({ format: 'pdf', fileName: '申请须知.pdf' });
+      expect(JSON.stringify(active)).not.toContain(dir);
+    });
+  });
+
+  it('未激活或激活审阅会话时不返回文件', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir);
+      expect(manager.readActiveDocument()).toBeUndefined();
+
+      const promise = manager.preview({ document, operations });
+      const reviewToken = manager.list()[0]?.token as string;
+      await waitForChanges(manager, reviewToken, 2);
+      manager.setActive(reviewToken);
+
+      expect(manager.readActiveDocument()).toBeUndefined();
+
+      manager.cancelAll();
+      await promise;
+    });
+  });
+
+  it('活动文件关闭或清空激活后不再返回', async () => {
+    await withTempDir(async (dir) => {
+      const { manager, document } = await createManager(dir, {
+        openLocal: async () => ({ format: 'docx', document })
+      });
+      const snapshot = await manager.openLocal();
+      manager.setActive(snapshot?.token as string);
+      expect(manager.readActiveDocument()).toBeTruthy();
+
+      manager.close(snapshot?.token as string);
+      expect(manager.readActiveDocument()).toBeUndefined();
+
+      manager.setActive(snapshot?.token as string);
+      manager.setActive(null);
+      expect(manager.readActiveDocument()).toBeUndefined();
+    });
+  });
+});
+
 describe('预览会话：PDF 字节读取与系统打开', () => {
   const openPdf = (path: string, name = '申请须知.pdf') =>
     (async () => ({ format: 'pdf' as const, name, path }));

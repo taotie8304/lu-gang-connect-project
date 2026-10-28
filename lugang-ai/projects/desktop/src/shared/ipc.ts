@@ -49,6 +49,7 @@ export const IPC_CHANNELS = {
   documentsOpenCopy: 'lugang:documents-open-copy',
   documentsRead: 'lugang:documents-read',
   documentsOpenExternal: 'lugang:documents-open-external',
+  documentsSetActive: 'lugang:documents-set-active',
   documentsChanged: 'lugang:documents-changed'
 } as const;
 

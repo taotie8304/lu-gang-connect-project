@@ -96,6 +96,9 @@ const api = {
       >,
     openExternal: (token: string) =>
       ipcRenderer.invoke(IPC_CHANNELS.documentsOpenExternal, { token }) as Promise<boolean>,
+    setActive: (token: string | null) => {
+      ipcRenderer.send(IPC_CHANNELS.documentsSetActive, { token });
+    },
     onChanged: (callback: (list: DesktopDocumentSummary[]) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, list: DesktopDocumentSummary[]) =>
         callback(list);

@@ -13,6 +13,7 @@ import {
   createTabSchema,
   cssRectSchema,
   documentDecideSchema,
+  documentActiveSchema,
   documentTokenPayloadSchema,
   navigateUrlSchema,
   tabIdSchema
@@ -45,6 +46,7 @@ type RegisterIpcOptions = {
     | 'openCopy'
     | 'readDocument'
     | 'openExternal'
+    | 'setActive'
   >;
   windowControls: WindowControls;
   update: Pick<UpdateController, 'getStatus' | 'check' | 'install' | 'subscribe'>;
@@ -197,6 +199,12 @@ export const registerIpc = ({
     IPC_CHANNELS.documentsOpenExternal,
     (payload) => documents.openExternal((payload as { token: string }).token),
     documentTokenPayloadSchema
+  );
+  // 鲁港通 - 网页端文件标签切换：只同步当前显示的文件，读文件时据此判断
+  listen(
+    IPC_CHANNELS.documentsSetActive,
+    (payload) => documents.setActive((payload as { token: string | null }).token),
+    documentActiveSchema
   );
 
   // 鲁港通 - 自绘标题栏的窗口按钮：全部走主窗口校验，关闭仍复用收进托盘策略

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   AiExecutor,
+  type AiActiveDocument,
   type AiDocumentConfirmer,
   type AiDocumentEditor,
   type AiDocumentPreviewer,
@@ -164,6 +165,111 @@ describe('文档动作：打开本机文档提纲', () => {
       operations: [{ op: 'append_paragraph', text: '备注：待补充。' }]
     });
     expect(newest.ok).toBe(true);
+  });
+});
+
+describe('文档动作：读取右栏已打开的文件', () => {
+  const activeDocx = (): AiActiveDocument => ({
+    format: 'docx',
+    fileName: '2024年工作计划.docx',
+    document: makeDocument()
+  });
+
+  it('右栏打开 Word 时读取返回文档提纲与可继续修改的引用', async () => {
+    const driver = createDriver();
+    const executor = new AiExecutor({
+      driver,
+      readActiveDocument: () => activeDocx(),
+      editDocument: createEditor(),
+      confirmDocument: createConfirmer('allow').confirmer
+    });
+
+    const read = await executor.execute({ action: 'read' });
+
+    expect(read.ok).toBe(true);
+    expect(read.document).toMatchObject({
+      format: 'docx',
+      name: '2024年工作计划.docx'
+    });
+    expect(read.document?.paragraphs?.[1]).toMatchObject({
+      index: 1,
+      text: '目标：2023年完成一期建设。'
+    });
+    expect(read.documentToken).toBeTruthy();
+    expect(read.snapshot).toBeUndefined();
+    expect(driver.snapshot).not.toHaveBeenCalled();
+    expect(JSON.stringify(read)).not.toContain('C:\\\\Users');
+
+    const edit = await executor.execute({
+      action: 'edit_document',
+      token: read.documentToken as string,
+      operations: [{ op: 'append_paragraph', text: '补充说明。' }]
+    });
+    expect(edit.ok).toBe(true);
+  });
+
+  it('右栏打开 Excel 时读取返回工作表结构', async () => {
+    const xlsxDocument: ParsedDocument = {
+      format: 'xlsx',
+      name: '预算表.xlsx',
+      path: 'C:\\Users\\tester\\Desktop\\预算表.xlsx',
+      sheets: [
+        {
+          name: '预算表',
+          rowCount: 2,
+          columnCount: 2,
+          header: ['项目', '金额'],
+          sampleRows: [['预算', '100']]
+        }
+      ]
+    };
+    const executor = new AiExecutor({
+      driver: createDriver(),
+      readActiveDocument: () => ({
+        format: 'xlsx',
+        fileName: '预算表.xlsx',
+        document: xlsxDocument
+      })
+    });
+
+    const read = await executor.execute({ action: 'read' });
+
+    expect(read.ok).toBe(true);
+    expect(read.document).toMatchObject({ format: 'xlsx', name: '预算表.xlsx' });
+    expect(read.document?.sheets?.[0]).toMatchObject({ name: '预算表' });
+    expect(read.documentToken).toBeTruthy();
+  });
+
+  it('右栏打开 PDF 时只返回文件名，不提供修改引用', async () => {
+    const driver = createDriver();
+    const executor = new AiExecutor({
+      driver,
+      readActiveDocument: () => ({ format: 'pdf', fileName: '申请须知.pdf' })
+    });
+
+    const read = await executor.execute({ action: 'read' });
+
+    expect(read.ok).toBe(true);
+    expect(read.document).toEqual({ format: 'pdf', name: '申请须知.pdf' });
+    expect(read.documentToken).toBeUndefined();
+    expect(driver.snapshot).not.toHaveBeenCalled();
+  });
+
+  it('右栏没有打开文件时回退读取网页', async () => {
+    const driver = createDriver();
+    (driver.snapshot as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...emptySnapshot,
+      url: 'https://www.gov.hk/sc/home/index.html',
+      title: '香港政府一站通'
+    });
+    const executor = new AiExecutor({ driver, readActiveDocument: () => undefined });
+
+    const read = await executor.execute({ action: 'read' });
+
+    expect(read.ok).toBe(true);
+    expect(read.document).toBeUndefined();
+    expect(read.snapshot?.title).toBe('香港政府一站通');
+    expect(driver.snapshot).toHaveBeenCalledTimes(1);
   });
 });
 

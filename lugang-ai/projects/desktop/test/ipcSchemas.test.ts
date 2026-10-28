@@ -5,6 +5,7 @@ import {
   createTabSchema,
   cssRectSchema,
   documentDecideSchema,
+  documentActiveSchema,
   documentTokenPayloadSchema,
   navigateUrlSchema,
   tabIdSchema
@@ -125,6 +126,21 @@ describe('documentTokenPayloadSchema', () => {
 
   it('拒绝缺少令牌', () => {
     expect(documentTokenPayloadSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('documentActiveSchema', () => {
+  const token = '3f1b8c4a-9d2e-4f6b-8a1c-5e7d9b0f2a44';
+
+  it('接受令牌或空值', () => {
+    expect(documentActiveSchema.parse({ token })).toEqual({ token });
+    expect(documentActiveSchema.parse({ token: null })).toEqual({ token: null });
+  });
+
+  it('拒绝缺字段与非法令牌', () => {
+    expect(documentActiveSchema.safeParse({}).success).toBe(false);
+    expect(documentActiveSchema.safeParse({ token: 'x' }).success).toBe(false);
+    expect(documentActiveSchema.safeParse({ token: 42 }).success).toBe(false);
   });
 });
 

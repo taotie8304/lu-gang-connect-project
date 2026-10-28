@@ -260,3 +260,24 @@ describe('CDP 页面驱动', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('CDP 页面驱动 · 命令超时', () => {
+  it('页面命令长时间无响应时按超时失败', async () => {
+    const session: AiCdpSession = {
+      sendCommand: () => new Promise(() => undefined)
+    };
+    const driver = new CdpPageDriver({
+      getSession: () => session,
+      navigate: async () => undefined,
+      commandTimeoutMs: 10
+    });
+
+    await expect(driver.snapshot()).rejects.toThrow('页面响应超时');
+  });
+
+  it('页面命令在超时前返回时不做额外处理', async () => {
+    const { driver } = createDriver(() => ({ result: { value: rawSnapshot } }));
+    const snapshot = await driver.snapshot();
+    expect(snapshot.title).toBe('申请页面');
+  });
+});

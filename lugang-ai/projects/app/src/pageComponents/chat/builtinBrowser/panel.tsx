@@ -207,6 +207,15 @@ const BuiltinBrowserPanelBody = ({
     void requestOpenSession();
   }, [requestOpenSession]);
 
+  // 鲁港通 - 把右栏当前文件标签同步给主进程，AI 读取时优先读这份文件
+  useEffect(() => {
+    if (!documents?.setActive) return;
+    documents.setActive(activeDocToken);
+    return () => {
+      documents.setActive?.(null);
+    };
+  }, [documents, activeDocToken]);
+
   const showTabActionFailed = useCallback(
     (err?: unknown) => {
       toast({

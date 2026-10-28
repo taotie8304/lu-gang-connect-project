@@ -679,3 +679,156 @@ describe('AI 桌面控制器 · 指令执行与自愈', () => {
     expect(fillForm).not.toHaveBeenCalled();
   });
 });
+
+describe('AI 桌面控制器 · 卡死自愈与读取边界', () => {
+  it('页面长时间无响应时按超时返回，不阻塞后续指令', async () => {
+    const browser = createBrowser();
+    const harness = createDriver(makeSnapshot([textField('申请人姓名')]));
+    let hang = true;
+    (harness.driver.snapshot as ReturnType<typeof vi.fn>).mockImplementation(() =>
+      hang
+        ? new Promise<AiPageSnapshot>(() => undefined)
+        : Promise.resolve(makeSnapshot([textField('申请人姓名')]))
+    );
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      actionTimeoutMs: 20,
+      longActionTimeoutMs: 200
+    });
+
+    const first = await controller.execute({ action: 'read' });
+    expect(first.ok).toBe(false);
+    expect(first.code).toBe('timeout');
+    expect(first.message).toContain('页面响应超时');
+
+    hang = false;
+    const second = await controller.execute({ action: 'read' });
+    expect(second.ok).toBe(true);
+  });
+
+  it('右栏没有网页时读取直接失败，不新建空白标签', async () => {
+    const browser = createBrowser();
+    browser.state.tabs = [];
+    browser.state.activeTabId = null;
+    browser.state.panelOpen = false;
+    const harness = createDriver(makeSnapshot());
+    const controller = new AiController({ browser, driver: harness.driver });
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('page_error');
+    expect(result.message).toContain('网页');
+    expect(browser.openPanel).not.toHaveBeenCalled();
+    expect(harness.snapshotCalls()).toBe(0);
+  });
+
+  it('右栏打开本机文件时读取提示先读取文件', async () => {
+    const browser = createBrowser();
+    browser.state.tabs = [];
+    browser.state.activeTabId = null;
+    browser.state.panelOpen = false;
+    const harness = createDriver(makeSnapshot());
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      hasLocalDocuments: () => true
+    });
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(false);
+    expect(result.message).toContain('文件');
+    expect(browser.openPanel).not.toHaveBeenCalled();
+  });
+
+  it('右栏打开文件时不打开面板，直接读取文件', async () => {
+    const browser = createBrowser();
+    browser.state.tabs = [];
+    browser.state.activeTabId = null;
+    browser.state.panelOpen = false;
+    const harness = createDriver(makeSnapshot());
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      hasLocalDocuments: () => true,
+      readActiveDocument: () => ({ format: 'pdf', fileName: '申请须知.pdf' })
+    });
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(true);
+    expect(result.document).toMatchObject({ format: 'pdf', name: '申请须知.pdf' });
+    expect(browser.openPanel).not.toHaveBeenCalled();
+    expect(harness.snapshotCalls()).toBe(0);
+  });
+
+  it('右栏只有空白页且没有打开文件时直接给出可操作提示', async () => {
+    const browser = createBrowser();
+    browser.state.tabs = [{ id: 1, title: '', url: 'about:blank', current: true }];
+    const harness = createDriver(makeSnapshot());
+    const controller = new AiController({ browser, driver: harness.driver });
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('page_error');
+    expect(result.message).toContain('网页');
+    expect(browser.openPanel).not.toHaveBeenCalled();
+    expect(harness.snapshotCalls()).toBe(0);
+  });
+
+  it('右栏有可读网页时仍按网页读取', async () => {
+    const { controller, snapshotCalls } = createController();
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(true);
+    expect(result.snapshot?.url).toBe(PAGE_URL);
+    expect(snapshotCalls()).toBe(1);
+  });
+
+  it('需要用户操作的动作按长等待上限计时', async () => {
+    const browser = createBrowser();
+    const harness = createDriver(
+      makeSnapshot([{ role: 'button', name: '下一步', tag: 'button' }])
+    );
+    (harness.driver.settle as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<void>((resolve) => setTimeout(resolve, 40))
+    );
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      actionTimeoutMs: 10,
+      longActionTimeoutMs: 400
+    });
+
+    const result = await controller.execute({ action: 'click', target: '下一步' });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('读取超时后审计记录为 failed/timeout', async () => {
+    const records: AiAuditRecord[] = [];
+    const browser = createBrowser();
+    const harness = createDriver(makeSnapshot());
+    (harness.driver.snapshot as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<AiPageSnapshot>(() => undefined)
+    );
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      actionTimeoutMs: 10,
+      longActionTimeoutMs: 100,
+      audit: (record) => {
+        records.push(record);
+      }
+    });
+
+    await controller.execute({ action: 'read' });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({ action: 'read', outcome: 'failed', errorCode: 'timeout' });
+  });
+});

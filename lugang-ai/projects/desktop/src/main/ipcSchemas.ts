@@ -37,6 +37,9 @@ export const documentTokenSchema = z
 
 export const documentTokenPayloadSchema = z.object({ token: documentTokenSchema });
 
+// 鲁港通 - 右栏当前文件标签：null 表示当前显示的不是文件
+export const documentActiveSchema = z.object({ token: documentTokenSchema.nullable() });
+
 export const documentDecideSchema = z.object({
   token: documentTokenSchema,
   index: z.number().int().min(0).max(59),

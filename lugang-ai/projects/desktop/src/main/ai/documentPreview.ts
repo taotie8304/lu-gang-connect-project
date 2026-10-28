@@ -46,6 +46,11 @@ export type LocalPreviewInput =
   | { format: 'docx' | 'xlsx'; document: ParsedDocument }
   | { format: 'pdf'; name: string; path: string };
 
+/** 鲁港通 - 右栏当前显示的本机文件：Word/Excel 可继续修改，PDF 只读 */
+export type ActiveViewDocument =
+  | { format: 'docx' | 'xlsx'; fileName: string; document: ParsedDocument }
+  | { format: 'pdf'; fileName: string };
+
 export type DocumentPreviewOutcome =
   | { status: 'done'; copy: EditedDocumentCopy }
   | { status: 'no_change' }
@@ -114,6 +119,7 @@ export class DocumentPreviewManager {
   private readonly claimTimeoutMs: number;
   private readonly maxSessions: number;
   private readonly maxReadBytes: number;
+  private activeToken?: string;
 
   constructor(options: DocumentPreviewManagerOptions) {
     this.editDocument = options.editDocument;
@@ -228,6 +234,21 @@ export class DocumentPreviewManager {
       decided: session.changes.filter((change) => change.status !== 'pending').length
     }));
 
+  // 鲁港通 - 网页端把右栏当前文件标签同步进来，null 表示当前显示的不是文件
+  setActive = (token: string | null): void => {
+    this.activeToken = token && this.sessions.has(token) ? token : undefined;
+  };
+
+  // 鲁港通 - 只返回仍在查看中的本机文件；审阅会话与读取失败的文件不参与
+  readActiveDocument = (): ActiveViewDocument | undefined => {
+    const session = this.activeToken ? this.sessions.get(this.activeToken) : undefined;
+    if (!session || session.mode !== 'view' || session.state !== 'viewing') return undefined;
+    const format = session.format;
+    if (format === 'pdf') return { format, fileName: session.fileName };
+    if (!session.document) return undefined;
+    return { format, fileName: session.fileName, document: session.document };
+  };
+
   get = (token: string): DesktopDocumentSnapshot | undefined => {
     const session = this.sessions.get(token);
     return session ? this.snapshot(session) : undefined;
@@ -286,7 +307,7 @@ export class DocumentPreviewManager {
       return;
     }
     if (session.state === 'finalizing') return;
-    this.sessions.delete(token);
+    this.dropSession(token);
     this.emitList();
   };
 
@@ -298,7 +319,7 @@ export class DocumentPreviewManager {
         continue;
       }
       if (session.state === 'finalizing') continue;
-      this.sessions.delete(session.token);
+      this.dropSession(session.token);
     }
     this.emitList();
   };
@@ -413,7 +434,7 @@ export class DocumentPreviewManager {
   ): void => {
     this.clearTimer(session, 'claimTimer');
     this.clearTimer(session, 'reviewTimer');
-    if (!keep) this.sessions.delete(session.token);
+    if (!keep) this.dropSession(session.token);
     this.emitList();
     const resolve = session.resolve;
     session.resolve = undefined;
@@ -448,10 +469,15 @@ export class DocumentPreviewManager {
         candidate.state = 'declined';
         this.finish(candidate, { status: 'declined' }, false);
       } else {
-        this.sessions.delete(candidate.token);
+        this.dropSession(candidate.token);
         this.emitList();
       }
     }
+  }
+
+  private dropSession(token: string): void {
+    this.sessions.delete(token);
+    if (this.activeToken === token) this.activeToken = undefined;
   }
 
   private emitList(): void {

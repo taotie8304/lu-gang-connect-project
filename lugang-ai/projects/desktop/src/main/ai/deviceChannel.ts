@@ -129,7 +129,9 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`
         },
-        body: JSON.stringify({ deviceId, commandId, result })
+        body: JSON.stringify({ deviceId, commandId, result }),
+        // 鲁港通 - 回传必须有超时，网络半开时不能让指令处理一直挂着
+        signal: AbortSignal.timeout(10_000)
       });
     } catch (error) {
       // 回传失败由服务端等待超时兜底，客户端保持轮询

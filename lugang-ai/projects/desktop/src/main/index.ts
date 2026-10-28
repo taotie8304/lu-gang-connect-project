@@ -266,7 +266,11 @@ if (!gotLock) {
           rendererDir
         }),
         // 鲁港通 - 右栏挂载时走结构化预览，2 秒未认领自动回退上面的原生确认窗
-        previewDocument
+        previewDocument,
+        // 鲁港通 - 供读取失败时区分「右栏是文件」与「右栏没有网页」
+        hasLocalDocuments: () => documents.list().length > 0,
+        // 鲁港通 - AI 读取时优先读右栏当前打开的文件
+        readActiveDocument: () => documents.readActiveDocument()
       });
 
       // 鲁港通 - 设备令牌只留在主进程：用应用会话 Cookie 注册，safeStorage 加密后落盘

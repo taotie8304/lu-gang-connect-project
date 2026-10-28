@@ -199,6 +199,8 @@ export type DesktopDocuments = {
   /** 0.8.0 起支持；老客户端缺少此能力时 PDF 回退到系统默认程序 */
   read?(token: string): Promise<DesktopDocumentBytes | null>;
   openExternal?(token: string): Promise<boolean>;
+  /** 0.8.1 起支持；把右栏当前文件标签同步给主进程，供 AI 直接读取 */
+  setActive?(token: string | null): void;
   onChanged(callback: (list: DesktopDocumentSummary[]) => void): () => void;
 };
 

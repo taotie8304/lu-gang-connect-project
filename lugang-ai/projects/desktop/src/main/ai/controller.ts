@@ -6,6 +6,7 @@ import { buildAiAuditRecord, type AiAuditRecord } from './audit';
 import {
   AiExecutor,
   type AiActionErrorCode,
+  type AiActiveDocumentReader,
   type AiCommandResult,
   type AiConfirmer,
   type AiDocumentConfirmer,
@@ -32,6 +33,21 @@ import {
 import type { AiCommand } from './protocol';
 
 export const AI_SESSION_IDLE_MS = 10 * 60 * 1000;
+export const AI_ACTION_TIMEOUT_MESSAGE =
+  '页面响应超时，页面可能正在跳转或已经卡住，请稍后重试或换一种说法。';
+
+const DEFAULT_ACTION_TIMEOUT_MS = 20_000;
+const DEFAULT_LONG_ACTION_TIMEOUT_MS = 320_000;
+
+// 鲁港通 - 与服务端长等待动作对齐：这些动作可能包含用户确认或等待加载
+const LONG_WAIT_ACTIONS = new Set<AiCommand['action']>([
+  'click',
+  'upload',
+  'open_form',
+  'fill_form',
+  'open_document',
+  'edit_document'
+]);
 
 export type AiControllerBrowser = {
   openPanel(): unknown;
@@ -54,9 +70,13 @@ export type AiControllerOptions = {
   fillForm?: AiFormFiller;
   confirmForm?: AiFormConfirmer;
   openDocument?: AiDocumentOpener;
+  readActiveDocument?: AiActiveDocumentReader;
   editDocument?: AiDocumentEditor;
   confirmDocument?: AiDocumentConfirmer;
   previewDocument?: AiDocumentPreviewer;
+  hasLocalDocuments?: () => boolean;
+  actionTimeoutMs?: number;
+  longActionTimeoutMs?: number;
   now?: () => number;
   idleMs?: number;
 };
@@ -95,6 +115,10 @@ export class AiController {
   private readonly auditRecord?: (record: AiAuditRecord) => Promise<void> | void;
   private readonly now: () => number;
   private readonly idleMs: number;
+  private readonly actionTimeoutMs: number;
+  private readonly longActionTimeoutMs: number;
+  private readonly hasLocalDocuments?: () => boolean;
+  private readonly readActiveDocument?: AiActiveDocumentReader;
   private readonly listeners = new Set<(state: DesktopAiState) => void>();
   private readonly typedFields = new Map<string, string>();
   private guard: AiSessionGuard = createAiSessionGuard();
@@ -110,6 +134,11 @@ export class AiController {
     this.auditRecord = options.audit;
     this.now = options.now ?? (() => Date.now());
     this.idleMs = options.idleMs ?? AI_SESSION_IDLE_MS;
+    this.actionTimeoutMs = options.actionTimeoutMs ?? DEFAULT_ACTION_TIMEOUT_MS;
+    this.longActionTimeoutMs =
+      options.longActionTimeoutMs ?? DEFAULT_LONG_ACTION_TIMEOUT_MS;
+    this.hasLocalDocuments = options.hasLocalDocuments;
+    this.readActiveDocument = options.readActiveDocument;
     this.executor = new AiExecutor({
       driver: options.driver,
       generateFile: options.generateFile,
@@ -119,6 +148,7 @@ export class AiController {
       fillForm: options.fillForm,
       confirmForm: options.confirmForm,
       openDocument: options.openDocument,
+      readActiveDocument: options.readActiveDocument,
       editDocument: options.editDocument,
       confirmDocument: options.confirmDocument,
       previewDocument: options.previewDocument
@@ -180,17 +210,28 @@ export class AiController {
     }
 
     this.sessionActiveUntil = this.now() + this.idleMs;
+    const startedAt = this.now();
     // 鲁港通 - 表单与文档动作只处理本机文件，不应打开或切换办事浏览器
     const localOnly =
       command.action === 'open_form' ||
       command.action === 'fill_form' ||
       command.action === 'open_document' ||
       command.action === 'edit_document';
-    if (!localOnly) this.ensurePanel();
+    // 鲁港通 - 右栏打开的是本机文件时直接读文件，不打开面板也不新建空白标签
+    const readLocalFile = command.action === 'read' && this.hasActiveDocument();
+    if (!localOnly) {
+      // 鲁港通 - 右栏没有可读的网页时快速给出可操作指引，避免白等超时
+      if (command.action === 'read' && !readLocalFile && !this.hasUsablePage()) {
+        const result = this.localReadHint();
+        await this.auditCommand(command, commandId, result, this.now() - startedAt);
+        this.emit();
+        return result;
+      }
+      if (!readLocalFile) this.ensurePanel();
+    }
     this.emit();
 
-    const startedAt = this.now();
-    const result = await this.executor.execute(command);
+    const result = await this.executeWithTimeout(command);
     this.capturePageState(result);
     const finalResult = this.applyResult(command, result);
     await this.auditCommand(command, commandId, finalResult, this.now() - startedAt);
@@ -249,6 +290,49 @@ export class AiController {
     }
     const next = this.browser.getState();
     this.sessionTabId = next.activeTabId ?? this.sessionTabId;
+  }
+
+  private hasActiveDocument(): boolean {
+    if (!this.readActiveDocument) return false;
+    try {
+      return Boolean(this.readActiveDocument());
+    } catch {
+      return false;
+    }
+  }
+
+  private hasUsablePage(): boolean {
+    return this.browser.getState().tabs.some((tab) => isAiUrlOperable(tab.url));
+  }
+
+  private localReadHint(): AiCommandResult {
+    const message = this.hasLocalDocuments?.()
+      ? '右栏里有文件，我可以直接读取。请先点开右栏的文件标签，再让我读取；也可以打开一个网页让我读取页面内容。'
+      : '右栏没有可以读取的内容，请先在右栏打开一个网页或文件，再让我读取。';
+    return { ok: false, code: 'page_error', message };
+  }
+
+  // 鲁港通 - 指令看门狗：页面卡死时按时返回失败，避免整条指令通道被永久占住
+  private async executeWithTimeout(command: AiCommand): Promise<AiCommandResult> {
+    const timeoutMs = LONG_WAIT_ACTIONS.has(command.action)
+      ? this.longActionTimeoutMs
+      : this.actionTimeoutMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        this.executor.execute(command),
+        new Promise<AiCommandResult>((resolve) => {
+          timer = setTimeout(() => {
+            this.executor.cancelConfirmation('cancel');
+            this.executor.cancelFormConfirmation();
+            this.executor.cancelDocumentConfirmation();
+            resolve({ ok: false, code: 'timeout', message: AI_ACTION_TIMEOUT_MESSAGE });
+          }, timeoutMs);
+        })
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   private capturePageState(result: AiCommandResult) {

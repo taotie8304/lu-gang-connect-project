@@ -122,9 +122,9 @@ export type DesktopDocumentSheet = {
   sampleRows: string[][];
 };
 
-/** open_document 返回的文档提纲：不含整篇正文与文件路径 */
+/** open_document 与 read 返回的文档提纲：不含整篇正文与文件路径；PDF 只有名称 */
 export type DesktopDocumentSummary = {
-  format: 'docx' | 'xlsx';
+  format: 'docx' | 'xlsx' | 'pdf';
   name: string;
   paragraphs?: DesktopDocumentParagraph[];
   tables?: DesktopDocumentTable[];

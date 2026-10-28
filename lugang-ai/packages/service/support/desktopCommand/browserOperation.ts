@@ -312,7 +312,8 @@ const formatFillResult = (
 
 const DOCUMENT_FORMAT_LABELS: Record<DesktopDocumentSummary['format'], string> = {
   docx: 'Word 文档',
-  xlsx: 'Excel 表格'
+  xlsx: 'Excel 表格',
+  pdf: 'PDF 文档'
 };
 
 /** 鲁港通 - 文档修改从桌面端 0.6.0 起支持，服务端按注册上报的版本识别 */
@@ -342,11 +343,25 @@ export const isDesktopDocumentVersionSupported = (
   return true;
 };
 
-/** open_document 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
-const formatDocumentSummary = (document: DesktopDocumentSummary): string => {
-  const lines: string[] = [
-    `文档已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`
-  ];
+/** open_document 与 read 返回段落序号与表格、工作表结构，模型据此生成 edit_document 指令 */
+const formatDocumentSummary = (
+  document: DesktopDocumentSummary,
+  source: 'open_document' | 'read'
+): string => {
+  const heading =
+    source === 'read'
+      ? `右栏打开的文件已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`
+      : `文档已读取：${document.name}（${DOCUMENT_FORMAT_LABELS[document.format]}）。`;
+
+  // 鲁港通 - PDF 只能读，不能作为 edit_document 的修改目标
+  if (document.format === 'pdf') {
+    return [
+      heading,
+      'PDF 只能读取，不能修改。需要修改时，请让用户先把文件另存为 Word 或 Excel，再用 open_document 打开。'
+    ].join('\n');
+  }
+
+  const lines: string[] = [heading];
 
   if (document.paragraphs?.length) {
     lines.push('段落（方括号内是段落序号，修改时直接使用）：');
@@ -766,7 +781,9 @@ export const createDesktopBrowserOperationExecutor = ({
       action !== 'open_form' &&
       action !== 'fill_form' &&
       action !== 'open_document' &&
-      action !== 'edit_document';
+      action !== 'edit_document' &&
+      // read 读到的是右栏本机文件时同样不涉及网页
+      !(action === 'read' && result.document);
     const resume = await loadResume();
     const hint =
       touchesPage && !resumeHintShown && resume && resume.goal !== currentGoal
@@ -811,8 +828,8 @@ export const createDesktopBrowserOperationExecutor = ({
           ? formatFillResult(result.file, result.fill)
           : '';
     const documentNote =
-      result.document && action === 'open_document'
-        ? formatDocumentSummary(result.document)
+      result.document && (action === 'open_document' || action === 'read')
+        ? formatDocumentSummary(result.document, action === 'read' ? 'read' : 'open_document')
         : result.edit && result.file && action === 'edit_document'
           ? formatEditResult(result.file, result.edit)
           : '';

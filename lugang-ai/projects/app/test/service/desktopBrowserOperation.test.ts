@@ -1449,4 +1449,55 @@ describe('desktop document editing', () => {
     expect(store.saveBrowserResume).not.toHaveBeenCalled();
     expect(result.response).not.toContain('上一轮浏览器任务');
   });
+
+  it('tells the model to read the file the user already opened in the panel', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('右栏');
+    expect(description).toContain('不要先让用户重新选择');
+    expect(description).toContain('PDF 只能读取');
+  });
+
+  it('reads the file opened in the right panel and keeps it editable', async () => {
+    const store = createFakeStore();
+    store.getBrowserResume.mockResolvedValue({
+      goal: '填写申请表',
+      url: 'https://www.immd.gov.hk/hkt/apply.html',
+      updatedAt: 1
+    } as any);
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: documentSummary,
+      documentToken: 'lgdoc_panel'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({ deviceId, command: { action: 'read' } });
+    expect(result.response).toContain('右栏');
+    expect(result.response).toContain('2024年工作计划.docx');
+    expect(result.response).toContain('[1]');
+    expect(result.response).toContain('2023年完成 10 个项目');
+    expect(result.response).toContain('edit_document');
+    expect(result.response).not.toContain('上一轮浏览器任务');
+    expect(store.saveBrowserResume).not.toHaveBeenCalled();
+  });
+
+  it('reports a pdf opened in the right panel as read only', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: { format: 'pdf', name: '2024年報稅表.pdf' }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('2024年報稅表.pdf');
+    expect(result.response).toContain('PDF');
+    expect(result.response).toContain('不能修改');
+    expect(result.response).not.toContain('edit_document');
+    expect(store.saveBrowserResume).not.toHaveBeenCalled();
+  });
 });
