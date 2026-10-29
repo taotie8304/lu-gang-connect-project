@@ -6,6 +6,9 @@ export const DESKTOP_TOKEN_PREFIX = 'lgd_';
 /** 设备令牌与所有者映射保留 30 天；每次打开桌面端都会重新注册 */
 export const DESKTOP_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
+/** 设备索引最多保留最近注册的 200 台设备，避免历史设备无限增长 */
+export const DESKTOP_DEVICE_INDEX_LIMIT = 200;
+
 /** 桌面端长轮询间隔会持续续期心跳，60 秒无请求视为离线 */
 export const DESKTOP_HEARTBEAT_TTL_SECONDS = 60;
 

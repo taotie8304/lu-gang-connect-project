@@ -54,7 +54,8 @@ export const createWorkflowAgentLoopRuntime = ({
   assistantResponses = [],
   nodeResponses = [],
   appendNodeResponse,
-  executeToolFactory = getExecuteTool
+  executeToolFactory = getExecuteTool,
+  browserOperationEnabled: resolvedBrowserOperationEnabled
 }: {
   context: WorkflowAgentLoopRuntimeContext;
   usagePush: (usages: ChatNodeUsageType[]) => void;
@@ -63,6 +64,8 @@ export const createWorkflowAgentLoopRuntime = ({
   nodeResponses?: ChatHistoryItemResType[];
   appendNodeResponse?: (nodeResponse: ChatHistoryItemResType) => void;
   executeToolFactory?: typeof getExecuteTool;
+  /** 由异步调用方预先解析远程开关；缺省时回落环境变量判定 */
+  browserOperationEnabled?: boolean;
 }): {
   runtime: AgentLoopRuntime<WorkflowInteractiveResponseType>;
   artifacts: WorkflowAgentLoopRuntimeArtifacts;
@@ -113,7 +116,9 @@ export const createWorkflowAgentLoopRuntime = ({
     username: context.runningUserInfo.username,
     contact: context.runningUserInfo.contact
   };
-  const browserOperationEnabled = isDesktopBrowserEnabledForUser(browserOperationIdentity);
+  const browserOperationEnabled =
+    resolvedBrowserOperationEnabled ??
+    isDesktopBrowserEnabledForUser(browserOperationIdentity);
 
   return {
     artifacts,

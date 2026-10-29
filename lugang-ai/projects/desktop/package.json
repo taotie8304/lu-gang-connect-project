@@ -1,6 +1,6 @@
 {
   "name": "@lugang/desktop",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "private": true,
   "description": "鲁港通 Windows 桌面客户端（P1）",
   "main": "dist/main/index.cjs",

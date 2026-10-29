@@ -226,3 +226,96 @@ export type RevokeDesktopDeviceRequest = {
 export type RevokeDesktopDeviceResponse = {
   revoked: boolean;
 };
+
+/** 鲁港通 - 桌面设备视图：用于「我的设备」与管理页，不包含令牌哈希 */
+export type DesktopDeviceView = {
+  deviceId: string;
+  deviceName?: string;
+  appVersion?: string;
+  tmbId: string;
+  online: boolean;
+  registeredAt: number;
+  /** 仅管理员列表补充账号名 */
+  memberName?: string;
+};
+
+export type ListDesktopDevicesResponse = {
+  devices: DesktopDeviceView[];
+};
+
+export type UnbindDesktopDeviceRequest = {
+  deviceId: string;
+};
+
+export type UnbindDesktopDeviceResponse = {
+  revoked: boolean;
+};
+
+/** 鲁港通 - 桌面端崩溃上报：客户端已脱敏，服务端再次截断长度后存储 */
+export type DesktopCrashReportType =
+  | 'uncaught-exception'
+  | 'unhandled-rejection'
+  | 'renderer-crash'
+  | 'manual';
+
+export type DesktopCrashReportInput = {
+  type: DesktopCrashReportType;
+  message: string;
+  stack?: string;
+  /** 发生时间（毫秒时间戳） */
+  occurredAt: number;
+  /** 崩溃前最近的日志片段（已脱敏） */
+  log?: string;
+};
+
+export type SubmitDesktopCrashReportsRequest = {
+  deviceId: string;
+  deviceName?: string;
+  appVersion?: string;
+  platform?: string;
+  reports: DesktopCrashReportInput[];
+};
+
+export type SubmitDesktopCrashReportsResponse = {
+  accepted: number;
+};
+
+export type DesktopCrashReportView = {
+  id: string;
+  deviceId: string;
+  deviceName?: string;
+  tmbId: string;
+  appVersion?: string;
+  platform?: string;
+  type: DesktopCrashReportType;
+  message: string;
+  stack?: string;
+  log?: string;
+  occurredAt: number;
+  createdAt: number;
+  /** 仅管理员列表补充账号名 */
+  memberName?: string;
+};
+
+export type ListDesktopCrashReportsResponse = {
+  reports: DesktopCrashReportView[];
+};
+
+/** 鲁港通 - AI 操控远程开关：记录保存在数据库，未保存时回落环境变量 */
+export type DesktopSwitchMode = 'off' | 'all' | 'list';
+
+export type DesktopSwitchState = {
+  mode: DesktopSwitchMode;
+  accounts: string[];
+  /** database=正在使用管理页保存的配置；env=沿用环境变量灰度 */
+  source: 'database' | 'env';
+  updatedAt?: number;
+  updatedBy?: string;
+};
+
+export type UpdateDesktopAiSwitchRequest = {
+  mode: DesktopSwitchMode;
+  accounts?: string[];
+};
+
+export type UpdateDesktopAiSwitchResponse = DesktopSwitchState;

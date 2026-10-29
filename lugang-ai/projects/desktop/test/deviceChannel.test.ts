@@ -50,6 +50,7 @@ const createChannel = (
     stopState?: DesktopAiState;
     fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
     pollRequestTimeoutMs?: number;
+    onRegistered?: (context: { token: string }) => void | Promise<void>;
   } = {}
 ) => {
   const calls: FetchCall[] = [];
@@ -92,7 +93,8 @@ const createChannel = (
     fetchImpl: fetchImpl as unknown as typeof fetch,
     sleep,
     pollTimeoutMs: 25_000,
-    ...(options.pollRequestTimeoutMs ? { pollRequestTimeoutMs: options.pollRequestTimeoutMs } : {})
+    ...(options.pollRequestTimeoutMs ? { pollRequestTimeoutMs: options.pollRequestTimeoutMs } : {}),
+    ...(options.onRegistered ? { onRegistered: options.onRegistered } : {})
   });
 
   return {
@@ -181,6 +183,43 @@ describe('桌面设备通道 · 注册与令牌', () => {
     await vi.waitFor(() => expect(harness.tokenStore.cleared).toBe(1));
 
     expect(harness.tokenStore.token).toBeUndefined();
+    harness.channel.stop();
+  });
+
+  // 鲁港通 - 注册成功钩子用于补传本地待发的崩溃记录，拿到令牌后才允许上传
+  it('notifies the registration hook with the new device token', async () => {
+    const onRegistered = vi.fn();
+    const harness = createChannel({
+      cookie: 'session-cookie-value',
+      onRegistered,
+      responses: [apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 })]
+    });
+
+    await harness.channel.syncSession();
+
+    await vi.waitFor(() =>
+      expect(onRegistered).toHaveBeenCalledWith({ token: 'lgd_device-token' })
+    );
+    harness.channel.stop();
+  });
+
+  it('keeps the channel registered when the hook fails', async () => {
+    const onRegistered = vi.fn(async () => {
+      throw new Error('upload failed');
+    });
+    const harness = createChannel({
+      cookie: 'session-cookie-value',
+      onRegistered,
+      responses: [
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({ command: null })
+      ]
+    });
+
+    await expect(harness.channel.syncSession()).resolves.toEqual({ registered: true });
+
+    await vi.waitFor(() => expect(onRegistered).toHaveBeenCalledTimes(1));
+    expect(harness.tokenStore.token).toBe('lgd_device-token');
     harness.channel.stop();
   });
 });

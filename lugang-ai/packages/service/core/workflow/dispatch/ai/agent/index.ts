@@ -42,6 +42,7 @@ import {
   runAgentLoopCoreWithSummary
 } from '../agentLoopCore/interface';
 import { buildDefaultAgentSystemPrompt } from '../../../../ai/llm/agentLoop/interface';
+import { isDesktopBrowserEnabledForUserAsync } from '../../../../../support/desktopCommand/settings';
 
 export type DispatchAgentModuleProps = ModuleDispatchProps<{
   [NodeInputKeyEnum.history]?: ChatItemMiniType[];
@@ -250,6 +251,13 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
 
     // 2. 创建 workflow adapter。
     // 通用 agent loop 不感知 workflow；工具执行、SSE、usage、nodeResponse 都通过 runtime 参数回调进来。
+    // 鲁港通 - 远程开关每次请求读一次，管理员保存后下一次提问立即生效
+    const browserOperationEnabled = await isDesktopBrowserEnabledForUserAsync({
+      tmbId: runningUserInfo.tmbId,
+      uid,
+      username: runningUserInfo.username,
+      contact: runningUserInfo.contact
+    });
     const { runtime, artifacts } = createWorkflowAgentLoopRuntime({
       context: {
         ...props,
@@ -265,7 +273,8 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
       workflowStreamResponse,
       assistantResponses,
       nodeResponses: childNodeResponses,
-      appendNodeResponse: nodeResponseCollector.appendNodeResponse
+      appendNodeResponse: nodeResponseCollector.appendNodeResponse,
+      browserOperationEnabled
     });
     const agentSystemPrompt = buildDefaultAgentSystemPrompt({
       userSystemPrompt: formattedUserSystemPrompt,

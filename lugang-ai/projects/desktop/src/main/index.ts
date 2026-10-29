@@ -3,6 +3,7 @@ import { app, dialog, Menu, safeStorage, shell } from 'electron';
 import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { hostname } from 'node:os';
+import { readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { DocumentPreviewManager, type PreviewEditor } from './ai/documentPreview';
@@ -30,7 +31,8 @@ import { createFileGenerator } from './ai/fileGenerator';
 import { createFilePicker } from './ai/filePicker';
 import { fillFormCopy } from './ai/form/fill';
 import { parseFormFile } from './ai/form/parse';
-import { readFile } from 'node:fs/promises';
+import { createDiagnostics, type DiagnosticsDevice } from './diagnostics';
+import { readFile, writeFile } from 'node:fs/promises';
 
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
@@ -39,11 +41,51 @@ app.setName('鲁港通');
 log.initialize({ preload: false });
 log.transports.file.maxSize = 5 * 1024 * 1024;
 
+const appUrl = resolveAppUrl(process.env.LUGANG_WEB_URL);
+
+// 鲁港通 - 崩溃早于窗口创建也可能发生：先在模块级装配诊断，设备信息就绪后再补上传
+let diagnosticsDevice: DiagnosticsDevice | undefined;
+let loadDiagnosticsToken: () => string | undefined = () => undefined;
+
+const readRecentLogText = (maxChars: number): string | undefined => {
+  try {
+    const content = readFileSync(log.transports.file.getFile().path, 'utf8');
+    return content.slice(-maxChars);
+  } catch {
+    return undefined;
+  }
+};
+
+const diagnostics = createDiagnostics({
+  baseUrl: appUrl,
+  dir: join(app.getPath('userData'), 'diagnostics'),
+  getDevice: () => diagnosticsDevice,
+  getToken: () => loadDiagnosticsToken(),
+  readRecentLog: readRecentLogText,
+  saveBundle: async (defaultName, content) => {
+    const options: Electron.SaveDialogOptions = {
+      title: '导出诊断包',
+      defaultPath: join(app.getPath('downloads'), defaultName),
+      filters: [{ name: '诊断包', extensions: ['txt'] }]
+    };
+    const result =
+      mainWindow && !mainWindow.isDestroyed()
+        ? await dialog.showSaveDialog(mainWindow, options)
+        : await dialog.showSaveDialog(options);
+    if (result.canceled || !result.filePath) return null;
+    await writeFile(result.filePath, content, 'utf8');
+    return result.filePath;
+  },
+  log: (message, error) => log.warn(`[lugang-desktop] ${message}`, error)
+});
+
 process.on('uncaughtException', (error) => {
   log.error('uncaughtException', error);
+  diagnostics.recordCrash({ type: 'uncaught-exception', error });
 });
 process.on('unhandledRejection', (reason) => {
   log.error('unhandledRejection', reason);
+  diagnostics.recordCrash({ type: 'unhandled-rejection', error: reason });
 });
 
 let mainWindow: BrowserWindow | undefined;
@@ -102,7 +144,6 @@ if (!gotLock) {
       // 鲁港通 - 客户端不保留原生菜单栏（File/Edit/View/Window）
       Menu.setApplicationMenu(null);
 
-      const appUrl = resolveAppUrl(process.env.LUGANG_WEB_URL);
       const userDataDir = app.getPath('userData');
       const rendererDir = join(__dirname, '../renderer');
 
@@ -300,10 +341,20 @@ if (!gotLock) {
         log: (message, error) => log.warn(`[lugang-desktop] ${message}`, error)
       });
       const appSession = mainWindow.webContents.session;
+      const deviceName = hostname().trim().slice(0, 64) || '桌面客户端';
+      diagnosticsDevice = {
+        deviceId: deviceStore.deviceId,
+        deviceName,
+        appVersion: app.getVersion(),
+        platform: `${process.platform} ${process.arch}`
+      };
+      loadDiagnosticsToken = deviceStore.loadToken;
+      // 鲁港通 - 启动时先补传上次未发出去的崩溃记录，注册成功后再补一次
+      void diagnostics.uploadPending();
       deviceChannel = createDeviceChannel({
         baseUrl: appUrl,
         deviceId: deviceStore.deviceId,
-        deviceName: hostname().trim().slice(0, 64) || '桌面客户端',
+        deviceName,
         appVersion: app.getVersion(),
         tokenStore: {
           load: deviceStore.loadToken,
@@ -320,6 +371,9 @@ if (!gotLock) {
         executeCommand: (command, { commandId }) =>
           aiController.execute(command, { resume: true, commandId }),
         stopExecution: () => aiController.stop(),
+        onRegistered: () => {
+          void diagnostics.uploadPending();
+        },
         log: (message, error) => log.warn(`[lugang-desktop] ${message}`, error)
       });
       const activeDeviceChannel = deviceChannel;
@@ -352,6 +406,13 @@ if (!gotLock) {
       };
       appSession.cookies.on('changed', onCookieChanged);
       mainWindow.webContents.on('did-finish-load', scheduleSync);
+      // 鲁港通 - 界面进程崩溃不带走主进程：记录后由令牌补传
+      mainWindow.webContents.on('render-process-gone', (_event, details) => {
+        diagnostics.recordCrash({
+          type: 'renderer-crash',
+          message: `界面进程异常退出：${details.reason}（退出码 ${details.exitCode}）`
+        });
+      });
 
       // 鲁港通 - 更新控制器先装配再交给 IPC，网页端点「检查更新」才有落点
       const update = setupAutoUpdate({ window: mainWindow, onBeforeQuit: markQuitting });
@@ -364,6 +425,7 @@ if (!gotLock) {
         ai: aiController,
         deviceChannel: activeDeviceChannel,
         documents,
+        diagnostics,
         windowControls,
         update
       });

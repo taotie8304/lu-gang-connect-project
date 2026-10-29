@@ -158,6 +158,16 @@ const Navbar = ({ unread }: { unread: number }) => {
           showForUser: false
         },
         {
+          // 鲁港通 - 1A 桌面客户端运维（开关/设备/崩溃报告）
+          label: t('common:navbar.DesktopManage'),
+          icon: 'core/chat/monitor',
+          activeIcon: 'core/chat/monitor',
+          link: '/admin/desktop',
+          activeLink: ['/admin/desktop'],
+          unread: 0,
+          showForUser: false
+        },
+        {
           label: t('common:navbar.Config'),
           icon: 'support/config/configLight',
           activeIcon: 'support/config/configFill',

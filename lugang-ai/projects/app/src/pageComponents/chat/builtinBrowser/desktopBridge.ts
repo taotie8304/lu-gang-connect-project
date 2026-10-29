@@ -80,6 +80,11 @@ export type DesktopUpdateControls = {
   onStatusChange(callback: (status: DesktopUpdateStatus) => void): () => void;
 };
 
+/** 设置面板「导出诊断包」；0.8.9 起支持，老客户端没有该能力时隐藏入口 */
+export type DesktopDiagnosticsControls = {
+  exportBundle(): Promise<{ saved: boolean }>;
+};
+
 /** 鲁港通 - 文档预览类型镜像：与 projects/desktop/src/shared/ipc.ts 对应 */
 export type DesktopDocumentFormat = 'docx' | 'xlsx' | 'pdf';
 
@@ -254,6 +259,7 @@ export type DesktopBridge = {
   };
   windowControls?: DesktopWindowControls;
   update?: DesktopUpdateControls;
+  diagnostics?: DesktopDiagnosticsControls;
   retryLoad(): void;
 };
 

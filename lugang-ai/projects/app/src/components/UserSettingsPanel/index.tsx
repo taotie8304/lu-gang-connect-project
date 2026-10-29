@@ -15,6 +15,7 @@ import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
+import { useToast } from '@fastgpt/web/hooks/useToast';
 import Badge from '@/components/Badge';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { clearToken } from '@/web/support/user/auth';
@@ -26,6 +27,7 @@ import { getTicketUnreadCount } from '@/web/support/ticket/api';
 import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
 import SystemContentModal from '@/components/SystemContentModal';
+import MyDevicesModal from './MyDevicesModal';
 import { SystemContentKeyEnum } from '@fastgpt/global/support/systemContent/constant';
 import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMenuItems';
 import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
@@ -50,6 +52,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   const router = useRouter();
   const { setUserInfo } = useUserStore();
   const { resetChatCache } = useChatStore();
+  const { toast } = useToast();
   const isDesktop = isDesktopBridgeAvailable();
   const { openConfirm, ConfirmModal } = useConfirm({
     content: isDesktop ? t('common:confirm_logout_desktop') : t('common:confirm_logout')
@@ -59,6 +62,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   // 鲁港通 - 修改密码/辅助使用弹窗、语言子列表展开状态
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isAccessibilityModalOpen, setIsAccessibilityModalOpen] = useState(false);
+  const [isDevicesModalOpen, setIsDevicesModalOpen] = useState(false);
   const [isLanguageExpanded, setIsLanguageExpanded] = useState(false);
 
   // 鲁港通 - D11 系统内容弹窗状态（使用条款/隐私政策/资料收集声明）
@@ -162,6 +166,30 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
         }
       : null;
 
+  // 鲁港通 - 桌面端「导出诊断包」：老客户端没有该能力时隐藏入口
+  const diagnosticsBridge =
+    typeof window === 'undefined' ? undefined : window.lugangDesktop?.diagnostics;
+  const handleExportDiagnostics = useCallback(async () => {
+    const bridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.diagnostics;
+    if (!bridge) return;
+    try {
+      const result = await bridge.exportBundle();
+      if (result?.saved) {
+        toast({ status: 'success', title: t('common:user_settings.diagnostics_saved') });
+      }
+    } catch {
+      toast({ status: 'warning', title: t('common:user_settings.diagnostics_failed') });
+    }
+  }, [t, toast]);
+  const diagnosticsMenuItem: SettingsMenuItem | null = diagnosticsBridge
+    ? {
+        key: 'exportDiagnostics',
+        icon: 'common/download',
+        label: t('common:user_settings.export_diagnostics'),
+        onClick: handleExportDiagnostics
+      }
+    : null;
+
   // 鲁港通 - 桌面客户端退出时先关闭内置浏览器并撤销设备注册，避免下一位登录者看到上一位的网页会话
   const handleLogout = useCallback(() => {
     performLogout({
@@ -215,6 +243,13 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
         onClose();
         router.push('/account/usage');
       }
+    },
+    // 鲁港通 - 1A 设备管理：查看当前账号绑定的桌面客户端并解绑
+    {
+      key: 'myDevices',
+      icon: 'core/chat/monitor',
+      label: t('common:user_settings.my_devices'),
+      onClick: () => setIsDevicesModalOpen(true)
     },
     {
       key: 'language',
@@ -297,8 +332,9 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
           title: t('common:system_content.payment_privacy_policy')
         })
     },
-    // 鲁港通 - 仅桌面客户端：检查更新（状态文案显示在行右侧）
+    // 鲁港通 - 仅桌面客户端：检查更新 + 导出诊断包
     ...(updateMenuItem ? [updateMenuItem] : []),
+    ...(diagnosticsMenuItem ? [diagnosticsMenuItem] : []),
     {
       key: 'logout',
       icon: 'core/chat/sidebar/logout',
@@ -398,6 +434,9 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
         isOpen={isAccessibilityModalOpen}
         onClose={() => setIsAccessibilityModalOpen(false)}
       />
+
+      {/* 鲁港通 - 1A 我的设备弹窗 */}
+      <MyDevicesModal isOpen={isDevicesModalOpen} onClose={() => setIsDevicesModalOpen(false)} />
 
       {/* 鲁港通 - D11 系统内容弹窗（使用条款/隐私政策/资料收集声明） */}
       {systemContentModal.isOpen && systemContentModal.contentKey && (

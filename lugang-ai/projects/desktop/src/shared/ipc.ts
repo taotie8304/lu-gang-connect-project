@@ -48,7 +48,8 @@ export const IPC_CHANNELS = {
   documentsRead: 'lugang:documents-read',
   documentsOpenExternal: 'lugang:documents-open-external',
   documentsSetActive: 'lugang:documents-set-active',
-  documentsChanged: 'lugang:documents-changed'
+  documentsChanged: 'lugang:documents-changed',
+  diagnosticsExport: 'lugang:diagnostics-export'
 } as const;
 
 export type DesktopTab = { id: number; title: string; url: string; current: boolean };
@@ -236,5 +237,8 @@ export type DesktopDocumentSummary = {
 
 /** 鲁港通 - PDF 查看只把文件字节交给本机渲染进程，返回值里不出现本机路径 */
 export type DesktopDocumentBytes = { name: string; data: Uint8Array };
+
+/** 鲁港通 - 诊断包导出只回传是否已保存，具体保存路径由用户在本机选择 */
+export type DesktopDiagnosticsExportResponse = { saved: boolean };
 
 export type { CssRect };

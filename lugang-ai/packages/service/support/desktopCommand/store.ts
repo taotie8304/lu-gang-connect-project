@@ -7,6 +7,7 @@ import type {
   DesktopBrowserResumeState,
   DesktopCommandEnvelope,
   DesktopCommandResult,
+  DesktopDeviceView,
   RegisterDesktopDeviceResponse
 } from '@fastgpt/global/support/desktopCommand/type';
 import {
@@ -21,6 +22,7 @@ import {
   DESKTOP_COMMAND_KEY_VERSION,
   DESKTOP_COMMAND_MAX_BYTES,
   DESKTOP_COMMAND_NAMESPACE,
+  DESKTOP_DEVICE_INDEX_LIMIT,
   DESKTOP_HEARTBEAT_TTL_SECONDS,
   DESKTOP_LONG_POLL_INTERVAL_MS,
   DESKTOP_LONG_POLL_MAX_MS,
@@ -101,6 +103,58 @@ return item
 
 const defaultSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+const ADD_DEVICE_INDEX_SCRIPT = `
+-- desktop-command:index-add
+local existing = redis.call("get", KEYS[1])
+local list = {}
+if existing then
+  local ok, decoded = pcall(cjson.decode, existing)
+  if ok and type(decoded) == "table" then
+    list = decoded
+  end
+end
+local entry = cjson.decode(ARGV[1])
+local items = { entry }
+for i = 1, #list do
+  local item = list[i]
+  if type(item) == "table" and item.deviceId ~= entry.deviceId then
+    table.insert(items, item)
+  end
+end
+local limit = tonumber(ARGV[2])
+while #items > limit do
+  table.remove(items)
+end
+redis.call("set", KEYS[1], cjson.encode(items), "PX", ARGV[3])
+return #items
+`;
+
+const REMOVE_DEVICE_INDEX_SCRIPT = `
+-- desktop-command:index-remove
+local existing = redis.call("get", KEYS[1])
+if not existing then
+  return 0
+end
+local ok, list = pcall(cjson.decode, existing)
+if not ok or type(list) ~= "table" then
+  redis.call("del", KEYS[1])
+  return 0
+end
+local items = {}
+for i = 1, #list do
+  local item = list[i]
+  if type(item) == "table" and item.deviceId ~= ARGV[1] then
+    table.insert(items, item)
+  end
+end
+if #items == 0 then
+  redis.call("del", KEYS[1])
+else
+  redis.call("set", KEYS[1], cjson.encode(items), "KEEPTTL")
+end
+return #items
+`;
+
 const parseEnvelope = (raw: unknown): DesktopCommandEnvelope | undefined => {
   if (typeof raw !== 'string' || !raw) return undefined;
 
@@ -156,6 +210,27 @@ const parseTokenRecord = (raw: string | null): DesktopDeviceSession | undefined 
   }
 };
 
+type DesktopDeviceIndexEntry = { deviceId: string; tmbId: string; registeredAt: number };
+
+/** 索引只用于定位设备；损坏或非数组一律按空列表处理，不影响设备本身的使用。 */
+const parseDeviceIndex = (raw: string | null): DesktopDeviceIndexEntry[] => {
+  if (!raw) return [];
+
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) return [];
+    return value.filter(
+      (item): item is DesktopDeviceIndexEntry =>
+        !!item &&
+        typeof item === 'object' &&
+        typeof item.deviceId === 'string' &&
+        item.deviceId.length > 0
+    );
+  } catch {
+    return [];
+  }
+};
+
 /**
  * 桌面设备与指令通道存储。
  *
@@ -189,6 +264,7 @@ export class DesktopCommandStore {
   private deviceKey = (deviceId: string) => this.key('device', deviceId);
   private tokenKey = (tokenHash: string) => this.key('token', tokenHash);
   private ownerKey = (tmbId: string) => this.key('owner', tmbId);
+  private deviceIndexKey = () => this.key('device-index');
   private heartbeatKey = (deviceId: string) => this.key('hb', deviceId);
   private busyKey = (deviceId: string) => this.key('busy', deviceId);
   private queueKey = (deviceId: string) => this.key('queue', deviceId);
@@ -201,6 +277,22 @@ export class DesktopCommandStore {
       key: this.heartbeatKey(deviceId),
       value: '1',
       ttlMs: DESKTOP_HEARTBEAT_TTL_SECONDS * 1000
+    });
+  }
+
+  private async addToDeviceIndex(entry: DesktopDeviceIndexEntry) {
+    await this.redis.evalScript({
+      script: ADD_DEVICE_INDEX_SCRIPT,
+      keys: [this.deviceIndexKey()],
+      args: [JSON.stringify(entry), DESKTOP_DEVICE_INDEX_LIMIT, DESKTOP_TOKEN_TTL_MS]
+    });
+  }
+
+  private async removeFromDeviceIndex(deviceId: string) {
+    await this.redis.evalScript({
+      script: REMOVE_DEVICE_INDEX_SCRIPT,
+      keys: [this.deviceIndexKey()],
+      args: [deviceId]
     });
   }
 
@@ -270,6 +362,11 @@ export class DesktopCommandStore {
       ttlMs: DESKTOP_TOKEN_TTL_MS
     });
     await this.touchHeartbeat(deviceId);
+    await this.addToDeviceIndex({
+      deviceId,
+      tmbId,
+      registeredAt: record.registeredAt
+    });
 
     return { token, expiresInMs: DESKTOP_TOKEN_TTL_MS };
   }
@@ -446,25 +543,57 @@ export class DesktopCommandStore {
   }
 
   /**
-   * 注销设备：只允许设备所属成员撤销。
-   * 令牌、设备记录、在线心跳与未消费队列一并删除，避免退出登录后仍可被调用。
+   * 注销设备。
+   * 普通用户必须带上 tmbId 且与设备归属一致；管理员解绑省略 tmbId 即可按设备 ID 强制撤销。
+   * 令牌、设备记录、在线心跳、未消费队列与索引项一并删除，避免退出登录后仍可被调用。
    */
-  async revoke({ deviceId, tmbId }: { deviceId: string; tmbId: string }): Promise<boolean> {
+  async revoke({ deviceId, tmbId }: { deviceId: string; tmbId?: string }): Promise<boolean> {
     const device = await this.getDevice(deviceId);
-    if (!device || device.tmbId !== tmbId) return false;
+    if (!device) return false;
+    if (tmbId && device.tmbId !== tmbId) return false;
 
     await this.redis.delete(this.tokenKey(device.tokenHash));
     await this.redis.delete(this.deviceKey(deviceId));
     await this.redis.delete(this.heartbeatKey(deviceId));
     await this.redis.delete(this.busyKey(deviceId));
     await this.redis.delete(this.queueKey(deviceId));
+    await this.removeFromDeviceIndex(deviceId);
 
-    const ownerDeviceId = await this.redis.get(this.ownerKey(tmbId));
+    const ownerDeviceId = await this.redis.get(this.ownerKey(device.tmbId));
     if (ownerDeviceId === deviceId) {
-      await this.redis.delete(this.ownerKey(tmbId));
+      await this.redis.delete(this.ownerKey(device.tmbId));
     }
 
     return true;
+  }
+
+  /**
+   * 设备列表：按最近注册排序；设备记录已过期（解绑或令牌到期）的索引项直接跳过。
+   * 传入 tmbId 时只返回该成员的设备。
+   */
+  async listDevices({ tmbId }: { tmbId?: string } = {}): Promise<DesktopDeviceView[]> {
+    const entries = parseDeviceIndex(await this.redis.get(this.deviceIndexKey())).filter(
+      (entry) => !tmbId || entry.tmbId === tmbId
+    );
+
+    const devices = await Promise.all(
+      entries.map(async (entry): Promise<DesktopDeviceView | undefined> => {
+        const device = await this.getDevice(entry.deviceId);
+        if (!device) return undefined;
+        if (tmbId && device.tmbId !== tmbId) return undefined;
+
+        return {
+          deviceId: device.deviceId,
+          deviceName: device.deviceName,
+          appVersion: device.appVersion,
+          tmbId: device.tmbId,
+          online: await this.isDeviceOnline(device.deviceId),
+          registeredAt: device.registeredAt
+        };
+      })
+    );
+
+    return devices.filter((device): device is DesktopDeviceView => !!device);
   }
 
   /** 返回该成员最近一次注册的桌面设备。 */
@@ -518,8 +647,11 @@ export const getDesktopDeviceByOwner = (tmbId: string) =>
 export const getDesktopDeviceAppVersionByOwner = (tmbId: string) =>
   desktopCommandStore.getDeviceAppVersionByOwner(tmbId);
 
-export const revokeDesktopDevice = (params: { deviceId: string; tmbId: string }) =>
+export const revokeDesktopDevice = (params: { deviceId: string; tmbId?: string }) =>
   desktopCommandStore.revoke(params);
+
+export const listDesktopDevices = (params: { tmbId?: string } = {}) =>
+  desktopCommandStore.listDevices(params);
 
 export const waitForDesktopCommandResult = (params: {
   commandId: string;

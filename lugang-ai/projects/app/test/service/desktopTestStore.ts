@@ -84,6 +84,35 @@ export class FakeRedis {
       return item;
     }
 
+    if (script.includes('desktop-command:index-add')) {
+      const entry = JSON.parse(String(args[0])) as { deviceId: string };
+      const limit = Number(args[1]);
+      const ttlMs = Number(args[2]);
+      const list = existing ? (JSON.parse(existing) as Array<{ deviceId: string }>) : [];
+      const next = [entry, ...list.filter((item) => item?.deviceId !== entry.deviceId)].slice(
+        0,
+        limit
+      );
+      this.setCalls.push({ key, ttlMs });
+      this.entries.set(key, { value: JSON.stringify(next), expiresAt: this.now() + ttlMs });
+      return next.length;
+    }
+
+    if (script.includes('desktop-command:index-remove')) {
+      if (!existing) return 0;
+      const deviceId = String(args[0]);
+      const expiresAt = this.alive(key)?.expiresAt;
+      const next = (JSON.parse(existing) as Array<{ deviceId: string }>).filter(
+        (item) => item?.deviceId !== deviceId
+      );
+      if (next.length === 0) {
+        this.entries.delete(key);
+      } else {
+        this.entries.set(key, { value: JSON.stringify(next), expiresAt });
+      }
+      return next.length;
+    }
+
     throw new Error(`Unexpected script: ${script}`);
   }
 }

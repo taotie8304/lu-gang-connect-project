@@ -24,6 +24,7 @@ import type { AiController } from './ai/controller';
 import type { DeviceChannel } from './ai/deviceChannel';
 import type { AiCommand } from './ai/protocol';
 import type { DocumentPreviewManager } from './ai/documentPreview';
+import type { Diagnostics } from './diagnostics';
 import type { WindowControls } from './windowChrome';
 import type { UpdateController } from './update';
 
@@ -34,6 +35,7 @@ type RegisterIpcOptions = {
   browser: BrowserManager;
   ai: AiController;
   deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
+  diagnostics: Pick<Diagnostics, 'exportBundle'>;
   documents: Pick<
     DocumentPreviewManager,
     | 'openLocal'
@@ -62,6 +64,7 @@ export const registerIpc = ({
   browser,
   ai,
   deviceChannel,
+  diagnostics,
   documents,
   windowControls,
   update
@@ -149,6 +152,12 @@ export const registerIpc = ({
   // 鲁港通 - 网页端只能触发会话同步与退出清理，设备令牌始终留在主进程
   handle(IPC_CHANNELS.sessionSync, () => deviceChannel.syncSession());
   handle(IPC_CHANNELS.sessionLogout, () => deviceChannel.clearSession());
+
+  // 鲁港通 - 诊断包由主进程写盘，网页端只得到「是否已保存」
+  handle(IPC_CHANNELS.diagnosticsExport, async () => {
+    const path = await diagnostics.exportBundle();
+    return { saved: Boolean(path) };
+  });
 
   // 鲁港通 - 文档预览：右栏文件标签读取本机会话，全部参数经 schema 校验
   handle(IPC_CHANNELS.documentsOpenLocal, () => documents.openLocal());

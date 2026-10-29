@@ -23,6 +23,8 @@ export type DeviceChannelOptions = {
   getSessionCookie: () => Promise<string | undefined>;
   executeCommand: (command: AiCommand, context: { commandId: string }) => Promise<unknown>;
   stopExecution: () => DesktopAiState;
+  /** 鲁港通 - 注册成功（拿到新设备令牌）后回调，用于补传本地待发的崩溃记录 */
+  onRegistered?: (context: { token: string }) => void | Promise<void>;
   fetchImpl?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   pollTimeoutMs?: number;
@@ -88,6 +90,7 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
     getSessionCookie,
     executeCommand,
     stopExecution,
+    onRegistered,
     log
   } = options;
   const root = options.baseUrl.replace(/\/+$/, '');
@@ -246,6 +249,14 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
     tokenStore.save(data.token);
     stopPolling();
     startPolling();
+    // 鲁港通 - 注册成功即有机会补传本地崩溃记录；钩子失败不能影响设备通道本身
+    try {
+      void Promise.resolve(onRegistered?.({ token: data.token })).catch((error) => {
+        log?.('desktop device registered hook failed', error);
+      });
+    } catch (error) {
+      log?.('desktop device registered hook failed', error);
+    }
     return true;
   };
 

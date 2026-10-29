@@ -6,6 +6,7 @@ import {
   type DesktopAiExecuteResponse,
   type DesktopAiState,
   type DesktopBrowserState,
+  type DesktopDiagnosticsExportResponse,
   type DesktopDocumentBytes,
   type DesktopDocumentSnapshot,
   type DesktopDocumentSummary,
@@ -64,6 +65,11 @@ const api = {
   session: {
     sync: () => ipcRenderer.invoke(IPC_CHANNELS.sessionSync) as Promise<DesktopSessionSyncResponse>,
     logout: () => ipcRenderer.invoke(IPC_CHANNELS.sessionLogout) as Promise<void>
+  },
+  // 鲁港通 - 设置面板导出诊断包：单文件文本由主进程拉起系统保存对话框
+  diagnostics: {
+    exportBundle: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.diagnosticsExport) as Promise<DesktopDiagnosticsExportResponse>
   },
   // 鲁港通 - 文档预览：文件只在本机解析，快照不含本机路径；老客户端没有这个对象，网页端据此降级
   documents: {

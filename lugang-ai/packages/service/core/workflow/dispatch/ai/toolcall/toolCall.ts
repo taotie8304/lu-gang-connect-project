@@ -19,10 +19,8 @@ import {
   type AgentLoopCoreToolRunFlowResponse
 } from '../agentLoopCore/interface';
 import { createToolCallToolProvider } from './toolProvider';
-import {
-  createDesktopBrowserOperationExecutor,
-  isDesktopBrowserEnabledForUser
-} from '../../../../../support/desktopCommand/browserOperation';
+import { createDesktopBrowserOperationExecutor } from '../../../../../support/desktopCommand/browserOperation';
+import { isDesktopBrowserEnabledForUserAsync } from '../../../../../support/desktopCommand/settings';
 
 type ResponseType = {
   requestIds: string[];
@@ -110,7 +108,7 @@ export const runToolCall = async (props: DispatchToolModuleProps): Promise<Respo
     username: workflowProps.runningUserInfo.username,
     contact: workflowProps.runningUserInfo.contact
   };
-  const browserOperationEnabled = isDesktopBrowserEnabledForUser(browserOperationIdentity);
+  const browserOperationEnabled = await isDesktopBrowserEnabledForUserAsync(browserOperationIdentity);
 
   const { summary: outputSummary } =
     await runAgentLoopCoreWithSummary<WorkflowInteractiveResponseType>({
