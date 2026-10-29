@@ -143,10 +143,17 @@ export type AiActiveDocument =
 export type AiActiveDocumentReader = () => AiActiveDocument | undefined;
 
 /** 鲁港通 - 回传给模型的文档信息：PDF 只给页码与标签提纲，改内容只能走 fill_pdf 叠加副本 */
+export type AiPdfOutlineField = {
+  page: number;
+  label: string;
+  section?: string;
+};
+
 export type AiDocumentInfo = Omit<DocumentSummary, 'format'> & {
   format: DocumentSummary['format'] | 'pdf';
   pdfPages?: number;
   pdfLabels?: string[];
+  pdfFields?: AiPdfOutlineField[];
 };
 
 /** 鲁港通 - PDF 叠加填写条目：标签来自提纲，页码可选用于跨页表单 */
@@ -154,10 +161,13 @@ export type AiPdfOverlayEntry = {
   page?: number;
   label: string;
   value: string;
+  section?: string;
 };
 
 /** 鲁港通 - 右栏 PDF 提纲：只读文本层标签，不把 PDF 正文整篇带出 */
-export type AiPdfOutlineReader = (path: string) => Promise<{ pages: number; labels: string[] }>;
+export type AiPdfOutlineReader = (
+  path: string
+) => Promise<{ pages: number; labels: string[]; fields?: AiPdfOutlineField[] }>;
 
 /** 鲁港通 - 右栏预览：用户只在源文件黄底标记里逐条确认后生成副本 */
 export type AiDocumentPreviewOutcome =
@@ -862,7 +872,8 @@ export class AiExecutor {
           format: 'pdf',
           name: active.fileName,
           pdfPages: outline.pages,
-          pdfLabels: outline.labels
+          pdfLabels: outline.labels,
+          ...(outline.fields ? { pdfFields: outline.fields } : {})
         },
         documentToken: token
       };

@@ -691,6 +691,22 @@ describe('预览会话：PDF 原样副本叠加', () => {
     return path;
   };
 
+  const buildSectionedPdf = async (dir: string): Promise<string> => {
+    const document = await PDFDocument.create();
+    const font = await document.embedFont(StandardFonts.Helvetica);
+    const page = document.addPage([595.28, 841.89]);
+    page.drawText('Name', { x: 90, y: 720, size: 12, font });
+    page.drawText('Guardian', { x: 90, y: 620, size: 12, font });
+    page.drawText('1', { x: 145, y: 620, size: 12, font });
+    page.drawText('Name', { x: 90, y: 582, size: 12, font });
+    page.drawText('Guardian', { x: 90, y: 430, size: 12, font });
+    page.drawText('2', { x: 145, y: 430, size: 12, font });
+    page.drawText('Name', { x: 90, y: 392, size: 12, font });
+    const path = join(dir, '分区申请表.pdf');
+    await writeFile(path, await document.save());
+    return path;
+  };
+
   const buildBlankPdf = async (dir: string): Promise<string> => {
     const document = await PDFDocument.create();
     document.addPage([595.28, 841.89]);
@@ -758,6 +774,33 @@ describe('预览会话：PDF 原样副本叠加', () => {
       expect(
         outcome.status === 'done' ? outcome.copy.skipped : []
       ).toContain('Email：');
+    });
+  });
+
+  it('右栏位置说明显示分区和字段名', async () => {
+    await withTempDir(async (dir) => {
+      const path = await buildSectionedPdf(dir);
+      const { manager } = await createManager(dir, {
+        writePdf: async ({ placements }) => pdfCopy(placements.length)
+      });
+      const promise = manager.previewPdf({
+        path,
+        fileName: '分区申请表.pdf',
+        entries: [{ section: 'Guardian 2', label: 'Name', value: 'Second' }]
+      });
+      const token = manager.list()[0]?.token as string;
+      await vi.waitFor(() => {
+        expect(manager.get(token)?.changes).toHaveLength(1);
+      });
+
+      expect(manager.get(token)?.changes[0]).toMatchObject({
+        target: 'Guardian 2 · Name',
+        section: '第 1 页'
+      });
+
+      manager.claim(token);
+      manager.decide(token, 0, 'apply');
+      await expect(promise).resolves.toMatchObject({ status: 'done' });
     });
   });
 

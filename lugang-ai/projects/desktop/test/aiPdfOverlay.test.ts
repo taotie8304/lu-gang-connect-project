@@ -25,6 +25,81 @@ const makePdf = async (): Promise<Uint8Array> => {
   return new Uint8Array(await document.save());
 };
 
+const makeSectionedPdf = async (): Promise<Uint8Array> => {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const page = document.addPage([595.28, 841.89]);
+  const draw = (text: string, y: number, x = 90) => page.drawText(text, { x, y, size: 12, font });
+  draw('Trip Info', 800, 250);
+  draw('Name', 720);
+  draw('Gender', 682);
+  draw('Guardian', 620);
+  draw('1', 620.1, 90 + font.widthOfTextAtSize('Guardian', 12) + 3);
+  draw('Name', 582);
+  draw('ID', 545);
+  draw('Phone', 508);
+  draw('Guardian', 430);
+  draw('2', 430.1, 90 + font.widthOfTextAtSize('Guardian', 12) + 3);
+  draw('Name', 392);
+  draw('ID', 355);
+  draw('Phone', 318);
+  draw('Relation', 240);
+  return new Uint8Array(await document.save());
+};
+
+const makeCrossPageSectionedPdf = async (): Promise<Uint8Array> => {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  for (const guardian of [1, 2]) {
+    const page = document.addPage([595.28, 841.89]);
+    page.drawText('Guardian', { x: 90, y: 620, size: 12, font });
+    page.drawText(String(guardian), {
+      x: 90 + font.widthOfTextAtSize('Guardian', 12) + 3,
+      y: 620.1,
+      size: 12,
+      font
+    });
+    page.drawText('Name', { x: 90, y: 582, size: 12, font });
+  }
+  return new Uint8Array(await document.save());
+};
+
+const makeMultiColumnPdf = async (): Promise<Uint8Array> => {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const page = document.addPage([595.28, 841.89]);
+  page.drawText('Name', { x: 90, y: 700, size: 12, font });
+  page.drawText('Phone', { x: 300, y: 700, size: 12, font });
+  return new Uint8Array(await document.save());
+};
+
+const makeOccupiedPdf = async (): Promise<Uint8Array> => {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const page = document.addPage([595.28, 841.89]);
+  page.drawText('Name', { x: 100, y: 700, size: 12, font });
+  page.drawText('Existing', { x: 150, y: 700, size: 12, font });
+  return new Uint8Array(await document.save());
+};
+
+const makeCloseRowsPdf = async (): Promise<Uint8Array> => {
+  const document = await PDFDocument.create();
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  const page = document.addPage([595.28, 841.89]);
+  page.drawText('Name', { x: 100, y: 700, size: 12, font });
+  page.drawText('School', { x: 100, y: 688, size: 12, font });
+  return new Uint8Array(await document.save());
+};
+
+const rectsOverlap = (
+  first: { x: number; y: number; width: number; height: number },
+  second: { x: number; y: number; width: number; height: number }
+): boolean =>
+  first.x < second.x + second.width &&
+  first.x + first.width > second.x &&
+  first.y < second.y + second.height &&
+  first.y + first.height > second.y;
+
 const tempDirs: string[] = [];
 
 const makeTempDir = async (): Promise<string> => {
@@ -61,6 +136,43 @@ describe('extractPdfTextPages', () => {
     expect(outline.labels).toContain('Name:');
     expect(outline.labels).toContain('Phone:');
     expect(outline.labels.length).toBeLessThanOrEqual(150);
+  });
+
+  it('合并同一视觉行的分区标题，并保留同名字段及所属分区', async () => {
+    const outline = await extractPdfOutline(await makeSectionedPdf());
+
+    expect(outline.fields).toEqual([
+      { page: 1, label: 'Name' },
+      { page: 1, label: 'Gender' },
+      { page: 1, label: 'Name', section: 'Guardian 1' },
+      { page: 1, label: 'ID', section: 'Guardian 1' },
+      { page: 1, label: 'Phone', section: 'Guardian 1' },
+      { page: 1, label: 'Name', section: 'Guardian 2' },
+      { page: 1, label: 'ID', section: 'Guardian 2' },
+      { page: 1, label: 'Phone', section: 'Guardian 2' },
+      { page: 1, label: 'Relation' }
+    ]);
+    expect(outline.fields.map((field) => field.label)).not.toContain('1');
+    expect(outline.fields.map((field) => field.label)).not.toContain('Guardian 1');
+    expect(outline.fields.map((field) => field.label)).not.toContain('Trip Info');
+  });
+
+  it('跨页的同名字段仍保留各自分区', async () => {
+    const outline = await extractPdfOutline(await makeCrossPageSectionedPdf());
+
+    expect(outline.fields).toEqual([
+      { page: 1, label: 'Name', section: 'Guardian 1' },
+      { page: 2, label: 'Name', section: 'Guardian 2' }
+    ]);
+  });
+
+  it('同一视觉行的多列字段都进入提纲', async () => {
+    const outline = await extractPdfOutline(await makeMultiColumnPdf());
+
+    expect(outline.fields).toEqual([
+      { page: 1, label: 'Name' },
+      { page: 1, label: 'Phone' }
+    ]);
   });
 });
 
@@ -101,6 +213,103 @@ describe('planPdfOverlay', () => {
 
     expect(plan.placements[0].status).toBe('placed');
     expect(plan.placements[1].status).toBe('missing');
+  });
+
+  it('按分区定位同名字段，并在预览中保留分区说明', async () => {
+    const pages = await extractPdfTextPages(await makeSectionedPdf());
+    const plan = planPdfOverlay(pages, [
+      { section: 'Guardian 2', label: 'Name', value: 'Second' },
+      { section: 'Guardian 1', label: 'Name', value: 'First' }
+    ]);
+
+    expect(plan.placements[0]).toMatchObject({
+      status: 'placed',
+      section: 'Guardian 2',
+      label: 'Name'
+    });
+    expect(plan.placements[0].y).toBeCloseTo(392, 0);
+    expect(plan.placements[1].y).toBeCloseTo(582, 0);
+  });
+
+  it('按分区定位跨页同名字段', async () => {
+    const pages = await extractPdfTextPages(await makeCrossPageSectionedPdf());
+    const plan = planPdfOverlay(pages, [
+      { section: 'Guardian 2', label: 'Name', value: 'Second' }
+    ]);
+
+    expect(plan.placements[0]).toMatchObject({
+      status: 'placed',
+      page: 2,
+      section: 'Guardian 2'
+    });
+    expect(plan.placements[0].y).toBeCloseTo(582, 0);
+  });
+
+  it('合并视觉行时不会改写调用方持有的原始文字坐标', async () => {
+    const pages = await extractPdfTextPages(await makeSectionedPdf());
+    const original = structuredClone(pages);
+
+    planPdfOverlay(pages, [{ section: 'Guardian 1', label: 'Name', value: 'First' }]);
+
+    expect(pages).toEqual(original);
+  });
+
+  it('不带分区的同名标签仍按页面顺序逐个消费', async () => {
+    const pages = await extractPdfTextPages(await makeSectionedPdf());
+    const plan = planPdfOverlay(pages, [
+      { label: 'Name', value: 'Student' },
+      { label: 'Name', value: 'First' },
+      { label: 'Name', value: 'Second' }
+    ]);
+
+    expect(plan.placements.map((placement) => placement.status)).toEqual([
+      'placed',
+      'placed',
+      'placed'
+    ]);
+    expect(plan.placements[0].y).toBeCloseTo(720, 0);
+    expect(plan.placements[1].y).toBeCloseTo(582, 0);
+    expect(plan.placements[2].y).toBeCloseTo(392, 0);
+  });
+
+  it('分区名称不准确时回退到普通标签匹配', async () => {
+    const pages = await extractPdfTextPages(await makeSectionedPdf());
+    const plan = planPdfOverlay(pages, [
+      { section: 'Unknown', label: 'Name', value: 'Student' }
+    ]);
+
+    expect(plan.placements[0].status).toBe('placed');
+    expect(plan.placements[0].y).toBeCloseTo(720, 0);
+  });
+
+  it('右侧已有原文字时自动改到下方空白处', async () => {
+    const pages = await extractPdfTextPages(await makeOccupiedPdf());
+    const plan = planPdfOverlay(pages, [{ label: 'Name', value: 'A long value' }]);
+    const placement = plan.placements[0];
+    const existing = pages[0].items.find((item) => item.text === 'Existing')!;
+    const existingTop = existing.y + existing.height * 0.9;
+    const existingRect = {
+      x: existing.x / pages[0].width,
+      y: 1 - existingTop / pages[0].height,
+      width: existing.width / pages[0].width,
+      height: (existing.height * 1.2) / pages[0].height
+    };
+
+    expect(placement.status).toBe('placed');
+    expect(placement.y).toBeLessThan(700);
+    expect(rectsOverlap(placement.valueRect!, existingRect)).toBe(false);
+  });
+
+  it('后规划的内容不会压住前一条已规划内容', async () => {
+    const pages = await extractPdfTextPages(await makeCloseRowsPdf());
+    const plan = planPdfOverlay(pages, [
+      { label: 'Name', value: 'A long first value' },
+      { label: 'School', value: 'A long second value' }
+    ]);
+
+    expect(plan.placements[1].status).toBe('placed');
+    expect(plan.placements[1].y).toBeLessThan(688);
+    expect(rectsOverlap(plan.placements[0].valueRect!, plan.placements[1].valueRect!)).toBe(false);
   });
 });
 

@@ -147,6 +147,16 @@ const documentSummarySchema = z.object({
   // 鲁港通 - PDF 叠加填写（0.8.7 起）：只透传页数与标签提纲，正文仍留在本机
   pdfPages: z.number().int().min(0).max(5000).optional(),
   pdfLabels: z.array(z.string().max(120)).max(400).optional(),
+  pdfFields: z
+    .array(
+      z.object({
+        page: z.number().int().min(1).max(5000),
+        label: z.string().min(1).max(120),
+        section: z.string().min(1).max(60).optional()
+      })
+    )
+    .max(400)
+    .optional(),
   warnings: warningsSchema.optional()
 });
 

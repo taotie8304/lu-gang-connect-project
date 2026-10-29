@@ -151,6 +151,8 @@ export type DesktopDocumentSummary = {
   // 鲁港通 - PDF 叠加填写（0.8.7 起）：标签来自文本层，模型按标签给内容
   pdfPages?: number;
   pdfLabels?: string[];
+  // 鲁港通 - 0.8.8 起保留同名字段的每次出现及所属分区，旧字段继续兼容 0.8.7
+  pdfFields?: Array<{ page: number; label: string; section?: string }>;
   warnings?: string[];
 };
 

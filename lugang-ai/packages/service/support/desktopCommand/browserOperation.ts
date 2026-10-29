@@ -328,6 +328,8 @@ const DOCUMENT_FORMAT_LABELS: Record<DesktopDocumentSummary['format'], string> =
 export const DESKTOP_DOCUMENT_MIN_VERSION = '0.6.0';
 /** 鲁港通 - PDF 原样副本叠加（fill_pdf）与 PDF 标签提纲从 0.8.7 起支持 */
 export const DESKTOP_PDF_OVERLAY_MIN_VERSION = '0.8.7';
+/** 鲁港通 - 同名字段的分区定位从 0.8.8 起支持，不带分区的旧请求仍可用 0.8.7 */
+export const DESKTOP_PDF_SECTION_MIN_VERSION = '0.8.8';
 
 const parseVersion = (input?: string): number[] | undefined => {
   const text = (input ?? '').trim().replace(/^v/i, '');
@@ -567,7 +569,7 @@ const normalizeEditDocumentOperations = (raw: unknown): EditOperationNormalizeRe
 };
 
 // 鲁港通 - PDF 叠加填写：模型常把页码写成字符串、数值写成数字，下发前统一归一化并明确指出不合法项
-type NormalizedPdfEntry = { label: string; value: string; page?: number };
+type NormalizedPdfEntry = { label: string; value: string; page?: number; section?: string };
 
 type PdfEntriesNormalizeResult =
   | { ok: true; entries: NormalizedPdfEntry[] }
@@ -631,6 +633,22 @@ const normalizeFillPdfEntries = (raw: unknown): PdfEntriesNormalizeResult => {
       };
     }
     const entry: NormalizedPdfEntry = { label, value };
+    if (record.section !== undefined) {
+      const section = typeof record.section === 'string' ? record.section.trim() : '';
+      if (!section) {
+        return {
+          ok: false,
+          message: `entries.${index} 的 section 需要是 PDF 提纲里标注的分区名称`
+        };
+      }
+      if (section.length > PDF_LABEL_MAX_CHARS) {
+        return {
+          ok: false,
+          message: `entries.${index} 的 section 不能超过 ${PDF_LABEL_MAX_CHARS} 字`
+        };
+      }
+      entry.section = section;
+    }
     if (record.page !== undefined) {
       const page = toPdfPage(record.page);
       if (page === undefined) {
@@ -708,6 +726,7 @@ const formatDocumentSummary = (
   if (document.format === 'pdf') {
     const lines: string[] = [heading];
     const labels = document.pdfLabels ?? [];
+    const fields = document.pdfFields ?? [];
 
     if (documentToken) {
       lines.push(
@@ -718,13 +737,19 @@ const formatDocumentSummary = (
       lines.push(`共 ${document.pdfPages} 页。`);
     }
 
-    if (labels.length > 0) {
-      lines.push('可叠加填写的标签（fill_pdf 的 label 要与这里完全一致）：');
-      for (const label of labels) {
-        lines.push(`- ${label}`);
+    if (fields.length > 0 || labels.length > 0) {
+      lines.push('可叠加填写的字段（fill_pdf 的 label 要与这里完全一致）：');
+      if (fields.length > 0) {
+        for (const field of fields) {
+          lines.push(`- ${field.label}${field.section ? `（分区：${field.section}）` : ''}`);
+        }
+      } else {
+        for (const label of labels) {
+          lines.push(`- ${label}`);
+        }
       }
       lines.push(
-        '下一步：按用户要求立即用 fill_pdf 提交，entries 里每条给出 label 与 value；跨页表单可以带 page。桌面客户端会保留原 PDF 的排版、字体和线条，把你的内容叠印在副本上，只保存副本，原文件不动。右栏源文件上的黄色标记就是确认环节，由用户逐条「应用/跳过」，不要先反问，也不要等用户再次同意。'
+        '下一步：按用户要求立即用 fill_pdf 提交，entries 里每条给出 label 与 value；提纲标注分区时必须给对应条目带上完全相同的 section，避免写进另一人的同名字段；跨页表单可以带 page。桌面客户端会保留原 PDF 的排版、字体和线条，把你的内容叠印在副本上，只保存副本，原文件不动。右栏源文件上的黄色标记就是确认环节，由用户逐条「应用/跳过」，不要先反问，也不要等用户再次同意。'
       );
       lines.push(
         'PDF 只能这样叠加内容：不要用 edit_document、generate_file 或 fill_form 代替，也不要以任何方式仿制或重排一份外观相似的文件。标签对不上时可以挑最接近的标签填写；确实没有对应标签的内容，如实告诉用户这份 PDF 里找不到可填写的位置。'
@@ -1140,16 +1165,26 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
-    // 鲁港通 - 文档修改依赖 0.6.0、PDF 叠加填写依赖 0.8.7 的桌面端，旧客户端直接引导升级而不是下发无法执行的指令
+    // 鲁港通 - 文档修改依赖 0.6.0、PDF 叠加依赖 0.8.7；带分区定位时必须使用 0.8.8
     if (isDesktopDocumentAction(action) || isDesktopPdfOverlayAction(action)) {
+      const usesPdfSections =
+        isDesktopPdfOverlayAction(action) &&
+        Array.isArray(args.entries) &&
+        args.entries.some((entry) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+          const section = (entry as Record<string, unknown>).section;
+          return typeof section === 'string' && Boolean(section.trim());
+        });
       const minimum = isDesktopPdfOverlayAction(action)
-        ? DESKTOP_PDF_OVERLAY_MIN_VERSION
+        ? usesPdfSections
+          ? DESKTOP_PDF_SECTION_MIN_VERSION
+          : DESKTOP_PDF_OVERLAY_MIN_VERSION
         : DESKTOP_DOCUMENT_MIN_VERSION;
       const appVersion = await store.getDeviceAppVersionByOwner(identity.tmbId);
       if (!isDesktopDocumentVersionSupported(appVersion, minimum)) {
         return finish({
           response: isDesktopPdfOverlayAction(action)
-            ? '当前桌面客户端版本较旧，还不支持在 PDF 原件上叠加内容。请让用户把客户端升级到最新版本（客户端内检查更新，需要 0.8.7 或更高）后再试，升级前不要改用仿制或重排文件的方式。'
+            ? `当前桌面客户端版本较旧，还不支持这次 PDF 原样副本填写。请让用户把客户端升级到最新版本（客户端内检查更新，需要 ${minimum} 或更高）后再试，升级前不要改用仿制或重排文件的方式。`
             : '当前桌面客户端版本较旧，还不支持直接修改本机 Word/Excel 文件。请让用户把客户端升级到最新版本（客户端内检查更新）后再试。',
           action,
           deviceId,

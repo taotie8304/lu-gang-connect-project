@@ -319,7 +319,8 @@ const pdfOverlayEntrySchema = z.object({
     .pipe(z.number().int().min(1).max(500, { message: '页码超出范围' }))
     .optional(),
   label: z.string().trim().min(1).max(60),
-  value: documentText(2000)
+  value: documentText(2000),
+  section: z.string().trim().min(1).max(60).optional()
 });
 
 const fillPdfCommand = z.object({

@@ -44,10 +44,17 @@ export type PdfPageText = {
   items: PdfTextItem[];
 };
 
+export type PdfOutlineField = {
+  page: number;
+  label: string;
+  section?: string;
+};
+
 export type PdfOverlayEntry = {
   page?: number;
   label: string;
   value: string;
+  section?: string;
 };
 
 /** 页面坐标比例：原点在左上角，取值范围 0..1，网页端按渲染尺寸直接换算 */
@@ -58,6 +65,7 @@ export type PdfOverlayPlacement = {
   page: number;
   label: string;
   value: string;
+  section?: string;
   status: 'placed' | 'missing';
   note?: string;
   labelRect?: PdfOverlayRect;
@@ -161,24 +169,148 @@ export const extractPdfTextPages = async (bytes: Uint8Array): Promise<PdfPageTex
   return pages;
 };
 
+const normalizeLabel = (text: string): string =>
+  text.replace(/[\s\u3000]+/g, '').replace(/[：:]+$/, '');
+
+const normalizeNeedle = (text: string): string => normalizeLabel(text.trim());
+
+type PdfVisualRow = { y: number; cells: PdfTextItem[] };
+type PdfFieldCandidate = { page: number; item: PdfTextItem; label: string; section?: string };
+type PdfPageStructure = {
+  page: PdfPageText;
+  rows: PdfVisualRow[];
+  cells: PdfFieldCandidate[];
+  fields: PdfFieldCandidate[];
+};
+
+const joinCellText = (left: string, right: string): string => {
+  const before = left.trim();
+  const after = right.trim();
+  const space = /\d/.test(after) && /[^\d\s]$/.test(before) ? ' ' : '';
+  return `${before}${space}${after}`;
+};
+
+const buildVisualRows = (page: PdfPageText): PdfVisualRow[] => {
+  const rows: Array<{ y: number; height: number; items: PdfTextItem[] }> = [];
+  const sorted = page.items
+    .map((item) => ({ ...item }))
+    .sort((first, second) => second.y - first.y || first.x - second.x);
+  for (const item of sorted) {
+    const row = rows.at(-1);
+    const tolerance = Math.max(2, Math.min(row?.height ?? item.height, item.height) * 0.35);
+    if (!row || Math.abs(item.y - row.y) > tolerance) {
+      rows.push({ y: item.y, height: item.height, items: [item] });
+      continue;
+    }
+    row.items.push(item);
+    row.height = Math.max(row.height, item.height);
+  }
+
+  return rows.map((row) => ({
+    y: row.y,
+    cells: row.items
+      .sort((first, second) => first.x - second.x)
+      .reduce<PdfTextItem[]>((cells, item) => {
+        const previous = cells.at(-1);
+        if (!previous) return [item];
+        const gap = item.x - (previous.x + previous.width);
+        if (gap > Math.max(6, Math.min(previous.height, item.height) * 0.6)) {
+          cells.push(item);
+          return cells;
+        }
+        previous.text = joinCellText(previous.text, item.text);
+        previous.y = (previous.y + item.y) / 2;
+        previous.width = Math.max(previous.x + previous.width, item.x + item.width) - previous.x;
+        previous.height = Math.max(previous.height, item.height);
+        return cells;
+      }, [])
+  }));
+};
+
+const isCenteredText = (page: PdfPageText, item: PdfTextItem): boolean => {
+  const center = item.x + item.width / 2;
+  return item.x > page.width * 0.2 && Math.abs(center - page.width / 2) < page.width * 0.18;
+};
+
+const isSectionTitle = (page: PdfPageText, row: PdfVisualRow): boolean => {
+  if (row.cells.length !== 1) return false;
+  const item = row.cells[0];
+  const text = item.text.trim();
+  return (
+    text.length <= MAX_OUTLINE_LABEL_LENGTH &&
+    /\D\s*\d+\s*$/.test(text) &&
+    !/[：:]$/.test(text) &&
+    !isCenteredText(page, item)
+  );
+};
+
+const buildPageStructure = (page: PdfPageText): PdfPageStructure => {
+  const rows = buildVisualRows(page);
+  const cells = rows.flatMap((row) =>
+    row.cells.map((item) => ({ page: page.page, item, label: item.text.trim() }))
+  );
+  const fields: PdfFieldCandidate[] = [];
+  let section: string | undefined;
+  rows.forEach((row) => {
+    if (isSectionTitle(page, row)) {
+      section = row.cells[0].text.trim();
+      return;
+    }
+    for (const item of row.cells) {
+      const label = item.text.trim();
+      if (
+        !label ||
+        label.length > MAX_OUTLINE_LABEL_LENGTH ||
+        /^[\d\s.、()（）-]+$/.test(label) ||
+        (row.cells.length === 1 && isCenteredText(page, item))
+      ) {
+        continue;
+      }
+      fields.push({ page: page.page, item, label, ...(section ? { section } : {}) });
+    }
+  });
+  return { page, rows, cells, fields };
+};
+
+const buildDocumentStructure = (pages: PdfPageText[]): PdfPageStructure[] => {
+  const structures = pages.map(buildPageStructure);
+  const labelSections = new Map<string, Set<string>>();
+  for (const structure of structures) {
+    for (const field of structure.fields) {
+      const label = normalizeLabel(field.label);
+      const sections = labelSections.get(label) ?? new Set<string>();
+      sections.add(field.section ? normalizeLabel(field.section) : '');
+      labelSections.set(label, sections);
+    }
+  }
+  for (const structure of structures) {
+    for (const field of structure.fields) {
+      if (field.section && (labelSections.get(normalizeLabel(field.label))?.size ?? 0) < 2) {
+        delete field.section;
+      }
+    }
+  }
+  return structures;
+};
+
 export const extractPdfOutline = async (
   bytes: Uint8Array
-): Promise<{ pages: number; labels: string[] }> => {
+): Promise<{ pages: number; labels: string[]; fields: PdfOutlineField[] }> => {
   const pages = await extractPdfTextPages(bytes);
   const labeled: string[] = [];
   const seen = new Set<string>();
-  const push = (text: string, target: string[]) => {
+  const push = (text: string) => {
     const key = text.trim();
     if (!key || seen.has(key)) return;
     seen.add(key);
-    target.push(key);
+    labeled.push(key);
   };
 
   for (const page of pages) {
     for (const item of page.items) {
       const text = item.text.trim();
       if (!text || text.length > MAX_OUTLINE_LABEL_LENGTH) continue;
-      if (/[：:]$/.test(text)) push(text, labeled);
+      if (/[：:]$/.test(text)) push(text);
     }
   }
   // 鲁港通 - 没有明显「标签：」的表格改用页面上较短的文字，模型才能知道能填哪些位置
@@ -187,17 +319,19 @@ export const extractPdfOutline = async (
       for (const item of page.items) {
         const text = item.text.trim();
         if (!text || text.length > 20) continue;
-        push(text, labeled);
+        push(text);
       }
     }
   }
-  return { pages: pages.length, labels: labeled.slice(0, 150) };
+  const fields = buildDocumentStructure(pages).flatMap((structure) =>
+    structure.fields.map((field) => ({
+      page: field.page,
+      label: field.label,
+      ...(field.section ? { section: field.section } : {})
+    }))
+  );
+  return { pages: pages.length, labels: labeled.slice(0, 150), fields: fields.slice(0, 400) };
 };
-
-const normalizeLabel = (text: string): string =>
-  text.replace(/[\s\u3000]+/g, '').replace(/[：:]+$/, '');
-
-const normalizeNeedle = (text: string): string => normalizeLabel(text.trim());
 
 const charWidth = (char: string, size: number): number => {
   const code = char.codePointAt(0) ?? 0;
@@ -250,61 +384,81 @@ const toFractionRect = (
   };
 };
 
-const findAnchor = (
-  pages: PdfPageText[],
-  label: string,
-  pageHint: number | undefined,
-  used: Set<string>
-): { page: PdfPageText; item: PdfTextItem } | null => {
-  const needle = normalizeNeedle(label);
-  if (!needle) return null;
-  const ordered = pageHint
-    ? [
-        ...pages.filter((page) => page.page === pageHint),
-        ...pages.filter((page) => page.page !== pageHint)
-      ]
-    : pages;
+const anchorKey = (candidate: PdfFieldCandidate): string =>
+  `${candidate.page}:${candidate.item.x.toFixed(2)}:${candidate.item.y.toFixed(2)}`;
 
-  const pick = (test: (text: string) => boolean) => {
-    for (const page of ordered) {
-      for (const item of page.items) {
-        const key = `${page.page}:${item.x}:${item.y}`;
+const findAnchor = (
+  structures: PdfPageStructure[],
+  entry: PdfOverlayEntry,
+  used: Set<string>
+): { page: PdfPageText; item: PdfTextItem; section?: string } | null => {
+  const needle = normalizeNeedle(entry.label);
+  if (!needle) return null;
+  const ordered = entry.page
+    ? [
+        ...structures.filter((structure) => structure.page.page === entry.page),
+        ...structures.filter((structure) => structure.page.page !== entry.page)
+      ]
+    : structures;
+
+  const pick = (candidates: PdfFieldCandidate[]) => {
+    const pickBy = (test: (text: string) => boolean) => {
+      for (const candidate of candidates) {
+        const key = anchorKey(candidate);
         if (used.has(key)) continue;
-        if (test(normalizeLabel(item.text))) return { page, item, key };
+        if (test(normalizeLabel(candidate.label))) return { candidate, key };
       }
-    }
-    return null;
+      return null;
+    };
+    return (
+      pickBy((text) => text === needle) ??
+      pickBy((text) => text.endsWith(needle)) ??
+      (needle.length >= 2 ? pickBy((text) => text.includes(needle)) : null)
+    );
   };
 
-  const matched =
-    pick((text) => text === needle) ??
-    pick((text) => text.endsWith(needle)) ??
-    (needle.length >= 2 ? pick((text) => text.includes(needle)) : null);
+  const sectionNeedle = entry.section ? normalizeNeedle(entry.section) : '';
+  if (sectionNeedle) {
+    const scoped = ordered.flatMap((structure) =>
+      structure.fields.filter(
+        (field) => field.section && normalizeNeedle(field.section) === sectionNeedle
+      )
+    );
+    const matched = pick(scoped);
+    if (matched) {
+      used.add(matched.key);
+      const structure = ordered.find((item) => item.page.page === matched.candidate.page)!;
+      return {
+        page: structure.page,
+        item: matched.candidate.item,
+        section: entry.section?.trim()
+      };
+    }
+  }
+
+  const matched = pick(ordered.flatMap((structure) => structure.cells));
   if (!matched) return null;
   used.add(matched.key);
-  return { page: matched.page, item: matched.item };
+  const structure = ordered.find((item) => item.page.page === matched.candidate.page)!;
+  return { page: structure.page, item: matched.candidate.item };
 };
 
-const planPlacement = (
+type PdfAbsoluteBox = { x: number; top: number; width: number; height: number };
+
+const boxesOverlap = (first: PdfAbsoluteBox, second: PdfAbsoluteBox): boolean =>
+  first.x < second.x + second.width + 1 &&
+  first.x + first.width + 1 > second.x &&
+  first.top + 1 > second.top - second.height &&
+  first.top - first.height < second.top + 1;
+
+const layoutValue = (
   page: PdfPageText,
-  item: PdfTextItem,
   entry: PdfOverlayEntry,
-  entryIndex: number
-): PdfOverlayPlacement => {
-  const labelTop = item.y + item.height * 0.9;
-  const labelRect = toFractionRect(page, item.x, labelTop, item.width, item.height * 1.2);
-
-  const initialSize = Math.min(
-    MAX_FONT_SIZE,
-    Math.max(9, Math.round(item.height > 0 ? item.height : 12))
-  );
-  const rightX = item.x + item.width + LABEL_GAP;
-  // 鲁港通 - 标签贴着右边界时内容改写在标签下方，避免字被页面裁掉
-  const below = page.width - PDF_MARGIN - rightX < 60;
-  const startX = below ? item.x : rightX;
+  startX: number,
+  startBaseline: number,
+  initialSize: number
+) => {
   const available = Math.max(48, page.width - PDF_MARGIN - startX);
-  const startBaseline = below ? item.y - Math.max(initialSize, item.height) * 1.6 : item.y;
-
   let fontSize = initialSize;
   let lines = layoutLines(entry.value, available, fontSize);
   const fits = () =>
@@ -332,27 +486,81 @@ const planPlacement = (
   const widest = Math.max(...lines.map((line) => estimateWidth(line, fontSize)), 1);
   const lastBaseline = startBaseline - (lines.length - 1) * fontSize * LINE_HEIGHT_RATIO;
   const valueTop = startBaseline + fontSize * 0.9;
-  const valueRect = toFractionRect(
-    page,
-    startX,
-    valueTop,
-    widest,
-    valueTop - (lastBaseline - fontSize * 0.3)
+  const box = {
+    x: startX,
+    top: valueTop,
+    width: widest,
+    height: valueTop - (lastBaseline - fontSize * 0.3)
+  };
+  return {
+    fontSize,
+    lines,
+    note,
+    box,
+    valueRect: toFractionRect(page, box.x, box.top, box.width, box.height)
+  };
+};
+
+const planPlacement = (
+  page: PdfPageText,
+  item: PdfTextItem,
+  entry: PdfOverlayEntry,
+  entryIndex: number,
+  occupied: PdfAbsoluteBox[],
+  section?: string
+): { placement: PdfOverlayPlacement; box?: PdfAbsoluteBox } => {
+  const labelTop = item.y + item.height * 0.9;
+  const labelRect = toFractionRect(page, item.x, labelTop, item.width, item.height * 1.2);
+  const initialSize = Math.min(
+    MAX_FONT_SIZE,
+    Math.max(9, Math.round(item.height > 0 ? item.height : 12))
   );
+  const rightX = item.x + item.width + LABEL_GAP;
+  const step = Math.max(initialSize, item.height) * 1.6;
+  const candidates: Array<{ x: number; y: number }> = [];
+  if (page.width - PDF_MARGIN - rightX >= 60) candidates.push({ x: rightX, y: item.y });
+  for (let level = 1; level <= 16; level += 1) {
+    if (page.width - PDF_MARGIN - rightX >= 60) {
+      candidates.push({ x: rightX, y: item.y - step * level });
+    }
+    candidates.push({ x: item.x, y: item.y - step * level });
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.y - initialSize * 0.3 < PDF_MARGIN) continue;
+    const layout = layoutValue(page, entry, candidate.x, candidate.y, initialSize);
+    if (occupied.some((box) => boxesOverlap(layout.box, box))) continue;
+    return {
+      placement: {
+        entryIndex,
+        page: page.page,
+        label: entry.label,
+        value: entry.value,
+        ...(section ? { section } : {}),
+        status: 'placed',
+        ...(layout.note ? { note: layout.note } : {}),
+        labelRect,
+        valueRect: layout.valueRect,
+        x: candidate.x,
+        y: candidate.y,
+        fontSize: layout.fontSize,
+        lines: layout.lines
+      },
+      box: layout.box
+    };
+  }
 
   return {
-    entryIndex,
-    page: page.page,
-    label: entry.label,
-    value: entry.value,
-    status: 'placed',
-    ...(note ? { note } : {}),
-    labelRect,
-    valueRect,
-    x: startX,
-    y: startBaseline,
-    fontSize,
-    lines
+    placement: {
+      entryIndex,
+      page: page.page,
+      label: entry.label,
+      value: entry.value,
+      ...(section ? { section } : {}),
+      status: 'missing',
+      note: '标签附近没有足够空白，未写入内容；请缩短文字或调整填写位置',
+      labelRect
+    }
   };
 };
 
@@ -361,19 +569,44 @@ export const planPdfOverlay = (
   entries: PdfOverlayEntry[]
 ): PdfOverlayPlan => {
   const used = new Set<string>();
-  const placements = entries.map((entry, entryIndex) => {
-    const anchor = findAnchor(pages, entry.label, entry.page, used);
+  const structures = buildDocumentStructure(pages);
+  const occupied = new Map<number, PdfAbsoluteBox[]>(
+    pages.map((page) => [
+      page.page,
+      page.items.map((item) => ({
+        x: item.x,
+        top: item.y + item.height * 0.9,
+        width: Math.max(item.width, 1),
+        height: Math.max(item.height * 1.2, 1)
+      }))
+    ])
+  );
+  const placements: PdfOverlayPlacement[] = [];
+  entries.forEach((entry, entryIndex) => {
+    const anchor = findAnchor(structures, entry, used);
     if (!anchor) {
-      return {
+      placements.push({
         entryIndex,
         page: entry.page ?? 1,
         label: entry.label,
         value: entry.value,
-        status: 'missing' as const,
+        ...(entry.section ? { section: entry.section } : {}),
+        status: 'missing',
         note: '这份 PDF 里找不到这个标签'
-      };
+      });
+      return;
     }
-    return planPlacement(anchor.page, anchor.item, entry, entryIndex);
+    const pageOccupied = occupied.get(anchor.page.page) ?? [];
+    const planned = planPlacement(
+      anchor.page,
+      anchor.item,
+      entry,
+      entryIndex,
+      pageOccupied,
+      anchor.section
+    );
+    placements.push(planned.placement);
+    if (planned.box) pageOccupied.push(planned.box);
   });
 
   return {

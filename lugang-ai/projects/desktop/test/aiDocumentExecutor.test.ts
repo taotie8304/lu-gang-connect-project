@@ -704,6 +704,23 @@ describe('PDF：原样副本叠加内容', () => {
     expect(picker).not.toHaveBeenCalled();
   });
 
+  it('PDF 提纲包含分区字段时原样返回，且不暴露本机路径', async () => {
+    const fields = [
+      { page: 1, label: '姓名' },
+      { page: 1, label: '姓名', section: '监护人 1' },
+      { page: 1, label: '姓名', section: '监护人 2' }
+    ];
+    const executor = createPdfExecutor({
+      readPdfOutline: async () => ({ pages: 1, labels: ['姓名'], fields })
+    });
+
+    const result = await executor.execute({ action: 'open_document' });
+
+    expect(result.ok).toBe(true);
+    expect(result.document).toMatchObject({ pdfFields: fields });
+    expect(JSON.stringify(result)).not.toContain('C:\\\\Users');
+  });
+
   it('PDF 提纲读不出来时也只返回文件名，仍然不弹选择窗口', async () => {
     const picker = vi.fn(async () => makeDocument());
     const executor = new AiExecutor({

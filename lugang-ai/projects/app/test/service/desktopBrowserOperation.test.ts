@@ -1867,6 +1867,7 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
     expect(parameters.properties.entries).toBeDefined();
     expect(parameters.properties.entries.items.properties.label).toBeDefined();
     expect(parameters.properties.entries.items.properties.page).toBeDefined();
+    expect(parameters.properties.entries.items.properties.section).toBeDefined();
   });
 
   it('parses fill_pdf and keeps page strings tolerant', () => {
@@ -1882,6 +1883,18 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
     expect(parsed.success).toBe(true);
     if (!parsed.success || parsed.args.action !== 'fill_pdf') return;
     expect(parsed.args.entries[1]).toMatchObject({ page: 2, label: '日期：' });
+  });
+
+  it('parses and trims the optional pdf section', () => {
+    const parsed = parseBrowserOperationArgs({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc123',
+      entries: [{ section: ' 监护人 2 ', label: '姓名', value: '陈大文' }]
+    });
+
+    expect(parsed.success).toBe(true);
+    if (!parsed.success || parsed.args.action !== 'fill_pdf') return;
+    expect(parsed.args.entries[0]).toMatchObject({ section: '监护人 2', label: '姓名' });
   });
 
   it('rejects fill_pdf without a token, entries or valid labels', () => {
@@ -1923,6 +1936,42 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
     expect(result.response).not.toContain('open_form');
   });
 
+  it('renders repeated pdf fields with their section and keeps tail fields unsectioned', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      document: {
+        ...pdfSummary,
+        pdfFields: [
+          { page: 1, label: '姓名' },
+          { page: 1, label: '姓名', section: '监护人 1' },
+          { page: 1, label: '证件号码', section: '监护人 1' },
+          { page: 1, label: '姓名', section: '监护人 2' },
+          { page: 1, label: '病史' }
+        ]
+      },
+      documentToken: 'lgpdf_sections'
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'open_document' });
+
+    expect(result.response).toContain('- 姓名\n');
+    expect(result.response).toContain('- 姓名（分区：监护人 1）');
+    expect(result.response).toContain('- 证件号码（分区：监护人 1）');
+    expect(result.response).toContain('- 姓名（分区：监护人 2）');
+    expect(result.response).toContain('- 病史\n');
+    expect(result.response).toContain('section');
+  });
+
+  it('tells the model to carry the outlined section into fill_pdf', () => {
+    const description = createBrowserOperationTool().function.description;
+
+    expect(description).toContain('分区');
+    expect(description).toContain('section');
+    expect(description).toContain('原样');
+  });
+
   it('requires a 0.8.7 client before filling a pdf', async () => {
     const store = createFakeStore();
     store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.6');
@@ -1940,6 +1989,22 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
     expect(audit).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'fill_pdf', ok: false, code: 'desktop_upgrade_required' })
     );
+  });
+
+  it('requires a 0.8.8 client when pdf entries use sections', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.7');
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ section: '监护人 2', label: '姓名', value: '陈大文' }]
+    });
+
+    expect(result.response).toContain('0.8.8');
+    expect(result.response).toContain('升级');
+    expect(store.enqueue).not.toHaveBeenCalled();
   });
 
   it('normalizes pdf entries before dispatch', async () => {
@@ -1965,6 +2030,27 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
           { label: '團體名稱：', value: '香港山東僑界聯合會' },
           { page: 2, label: '日期：', value: '20261028' }
         ]
+      }
+    });
+  });
+
+  it('dispatches the trimmed pdf section unchanged', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.8.8');
+    const execute = createExecutor({ store });
+
+    await execute({
+      action: 'fill_pdf',
+      token: 'lgpdf_abc',
+      entries: [{ section: ' 监护人 2 ', label: ' 姓名 ', value: '陈大文' }]
+    });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: {
+        action: 'fill_pdf',
+        token: 'lgpdf_abc',
+        entries: [{ section: '监护人 2', label: '姓名', value: '陈大文' }]
       }
     });
   });

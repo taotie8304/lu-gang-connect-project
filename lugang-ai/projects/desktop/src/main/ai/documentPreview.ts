@@ -483,7 +483,7 @@ export class DocumentPreviewManager {
       session.pdfBytes = bytes;
       session.changes = plan.placements.map((placement, index) => ({
         index,
-        target: placement.label,
+        target: placement.section ? `${placement.section} · ${placement.label}` : placement.label,
         section: `第 ${placement.page} 页`,
         before: '',
         after: placement.value,

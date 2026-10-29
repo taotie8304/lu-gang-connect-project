@@ -476,6 +476,32 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
+  it('passes pdf section fields through unchanged', async () => {
+    const document = {
+      format: 'pdf',
+      name: '出行人员信息收集.pdf',
+      pdfPages: 1,
+      pdfLabels: ['姓名', '监护人', '1'],
+      pdfFields: [
+        { page: 1, label: '姓名' },
+        { page: 1, label: '姓名', section: '监护人 1' },
+        { page: 1, label: '姓名', section: '监护人 2' }
+      ]
+    };
+    const req = {
+      method: 'POST',
+      body: { deviceId, commandId, result: { ok: true, document } },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, document }
+    });
+  });
+
   it('rejects a document paragraph whose text exceeds the limit', async () => {
     const req = {
       method: 'POST',
