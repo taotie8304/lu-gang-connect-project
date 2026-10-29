@@ -1435,6 +1435,7 @@
   "user_settings.title": "設置",
   "user_settings.update_checking": "正在檢查更新…",
   "user_settings.update_downloading": "發現新版本 {{version}}，正在下載…",
+  "user_settings.update_downloading_progress": "發現新版本 {{version}}，下載中 {{percent}}%（{{transferred}}/{{total}} MB）",
   "user_settings.update_failed": "檢查更新失敗，點擊重試",
   "user_settings.update_latest": "已是最新版本",
   "user_settings.update_ready": "新版本 {{version}} 已下載，點擊重啟安裝",

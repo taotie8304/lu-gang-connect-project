@@ -6,6 +6,7 @@ import {
   markUpdateDownloaded,
   markUpdateError,
   markUpdateNotAvailable,
+  markUpdateProgress,
   startUpdateCheck
 } from '../src/main/updateStatus';
 
@@ -46,6 +47,10 @@ describe('startUpdateCheck', () => {
     const downloaded = markUpdateDownloaded(downloading, '0.7.0');
     expect(startUpdateCheck(downloaded)).toBe(downloaded);
   });
+
+  it('已是最新版本时允许定时复检', () => {
+    expect(startUpdateCheck(markUpdateNotAvailable(base)).state).toBe('checking');
+  });
 });
 
 describe('更新结果状态', () => {
@@ -82,5 +87,72 @@ describe('更新结果状态', () => {
       state: 'error',
       currentVersion: '0.6.0'
     });
+  });
+});
+
+describe('下载进度', () => {
+  const downloading = markUpdateAvailable(base, '0.7.0');
+
+  it('下载中记录进度并保留版本号', () => {
+    expect(
+      markUpdateProgress(downloading, {
+        percent: 42.4,
+        transferred: 1024,
+        total: 4096,
+        bytesPerSecond: 512
+      })
+    ).toEqual({
+      state: 'downloading',
+      currentVersion: '0.6.0',
+      latestVersion: '0.7.0',
+      progress: { percent: 42, transferred: 1024, total: 4096, bytesPerSecond: 512 }
+    });
+  });
+
+  it('只接受 0 到 100 的百分比并取整', () => {
+    expect(
+      markUpdateProgress(downloading, { percent: -5, transferred: 0, total: 0, bytesPerSecond: 0 })
+        .progress?.percent
+    ).toBe(0);
+    expect(
+      markUpdateProgress(downloading, {
+        percent: 120,
+        transferred: 0,
+        total: 0,
+        bytesPerSecond: 0
+      }).progress?.percent
+    ).toBe(100);
+  });
+
+  it('非下载状态忽略进度', () => {
+    const idle = base;
+    expect(markUpdateProgress(idle, { percent: 10, transferred: 1, total: 10, bytesPerSecond: 1 })).toBe(
+      idle
+    );
+    const downloaded = markUpdateDownloaded(downloading, '0.7.0');
+    expect(
+      markUpdateProgress(downloaded, { percent: 10, transferred: 1, total: 10, bytesPerSecond: 1 })
+    ).toBe(downloaded);
+  });
+
+  it('下载完成或出错后清掉旧进度', () => {
+    const withProgress = markUpdateProgress(downloading, {
+      percent: 90,
+      transferred: 9,
+      total: 10,
+      bytesPerSecond: 1
+    });
+    expect(markUpdateDownloaded(withProgress, '0.7.0').progress).toBeUndefined();
+    expect(markUpdateError(withProgress).progress).toBeUndefined();
+  });
+
+  it('重新发现新版本时不带上一轮的进度', () => {
+    const withProgress = markUpdateProgress(downloading, {
+      percent: 90,
+      transferred: 9,
+      total: 10,
+      bytesPerSecond: 1
+    });
+    expect(markUpdateAvailable(withProgress, '0.8.0').progress).toBeUndefined();
   });
 });

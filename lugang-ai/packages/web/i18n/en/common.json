@@ -1435,6 +1435,7 @@
   "user_settings.title": "Settings",
   "user_settings.update_checking": "Checking for updates…",
   "user_settings.update_downloading": "New version {{version}} found, downloading…",
+  "user_settings.update_downloading_progress": "New version {{version}} found, downloading {{percent}}% ({{transferred}}/{{total}} MB)",
   "user_settings.update_failed": "Update check failed, click to retry",
   "user_settings.update_latest": "You're up to date",
   "user_settings.update_ready": "Version {{version}} downloaded, click to restart and install",

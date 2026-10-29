@@ -1,6 +1,6 @@
 {
   "name": "@lugang/desktop",
-  "version": "0.8.9",
+  "version": "0.9.0",
   "private": true,
   "description": "鲁港通 Windows 桌面客户端（P1）",
   "main": "dist/main/index.cjs",
@@ -11,7 +11,8 @@
     "dev": "pnpm build && electron .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "cd ../.. && vitest run --config vitest.simple.config.mts projects/desktop",
-    "dist": "pnpm build && electron-builder --win --x64"
+    "dist": "pnpm build && electron-builder --win --x64",
+    "checksums": "node scripts/write-checksums.mjs"
   },
   "devDependencies": {
     "@types/adm-zip": "catalog:",

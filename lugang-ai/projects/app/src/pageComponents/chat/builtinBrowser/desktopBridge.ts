@@ -67,10 +67,19 @@ export type DesktopUpdateState =
   | 'downloaded'
   | 'error';
 
+/** 鲁港通 - 下载进度：与 projects/desktop/src/shared/ipc.ts 对应，0.9.0 起下发 */
+export type DesktopUpdateProgress = {
+  percent: number;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+};
+
 export type DesktopUpdateStatus = {
   state: DesktopUpdateState;
   currentVersion: string;
   latestVersion?: string;
+  progress?: DesktopUpdateProgress;
 };
 
 export type DesktopUpdateControls = {

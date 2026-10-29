@@ -10,8 +10,16 @@ import {
   markUpdateDownloaded,
   markUpdateError,
   markUpdateNotAvailable,
+  markUpdateProgress,
   startUpdateCheck
 } from './updateStatus';
+
+// 鲁港通 - 下载进度约 4 次/秒推给面板即可，避免每个分片都跨进程发消息
+const PROGRESS_THROTTLE_MS = 250;
+// 鲁港通 - 长时间挂机的客户端每 6 小时自动复检一次
+const AUTO_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+// 鲁港通 - 检查/下载出错后 30 分钟自动重试，用户手动点击仍可立即重试
+const ERROR_RETRY_DELAY_MS = 30 * 60 * 1000;
 
 type SetupAutoUpdateOptions = {
   window: BrowserWindow;
@@ -33,10 +41,21 @@ export const setupAutoUpdate = ({
   const supported = app.isPackaged;
   let status = createInitialUpdateStatus({ supported, currentVersion: app.getVersion() });
   const listeners = new Set<(status: DesktopUpdateStatus) => void>();
+  let lastProgressAt = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
   const publish = (next: DesktopUpdateStatus) => {
     status = next;
     listeners.forEach((listener) => listener(status));
+  };
+
+  // 鲁港通 - 出错后自动重试一次；定时复检与手动点击共用 check()，其内部守卫会跳过不合适的时机
+  const scheduleErrorRetry = () => {
+    if (retryTimer) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      void check();
+    }, ERROR_RETRY_DELAY_MS);
   };
 
   if (supported) {
@@ -54,6 +73,19 @@ export const setupAutoUpdate = ({
     });
     autoUpdater.on('update-not-available', () => {
       publish(markUpdateNotAvailable(status));
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      const now = Date.now();
+      if (progress.percent < 100 && now - lastProgressAt < PROGRESS_THROTTLE_MS) return;
+      lastProgressAt = now;
+      publish(
+        markUpdateProgress(status, {
+          percent: progress.percent,
+          transferred: progress.transferred,
+          total: progress.total,
+          bytesPerSecond: progress.bytesPerSecond
+        })
+      );
     });
     autoUpdater.on('update-downloaded', async (info) => {
       publish(markUpdateDownloaded(status, info.version));
@@ -77,6 +109,7 @@ export const setupAutoUpdate = ({
     autoUpdater.on('error', (error) => {
       log.warn('[lugang-desktop] auto update error', error);
       publish(markUpdateError(status));
+      scheduleErrorRetry();
     });
   }
 
@@ -99,7 +132,10 @@ export const setupAutoUpdate = ({
       }
     } catch (error) {
       log.warn('[lugang-desktop] check update failed', error);
-      if (status.state === 'checking') publish(markUpdateError(status));
+      if (status.state === 'checking') {
+        publish(markUpdateError(status));
+        scheduleErrorRetry();
+      }
     }
     return status;
   };
@@ -119,6 +155,9 @@ export const setupAutoUpdate = ({
       setTimeout(() => {
         void check();
       }, 10_000);
+      setInterval(() => {
+        void check();
+      }, AUTO_CHECK_INTERVAL_MS);
     },
     subscribe: (listener) => {
       listeners.add(listener);

@@ -1431,6 +1431,7 @@
   "user_settings.title": "설정",
   "user_settings.update_checking": "업데이트 확인 중…",
   "user_settings.update_downloading": "새 버전 {{version}} 발견, 다운로드 중…",
+  "user_settings.update_downloading_progress": "새 버전 {{version}} 발견, 다운로드 중 {{percent}}% ({{transferred}}/{{total}} MB)",
   "user_settings.update_failed": "업데이트 확인 실패, 클릭하여 재시도",
   "user_settings.update_latest": "최신 버전입니다",
   "user_settings.update_ready": "버전 {{version}} 다운로드 완료, 클릭하여 재시작 및 설치",

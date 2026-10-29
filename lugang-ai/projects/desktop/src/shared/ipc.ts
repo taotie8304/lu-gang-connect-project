@@ -110,10 +110,19 @@ export type DesktopUpdateState =
   | 'downloaded'
   | 'error';
 
+/** 鲁港通 - 下载进度：仅在 downloading 状态出现，下载完成/出错即清除 */
+export type DesktopUpdateProgress = {
+  percent: number;
+  transferred: number;
+  total: number;
+  bytesPerSecond: number;
+};
+
 export type DesktopUpdateStatus = {
   state: DesktopUpdateState;
   currentVersion: string;
   latestVersion?: string;
+  progress?: DesktopUpdateProgress;
 };
 
 /** 鲁港通 - 文档预览：文件标签与右栏预览共用同一份快照结构 */

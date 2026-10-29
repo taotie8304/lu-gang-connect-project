@@ -130,16 +130,28 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     if (next) setUpdateStatus(next);
   }, [updateStatus]);
 
+  // 鲁港通 - 0.9.0 起下载中显示百分比与已下载/总量；老客户端没有 progress 字段时退回原文案
+  const formatMegabytes = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
   const updateHint = (status: DesktopUpdateStatus): string => {
     switch (status.state) {
       case 'checking':
         return t('common:user_settings.update_checking');
       case 'up-to-date':
         return t('common:user_settings.update_latest');
-      case 'downloading':
-        return t('common:user_settings.update_downloading', {
-          version: status.latestVersion ?? ''
+      case 'downloading': {
+        const progress = status.progress;
+        if (!progress || progress.total <= 0) {
+          return t('common:user_settings.update_downloading', {
+            version: status.latestVersion ?? ''
+          });
+        }
+        return t('common:user_settings.update_downloading_progress', {
+          version: status.latestVersion ?? '',
+          percent: String(progress.percent),
+          transferred: formatMegabytes(progress.transferred),
+          total: formatMegabytes(progress.total)
         });
+      }
       case 'downloaded':
         return t('common:user_settings.update_ready', { version: status.latestVersion ?? '' });
       case 'error':
@@ -377,6 +389,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
                     <Text
                       fontSize="12px"
                       textAlign="right"
+                      maxW="62%"
                       color={
                         item.hintTone === 'danger'
                           ? 'red.500'
