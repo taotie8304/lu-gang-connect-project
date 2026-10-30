@@ -200,3 +200,62 @@ describe('TransitCandidate MTR 类型兼容性', () => {
     expect(candidate.realTimeETA!.dataSource).toBe('mtr');
   });
 });
+
+describe('MTR 实时时刻表取值键', () => {
+  it('优先命中「线路-站点」复合键（真实 API 形状）', async () => {
+    const { pickMTRStationSchedule } = await import('../src/fetcher');
+    const data = {
+      'TWL-MOK': { curr_time: 't', sys_time: 't', UP: [{ seq: '1', dest: 'TSW', plat: '1', time: 't', ttnt: '2', valid: 'Y', source: '-' }] },
+      'KTL-MOK': { curr_time: 't', sys_time: 't', DOWN: [] },
+    };
+    const picked = pickMTRStationSchedule(data, 'TWL', 'MOK');
+    expect(picked?.UP?.[0]?.ttnt).toBe('2');
+  });
+
+  it('没有复合键时兼容旧站点键', async () => {
+    const { pickMTRStationSchedule } = await import('../src/fetcher');
+    const data = { MOK: { curr_time: 't', sys_time: 't', UP: [] } };
+    expect(pickMTRStationSchedule(data, 'TWL', 'MOK')).toBeTruthy();
+  });
+
+  it('只有一个站点数据时兜底返回该条', async () => {
+    const { pickMTRStationSchedule } = await import('../src/fetcher');
+    const data = { 'TWL-CEN': { curr_time: 't', sys_time: 't', DOWN: [] } };
+    expect(pickMTRStationSchedule(data, 'TWL', 'MOK')).toBeTruthy();
+  });
+
+  it('空数据返回 undefined', async () => {
+    const { pickMTRStationSchedule } = await import('../src/fetcher');
+    expect(pickMTRStationSchedule({}, 'TWL', 'MOK')).toBeUndefined();
+  });
+});
+
+describe('MTR 候车分钟数', () => {
+  const mk = (over: Record<string, unknown>) => ({ curr_time: 't', sys_time: 't', ...over }) as any;
+
+  it('优先用官方 ttnt，取双向最早且忽略无效班次', async () => {
+    const { minutesToNextMTRTrain } = await import('../src/fetcher');
+    const station = mk({
+      UP: [{ ttnt: '3', valid: 'Y', time: '', plat: '1', dest: 'TSW', seq: '1' }],
+      DOWN: [
+        { ttnt: '9', valid: 'Y', time: '', plat: '2', dest: 'CEN', seq: '1' },
+        { ttnt: '1', valid: 'N', time: '', plat: '2', dest: 'CEN', seq: '2' },
+      ],
+    });
+    expect(minutesToNextMTRTrain(station)).toBe(3);
+  });
+
+  it('没有 ttnt 时按香港时区解析时间（容器 UTC 不致偏 8 小时）', async () => {
+    const { minutesToNextMTRTrain } = await import('../src/fetcher');
+    const nowMs = Date.parse('2026-10-30T12:00:00+08:00');
+    const station = mk({
+      DOWN: [{ time: '2026-10-30 12:05:00', plat: '2', dest: 'CEN', seq: '1' }],
+    });
+    expect(minutesToNextMTRTrain(station, nowMs)).toBe(5);
+  });
+
+  it('无有效班次返回 -1', async () => {
+    const { minutesToNextMTRTrain } = await import('../src/fetcher');
+    expect(minutesToNextMTRTrain(mk({}))).toBe(-1);
+  });
+});

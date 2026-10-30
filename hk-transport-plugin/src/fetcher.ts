@@ -314,6 +314,50 @@ export async function fetchGMBStopETA(
 // MTR 服务状态 API（Requirements 8.1-8.3）
 // ============================================================
 
+/**
+ * 鲁港通 - MTR 时刻表按站取值
+ * 官方 API 的 data 键是「线路-站点」（如 TWL-MOK），旧代码直接用站点代码取值会永远取不到，
+ * 导致港铁候车时间一律回落静态估算。这里按优先顺序兼容三种形状。
+ */
+export function pickMTRStationSchedule(
+  data: Record<string, MTRStationSchedule> | undefined,
+  line?: string,
+  sta?: string
+): MTRStationSchedule | undefined {
+  if (!data) return undefined;
+  if (line && sta) {
+    const composite = data[`${line}-${sta}`];
+    if (composite) return composite;
+  }
+  if (sta && data[sta]) return data[sta];
+  const keys = Object.keys(data);
+  if (keys.length === 1) return data[keys[0]];
+  return undefined;
+}
+
+/**
+ * 鲁港通 - MTR 下一班候车分钟数
+ * 优先用官方 ttnt（分钟），避免把香港时间按容器 UTC 解析导致偏差 8 小时；
+ * 无 ttnt 时按 +08:00 解析时刻兜底。无有效班次返回 -1。
+ */
+export function minutesToNextMTRTrain(station: MTRStationSchedule, nowMs: number = Date.now()): number {
+  const trains = [...(station.UP ?? []), ...(station.DOWN ?? [])].filter(t => t.valid !== 'N');
+  const ttnts = trains
+    .map(t => Number(t.ttnt))
+    .filter(n => Number.isFinite(n) && n >= 0);
+  if (ttnts.length > 0) return Math.min(...ttnts);
+
+  let minDiff = Infinity;
+  for (const train of trains) {
+    if (!train.time) continue;
+    const ms = new Date(train.time.replace(' ', 'T') + '+08:00').getTime();
+    if (!Number.isFinite(ms)) continue;
+    const diff = ms - nowMs;
+    if (diff >= 0 && diff < minDiff) minDiff = diff;
+  }
+  return minDiff === Infinity ? -1 : Math.round(minDiff / 60000);
+}
+
 /** 查询 MTR 实时列车服务状态 */
 export async function fetchMTRSchedule(
   line?: string,
@@ -562,28 +606,16 @@ export async function enrichCandidateWithRealTimeETA(
       // MTR 实时列车查询（新增）
       const mtrResult = await fetchMTRSchedule(candidate.mtrLine, candidate.stationCode);
       if (mtrResult.success && mtrResult.data) {
-        const stationData = mtrResult.data.data[candidate.stationCode];
+        const stationData = pickMTRStationSchedule(
+          mtrResult.data.data,
+          candidate.mtrLine,
+          candidate.stationCode
+        );
         if (stationData) {
-          // 取上下行中最早到达的列车
-          const allTrains: Array<{ time: string }> = [];
-          if (stationData.UP) allTrains.push(...stationData.UP);
-          if (stationData.DOWN) allTrains.push(...stationData.DOWN);
-          
-          if (allTrains.length > 0) {
-            // 找到最早于当前时间的列车
-            const now = new Date();
-            let minDiff = Infinity;
-            for (const train of allTrains) {
-              const trainTime = new Date(train.time);
-              const diffMs = trainTime.getTime() - now.getTime();
-              if (diffMs >= 0 && diffMs < minDiff) {
-                minDiff = diffMs;
-              }
-            }
-            if (minDiff < Infinity) {
-              nextBusMinutes = Math.max(0, Math.round(minDiff / 60000));
-              dataSource = 'mtr';
-            }
+          const minutes = minutesToNextMTRTrain(stationData);
+          if (minutes >= 0) {
+            nextBusMinutes = minutes;
+            dataSource = 'mtr';
           }
         }
       }

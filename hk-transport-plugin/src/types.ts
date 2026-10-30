@@ -135,6 +135,8 @@ export interface MTRTrainInfo {
   plat: string;
   dest: string;
   seq: string;
+  ttnt?: string;   // 距到站分钟数（官方字段，优先于 time 解析）
+  valid?: string;  // 'Y' | 'N'
 }
 
 export interface MTRStationSchedule {

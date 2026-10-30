@@ -113,7 +113,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_transport_assistant',
-    version: '1.0.5',
+    version: '1.0.7',
     name: {
       en: 'HK Smart Transport Assistant',
       'zh-CN': '香港智能交通助手',
