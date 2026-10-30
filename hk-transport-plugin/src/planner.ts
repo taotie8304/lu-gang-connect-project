@@ -30,6 +30,17 @@ const WALK_DETOUR_FACTOR = 1.4;
 // N/NA 字头 = 通宵巴士线（如 N23 / N21A / NA21；实测全库 N 字头均为通宵巴士）。
 // 通宵线车程短，历史问题：白天规划时因评分低排到首位，误导"日间推荐"
 const OVERNIGHT_ROUTE_RE = /^N[A-Z]?\d/;
+
+// 鲁港通 - 机场快线成人八达通单程票价（按上车站），普通港铁票价的十倍量级
+const AEL_FARE_BY_BOARD: Record<string, number> = {
+  '香港': 115,
+  '九龙': 105,
+  '青衣': 70,
+  '香港机场': 6,
+  '博览馆': 6,
+};
+// 转乘机场快线前的普通港铁接驳段票价
+const MTR_FEEDER_FARE = 10;
 // 日间惩罚值：兜底场景（未过滤干净）仍确保日间候选整列排前
 const OVERNIGHT_DAYTIME_PENALTY = 1000;
 
@@ -520,9 +531,13 @@ function recommendMTR(
 
   const approxStations = journey.legs.reduce((sum, leg) => sum + leg.stops, 0);
 
-  // 港铁票价大致估算（单程约 HK$5-30，按起终点直线距离线性估）
+  // 港铁票价大致估算：普通线路单程约 HK$5-30，按直线距离线性估；
+  // 机场快线票价远高于普通港铁，按上车站单独计价，不能套用距离公式
   const distM = haversineDistanceM(nearA.stop.lat, nearA.stop.lng, nearB.stop.lat, nearB.stop.lng);
-  const estFare = Math.min(30, Math.max(5, Math.round(distM / 1000 * 2.5)));
+  const aelLeg = journey.legs.find(leg => leg.lineId === 'AEL');
+  const estFare = aelLeg
+    ? (AEL_FARE_BY_BOARD[aelLeg.from] ?? 70) + (journey.legs.length > 1 ? MTR_FEEDER_FARE : 0)
+    : Math.min(30, Math.max(5, Math.round(distM / 1000 * 2.5)));
 
   const boardMapping = MTR_STATION_MAP[boardStation];
   const rideMinutes = journey.rideMinutes + journey.transferMinutes;

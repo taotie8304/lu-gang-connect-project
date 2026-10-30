@@ -6,6 +6,7 @@ import { estimateRideMinutes, segmentRunMinutes } from '../src/journey-time';
 import { planMtrJourney, MTR_LINES } from '../src/data/mtr-network';
 import { transitCandidateToRouteOption } from '../src/integrator';
 import { enrichCandidateWithRealTimeETA } from '../src/fetcher';
+import { planPublicTransit } from '../src/planner';
 import type { TransitCandidate } from '../src/types';
 
 // ============================================================
@@ -281,5 +282,31 @@ describe('enrichCandidateWithRealTimeETA（车程来源）', () => {
   it('缺少 rideMinutes 时才退回站数估算', async () => {
     const enriched = await enrichCandidateWithRealTimeETA({ ...base, numStops: 10, rideMinutes: undefined });
     expect(enriched.realTimeETA?.estimatedTripMinutes).toBe(15);
+  });
+});
+
+// ============================================================
+// 港铁票价：机场快线票价是普通港铁的十倍量级，不能按直线距离估算
+// ============================================================
+
+describe('港铁票价估算', () => {
+  const MONG_KOK = { lat: 22.3193, lng: 114.1694 };
+  const AIRPORT = { lat: 22.313642, lng: 113.937089 };
+  const TST = { lat: 22.2783, lng: 114.1747 };
+
+  it('旺角→机场走机场快线时票价应在 HK$70 以上（旧算法只算出 HK$30）', async () => {
+    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, AIRPORT.lat, AIRPORT.lng);
+    const mtr = res.candidates.find((c) => c.mode === 'mtr');
+    expect(mtr).toBeDefined();
+    expect(mtr!.mtrLegs?.some((leg) => leg.lineId === 'AEL')).toBe(true);
+    expect(mtr!.fare).toBeGreaterThanOrEqual(70);
+  });
+
+  it('不含机场快线的市区行程仍是普通港铁票价量级', async () => {
+    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, TST.lat, TST.lng);
+    const mtr = res.candidates.find((c) => c.mode === 'mtr');
+    expect(mtr).toBeDefined();
+    expect(mtr!.mtrLegs?.some((leg) => leg.lineId === 'AEL')).toBe(false);
+    expect(mtr!.fare).toBeLessThanOrEqual(30);
   });
 });

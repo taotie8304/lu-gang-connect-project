@@ -113,7 +113,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_transport_assistant',
-    version: '1.0.3',
+    version: '1.0.4',
     name: {
       en: 'HK Smart Transport Assistant',
       'zh-CN': '香港智能交通助手',
@@ -131,9 +131,9 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Route accuracy: real ride times from official full-route duration and stop spacing, MTR network routing with real transfer stations, overnight-only routes excluded in daytime',
-      'zh-CN': '路线准确性修复：按官方全程时数与站距模型计算真实车程，港铁按真实线网换乘寻路，日间不再返回通宵专线',
-      'zh-Hant': '路線準確性修復：按官方全程時數與站距模型計算真實車程，港鐵按真實線網換乘尋路，日間不再返回通宵專線'
+      en: 'Route accuracy: real ride times from official full-route duration and stop spacing, MTR network routing with real transfer stations, overnight-only routes excluded in daytime, Airport Express fares by boarding station',
+      'zh-CN': '路线准确性修复：按官方全程时数与站距模型计算真实车程，港铁按真实线网换乘寻路，日间不再返回通宵专线，机场快线按上车站计价',
+      'zh-Hant': '路線準確性修復：按官方全程時數與站距模型計算真實車程，港鐵按真實線網換乘尋路，日間不再返回通宵專線，機場快線按上車站計價'
     }
   },
   handler
