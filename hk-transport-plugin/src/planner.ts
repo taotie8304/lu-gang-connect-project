@@ -13,6 +13,8 @@
 import type { TransitCandidate, NearbyStop } from './types';
 import { haversineDistanceM } from './fetcher';
 import { TRANSIT_DATA, type TransitStop } from './data/transit';
+import { planMtrJourney } from './data/mtr-network';
+import { estimateRideMinutes, segmentRunMinutes } from './journey-time';
 
 const NEARBY_RADIUS_M = 1200;
 const MAX_NEARBY_STOPS = 15;
@@ -28,7 +30,7 @@ const WALK_DETOUR_FACTOR = 1.4;
 // N/NA 字头 = 通宵巴士线（如 N23 / N21A / NA21；实测全库 N 字头均为通宵巴士）。
 // 通宵线车程短，历史问题：白天规划时因评分低排到首位，误导"日间推荐"
 const OVERNIGHT_ROUTE_RE = /^N[A-Z]?\d/;
-// 日间惩罚值：大于任何真实评分（mode权重×站数+步行距离），确保日间候选整列排前
+// 日间惩罚值：兜底场景（未过滤干净）仍确保日间候选整列排前
 const OVERNIGHT_DAYTIME_PENALTY = 1000;
 
 export function isOvernightRoute(routeName: string): boolean {
@@ -135,6 +137,21 @@ const MTR_STATION_MAP: Record<string, { line: string; code: string }> = {
   '海怡半岛': { line: 'SIL', code: 'SOH' },
   '西九龙站': { line: 'TML', code: 'AUS' },
   '迪士尼': { line: 'DRL', code: 'DIS' },
+  // 鲁港通 - 线网补齐：车站代码用于港铁实时班次查询，缺失时退化为静态候车时间
+  '香港': { line: 'TCL', code: 'HOK' },
+  '尖东': { line: 'TML', code: 'ETS' },
+  '会展': { line: 'EAL', code: 'EXH' },
+  '荃湾西': { line: 'TML', code: 'TWW' },
+  '启德': { line: 'TML', code: 'KAI' },
+  '康城': { line: 'TKL', code: 'LHP' },
+  '车公庙': { line: 'TML', code: 'CKT' },
+  '沙田围': { line: 'TML', code: 'SHM' },
+  '第一城': { line: 'TML', code: 'CIO' },
+  '石门': { line: 'TML', code: 'SHE' },
+  '大水坑': { line: 'TML', code: 'TSH' },
+  '恒安': { line: 'TML', code: 'HEO' },
+  '马鞍山': { line: 'TML', code: 'MOS' },
+  '乌溪沙': { line: 'TML', code: 'WKS' },
 };
 
 // ============================================================
@@ -173,6 +190,12 @@ interface RouteStopPoint {
   stopName: string;
 }
 
+/** 路线方向几何：按站序累计里程与物理耗时，供车程估算 */
+interface RouteGeometry {
+  totalKm: number;
+  bySseq: Map<number, { cumKm: number; cumMinutes: number }>;
+}
+
 interface TransitIndex {
   /** sid → stop (含 mode) */
   stopById: Map<number, StopWithMode>;
@@ -186,6 +209,8 @@ interface TransitIndex {
   mtrStops: StopWithMode[];
   /** 所有路线-站点的展平坐标索引（关键！用于按坐标查附近 "路线上的某站"） */
   routeStopPoints: RouteStopPoint[];
+  /** "rid|seq" → 沿线路的累计里程/耗时 */
+  routeGeom: Map<string, RouteGeometry>;
 }
 
 let indexCache: TransitIndex | null = null;
@@ -199,6 +224,7 @@ function buildIndex(): TransitIndex {
   const routeMeta = new Map<number, RouteInfo>();
   const mtrStops: StopWithMode[] = [];
   const routeStopPoints: RouteStopPoint[] = [];
+  const routeGeom = new Map<string, RouteGeometry>();
 
   for (const [mode, modeData] of Object.entries(TRANSIT_DATA)) {
     if (!modeData) continue;
@@ -239,7 +265,27 @@ function buildIndex(): TransitIndex {
     arr.sort((a, b) => a.sseq - b.sseq);
   }
 
-  indexCache = { stopById, routesByStop, stopsByRoute, routeMeta, mtrStops, routeStopPoints };
+  // 鲁港通 - 预计算每条路线方向的累计里程与物理耗时（一次构建，长期复用）
+  for (const [key, arr] of stopsByRoute.entries()) {
+    const bySseq = new Map<number, { cumKm: number; cumMinutes: number }>();
+    let cumKm = 0;
+    let cumMinutes = 0;
+    for (let i = 0; i < arr.length; i++) {
+      if (i > 0) {
+        const prev = stopById.get(arr[i - 1].sid);
+        const cur = stopById.get(arr[i].sid);
+        if (prev && cur) {
+          const km = haversineDistanceM(prev.lat, prev.lng, cur.lat, cur.lng) / 1000;
+          cumKm += km;
+          cumMinutes += segmentRunMinutes(km);
+        }
+      }
+      bySseq.set(arr[i].sseq, { cumKm, cumMinutes });
+    }
+    routeGeom.set(key, { totalKm: cumKm, bySseq });
+  }
+
+  indexCache = { stopById, routesByStop, stopsByRoute, routeMeta, mtrStops, routeStopPoints, routeGeom };
   return indexCache;
 }
 
@@ -254,18 +300,6 @@ function modeToCompany(stopMode: string, routeCo?: string): string {
   if (stopMode === 'ferry') return 'FERRY';
   if (stopMode === 'ptram') return 'PTRAM';
   return routeCo || 'BUS';
-}
-
-function modeScoreWeight(mode: string): number {
-  switch (mode) {
-    case 'mtr': return 0.5;     // 港铁最优先
-    case 'bus': return 1.0;
-    case 'gmb': return 1.1;
-    case 'tram': return 1.2;
-    case 'ferry': return 1.3;
-    case 'ptram': return 1.5;
-    default: return 1.0;
-  }
 }
 
 // ============================================================
@@ -305,7 +339,8 @@ function findDirectRoutes(
   index: TransitIndex,
   originLat: number, originLng: number,
   destLat: number, destLng: number,
-  radius: number = NEARBY_RADIUS_M
+  radius: number = NEARBY_RADIUS_M,
+  includeOvernight = false
 ): TransitCandidate[] {
   // 对所有 routeStopPoints 做单次扫描，分别收集：
   //   nearOrigin[rid|seq] → 该路线方向上，距起点最近的那个站
@@ -368,13 +403,37 @@ function findDirectRoutes(
     if (!meta) continue;
 
     const numStops = d.sseq - o.sseq;
-    const modeW = modeScoreWeight(meta.mode);
+    if (numStops <= 0) continue;
+
+    // 鲁港通 - 真实车程：官方全程时间 × 站数/距离分摊，与物理速度模型取中位数
+    const geom = index.routeGeom.get(key);
+    const totalStops = index.stopsByRoute.get(key)?.length ?? 0;
+    const totalKm = geom?.totalKm ?? 0;
+    const fromCum = geom?.bySseq.get(o.sseq);
+    const toCum = geom?.bySseq.get(d.sseq);
+    const legKm = fromCum && toCum ? Math.max(0, toCum.cumKm - fromCum.cumKm) : 0;
+    const physicalMinutes = fromCum && toCum
+      ? Math.max(0, toCum.cumMinutes - fromCum.cumMinutes)
+      : null;
+    const rideMinutes = estimateRideMinutes({
+      officialMinutes: meta.time,
+      legStops: numStops,
+      totalStops,
+      legKm,
+      totalKm,
+      physicalMinutes,
+    });
+
+    const isOvernight = isOvernightRoute(meta.name);
+
+    // 白天直接剔除通宵线，不再给出「白天可乘 N 线」的误导方案
+    if (isOvernight && daytime && !includeOvernight) continue;
+
     // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离）
     const correctedWalkIn = o.distanceM === 0 ? 0 : Math.round(o.distanceM * WALK_DETOUR_FACTOR);
     const correctedWalkOut = d.distanceM === 0 ? 0 : Math.round(d.distanceM * WALK_DETOUR_FACTOR);
-    const isOvernight = isOvernightRoute(meta.name);
-    const score = modeW * numStops + (correctedWalkIn + correctedWalkOut) / 100
-      + (isOvernight && daytime ? OVERNIGHT_DAYTIME_PENALTY : 0);
+    const walkMinutes = (correctedWalkIn + correctedWalkOut) / 80;
+    const score = rideMinutes + walkMinutes + (isOvernight && daytime ? OVERNIGHT_DAYTIME_PENALTY : 0);
 
     candidates.push({
       company: modeToCompany(meta.mode, meta.co),
@@ -395,6 +454,11 @@ function findDirectRoutes(
       fare: meta.fare,
       score,
       isOvernight,
+      rideMinutes,
+      officialRouteMinutes: meta.time,
+      legKm: Math.round(legKm * 10) / 10,
+      totalKm: Math.round(totalKm * 10) / 10,
+      serviceNote: isOvernight ? '通宵线（约 00:30–05:00 提供服务），日间不适用' : undefined,
     });
   }
 
@@ -433,38 +497,57 @@ function recommendMTR(
   if (!nearA || !nearB) return null;
   if (nearA.stop.sid === nearB.stop.sid) return null;
 
-  const distM = haversineDistanceM(nearA.stop.lat, nearA.stop.lng, nearB.stop.lat, nearB.stop.lng);
-  const approxStations = Math.max(1, Math.round(distM / 1500));  // 粗略估算：MTR 站间距约 1.5km
+  // 鲁港通 - 必须由线网寻路得出真实线路，不允许「最近两站即直达」
+  const journey = planMtrJourney(nearA.stop.name, nearB.stop.name);
+  if (!journey) return null;
 
-  // 港铁票价大致估算（单程约 HK$5-30，按距离线性估）
+  // 起点/终点若需经站外步行通道换站（如中环→香港），计入步行段
+  let walkInMeters = nearA.d === 0 ? 0 : Math.round(nearA.d * WALK_DETOUR_FACTOR);
+  let walkOutMeters = nearB.d === 0 ? 0 : Math.round(nearB.d * WALK_DETOUR_FACTOR);
+  const boardStation = journey.legs[0].from;
+  const alightStation = journey.legs[journey.legs.length - 1].to;
+
+  const leadStep = journey.transferSteps[0];
+  if (leadStep && leadStep.type === 'walk' && leadStep.station === nearA.stop.name && leadStep.toStation === boardStation) {
+    walkInMeters += leadStep.minutes * 80;
+    journey.transferSteps.shift();
+  }
+  const tailStep = journey.transferSteps[journey.transferSteps.length - 1];
+  if (tailStep && tailStep.type === 'walk' && tailStep.toStation === nearB.stop.name && tailStep.station === alightStation) {
+    walkOutMeters += tailStep.minutes * 80;
+    journey.transferSteps.pop();
+  }
+
+  const approxStations = journey.legs.reduce((sum, leg) => sum + leg.stops, 0);
+
+  // 港铁票价大致估算（单程约 HK$5-30，按起终点直线距离线性估）
+  const distM = haversineDistanceM(nearA.stop.lat, nearA.stop.lng, nearB.stop.lat, nearB.stop.lng);
   const estFare = Math.min(30, Math.max(5, Math.round(distM / 1000 * 2.5)));
 
-  // MTR 站-线路映射（供实时 ETA 查询使用）
-  const boardMapping = MTR_STATION_MAP[nearA.stop.name];
-  const alightMapping = MTR_STATION_MAP[nearB.stop.name];
-
-  // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离，起点就在站内时不校正）
-  const walkInCorrected = nearA.d === 0 ? 0 : Math.round(nearA.d * WALK_DETOUR_FACTOR);
-  const walkOutCorrected = nearB.d === 0 ? 0 : Math.round(nearB.d * WALK_DETOUR_FACTOR);
+  const boardMapping = MTR_STATION_MAP[boardStation];
+  const rideMinutes = journey.rideMinutes + journey.transferMinutes;
 
   return {
     company: 'MTR',
     mode: 'mtr',
-    route: '港铁',
+    route: journey.legs.map(leg => leg.lineName).join(' → '),
     bound: 'O',
     serviceType: '1',
-    boardStopId: `mtr-${nearA.stop.sid}`,
-    boardStopName: `${nearA.stop.name}站`,
+    boardStopId: `mtr-${boardStation}`,
+    boardStopName: `${boardStation}站`,
     boardSeq: 1,
-    alightStopId: `mtr-${nearB.stop.sid}`,
-    alightStopName: `${nearB.stop.name}站`,
+    alightStopId: `mtr-${alightStation}`,
+    alightStopName: `${alightStation}站`,
     alightSeq: approxStations + 1,
     numStops: approxStations,
-    walkInMeters: walkInCorrected,
-    walkOutMeters: walkOutCorrected,
-    destination: `${nearB.stop.name}站方向`,
+    walkInMeters,
+    walkOutMeters,
+    destination: `${alightStation}站`,
     fare: estFare,
-    score: 0.5 * approxStations + (walkInCorrected + walkOutCorrected) / 100,
+    score: rideMinutes + (walkInMeters + walkOutMeters) / 80,
+    rideMinutes,
+    mtrLegs: journey.legs,
+    mtrTransferSteps: journey.transferSteps,
     stationCode: boardMapping?.code,
     mtrLine: boardMapping?.line,
   };
@@ -478,6 +561,8 @@ export interface PlanResult {
   candidates: TransitCandidate[];
   indexError?: string;
   noNearbyStops?: boolean;
+  /** 日间查询且只找到通宵线：上层应提示「白天无此线路」 */
+  overnightOnly?: boolean;
 }
 
 export async function planPublicTransit(
@@ -486,7 +571,7 @@ export async function planPublicTransit(
 ): Promise<PlanResult> {
   const index = buildIndex();
 
-  // 直接坐标匹配找直达路线（跨公司/跨 mode）
+  // 直接坐标匹配找直达路线（跨公司/跨 mode，日间已剔除通宵线）
   const candidates = findDirectRoutes(index, originLat, originLng, destLat, destLng);
 
   // 额外推 MTR（作为高优先级选项）
@@ -500,12 +585,30 @@ export async function planPublicTransit(
     const hasNearby =
       index.routeStopPoints.some(p => haversineDistanceM(originLat, originLng, p.lat, p.lng) <= 1500) &&
       index.routeStopPoints.some(p => haversineDistanceM(destLat, destLng, p.lat, p.lng) <= 1500);
-    return { candidates: [], noNearbyStops: !hasNearby };
+
+    // 白天无候选时，判断是否只有通宵线覆盖（用于给出更准确的无方案说明）
+    let overnightOnly = false;
+    if (hasNearby && isHongKongDaytime()) {
+      const nightCandidates = findDirectRoutesForOvernightOnly(index, originLat, originLng, destLat, destLng);
+      overnightOnly = nightCandidates.length > 0;
+    }
+
+    return { candidates: [], noNearbyStops: !hasNearby, overnightOnly };
   }
 
   // 统一重新排序
   candidates.sort((a, b) => a.score - b.score);
   return { candidates: candidates.slice(0, MAX_CANDIDATES) };
+}
+
+/** 仅供「日间只剩通宵线」的判定使用：临时关闭日间过滤，看是否有通宵线覆盖 */
+function findDirectRoutesForOvernightOnly(
+  index: TransitIndex,
+  originLat: number, originLng: number,
+  destLat: number, destLng: number
+): TransitCandidate[] {
+  return findDirectRoutes(index, originLat, originLng, destLat, destLng, NEARBY_RADIUS_M, true)
+    .filter(c => c.isOvernight);
 }
 
 // 为外部诊断保留

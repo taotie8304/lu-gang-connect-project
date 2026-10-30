@@ -169,32 +169,20 @@ describe('sortEnrichedCandidates（白天通宵线整列沉底）', () => {
 // 规划器集成：真实站点数据（尖沙咀码头 → 机场）
 // ============================================================
 
-describe('planPublicTransit 集成（通宵线白天沉底 / 深夜恢复）', () => {
-  it('白天 12:00：所有通宵线候选整列排在日间线之后，首位非通宵线', async () => {
+describe('planPublicTransit 集成（通宵线：白天不上榜 / 深夜恢复）', () => {
+  it('白天 12:00：通宵线（N/NA）整列不进候选，首位为日间线', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(DAY_NOON);
 
     const res = await planPublicTransit(TST_PIER.lat, TST_PIER.lng, AIRPORT_GTC.lat, AIRPORT_GTC.lng);
     expect(res.candidates.length).toBeGreaterThan(0);
 
-    const overnight = res.candidates.filter((c) => c.isOvernight);
-    const daytime = res.candidates.filter((c) => !c.isOvernight);
-    // 前置条件：该 OD 对确实同时存在两类候选，断言才有意义
-    expect(overnight.length).toBeGreaterThan(0);
-    expect(daytime.length).toBeGreaterThan(0);
-
-    const firstOvernight = res.candidates.findIndex((c) => c.isOvernight);
-    const lastDaytime = res.candidates.reduce((acc, c, i) => (c.isOvernight ? acc : i), -1);
-    expect(firstOvernight).toBeGreaterThan(lastDaytime);
+    // 鲁港通 - 白天停开的通宵线不再作为方案输出（避免「推荐白天不存在的线路」）
+    expect(res.candidates.some((c) => c.isOvernight)).toBe(false);
     expect(res.candidates[0].isOvernight).toBeFalsy();
-
-    // 沉底幅度：通宵线评分整体高于全部日间线（惩罚分生效）
-    const minOvernight = Math.min(...overnight.map((c) => c.score));
-    const maxDaytime = Math.max(...daytime.map((c) => c.score));
-    expect(minOvernight).toBeGreaterThan(maxDaytime);
   });
 
-  it('深夜 02:00：不加惩罚，通宵线评分回到正常区间', async () => {
+  it('深夜 02:00：通宵线回到候选池且评分正常', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NIGHT_2AM);
 
@@ -202,7 +190,7 @@ describe('planPublicTransit 集成（通宵线白天沉底 / 深夜恢复）', (
     const overnight = res.candidates.filter((c) => c.isOvernight);
     expect(overnight.length).toBeGreaterThan(0);
 
-    // 深夜无惩罚：最高评分也应远低于惩罚阈值（正常评分 = 站数权重 + 步行校正，量级 < 100）
+    // 深夜无惩罚：评分量级正常（< 1000）
     const maxOvernight = Math.max(...overnight.map((c) => c.score));
     expect(maxOvernight).toBeLessThan(1000);
   });

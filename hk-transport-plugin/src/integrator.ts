@@ -458,8 +458,8 @@ export interface IntegratedResult {
  * 把公交规划候选方案转成 RouteOption，用于前端/AI 展示
  * 估算原则：
  * - 步行速度 80 米/分钟
- * - 巴士每站约 1.5 分钟（含停站）
- * - 费用暂填 0（真实费用需查 JSON_BUS.json，本版先不做）
+ * - 行车时间优先取规划阶段的真实值（官方全程时数 / 站距模型 / 港铁线网），不再按站点数硬套
+ * - 港铁按线路分段展示，换乘站单独成步，杜绝「无需转线」的错觉
  */
 export function transitCandidateToRouteOption(
   cand: TransitCandidate,
@@ -469,7 +469,10 @@ export function transitCandidateToRouteOption(
   const walkOutMin = Math.max(1, Math.ceil(cand.walkOutMeters / 80));
 
   const mode = cand.mode || 'bus';
-  // 每 mode 的每站平均耗时（分钟）
+  const waitMin = nextBusInfo?.minutesAway && nextBusInfo.minutesAway > 0
+    ? nextBusInfo.minutesAway : 0;
+
+  // 每 mode 的每站平均耗时（分钟）——仅在缺少真实行车时间时兜底
   const perStopMin = mode === 'mtr' ? 2.5
                   : mode === 'ferry' ? 5
                   : mode === 'tram' ? 2
@@ -477,9 +480,7 @@ export function transitCandidateToRouteOption(
                   : mode === 'gmb' ? 1.2
                   : 1.5;  // 巴士默认
 
-  const rideMin = Math.max(2, Math.ceil(cand.numStops * perStopMin));
-  const waitMin = nextBusInfo?.minutesAway && nextBusInfo.minutesAway > 0
-    ? nextBusInfo.minutesAway : 0;
+  const rideMin = Math.max(2, Math.round(cand.rideMinutes ?? cand.numStops * perStopMin));
   const totalTime = walkInMin + waitMin + rideMin + walkOutMin;
 
   // 中文标签：巴士/小巴/电车/渡轮/山顶缆车/港铁
@@ -498,23 +499,60 @@ export function transitCandidateToRouteOption(
     : mode === 'gmb' ? 'gmb'
     : 'bus';
 
-  const rideDesc = nextBusInfo
-    ? mode === 'mtr'
-      ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班约 ${nextBusInfo.minutesAway} 分钟后到达 🚇`
-      : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
-    : mode === 'mtr'
-      ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）`
-      : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
-
   const steps: RouteStep[] = [
     {
       type: 'walk',
       description: `步行 ${walkInMin} 分钟（约 ${cand.walkInMeters} 米）到"${cand.boardStopName}"`,
       duration: walkInMin,
     },
-    {
+  ];
+
+  const mtrLegs = mode === 'mtr' && cand.mtrLegs && cand.mtrLegs.length > 0 ? cand.mtrLegs : null;
+
+  if (mtrLegs) {
+    // 港铁：逐线成步，换乘/步行连通按路径顺序插在段间
+    const transferSteps = cand.mtrTransferSteps || [];
+    let tIdx = 0;
+    for (let i = 0; i < mtrLegs.length; i++) {
+      const leg = mtrLegs[i];
+      if (i > 0) {
+        while (tIdx < transferSteps.length) {
+          const ts = transferSteps[tIdx++];
+          steps.push({
+            type: ts.type === 'walk' ? 'walk' : 'mtr',
+            description: ts.label,
+            duration: ts.minutes,
+            from: ts.station,
+            to: ts.toStation || ts.station,
+          });
+          if ((ts.toStation || ts.station) === leg.from) break;
+        }
+      }
+      const waitNote = i === 0 && waitMin > 0 ? `，候车约 ${waitMin} 分钟` : '';
+      steps.push({
+        type: 'mtr',
+        description: `乘坐港铁${leg.lineName}（${leg.from} → ${leg.to}，${leg.stops} 站${waitNote}）`,
+        route: leg.lineName,
+        routeDetail: `港铁${leg.lineName}`,
+        from: leg.from,
+        to: leg.to,
+        duration: leg.minutes + (i === 0 ? waitMin : 0),
+        stops: leg.stops,
+        cost: i === 0 && typeof cand.fare === 'number' ? cand.fare : undefined,
+      });
+    }
+  } else {
+    const rideDesc = nextBusInfo
+      ? mode === 'mtr'
+        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班约 ${nextBusInfo.minutesAway} 分钟后到达 🚇`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
+      : mode === 'mtr'
+        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
+
+    steps.push({
       type: stepType,
-      description: rideDesc,
+      description: cand.serviceNote ? `${rideDesc}。${cand.serviceNote}` : rideDesc,
       route: cand.route,
       routeDetail: `${cand.company} ${cand.route} ${cand.bound === 'O' ? '去程' : '回程'}`,
       from: cand.boardStopName,
@@ -522,21 +560,26 @@ export function transitCandidateToRouteOption(
       duration: rideMin + waitMin,
       stops: cand.numStops,
       cost: typeof cand.fare === 'number' ? cand.fare : undefined,
-    },
-    {
-      type: 'walk',
-      description: `步行 ${walkOutMin} 分钟（约 ${cand.walkOutMeters} 米）到达终点`,
-      duration: walkOutMin,
-    },
-  ];
+    });
+  }
+
+  steps.push({
+    type: 'walk',
+    description: `步行 ${walkOutMin} 分钟（约 ${cand.walkOutMeters} 米）到达终点`,
+    duration: walkOutMin,
+  });
 
   const totalWalkKm = ((cand.walkInMeters + cand.walkOutMeters) / 1000).toFixed(2);
+
+  const totalDistance = mtrLegs
+    ? `港铁 ${mtrLegs.length} 段共 ${mtrLegs.reduce((s, l) => s + l.stops, 0)} 站 + 步行 ${totalWalkKm} 公里`
+    : `${cand.numStops} 站 + 步行 ${totalWalkKm} 公里`;
 
   return {
     id: `${mode}-${cand.company}-${cand.route}-${cand.bound}`.toLowerCase().replace(/\s+/g, '_'),
     totalTime,
-    totalDistance: `${cand.numStops} 站 + 步行 ${totalWalkKm} 公里`,
-    type: 'direct',
+    totalDistance,
+    type: mtrLegs && mtrLegs.length > 1 ? 'transfer' : 'direct',
     steps,
     estimatedCost: typeof cand.fare === 'number' ? cand.fare : 0,
   };

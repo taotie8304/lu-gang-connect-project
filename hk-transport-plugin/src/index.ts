@@ -295,6 +295,7 @@ export async function tool(
     // ========================================================
     const routeOptions: RouteOption[] = [];
     let plannerErrorDetail: string | undefined;
+    let overnightOnly = false;
 
     if (originCoord && destCoord) {
       const planResult = await planPublicTransit(
@@ -307,10 +308,13 @@ export async function tool(
         apiStatus['transit-planner'] = 'failed';
         plannerErrorDetail = planResult.indexError;
       } else if (planResult.candidates.length === 0) {
+        overnightOnly = Boolean(planResult.overnightOnly);
         apiStatus['transit-planner'] = planResult.noNearbyStops ? 'skipped' : 'failed';
         plannerErrorDetail = planResult.noNearbyStops
           ? `起终点 800 米内无任何公交站点`
-          : `找到附近站点但无直达路线（可能需要换乘）`;
+          : overnightOnly
+            ? `日间无日间线路，仅通宵线覆盖（白天停开）`
+            : `找到附近站点但无直达路线（可能需要换乘）`;
       } else {
         apiStatus['transit-planner'] = 'success';
         
@@ -459,6 +463,8 @@ export async function tool(
         errorMsg = `未找到"${origin}"附近的公共交通站点。`;
       } else if (apiStatus['transit-planner'] === 'skipped' && !destCoord && destination) {
         errorMsg = `未找到"${destination}"附近的公共交通站点。`;
+      } else if (overnightOnly) {
+        errorMsg = `从"${origin || '起点'}"到"${destination || '终点'}"只有通宵巴士线路（N/NA 字头）覆盖，这类线路白天不发车，建议改乘港铁或分段出行。`;
       } else {
         // 不再建议"换更大范围查询"——该措辞会导致 LLM 反复调用工具
         errorMsg = `暂未查询到从"${origin || '起点'}"到"${destination || '终点'}"的公共交通直达路线，建议改用其他出行方式或尝试分段查询不同路段。`;

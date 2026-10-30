@@ -291,6 +291,24 @@ export interface NearbyStop {
 }
 
 /** 一个候选直达路线方案 */
+// 港铁乘车段（由线网寻路得出，逐段含线路与耗时）
+export interface MtrLeg {
+  lineId: string;
+  lineName: string;
+  from: string;
+  to: string;
+  stops: number;
+  minutes: number;
+}
+
+export interface MtrTransferStep {
+  type: 'transfer' | 'walk';
+  station: string;
+  toStation?: string;
+  minutes: number;
+  label: string;
+}
+
 export interface TransitCandidate {
   /** 运营公司/品牌：KMB/CTB/NLB/LWB/GMB/MTR/TRAM/FERRY/PTRAM */
   company: string;
@@ -311,8 +329,23 @@ export interface TransitCandidate {
   destination: string;        // 路线终点站名
   fare?: number | null;       // 票价（HKD）
   score: number;              // 综合评分（越小越优）
-  /** 鲁港通 - 是否为通宵线（N/NA 字头巴士）：白天停开，日间排序需沉底 */
+  /** 鲁港通 - 是否为通宵线（N/NA 字头巴士）：白天停开，日间不再作为推荐 */
   isOvernight?: boolean;
+
+  // 鲁港通 - 真实车程（替代历史「每站 2 分钟」估算）
+  /** 乘车时间（分钟），优先按官方全程行车时间与里程分摊 */
+  rideMinutes?: number;
+  /** 官方全程行车时间（分钟） */
+  officialRouteMinutes?: number | null;
+  /** 乘坐段的沿线里程（公里） */
+  legKm?: number;
+  /** 该路线方向全程里程（公里） */
+  totalKm?: number;
+  /** 港铁多段行程（含换乘），仅 mode=mtr 时存在 */
+  mtrLegs?: MtrLeg[];
+  mtrTransferSteps?: MtrTransferStep[];
+  /** 班次说明（如通宵线适用时段），供上层原样转述 */
+  serviceNote?: string;
   
   // MTR 实时数据字段（由 buildMTRStationMap 填充）
   stationCode?: string;       // MTR 车站代码，如 "HUH"（红磡）

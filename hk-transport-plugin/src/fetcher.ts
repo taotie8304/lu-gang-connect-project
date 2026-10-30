@@ -516,14 +516,18 @@ export async function executeBatchFetch(plan: {
 export async function enrichCandidateWithRealTimeETA(
   candidate: import('./types').TransitCandidate
 ): Promise<import('./types').TransitCandidate> {
-  const { company, route, boardStopId, numStops, walkInMeters, walkOutMeters } = candidate;
+  const { company, route, boardStopId, walkInMeters, walkOutMeters } = candidate;
   
   // 步行时间估算（80米/分钟）
   const walkInMinutes = Math.ceil(walkInMeters / 80);
   const walkOutMinutes = Math.ceil(walkOutMeters / 80);
   
-  // 行程时间估算（每站 2 分钟，最少 3 分钟）
-  const estimatedTripMinutes = Math.max(3, numStops * 2);
+  // 鲁港通 - 行车时间取规划阶段按官方全程时数/站距模型算出的真实值，
+  // 不再用「每站 2 分钟」的固定估算（会把屯门→中环算成 27 分钟）
+  const estimatedTripMinutes = Math.max(
+    2,
+    Math.round(candidate.rideMinutes ?? candidate.numStops * 1.5)
+  );
   
   let nextBusMinutes = -1;
   let dataSource: 'kmb' | 'ctb' | 'lwb' | 'nlb' | 'gmb' | 'mtr' | 'static' = 'static';
@@ -589,9 +593,9 @@ export async function enrichCandidateWithRealTimeETA(
     // API 失败时静默降级到静态数据
   }
   
-  // 如果没有实时数据，使用静态估算（假设 5 分钟等待）
+  // 如果没有实时数据，使用静态估算（港铁班次密，默认候车 2 分钟；其余 5 分钟）
   if (nextBusMinutes === -1) {
-    nextBusMinutes = 5;
+    nextBusMinutes = candidate.mode === 'mtr' ? 2 : 5;
     dataSource = 'static';
   }
   

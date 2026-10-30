@@ -113,7 +113,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_transport_assistant',
-    version: '1.0.2',
+    version: '1.0.3',
     name: {
       en: 'HK Smart Transport Assistant',
       'zh-CN': '香港智能交通助手',
@@ -127,13 +127,13 @@ export default defineTool({
         '【必須對任何香港交通問題調用此工具】處理所有香港公共交通需求——從A到B怎麼走、乘車路線規劃、實時到站時間、末班車查詢、費用和付款方式。覆蓋巴士(KMB/CTB/NLB/LWB)、小巴(GMB)、港鐵(MTR)、渡輪、電車、山頂纜車。'
     },
     toolDescription:
-      '香港公共交通万能查询工具。当用户问“从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价”等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。\n【重要】传入的地名必须是具体地理位置（如“尖沙咀”“中环”“落马洲口岸”）。如果用户提到的是组织/机构名称（如“联合会”“协会”“大厦”“公司”“学校”“医院”），请先联网搜索该组织的具体地址，再将搜索到的最近地铁站或街道名称传入此工具，不要直接传入组织名称。\n【重要】如果此工具返回空路线(routes为空数组)，说明确实无直达公共交通方案，请直接告知用户而不要重复调用此工具——重复调用无法改变结果。',
+      '香港公共交通万能查询工具。当用户问“从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价”等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。\n【重要】传入的地名必须是具体地理位置（如“尖沙咀”“中环”“落马洲口岸”）。如果用户提到的是组织/机构名称（如“联合会”“协会”“大厦”“公司”“学校”“医院”），请先联网搜索该组织的具体地址，再将搜索到的最近地铁站或街道名称传入此工具，不要直接传入组织名称。\n【重要】回答时必须原样转述工具返回的线路名、换乘站、站数和行驶时间，不得自行改写、合并或补充工具未返回的线路、换乘和耗时。\n【重要】如果此工具返回空路线(routes为空数组)，说明确实无直达公共交通方案，请直接告知用户而不要重复调用此工具——重复调用无法改变结果。',
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Daytime ranking fix: overnight (N/NA) bus routes now sink to the bottom of route suggestions during HK daytime',
-      'zh-CN': '日间排序优化：通宵巴士线（N/NA 字头）在香港日间时段自动排到末尾，优先推荐日间线路',
-      'zh-Hant': '日間排序優化：通宵巴士線（N/NA 字頭）在香港日間時段自動排到末尾，優先推薦日間線路'
+      en: 'Route accuracy: real ride times from official full-route duration and stop spacing, MTR network routing with real transfer stations, overnight-only routes excluded in daytime',
+      'zh-CN': '路线准确性修复：按官方全程时数与站距模型计算真实车程，港铁按真实线网换乘寻路，日间不再返回通宵专线',
+      'zh-Hant': '路線準確性修復：按官方全程時數與站距模型計算真實車程，港鐵按真實線網換乘尋路，日間不再返回通宵專線'
     }
   },
   handler
