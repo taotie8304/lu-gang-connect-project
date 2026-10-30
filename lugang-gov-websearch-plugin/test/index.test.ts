@@ -393,7 +393,8 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
   });
 
   // 鲁港通 - 香港档补发主题定向（前缀式 + 繁体官方词）：hkstp 命中并够数即停
-  it('增强补发（香港档科创题）：前缀式 site:hkstp.org 定向，够数即停', async () => {
+  // 鲁港通 - 补发并发：两条定向查询同时发出（以少量冗余请求换响应速度），结果仍去重后取上限
+  it('增强补发（香港档科创题）：前缀式 site: 定向并发发出，结果去重', async () => {
     const { calls } = stubRoutedFetch(
       {
         mainPages: [page('https://www.gov.hk/a', '政府A')],
@@ -415,7 +416,8 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
       '香港科创资助',
       // 鲁港通 - 1.5.0 简体首搜不够数 → 追加繁体变体重试，再进主题补发
       '香港科創資助',
-      'site:hkstp.org 創科培育計劃 資助'
+      'site:hkstp.org 創科培育計劃 資助',
+      'site:cyberport.hk 培育計劃 資助'
     ]);
     expect(out.resultCount).toBe(2);
     expect(out.results.map((r) => r.source)).toEqual([
@@ -871,5 +873,79 @@ describe('查询变体 buildSearchAttempts', () => {
 
   it('toTraditionalHk 转出香港繁体用字', () => {
     expect(toTraditionalHk('单 后 资 专 项 开 什么')).toBe('單 後 資 專 項 開 什麼');
+  });
+});
+
+// ============================================================
+// 耗时优化（G5）：变体与补发并发发出，避免串行叠加候选耗时
+// ============================================================
+describe('耗时优化（并发检索）', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  function stubConcurrencyProbe(
+    pages: Array<{ url: string; title: string; snippet: string }>
+  ) {
+    const state = { now: 0, peak: 0, queries: [] as string[] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes('dashscope.aliyuncs.com')) {
+          throw new Error('unexpected non-dashscope fetch');
+        }
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          method: string;
+          params?: { arguments?: { query?: string } };
+        };
+        const envelope = (body: string) => ({
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => body
+        });
+        if (payload.method === 'initialize') {
+          return envelope(JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} }));
+        }
+        if (payload.method !== 'tools/call') {
+          return envelope(JSON.stringify({ jsonrpc: '2.0', id: 2, result: {} }));
+        }
+        state.queries.push(payload.params?.arguments?.query ?? '');
+        state.now += 1;
+        state.peak = Math.max(state.peak, state.now);
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        state.now -= 1;
+        return envelope(bailianCallBody(pages));
+      })
+    );
+    return state;
+  }
+
+  it('变体尝试：首轮不足时其余变体并发发出（并发峰值≥2）', async () => {
+    const state = stubConcurrencyProbe([]);
+    const input = await InputType.parseAsync({
+      query: '公屋 轮候 时间 一般 申请 者 最新 安排',
+      maxResults: 3
+    });
+    const out = await tool(input, SECRETS);
+
+    expect(out.resultCount).toBe(0);
+    expect(state.queries.length).toBeGreaterThanOrEqual(2);
+    expect(state.peak).toBeGreaterThanOrEqual(2);
+  });
+
+  it('补发：多条 site: 定向查询并发发出（并发峰值≥2）', async () => {
+    const state = stubConcurrencyProbe([
+      page('https://www.gov.hk/a', '政府A'),
+      page('https://www.hkstp.org/en/x', '科技园A'),
+      page('https://www.cyberport.hk/tc/y', '数码港B')
+    ]);
+    const input = await InputType.parseAsync({
+      query: '香港科创资助',
+      maxResults: 5
+    });
+    const out = await tool(input, SECRETS);
+
+    expect(out.resultCount).toBe(3);
+    expect(state.peak).toBeGreaterThanOrEqual(2);
   });
 });

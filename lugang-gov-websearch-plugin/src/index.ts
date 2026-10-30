@@ -200,16 +200,32 @@ export async function tool(
     // 4. 域名过滤（核心）：official 默认拒绝，open 完全不过滤
     let { allowed, rejected } = filterResults(raw, scope, region);
 
-    for (const attemptQuery of attempts) {
-      if (allowed.length >= input.maxResults) break;
+    // 鲁港通 - 首轮原查询先行，够数即止；仍不足时其余变体并发发出，避免串行叠加耗时
+    const runAttempt = async (attemptQuery: string) => {
       const { results, provider } = await searchChain(attemptQuery);
-      if (provider) active = provider;
-      if (results.length > 0) raw = dedupeByUrl([...raw, ...results]);
+      return { attemptQuery, results, provider };
+    };
+    const mergeAttempt = (settled: {
+      attemptQuery: string;
+      results: RawSearchResult[];
+      provider: SearchProvider | null;
+    }) => {
+      if (settled.provider && !active) active = settled.provider;
+      if (settled.results.length > 0) {
+        raw = dedupeByUrl([...raw, ...settled.results]);
+      }
       ({ allowed, rejected } = filterResults(raw, scope, region));
       attemptStats.push(
-        `${attemptQuery} => raw=${results.length}, allowed=${allowed.length}`
+        `${settled.attemptQuery} => raw=${settled.results.length}, allowed=${allowed.length}`
       );
       debug.push(`过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`);
+    };
+
+    const [firstAttempt, ...restAttempts] = attempts;
+    if (firstAttempt) mergeAttempt(await runAttempt(firstAttempt));
+    if (allowed.length < input.maxResults && restAttempts.length > 0) {
+      const settledRest = await Promise.all(restAttempts.map(runAttempt));
+      for (const settled of settledRest) mergeAttempt(settled);
     }
 
     // 5. 增强补发：official 且权威结果不足时，按地域补搜官方站点，合并去重后重新过滤
@@ -222,27 +238,38 @@ export async function tool(
     // 鲁港通 - booster 兜底：主源空手时 active 为空，仍取链上支持补发的源（能救回偶发 0 条）
     const booster = active ?? chain.find((p) => p.supportsSiteBoost);
     if (booster && scope === 'official' && allowed.length < input.maxResults) {
-      for (const boostQuery of boostQueries) {
-        if (allowed.length >= input.maxResults) break;
-        try {
-          const boosted = await booster.search(boostQuery, {
-            maxResults: input.maxResults,
-            lang: input.language
-          });
-          debug.push(
-            `[${booster.name}] 增强补发(${boostQuery}) ${boosted.length} 条`
-          );
-          if (boosted.length > 0) {
-            raw = dedupeByUrl([...raw, ...boosted]);
-            ({ allowed, rejected } = filterResults(raw, scope, region));
-            debug.push(
-              `合并去重后 ${raw.length} 条，过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`
-            );
+      // 鲁港通 - 补发查询一次并发发出；单条失败不影响其余，合并后统一过滤
+      const settledBoosts = await Promise.all(
+        boostQueries.map(async (boostQuery) => {
+          try {
+            const boosted = await booster.search(boostQuery, {
+              maxResults: input.maxResults,
+              lang: input.language
+            });
+            return { boostQuery, boosted, error: null as string | null };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            return { boostQuery, boosted: [] as RawSearchResult[], error: msg };
           }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          debug.push(`[${booster.name}] 增强补发失败: ${msg}`);
+        })
+      );
+      for (const settled of settledBoosts) {
+        if (settled.error) {
+          debug.push(`[${booster.name}] 增强补发失败: ${settled.error}`);
+          continue;
         }
+        debug.push(
+          `[${booster.name}] 增强补发(${settled.boostQuery}) ${settled.boosted.length} 条`
+        );
+        if (settled.boosted.length > 0) {
+          raw = dedupeByUrl([...raw, ...settled.boosted]);
+        }
+      }
+      if (settledBoosts.some((s) => s.boosted.length > 0)) {
+        ({ allowed, rejected } = filterResults(raw, scope, region));
+        debug.push(
+          `合并去重后 ${raw.length} 条，过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`
+        );
       }
     }
 

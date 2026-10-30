@@ -187,7 +187,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.5.0',
+    version: '1.6.0',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
@@ -205,11 +205,11 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Cut zero-result searches: when the official HK search returns too few whitelisted results, the plugin retries with a traditional-Chinese (HK) variant of the query and, for very long queries, a shortened variant. The HK tier additionally accepts State Council / central-ministry sites (tax, foreign exchange, immigration, commerce) while still rejecting other provinces. Metadata now reports per-attempt hit counts and the top rejected hosts so gaps are diagnosable.',
+      en: 'Faster searches: after the first query comes up short, the remaining query variants (traditional Chinese, shortened) are issued in parallel instead of one after another, and the official-site boost queries also run in parallel. Same whitelist, de-duplication and result cap as before, with shorter wall-clock time per call.',
       'zh-CN':
-        '治理零结果检索：香港官方档首次检索放行条数不足时，自动改用繁体（香港用字）查询重试，超长查询再追加「前 6 词」截断变体；香港档同时放行国务院门户与中央部委官网（税务、外汇、出入境、商务等），外省政务仍拒绝。元数据新增逐次命中数与被拒域名 Top5，便于定位来源缺口。',
+        '提速检索：首轮查询放行条数不足时，其余查询变体（繁体、截断）改为并发发出，不再逐个串行；官方站点定向补发也改为并发。白名单、去重与取条上限不变，单次调用耗时明显缩短。',
       'zh-Hant':
-        '治理零結果檢索：香港官方檔首次檢索放行條數不足時，自動改用繁體（香港用字）查詢重試，超長查詢再追加「前 6 詞」截斷變體；香港檔同時放行國務院門戶與中央部委官網（稅務、外匯、出入境、商務等），外省政務仍拒絕。元數據新增逐次命中數與被拒域名 Top5，便於定位來源缺口。'
+        '提速檢索：首輪查詢放行條數不足時，其餘查詢變體（繁體、截斷）改為並發發出，不再逐個串行；官方站點定向補發也改為並發。白名單、去重與取條上限不變，單次調用耗時明顯縮短。'
     }
   },
   handler
