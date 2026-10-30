@@ -118,7 +118,21 @@ const outputSchema = z.object({
     .object({
       timestamp: z.string(),
       engine: z.string(),
-      rawCount: z.number()
+      rawCount: z.number(),
+      attempts: z
+        .array(z.string())
+        .optional()
+        .meta({
+          title: '逐次检索命中',
+          description: '每个查询变体各自的原始条数与放行条数，用于判断是没搜到还是被过滤'
+        } satisfies OutputSchemaMetaType),
+      rejectedHosts: z
+        .array(z.string())
+        .optional()
+        .meta({
+          title: '被拒域名',
+          description: '被来源白名单拒绝的域名与次数（前 5 个）'
+        } satisfies OutputSchemaMetaType)
     })
     .meta({
       title: '元数据',
@@ -173,7 +187,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_gov_websearch',
-    version: '1.4.2',
+    version: '1.5.0',
     name: {
       en: 'HK Official-Source Web Search',
       'zh-CN': '政府官网联网搜索',
@@ -191,11 +205,11 @@ export default defineTool({
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'Fix the long-dead boost: suffix-style boost queries returned zero hits under Bailian (16-group field test). Boost is now topic-targeted — prefix-style site: queries with traditional Chinese official terms, covering four topics: BUD Fund (HKPC subdomain), Hetao / HK-Shenzhen Innovation and Technology Park (ITIB official pages), Technology Voucher Programme (TVP subdomain) and innovation/startup incubation (HKSTP, Cyberport). At most three boost queries per search, no boost for non-matching topics, and finance-context false matches (e.g. "record high" market words) are filtered first.',
+      en: 'Cut zero-result searches: when the official HK search returns too few whitelisted results, the plugin retries with a traditional-Chinese (HK) variant of the query and, for very long queries, a shortened variant. The HK tier additionally accepts State Council / central-ministry sites (tax, foreign exchange, immigration, commerce) while still rejecting other provinces. Metadata now reports per-attempt hit counts and the top rejected hosts so gaps are diagnosable.',
       'zh-CN':
-        '修复长期失效的补发机制：后缀式补发查询在百炼下零命中（16 组实测确证）。改为主题定向补发——前缀式 site: 查询配合繁体官方用词，覆盖四类主题：BUD 专项基金（生产力局子域）、河套/港深创科园（创科工业局官方页）、科技券计划（TVP 子域）与科创培育（科技园、数码港）。每次补发至多 3 条查询，未命中主题不补发，且先剔除金融语境误匹配（如「创新高」类行情词）。',
+        '治理零结果检索：香港官方档首次检索放行条数不足时，自动改用繁体（香港用字）查询重试，超长查询再追加「前 6 词」截断变体；香港档同时放行国务院门户与中央部委官网（税务、外汇、出入境、商务等），外省政务仍拒绝。元数据新增逐次命中数与被拒域名 Top5，便于定位来源缺口。',
       'zh-Hant':
-        '修復長期失效的補發機制：後綴式補發查詢在百煉下零命中（16 組實測確證）。改為主題定向補發——前綴式 site: 查詢配合繁體官方用詞，覆蓋四類主題：BUD 專項基金（生產力局子域）、河套/港深創科園（創科工業局官方頁）、科技券計劃（TVP 子域）與科創培育（科技園、數碼港）。每次補發至多 3 條查詢，未命中主題不補發，且先剔除金融語境誤匹配（如「創新高」類行情詞）。'
+        '治理零結果檢索：香港官方檔首次檢索放行條數不足時，自動改用繁體（香港用字）查詢重試，超長查詢再追加「前 6 詞」截斷變體；香港檔同時放行國務院門戶與中央部委官網（稅務、外匯、出入境、商務等），外省政務仍拒絕。元數據新增逐次命中數與被拒域名 Top5，便於定位來源缺口。'
     }
   },
   handler

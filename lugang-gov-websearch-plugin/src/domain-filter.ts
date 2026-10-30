@@ -54,6 +54,14 @@ function matchAny(host: string, domains: string[]): boolean {
 export function classify(host: string, region: SearchRegion = 'hk'): SourceType {
   if (region === 'cn') return classifyMainland(host);
   if (matchAny(host, GOV_SUFFIXES)) return 'gov';
+  // 鲁港通 - 港档也放行国务院门户与中央部委：跨境资金、税务、出入境等问题的权威口径在内地部委官网，
+  // 山东省及外省政务仍拒绝（只在 cn 档生效）
+  const bareHost = host.startsWith('www.') ? host.slice(4) : host;
+  if (
+    CN_CENTRAL_EXACT.some((d) => bareHost === d) ||
+    matchAny(bareHost, CN_CENTRAL_GOV)
+  )
+    return 'gov';
   if (matchAny(host, PUBLIC_BODIES)) return 'public';
   if (matchAny(host, ACADEMIC_SUFFIXES) || matchAny(host, UNIVERSITIES))
     return 'academic';

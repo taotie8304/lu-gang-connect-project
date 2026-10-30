@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import z from 'zod';
 import { InputType, tool } from '../src/index';
+import { buildSearchAttempts, toTraditionalHk } from '../src/query-variants';
 import pluginExport from '../index';
 
 // 鲁港通 - 构造一段固定 Bing HTML：政府/媒体/社交/营销/未知各一条
@@ -38,7 +39,7 @@ describe('SDK 封装层导出（defineTool）', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest.pluginId).toBe('hk_gov_websearch');
     expect(manifest.pluginId).not.toContain('-');
-    expect(manifest.version).toBe('1.4.2');
+    expect(manifest.version).toBe('1.5.0');
     expect(manifest.name['zh-CN']).toBe('政府官网联网搜索');
     expect(manifest.name.en).toBe('HK Official-Source Web Search');
     expect(typeof manifest.toolDescription).toBe('string');
@@ -219,19 +220,24 @@ describe('tool 空结果与上游失败', () => {
     expect(out.error).not.toContain('知識庫');
   });
 
-  it('fetch 直接失败也不抛异常，返回空结果与错误说明', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => {
-        throw new Error('network down');
-      })
-    );
-    const input = await InputType.parseAsync({ query: '强积金提取条件' });
-    const out = await tool(input);
-    expect(out.resultCount).toBe(0);
-    expect(out.citeLinks).toEqual([]);
-    expect(typeof out.error).toBe('string');
-  });
+  // 鲁港通 - 1.5.0 起简体查询会追加繁体变体，每次尝试含必应 3 次重试（间隔 1.5s），故放宽超时
+  it(
+    'fetch 直接失败也不抛异常，返回空结果与错误说明',
+    async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new Error('network down');
+        })
+      );
+      const input = await InputType.parseAsync({ query: '强积金提取条件' });
+      const out = await tool(input);
+      expect(out.resultCount).toBe(0);
+      expect(out.citeLinks).toEqual([]);
+      expect(typeof out.error).toBe('string');
+    },
+    20_000
+  );
 });
 
 // ============================================================
@@ -407,6 +413,8 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     );
     expect(toolsCalls.map((c) => c.query)).toEqual([
       '香港科创资助',
+      // 鲁港通 - 1.5.0 简体首搜不够数 → 追加繁体变体重试，再进主题补发
+      '香港科創資助',
       'site:hkstp.org 創科培育計劃 資助'
     ]);
     expect(out.resultCount).toBe(2);
@@ -440,6 +448,7 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     );
     expect(toolsCalls.map((c) => c.query)).toEqual([
       '香港科创资助',
+      '香港科創資助',
       'site:hkstp.org 創科培育計劃 資助',
       'site:cyberport.hk 培育計劃 資助'
     ]);
@@ -467,7 +476,11 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     const toolsCalls = calls.filter(
       (c) => c.url.includes('dashscope') && c.method === 'tools/call'
     );
-    expect(toolsCalls).toHaveLength(1);
+    // 鲁港通 - 1.5.0：简体首搜不足先补繁体变体；人才类无主题词，仍不发 site: 定向
+    expect(toolsCalls.map((c) => c.query)).toEqual([
+      '香港人才清单',
+      '香港人才清單'
+    ]);
     expect(out.resultCount).toBe(1);
   });
 
@@ -486,7 +499,12 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     const toolsCalls = calls.filter(
       (c) => c.url.includes('dashscope') && c.method === 'tools/call'
     );
-    expect(toolsCalls).toHaveLength(1);
+    // 鲁港通 - 繁体变体会补发，但「创新高」已剔除，不得触发培育定向
+    expect(toolsCalls.map((c) => c.query)).toEqual([
+      '港股创新高 后市走势',
+      '港股創新高 後市走勢'
+    ]);
+    expect(toolsCalls.some((c) => c.query.startsWith('site:'))).toBe(false);
     expect(out.resultCount).toBe(1);
   });
 
@@ -510,6 +528,7 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     );
     expect(toolsCalls.map((c) => c.query)).toEqual([
       'BUD 专项基金 申请资格',
+      'BUD 專項基金 申請資格',
       'site:bud.hkpc.org BUD 專項基金'
     ]);
     expect(out.results.map((r) => r.source)).toEqual(['gov.hk', 'bud.hkpc.org']);
@@ -600,6 +619,61 @@ describe('多源链路（百炼优先；无密钥时必应）', () => {
     expect(calls.filter((c) => c.url.includes('dashscope'))).toHaveLength(0);
     expect(out.metadata.engine).toBe('bing');
   });
+
+  // 鲁港通 - 1.5.0 简转繁兜底：简体首搜只命中内地/营销页（全被拒）时，繁体变体命中港府官网
+  it('简体首搜全被拒 → 繁体变体命中 edb.gov.hk，两次尝试与被拒域名写入诊断', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: unknown, init?: RequestInit) => {
+        const url = String(input);
+        if (!url.includes('dashscope.aliyuncs.com')) {
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            text: async () => buildBingHtml()
+          };
+        }
+        const payload = JSON.parse(String(init?.body ?? '{}')) as {
+          method: string;
+          params?: { arguments?: { query?: string } };
+        };
+        if (payload.method === 'initialize') {
+          return {
+            ok: true,
+            status: 200,
+            headers: { get: () => null },
+            text: async () =>
+              JSON.stringify({ jsonrpc: '2.0', id: 1, result: {} })
+          };
+        }
+        const query = payload.params?.arguments?.query ?? '';
+        const pages = query.includes('統一')
+          ? [page('https://www.edb.gov.hk/tc/student/p1', '小一入學統籌辦法')]
+          : [page('https://zhuanlan.zhihu.com/p/1', '知乎专栏')];
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          text: async () => bailianCallBody(pages)
+        };
+      })
+    );
+    const input = await InputType.parseAsync({
+      query: '小一入学统筹办法 自行分配学位 统一派位 时间表 申请日期 教育局'
+    });
+    const out = await tool(input, SECRETS);
+
+    expect(out.metadata.engine).toBe('bailian');
+    expect(out.resultCount).toBe(1);
+    expect(out.results[0].source).toBe('edb.gov.hk');
+    expect(out.results[0].sourceType).toBe('gov');
+    // 逐次命中：简体 0 条放行 → 繁体 1 条放行
+    expect(out.metadata.attempts).toHaveLength(2);
+    expect(out.metadata.attempts?.[0]).toContain('allowed=0');
+    expect(out.metadata.attempts?.[1]).toContain('allowed=1');
+    expect(out.metadata.rejectedHosts).toContain('zhuanlan.zhihu.com×1');
+  });
 });
 
 // ============================================================
@@ -689,13 +763,19 @@ describe('检索地域档 cn（大陆白名单）', () => {
     ]);
   });
 
-  it('未传 searchRegion 时仍为香港档：gov.hk 放行、山东域名拒绝（零回归）', async () => {
+  // 鲁港通 - 1.5.0 港档也放行中央部委（跨境资金/税务/出入境口径在内地部委官网），
+  // 但山东省与外省政务仍只在 cn 档生效，港档一律拒绝
+  it('未传 searchRegion 时仍为香港档：中央部委放行，山东/外省政务拒绝', async () => {
     stubFetchHtml(cnHtml);
     const input = await InputType.parseAsync({ query: '香港人才清单' });
     const out = await tool(input);
 
-    expect(out.resultCount).toBe(0);
     expect((out._debug ?? []).join('\n')).toContain('region=hk');
+    expect(out.results.map((r) => r.source)).toEqual(['mohrss.gov.cn']);
+    expect(out.results.map((r) => r.sourceType)).toEqual(['gov']);
+    expect(out.filteredOut).toBe(5);
+    // 诊断字段：被拒域名 Top5 便于判断缺口
+    expect(out.metadata.rejectedHosts).toContain('shandong.gov.cn×1');
   });
 
   // 鲁港通 - 香港档补发已改科创定向（见上）；cn 档维持原 site:shandong.gov.cn 语法
@@ -747,5 +827,49 @@ describe('检索地域档 cn（大陆白名单）', () => {
     expect(json.properties.searchRegion.enum).toEqual(['hk', 'cn']);
     expect(json.properties.searchRegion.isToolParam).toBeUndefined();
     expect(json.properties.searchRegion.title).toBe('检索地域');
+  });
+});
+
+// ============================================================
+// 查询变体：简体→香港繁体、超长查询截断（v1.5.0）
+// ============================================================
+describe('查询变体 buildSearchAttempts', () => {
+  it('香港官方档：简体查询追加繁体变体（原查询保持首位）', () => {
+    expect(buildSearchAttempts('香港人才清单', 'hk', 'official')).toEqual([
+      '香港人才清单',
+      '香港人才清單'
+    ]);
+  });
+
+  it('简繁同形：不追加重复查询', () => {
+    expect(buildSearchAttempts('不存在的政策xyz', 'hk', 'official')).toEqual([
+      '不存在的政策xyz'
+    ]);
+  });
+
+  // 鲁港通 - 大陆官网本身用简体，转繁会降低命中；开放档不做权威过滤，无需变体
+  it('大陆档与开放档：不加繁体变体', () => {
+    expect(buildSearchAttempts('山东人才引进住房补贴', 'cn', 'official')).toEqual([
+      '山东人才引进住房补贴'
+    ]);
+    expect(buildSearchAttempts('维港好去处', 'hk', 'open')).toEqual(['维港好去处']);
+  });
+
+  it('超长查询（>6 词）追加「繁体前 6 词」截断变体', () => {
+    expect(
+      buildSearchAttempts(
+        '香港 公司 注册 需要 什么 资料 费用 时间 流程',
+        'hk',
+        'official'
+      )
+    ).toEqual([
+      '香港 公司 注册 需要 什么 资料 费用 时间 流程',
+      '香港 公司 註冊 需要 什麼 資料 費用 時間 流程',
+      '香港 公司 註冊 需要 什麼 資料'
+    ]);
+  });
+
+  it('toTraditionalHk 转出香港繁体用字', () => {
+    expect(toTraditionalHk('单 后 资 专 项 开 什么')).toBe('單 後 資 專 項 開 什麼');
   });
 });

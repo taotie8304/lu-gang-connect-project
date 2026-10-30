@@ -3,7 +3,8 @@
 import { z } from 'zod';
 import { BailianProvider } from './bailian-provider';
 import { BingProvider, dedupeByUrl } from './search-provider';
-import { filterResults } from './domain-filter';
+import { filterResults, normalizeHost } from './domain-filter';
+import { buildSearchAttempts } from './query-variants';
 import type {
   RawSearchResult,
   SearchProvider,
@@ -57,7 +58,11 @@ export const OutputType = z.object({
   metadata: z.object({
     timestamp: z.string(),
     engine: z.string(),
-    rawCount: z.number()
+    rawCount: z.number(),
+    // 鲁港通 - 逐次检索命中（诊断用）：看清是「没搜到」还是「被白名单拒掉」
+    attempts: z.array(z.string()).optional(),
+    // 鲁港通 - 被拒域名计数（诊断用）：便于判断缺哪些官方来源
+    rejectedHosts: z.array(z.string()).optional()
   }),
   error: z.string().optional(),
   _debug: z.array(z.string()).optional()
@@ -155,35 +160,57 @@ export async function tool(
   debug.push(`搜索源链: ${chain.map((p) => p.name).join(' > ')}`);
 
   try {
-    // 1-3. 依次尝试各搜索源：首个有结果的源胜出；异常或空结果自动降级下一个
+    // 1-3. 检索尝试序列：原查询优先；香港官方档在全被拒/空手时追加繁体变体
     let raw: RawSearchResult[] = [];
     let active: SearchProvider | null = null;
     let anyResponded = false;
     let sawError = false;
-    for (const provider of chain) {
-      try {
-        const results = await provider.search(input.query, {
-          // 鲁港通 - 多取一些原始结果，白名单过滤后才够数
-          maxResults: input.maxResults * (provider.supportsSiteBoost ? 2 : 3),
-          lang: input.language
-        });
-        anyResponded = true;
-        debug.push(`[${provider.name}] 返回 ${results.length} 条原始结果`);
-        if (results.length > 0) {
-          raw = results;
-          active = provider;
-          break;
+    const attempts = buildSearchAttempts(input.query, region, scope);
+    const attemptStats: string[] = [];
+    debug.push(`检索尝试序列: ${attempts.join(' | ')}`);
+
+    // 鲁港通 - 单个查询词走搜索源链：首个有结果的源胜出；异常或空结果自动降级下一个
+    const searchChain = async (
+      query: string
+    ): Promise<{
+      results: RawSearchResult[];
+      provider: SearchProvider | null;
+    }> => {
+      for (const provider of chain) {
+        try {
+          const results = await provider.search(query, {
+            // 鲁港通 - 多取一些原始结果，白名单过滤后才够数
+            maxResults: input.maxResults * (provider.supportsSiteBoost ? 2 : 3),
+            lang: input.language
+          });
+          anyResponded = true;
+          debug.push(
+            `[${provider.name}] "${query}" 返回 ${results.length} 条原始结果`
+          );
+          if (results.length > 0) return { results, provider };
+        } catch (err) {
+          sawError = true;
+          const msg = err instanceof Error ? err.message : String(err);
+          debug.push(`[${provider.name}] 异常: ${msg}`);
         }
-      } catch (err) {
-        sawError = true;
-        const msg = err instanceof Error ? err.message : String(err);
-        debug.push(`[${provider.name}] 异常: ${msg}`);
       }
-    }
+      return { results: [], provider: null };
+    };
 
     // 4. 域名过滤（核心）：official 默认拒绝，open 完全不过滤
     let { allowed, rejected } = filterResults(raw, scope, region);
-    debug.push(`过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`);
+
+    for (const attemptQuery of attempts) {
+      if (allowed.length >= input.maxResults) break;
+      const { results, provider } = await searchChain(attemptQuery);
+      if (provider) active = provider;
+      if (results.length > 0) raw = dedupeByUrl([...raw, ...results]);
+      ({ allowed, rejected } = filterResults(raw, scope, region));
+      attemptStats.push(
+        `${attemptQuery} => raw=${results.length}, allowed=${allowed.length}`
+      );
+      debug.push(`过滤后保留 ${allowed.length} 条，拒绝 ${rejected.length} 条`);
+    }
 
     // 5. 增强补发：official 且权威结果不足时，按地域补搜官方站点，合并去重后重新过滤
     // 鲁港通 - 香港档改主题定向补发（前缀式繁体官方词，见 HK_BOOST_TOPICS）；
@@ -231,7 +258,9 @@ export async function tool(
     const metadata = {
       timestamp: new Date().toISOString(),
       engine,
-      rawCount: raw.length
+      rawCount: raw.length,
+      attempts: attemptStats,
+      rejectedHosts: topRejectedHosts(rejected)
     };
 
     if (results.length === 0) {
@@ -284,6 +313,20 @@ export async function tool(
       _debug: debug
     };
   }
+}
+
+// 鲁港通 - 被拒域名 Top5（诊断）：形如 "klook.com×3"，用来判断缺哪些官方来源
+function topRejectedHosts(rejected: { url: string }[]): string[] {
+  const counts = new Map<string, number>();
+  for (const r of rejected) {
+    const host = normalizeHost(r.url);
+    if (!host) continue;
+    counts.set(host, (counts.get(host) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([host, n]) => `${host}×${n}`);
 }
 
 function buildEmptyMessage(query: string, lang: string): string {

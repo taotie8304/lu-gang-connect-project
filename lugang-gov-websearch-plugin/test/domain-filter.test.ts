@@ -400,10 +400,14 @@ describe('classify - 大陆白名单（region=cn）', () => {
     expect(classify('jinjiang.gov.cn', 'cn')).toBe('other'); // 福建晋江
   });
 
-  it('香港档不受大陆清单影响（零回归）', () => {
+  // 鲁港通 - 1.5.0 起港档放行国务院门户与中央部委（跨境资金/税务/出入境口径在内地部委官网）；
+  // 山东省及外省政务、大陆媒体档仍只在 cn 档生效
+  it('香港档不受大陆清单影响：中央部委放行，地方政务与大陆媒体仍拒绝', () => {
     expect(classify('shandong.gov.cn')).toBe('other');
     expect(classify('sdu.edu.cn')).toBe('other');
-    expect(classify('gov.cn')).toBe('other');
+    expect(classify('gov.cn')).toBe('gov');
+    expect(classify('www.mohrss.gov.cn')).toBe('gov');
+    expect(classify('safe.gov.cn')).toBe('gov');
     expect(classify('www.gov.hk')).toBe('gov');
     // 鲁港通 - 大陆媒体档只在 cn 生效：央媒与山东党媒不得进入香港档，
     // 否则山东来源会污染香港答案、并打破 HK 侧既有回归基线。
