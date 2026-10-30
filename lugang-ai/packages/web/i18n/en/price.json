@@ -60,6 +60,8 @@
   "plan.feature.free_cloud_ticket": "Cloud chat history · Support tickets",
   "plan.feature.points_permanent": "Credits never expire",
   "plan.feature.upload_limit": "Up to {{count}} files per upload ({{size}} max per file)",
+  "plan.feature.desktop_ai_included": "AI control of the built-in browser and file actions (Plus plan and above)",
+  "plan.feature.desktop_ai_excluded": "No AI browser or file actions (Plus plan and above)",
   "plan.points_unit_month": "Credits/month",
   "plan.points_unit_year": "Credits/year",
   "support.wallet.Buy": "Buy",

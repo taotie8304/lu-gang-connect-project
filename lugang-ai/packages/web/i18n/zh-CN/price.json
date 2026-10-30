@@ -60,6 +60,8 @@
   "plan.feature.free_cloud_ticket": "云端对话记录 · 工单反馈",
   "plan.feature.points_permanent": "Credits 长期有效，不清零",
   "plan.feature.upload_limit": "单次可上传 {{count}} 个文件（单个最大 {{size}}）",
+  "plan.feature.desktop_ai_included": "AI 控制内置浏览器与操作文件（进阶版及以上专享）",
+  "plan.feature.desktop_ai_excluded": "不含 AI 控制浏览器与操作文件（进阶版及以上专享）",
   "plan.points_unit_month": "Credits/月",
   "plan.points_unit_year": "Credits/年",
   "support.wallet.Buy": "购买",

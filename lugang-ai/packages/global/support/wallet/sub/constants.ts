@@ -67,6 +67,16 @@ export const defaultAuditLogRetentionDays: Record<StandardSubLevelEnum, number> 
   [StandardSubLevelEnum.enterprise]: 1080
 };
 
+/** 鲁港通 - 进阶及以上套餐：AI 控制内置浏览器与操作文件的准入门槛 */
+export const desktopAiPlanLevels = [
+  StandardSubLevelEnum.basic,
+  StandardSubLevelEnum.advanced,
+  StandardSubLevelEnum.custom
+] as const;
+
+export const isDesktopAiPlanLevel = (level?: string | null): boolean =>
+  !!level && (desktopAiPlanLevels as readonly string[]).includes(level);
+
 export const standardSubLevelMap = {
   [StandardSubLevelEnum.free]: {
     label: i18nT('common:support.wallet.subscription.standardSubLevel.free'),

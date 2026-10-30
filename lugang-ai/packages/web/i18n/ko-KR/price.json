@@ -60,6 +60,8 @@
   "plan.feature.free_cloud_ticket": "클라우드 대화 기록 · 지원 티켓",
   "plan.feature.points_permanent": "크레딧은 장기 유효, 소멸 없음",
   "plan.feature.upload_limit": "한 번에 최대 {{count}}개 파일 업로드(파일당 최대 {{size}})",
+  "plan.feature.desktop_ai_included": "AI 내장 브라우저·파일 작업 제어(Basic 이상 전용)",
+  "plan.feature.desktop_ai_excluded": "AI 브라우저·파일 작업 제어 미포함(Basic 이상 전용)",
   "plan.points_unit_month": "크레딧/월",
   "plan.points_unit_year": "크레딧/년",
   "support.wallet.Buy": "구매",

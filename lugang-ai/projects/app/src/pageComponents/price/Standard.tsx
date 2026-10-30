@@ -816,6 +816,10 @@ const Standard = ({
                       <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
                       <Box color={'myGray.600'}>{t('price:custom_plan_feature_4')}</Box>
                     </Flex>
+                    <Flex alignItems={'center'}>
+                      <MyIcon name={'price/right'} w={'16px'} mr={3} color={'primary.600'} />
+                      <Box color={'myGray.600'}>{t('price:plan.feature.desktop_ai_included')}</Box>
+                    </Flex>
                   </Grid>
                 ) : (
                   <StandardPlanContentList level={item.level} mode={selectSubMode} />

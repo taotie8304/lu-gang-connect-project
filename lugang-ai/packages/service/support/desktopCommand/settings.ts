@@ -32,6 +32,11 @@ const loadDesktopSwitch: DesktopSwitchReader = async () => {
   return readDesktopSwitch();
 };
 
+const loadPlanEntitlement = async (tmbId: string): Promise<boolean> => {
+  const { hasDesktopAiPlanEntitlement } = await import('../wallet/points/entitlement');
+  return hasDesktopAiPlanEntitlement({ tmbId });
+};
+
 /** 名单统一小写去重，界面回显与命中判断保持同一口径。 */
 export const normalizeDesktopSwitchAccounts = (accounts: readonly string[]): string[] => {
   const seen = new Set<string>();
@@ -94,15 +99,29 @@ export const desktopSwitchToState = ({
 /**
  * 每次请求读一次开关文档；读库失败时回落环境变量，避免数据库抖动导致功能不可用。
  * root 不查库、始终可用，防止管理员把自己关在门外。
+ * 套餐门槛在开关之前判定：仅进阶及以上且未过期的账号可用；套餐查询失败按无权益处理。
  */
 export const isDesktopBrowserEnabledForUserAsync = async (
   identity: DesktopBrowserIdentity & { username?: string },
   {
     read = loadDesktopSwitch,
+    readPlan = loadPlanEntitlement,
     envRaw = process.env[DESKTOP_BROWSER_ENABLED_ENV]
-  }: { read?: DesktopSwitchReader; envRaw?: string } = {}
+  }: {
+    read?: DesktopSwitchReader;
+    readPlan?: (tmbId: string) => Promise<boolean>;
+    envRaw?: string;
+  } = {}
 ): Promise<boolean> => {
   if ((identity.username ?? '').trim().toLowerCase() === 'root') return true;
+
+  let planEntitled = false;
+  try {
+    planEntitled = await readPlan(identity.tmbId);
+  } catch {
+    planEntitled = false;
+  }
+  if (!planEntitled) return false;
 
   let record: DesktopSwitchRecord | undefined;
   try {

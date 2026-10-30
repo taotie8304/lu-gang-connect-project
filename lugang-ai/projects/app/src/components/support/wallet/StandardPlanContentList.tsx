@@ -1,7 +1,8 @@
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import {
   StandardSubLevelEnum,
-  SubModeEnum
+  SubModeEnum,
+  isDesktopAiPlanLevel
 } from '@fastgpt/global/support/wallet/sub/constants';
 import React, { useMemo } from 'react';
 import { Box, Flex, Grid, Text } from '@chakra-ui/react';
@@ -80,6 +81,9 @@ const StandardPlanContentList = ({
 
   if (!planContent) return null;
 
+  // 鲁港通 - 桌面 AI（控制内置浏览器与操作文件）仅进阶及以上套餐可用，价格页按档位如实标注
+  const desktopAiIncluded = isDesktopAiPlanLevel(level);
+
   // 鲁港通 - 价格页（无真实订阅传入）付费档展示「积分/月（年）」；账号页展示真实到账总量，不带周期单位
   const pointsUnit =
     !standplan && !planContent.isFreeLevel
@@ -127,6 +131,22 @@ const StandardPlanContentList = ({
             </Box>
           )}
         </Flex>
+      </Flex>
+      {/* 鲁港通 - 桌面 AI 权益行：进阶及以上标注可用，免费/体验档明确不含 */}
+      <Flex alignItems={'center'}>
+        <MyIcon
+          name={'price/right'}
+          w={'16px'}
+          mr={3}
+          color={desktopAiIncluded ? 'primary.600' : 'myGray.400'}
+        />
+        <Box color={desktopAiIncluded ? 'myGray.600' : 'myGray.500'}>
+          {t(
+            desktopAiIncluded
+              ? 'price:plan.feature.desktop_ai_included'
+              : 'price:plan.feature.desktop_ai_excluded'
+          )}
+        </Box>
       </Flex>
       {planContent.isFreeLevel ? (
         <>

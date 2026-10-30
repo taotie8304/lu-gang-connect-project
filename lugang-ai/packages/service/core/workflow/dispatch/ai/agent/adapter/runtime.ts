@@ -17,8 +17,7 @@ import {
 } from '../../agentLoopCore/interface';
 import { createWorkflowAgentToolProvider } from '../toolProvider';
 import {
-  createDesktopBrowserOperationExecutor,
-  isDesktopBrowserEnabledForUser
+  createDesktopBrowserOperationExecutor
 } from '../../../../../../support/desktopCommand/browserOperation';
 
 type WorkflowAgentLoopRuntimeContext = ToolDispatchContext & {
@@ -64,7 +63,7 @@ export const createWorkflowAgentLoopRuntime = ({
   nodeResponses?: ChatHistoryItemResType[];
   appendNodeResponse?: (nodeResponse: ChatHistoryItemResType) => void;
   executeToolFactory?: typeof getExecuteTool;
-  /** 由异步调用方预先解析远程开关；缺省时回落环境变量判定 */
+  /** 由调用方预先按套餐与远程开关解析；缺省按关闭处理，避免绕过门槛 */
   browserOperationEnabled?: boolean;
 }): {
   runtime: AgentLoopRuntime<WorkflowInteractiveResponseType>;
@@ -109,16 +108,14 @@ export const createWorkflowAgentLoopRuntime = ({
     context,
     executeToolFactory
   });
-  // 浏览器操作只对桌面客户端灰度成员开放；未开启时模型完全看不到该工具。
   const browserOperationIdentity = {
     tmbId: context.runningUserInfo.tmbId,
     uid: context.uid,
     username: context.runningUserInfo.username,
     contact: context.runningUserInfo.contact
   };
-  const browserOperationEnabled =
-    resolvedBrowserOperationEnabled ??
-    isDesktopBrowserEnabledForUser(browserOperationIdentity);
+  // 鲁港通 - 套餐与远程开关的判定统一在 dispatch 层完成；这里未显式传入时默认关闭，避免绕过套餐门槛
+  const browserOperationEnabled = resolvedBrowserOperationEnabled ?? false;
 
   return {
     artifacts,

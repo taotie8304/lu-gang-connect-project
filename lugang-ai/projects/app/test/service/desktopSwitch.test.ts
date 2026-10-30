@@ -90,17 +90,21 @@ describe('desktop switch state', () => {
   });
 });
 
+const entitled = async () => true;
+
 describe('desktop browser gate with database switch', () => {
   it('lets the database switch override the environment variable', async () => {
     await expect(
       isDesktopBrowserEnabledForUserAsync(identity, {
         read: async () => ({ mode: 'off', accounts: [] }),
+        readPlan: entitled,
         envRaw: 'all'
       })
     ).resolves.toBe(false);
     await expect(
       isDesktopBrowserEnabledForUserAsync(identity, {
         read: async () => ({ mode: 'all', accounts: [] }),
+        readPlan: entitled,
         envRaw: 'off'
       })
     ).resolves.toBe(true);
@@ -110,10 +114,13 @@ describe('desktop browser gate with database switch', () => {
     const read = async () => ({ mode: 'list' as const, accounts: ['jinhui@airscend.com'] });
 
     await expect(
-      isDesktopBrowserEnabledForUserAsync(identity, { read, envRaw: 'off' })
+      isDesktopBrowserEnabledForUserAsync(identity, { read, readPlan: entitled, envRaw: 'off' })
     ).resolves.toBe(true);
     await expect(
-      isDesktopBrowserEnabledForUserAsync({ ...identity, contact: 'other@example.com' }, { read, envRaw: 'all' })
+      isDesktopBrowserEnabledForUserAsync(
+        { ...identity, contact: 'other@example.com' },
+        { read, readPlan: entitled, envRaw: 'all' }
+      )
     ).resolves.toBe(false);
   });
 
@@ -121,6 +128,7 @@ describe('desktop browser gate with database switch', () => {
     await expect(
       isDesktopBrowserEnabledForUserAsync(identity, {
         read: async () => ({ mode: 'list', accounts: [] }),
+        readPlan: entitled,
         envRaw: 'all'
       })
     ).resolves.toBe(false);
@@ -128,18 +136,27 @@ describe('desktop browser gate with database switch', () => {
 
   it('falls back to the environment variable when no record exists or the read fails', async () => {
     await expect(
-      isDesktopBrowserEnabledForUserAsync(identity, { read: async () => undefined, envRaw: 'all' })
+      isDesktopBrowserEnabledForUserAsync(identity, {
+        read: async () => undefined,
+        readPlan: entitled,
+        envRaw: 'all'
+      })
     ).resolves.toBe(true);
     await expect(
       isDesktopBrowserEnabledForUserAsync(identity, {
         read: async () => {
           throw new Error('mongo down');
         },
+        readPlan: entitled,
         envRaw: 'all'
       })
     ).resolves.toBe(true);
     await expect(
-      isDesktopBrowserEnabledForUserAsync(identity, { read: async () => undefined, envRaw: undefined })
+      isDesktopBrowserEnabledForUserAsync(identity, {
+        read: async () => undefined,
+        readPlan: entitled,
+        envRaw: undefined
+      })
     ).resolves.toBe(false);
   });
 
@@ -150,5 +167,44 @@ describe('desktop browser gate with database switch', () => {
       isDesktopBrowserEnabledForUserAsync({ ...identity, username: 'root' }, { read, envRaw: 'off' })
     ).resolves.toBe(true);
     expect(read).not.toHaveBeenCalled();
+  });
+});
+
+describe('desktop browser gate with plan entitlement', () => {
+  it('requires an advanced plan even when the switch is fully open', async () => {
+    const read = vi.fn(async () => ({ mode: 'all' as const, accounts: [] }));
+
+    await expect(
+      isDesktopBrowserEnabledForUserAsync(identity, {
+        read,
+        readPlan: async () => false,
+        envRaw: 'all'
+      })
+    ).resolves.toBe(false);
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the plan lookup throws', async () => {
+    await expect(
+      isDesktopBrowserEnabledForUserAsync(identity, {
+        read: async () => ({ mode: 'all', accounts: [] }),
+        readPlan: async () => {
+          throw new Error('mongo down');
+        },
+        envRaw: 'all'
+      })
+    ).resolves.toBe(false);
+  });
+
+  it('keeps root exempt from the plan gate', async () => {
+    const readPlan = vi.fn(async () => false);
+
+    await expect(
+      isDesktopBrowserEnabledForUserAsync(
+        { ...identity, username: 'root' },
+        { readPlan, envRaw: 'off' }
+      )
+    ).resolves.toBe(true);
+    expect(readPlan).not.toHaveBeenCalled();
   });
 });
