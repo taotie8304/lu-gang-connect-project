@@ -15,6 +15,7 @@ import type {
   TransitCandidate,
 } from './types';
 import type { BatchFetchResult } from './fetcher';
+import { companyLabel, fareNoteFor, formatNextBusArrival, ESTIMATE_TIP } from './eta';
 
 // ============================================================
 // 7.1 TDAS 路线方案解析（Requirements 2.2, 2.3, 2.4, 2.6）
@@ -397,15 +398,24 @@ export function generateTips(
 ): string[] {
   const tips: string[] = [];
 
-  // 实时数据标识（让 LLM 明确知道这是实时信息）
-  const hasRealTimeData = routes.some(r => r.realTimeData?.dataTimestamp);
+  // 实时数据标识：只有真拿到实时数据（dataBasis=realtime）才能说「实时」，
+  // 全是估算时不给这条提示，由 ESTIMATE_TIP 说明口径
+  const hasRealTimeData = routes.some(r => r.realTimeData?.dataBasis === 'realtime');
+  const hasEstimate = routes.some(r => r.realTimeData?.dataBasis === 'estimate');
   if (hasRealTimeData) {
     const timestamp = new Date().toLocaleString('zh-CN', { 
       timeZone: 'Asia/Hong_Kong',
       hour: '2-digit',
       minute: '2-digit'
     });
-    tips.push(`✅ 以下路线已查询实时数据（更新时间：${timestamp}），包含实时到站时间和总时长`);
+    tips.push(
+      hasEstimate
+        ? `✅ 部分路线已获取实时到站数据（更新时间：${timestamp}），标注「估算」的除外`
+        : `✅ 以下路线已查询实时数据（更新时间：${timestamp}），包含实时到站时间和总时长`
+    );
+  }
+  if (hasEstimate) {
+    tips.push(ESTIMATE_TIP);
   }
 
   // 高峰时段提示（Requirements 12.1）
@@ -489,7 +499,12 @@ export function transitCandidateToRouteOption(
                  : mode === 'tram' ? '电车'
                  : mode === 'ptram' ? '山顶缆车'
                  : mode === 'gmb' ? '小巴'
-                 : `${cand.company} 巴士`;
+                 : companyLabel(cand.company);
+
+  // 候选自带候车数据时也在乘坐步骤里说明口径（实时/估算）
+  const waitText = cand.realTimeETA && cand.realTimeETA.nextBusMinutes >= 0
+    ? `，下一班${formatNextBusArrival(cand.realTimeETA.nextBusMinutes, cand.realTimeETA.dataSource)}`
+    : '';
 
   // RouteStep 的 type 约束：walk/bus/mtr/gmb/tram/ferry
   const stepType: RouteStep['type'] =
@@ -544,17 +559,17 @@ export function transitCandidateToRouteOption(
   } else {
     const rideDesc = nextBusInfo
       ? mode === 'mtr'
-        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班约 ${nextBusInfo.minutesAway} 分钟后到达 🚇`
-        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班约 ${nextBusInfo.minutesAway} 分钟后到达`
+        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达 🚇`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达`
       : mode === 'mtr'
-        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）`
-        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"`;
+        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）${waitText}`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"${waitText}`;
 
     steps.push({
       type: stepType,
       description: cand.serviceNote ? `${rideDesc}。${cand.serviceNote}` : rideDesc,
       route: cand.route,
-      routeDetail: `${cand.company} ${cand.route} ${cand.bound === 'O' ? '去程' : '回程'}`,
+      routeDetail: `${companyLabel(cand.company)} ${cand.route} ${cand.bound === 'O' ? '去程' : '回程'}`,
       from: cand.boardStopName,
       to: cand.alightStopName,
       duration: rideMin + waitMin,
@@ -582,6 +597,7 @@ export function transitCandidateToRouteOption(
     type: mtrLegs && mtrLegs.length > 1 ? 'transfer' : 'direct',
     steps,
     estimatedCost: typeof cand.fare === 'number' ? cand.fare : 0,
+    fareNote: fareNoteFor(mode, cand.fare),
   };
 }
 

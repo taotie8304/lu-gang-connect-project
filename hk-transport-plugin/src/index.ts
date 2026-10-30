@@ -15,6 +15,7 @@ import {
 } from './integrator';
 import { planPublicTransit, isHongKongDaytime } from './planner';
 import { findStopByName } from './stop-db';
+import { formatNextBusArrival, isEstimatedEta } from './eta';
 import type { ResponseMetadata, RouteOption, ParsedQuestion, TransitCandidate } from './types';
 
 // ============================================================
@@ -60,10 +61,12 @@ export const RouteOptionSchema = z.object({
   estimatedCost: z.number(),
   // 鲁港通 - 补齐与 types.ts RouteOption 一致的字段，避免新插件按 outputSchema 剥离推荐标记与实时数据
   recommended: z.boolean().optional(),
+  fareNote: z.string().optional().describe('票价口径（巴士/小巴为全程票价，中途上车按分段收费）'),
   realTimeData: z.object({
     nextBusArrival: z.string(),
     totalTravelTime: z.number(),
     dataTimestamp: z.string(),
+    dataBasis: z.enum(['realtime', 'estimate']).optional().describe('候车时间依据：实时到站或静态估算'),
   }).optional(),
 });
 
@@ -109,6 +112,34 @@ export const OutputType = z.object({
   error: z.string().optional().describe('错误信息（部分失败时）'),
   _debug: z.array(z.string()).optional().describe('调试诊断信息（仅管理员）'),
 });
+
+// ============================================================
+// 输出层：候车措辞按数据来源区分（估算不得伪装实时）
+// ============================================================
+
+export function buildRealTimeData(
+  eta: NonNullable<TransitCandidate['realTimeETA']>
+): NonNullable<RouteOption['realTimeData']> {
+  return {
+    nextBusArrival: formatNextBusArrival(eta.nextBusMinutes, eta.dataSource),
+    totalTravelTime: eta.totalMinutes,
+    dataTimestamp: eta.timestamp,
+    dataBasis: isEstimatedEta(eta.dataSource) ? 'estimate' : 'realtime',
+  };
+}
+
+/** 候选路线 → 输出路线（首条标记推荐；候车时间按实时/估算分档措辞） */
+export function buildRouteOptions(candidates: TransitCandidate[]): RouteOption[] {
+  return candidates.map((cand, index) => {
+    const routeOption = transitCandidateToRouteOption(cand);
+    if (index === 0) routeOption.recommended = true;
+    if (cand.realTimeETA) {
+      routeOption.realTimeData = buildRealTimeData(cand.realTimeETA);
+      routeOption.totalTime = cand.realTimeETA.totalMinutes;
+    }
+    return routeOption;
+  });
+}
 
 // ============================================================
 // 候选路线统一排序（鲁港通 - 深夜排序：白天把通宵线沉底）
@@ -334,33 +365,7 @@ export async function tool(
         sortEnrichedCandidates(enrichedCandidates);
         
         // 转换为 RouteOption 并标记推荐路线
-        for (let i = 0; i < enrichedCandidates.length; i++) {
-          const cand = enrichedCandidates[i];
-          const routeOption = transitCandidateToRouteOption(cand);
-          
-          // 第一条路线标记为推荐
-          if (i === 0) {
-            routeOption.recommended = true;
-          }
-          
-          // 添加实时数据到输出
-          if (cand.realTimeETA) {
-            const { nextBusMinutes, totalMinutes, dataSource, timestamp } = cand.realTimeETA;
-            routeOption.realTimeData = {
-              nextBusArrival: nextBusMinutes === 0 
-                ? '即将到达' 
-                : nextBusMinutes === -1 
-                  ? '暂无数据' 
-                  : `${nextBusMinutes}分钟后`,
-              totalTravelTime: totalMinutes,
-              dataTimestamp: timestamp,
-            };
-            // 更新 totalTime 为实时计算值
-            routeOption.totalTime = totalMinutes;
-          }
-          
-          routeOptions.push(routeOption);
-        }
+        routeOptions.push(...buildRouteOptions(enrichedCandidates));
         
         diagLines.push(`推荐路线: ${enrichedCandidates[0]?.route} (总时长 ${enrichedCandidates[0]?.realTimeETA?.totalMinutes}分钟)`);
       }
@@ -403,20 +408,7 @@ export async function tool(
             apiStatus['transit-planner'] = 'success';
             const enrichedRetry = await enrichCandidatesWithRealTimeETA(retryResult.candidates);
             sortEnrichedCandidates(enrichedRetry);
-            for (let i = 0; i < enrichedRetry.length; i++) {
-              const cand = enrichedRetry[i];
-              const ro = transitCandidateToRouteOption(cand);
-              if (i === 0) ro.recommended = true;
-              if (cand.realTimeETA) {
-                ro.realTimeData = {
-                  nextBusArrival: cand.realTimeETA.nextBusMinutes === 0 ? '即将到达' : `${cand.realTimeETA.nextBusMinutes}分钟后`,
-                  totalTravelTime: cand.realTimeETA.totalMinutes,
-                  dataTimestamp: cand.realTimeETA.timestamp,
-                };
-                ro.totalTime = cand.realTimeETA.totalMinutes;
-              }
-              routeOptions.push(ro);
-            }
+            routeOptions.push(...buildRouteOptions(enrichedRetry));
             diagLines.push(`地名扩展成功: 找到 ${routeOptions.length} 条路线`);
             break;
           }

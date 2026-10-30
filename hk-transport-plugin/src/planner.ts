@@ -15,6 +15,7 @@ import { haversineDistanceM } from './fetcher';
 import { TRANSIT_DATA, type TransitStop } from './data/transit';
 import { planMtrJourney } from './data/mtr-network';
 import { estimateRideMinutes, segmentRunMinutes } from './journey-time';
+import { routeServiceHint } from './eta';
 
 const NEARBY_RADIUS_M = 1200;
 const MAX_NEARBY_STOPS = 15;
@@ -469,7 +470,9 @@ function findDirectRoutes(
       officialRouteMinutes: meta.time,
       legKm: Math.round(legKm * 10) / 10,
       totalKm: Math.round(totalKm * 10) / 10,
-      serviceNote: isOvernight ? '通宵线（约 00:30–05:00 提供服务），日间不适用' : undefined,
+      serviceNote: isOvernight
+        ? '通宵线（约 00:30–05:00 提供服务），日间不适用'
+        : routeServiceHint(meta.name, meta.mode),
     });
   }
 
