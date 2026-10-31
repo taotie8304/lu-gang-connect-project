@@ -43,8 +43,8 @@ catalogs:
       specifier: 0.0.2
       version: 0.0.2
     '@llamaindex/liteparse-wasm':
-      specifier: 2.0.8
-      version: 2.0.8
+      specifier: 2.17.0
+      version: 2.17.0
     '@modelcontextprotocol/sdk':
       specifier: ^1
       version: 1.26.0
@@ -580,7 +580,7 @@ importers:
         version: link:../global
       '@llamaindex/liteparse-wasm':
         specifier: 'catalog:'
-        version: 2.0.8
+        version: 2.17.0
       '@mariozechner/pi-agent-core':
         specifier: ^0.67.3
         version: 0.67.3(@modelcontextprotocol/sdk@1.26.0(zod@4.1.12))(bufferutil@4.1.0)(utf-8-validate@5.0.10)(ws@5.2.7(bufferutil@4.1.0)(utf-8-validate@5.0.10))(zod@4.1.12)
@@ -1014,7 +1014,7 @@ importers:
         version: 3.0.6
       '@llamaindex/liteparse-wasm':
         specifier: 'catalog:'
-        version: 2.0.8
+        version: 2.17.0
       '@modelcontextprotocol/sdk':
         specifier: 'catalog:'
         version: 1.26.0(zod@4.1.12)
@@ -4050,8 +4050,8 @@ packages:
   '@lezer/yaml@1.0.3':
     resolution: {integrity: sha512-GuBLekbw9jDBDhGur82nuwkxKQ+a3W5H0GfaAthDXcAu+XdpS43VlnxA9E9hllkpSP5ellRDKjLLj7Lu9Wr6xA==}
 
-  '@llamaindex/liteparse-wasm@2.0.8':
-    resolution: {integrity: sha512-wz5Cw0JISgzv0VNUjw913bopXDI7gdB24rIeTt+IwPR4if18MtjI9Sb/EbgZu6TS5V5v3pZ4U5lBg6T/aO8nvw==}
+  '@llamaindex/liteparse-wasm@2.17.0':
+    resolution: {integrity: sha512-BHZgev1NEiqr2jU1R6rbCqFJQoLdAlRvA5slEWKeOAhH9W2WFHeJENIU/g0smoS06qdDFs7uDrj6NGtJ+ae43g==}
     engines: {node: '>=18.0.0'}
 
   '@logtape/logtape@2.0.2':
@@ -17675,7 +17675,7 @@ snapshots:
       '@lezer/highlight': 1.2.1
       '@lezer/lr': 1.4.2
 
-  '@llamaindex/liteparse-wasm@2.0.8': {}
+  '@llamaindex/liteparse-wasm@2.17.0': {}
 
   '@logtape/logtape@2.0.2': {}
 
