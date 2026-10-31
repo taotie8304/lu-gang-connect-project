@@ -49,7 +49,55 @@ const buildImageOnlyPdf = (width = 8, height = 8) => {
   return Buffer.concat([header, body, Buffer.from(xref + trailer, 'latin1')]);
 };
 
+const buildTextPdf = () => {
+  const content =
+    'BT /F1 24 Tf 72 700 Td (Hello Lugang OCR test line one) Tj 0 -32 Td (Second line of text content for testing) Tj ET';
+  const header = '%PDF-1.4\n%\xE2\xE3\xCF\xD3\n';
+  const parts: string[] = [];
+  const offsets: Record<number, number> = {};
+
+  const addObject = (num: number, dict: string, stream?: string) => {
+    offsets[num] = Buffer.byteLength(parts.join(''), 'latin1');
+    parts.push(`${num} 0 obj\n${dict}\n`);
+    if (stream !== undefined) parts.push(`stream\n${stream}\nendstream\n`);
+    parts.push('endobj\n');
+  };
+
+  addObject(1, '<< /Type /Catalog /Pages 2 0 R >>');
+  addObject(2, '<< /Type /Pages /Kids [3 0 R] /Count 1 >>');
+  addObject(
+    3,
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>'
+  );
+  addObject(4, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+  addObject(5, `<< /Length ${content.length} >>`, content);
+
+  const body = Buffer.from(parts.join(''), 'latin1');
+  const xrefOffset = Buffer.byteLength(header, 'latin1') + body.length;
+  let xref = 'xref\n0 6\n0000000000 65535 f \n';
+  for (let n = 1; n <= 5; n++) {
+    xref += `${String(offsets[n] + Buffer.byteLength(header, 'latin1')).padStart(10, '0')} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
+
+  return Buffer.concat([Buffer.from(header, 'latin1'), body, Buffer.from(xref + trailer, 'latin1')]);
+};
+
 describe('readPdfByLiteParse 真实 WASM OCR', () => {
+  it(
+    '带文字层的 PDF 在开启 OCR 回调时正常解析文字层',
+    async () => {
+      const result = await readPdfByLiteParse(
+        { extension: 'pdf', encoding: 'utf-8', buffer: buildTextPdf() },
+        { ocr: async () => '这里不应被使用' }
+      );
+
+      expect(result.rawText).toContain('Hello Lugang OCR test line one');
+      expect(result.rawText).not.toContain('这里不应被使用');
+    },
+    60000
+  );
+
   it(
     '纯图片 PDF 经 OCR 回调识别后合并进文本',
     async () => {
