@@ -31,6 +31,43 @@ const VLM_OCR_PROMPT = `请提取这张图片中出现的全部文字内容。
 export const isVlmOcrAvailable = () => Boolean(getOcrVlmModel());
 
 /**
+ * 鲁港通 - 识别空白页时模型可能吐出版式 JSON（rotate_rect + text），
+ * 它不是图片里的真实文字，必须按无文字处理，避免把幻觉内容交给下游。
+ */
+const isLayoutJsonNoise = (text: string) => {
+  const fenced = /^```(?:json)?\s*([\s\S]*?)```$/i.exec(text);
+  const candidate = (fenced ? fenced[1] : text).trim();
+  if (!candidate.startsWith('[') && !candidate.startsWith('{')) return false;
+
+  try {
+    const parsed: unknown = JSON.parse(candidate);
+    const items = Array.isArray(parsed) ? parsed : [parsed];
+    return (
+      items.length > 0 &&
+      items.every(
+        (item) =>
+          item !== null &&
+          typeof item === 'object' &&
+          'rotate_rect' in item &&
+          'text' in item
+      )
+    );
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * 鲁港通 - 归一化读图结果：空内容、无文字标记与版式 JSON 统一视为读不出
+ */
+const normalizeOcrText = (raw: string) => {
+  const text = raw.trim();
+  if (!text || text.toUpperCase() === VLM_OCR_EMPTY_MARKER) return '';
+  if (isLayoutJsonNoise(text)) return '';
+  return text;
+};
+
+/**
  * 鲁港通 - 调用视觉模型识别图片中的文字内容。
  *
  * 任何异常都归一化为空字符串，由调用方决定是否向用户诚实说明无法识别；
@@ -75,10 +112,9 @@ export const recognizeImageWithVlm = async ({
 
     const rawContent = (response as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]
       ?.message?.content;
-    const text = typeof rawContent === 'string' ? rawContent.trim() : '';
+    const text = typeof rawContent === 'string' ? rawContent : '';
 
-    if (!text || text.toUpperCase() === VLM_OCR_EMPTY_MARKER) return '';
-    return text;
+    return normalizeOcrText(text);
   } catch (error) {
     logger.warn('VLM OCR failed', { model: modelData.model, error });
     return '';

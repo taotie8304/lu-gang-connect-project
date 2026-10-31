@@ -105,6 +105,47 @@ describe('recognizeImageWithVlm', () => {
     expect(result).toBe('');
   });
 
+  it('模型返回版式 JSON 噪声时视为没有文字', async () => {
+    mockCreateChatCompletion.mockResolvedValueOnce(
+      createCompletionResponse(
+        '```json\n[{"rotate_rect": [527, 328, 85, 172, 90], "text": "100%"}]\n```'
+      )
+    );
+
+    const result = await recognizeImageWithVlm({
+      buffer: Buffer.from('x'),
+      mime: 'image/png'
+    });
+
+    expect(result).toBe('');
+  });
+
+  it('模型返回无围栏版式 JSON 时也视为没有文字', async () => {
+    mockCreateChatCompletion.mockResolvedValueOnce(
+      createCompletionResponse('[{"rotate_rect": [1, 2, 3, 4, 90], "text": "O"}]')
+    );
+
+    const result = await recognizeImageWithVlm({
+      buffer: Buffer.from('x'),
+      mime: 'image/png'
+    });
+
+    expect(result).toBe('');
+  });
+
+  it('普通 JSON 内容不被当作版式噪声丢弃', async () => {
+    mockCreateChatCompletion.mockResolvedValueOnce(
+      createCompletionResponse('{"name": "Lugang", "version": 3}')
+    );
+
+    const result = await recognizeImageWithVlm({
+      buffer: Buffer.from('x'),
+      mime: 'image/png'
+    });
+
+    expect(result).toBe('{"name": "Lugang", "version": 3}');
+  });
+
   it('识别请求失败时返回空文本而不是抛出', async () => {
     mockCreateChatCompletion.mockRejectedValueOnce(new Error('request timeout'));
 
