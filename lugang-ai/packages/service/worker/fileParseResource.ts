@@ -37,14 +37,14 @@ export type FileParseMemoryState = {
 };
 
 /**
- * 使用 Node.js 可见的 CPU 并行度作为 readFile worker 硬上限。
+ * 使用 Node.js 可见的 CPU 并行度作为 readFile worker 上限，并封顶 3 路。
  *
- * `availableParallelism` 已考虑容器 CPU 配额，因此无需再叠加固定上限或人为扣减 CPU。
- * 内存策略负责控制实际同时执行的任务数；此处只保证异常输入时至少保留一个 worker 槽位。
+ * 鲁港通 - G5-2：单 worker 解析 Office/PDF 时常驻约 200 MB，8 核机器并发 8 路会与主线程
+ * 争抢内存并拖慢全部请求；封顶 3 路后排队时间由轻量通道吸收网页/纯文本，重解析仍可并行。
  */
 export const getFileParseMaxWorkers = (parallelism = getSystemCpuInfo().availableCpuCount) => {
   if (!Number.isFinite(parallelism)) return 1;
-  return Math.max(1, Math.floor(parallelism));
+  return Math.min(3, Math.max(1, Math.floor(parallelism)));
 };
 
 /** 根据容器约束计算系统安全保留内存，结果始终位于 256 MiB 到 1 GiB。 */

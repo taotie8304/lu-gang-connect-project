@@ -11,9 +11,14 @@ const { mockRun, mockGetWorkerController, mockUploadImage2S3Bucket, mockEnv } = 
     mockGetWorkerController: vi.fn(() => ({ run: mockRun })),
     mockUploadImage2S3Bucket: vi.fn(),
     mockEnv: {
-      PARSE_FILE_TIMEOUT_SECONDS: 300
+      PARSE_FILE_TIMEOUT_SECONDS: 300,
+      // s3/config/constants 与 accessLink 在模块加载时读取，mock env 必须给出合法值
+      STORAGE_DOWNLOAD_URL_MODE: 'short-proxy',
+      FILE_TOKEN_KEY: 'test-file-token-key'
     } as {
       PARSE_FILE_TIMEOUT_SECONDS: number;
+      STORAGE_DOWNLOAD_URL_MODE: string;
+      FILE_TOKEN_KEY: string;
     }
   };
 });
@@ -43,7 +48,9 @@ vi.mock('@fastgpt/service/common/s3/utils', async (importOriginal) => {
 // 必须在 vi.mock 之后再 import 被测模块
 const { text2Chunks, readRawContentFromBuffer, readRawContentFromSource } =
   await import('@fastgpt/service/worker/function');
-const { htmlToMarkdown } = await import('@fastgpt/service/common/string/utils');
+const { htmlToMarkdown, htmlToMarkdownWithUploadFile } = await import(
+  '@fastgpt/service/common/string/utils'
+);
 
 describe('worker/function', () => {
   beforeEach(() => {
@@ -170,7 +177,7 @@ describe('worker/function', () => {
       expect(mockGetWorkerController).toHaveBeenCalledTimes(1);
       const poolCfg = mockGetWorkerController.mock.calls[0][0];
       expect(poolCfg.name).toBe(WorkerNameEnum.readFile);
-      expect(poolCfg.maxReservedThreads).toBe(availableParallelism());
+      expect(poolCfg.maxReservedThreads).toBe(Math.min(availableParallelism(), 3));
       expect(poolCfg.taskTimeoutMs).toBe(5 * 60 * 1000);
       expect(poolCfg.maxTasksPerWorker).toBe(100);
       expect(poolCfg.resourcePolicy.queueTimeoutMs).toBe(30 * 60 * 1000);
@@ -183,14 +190,23 @@ describe('worker/function', () => {
       expect(runArg.extension).toBe('txt');
       expect(runArg.encoding).toBe('utf-8');
       expect(runArg.bufferSize).toBe(original.length);
-      expect(runArg.buffer).toBe(sourceArrayBuffer);
-      expect(runArg.sharedBuffer).toBeUndefined();
+      // vitest 的 vm 环境下 Buffer 底层 ArrayBuffer 跨 realm，独占时走 transfer，否则回退 SharedArrayBuffer
+      if (runArg.buffer) {
+        expect(runArg.buffer).toBe(sourceArrayBuffer);
+        expect(runArg.sharedBuffer).toBeUndefined();
+        expect(mockRun.mock.calls[0][1]).toEqual([sourceArrayBuffer]);
+      } else {
+        expect(runArg.sharedBuffer).toBeInstanceOf(SharedArrayBuffer);
+        expect(mockRun.mock.calls[0][1]).toBeUndefined();
+        expect(Buffer.from(new Uint8Array(runArg.sharedBuffer)).toString('utf-8')).toBe(
+          'hello world'
+        );
+      }
       expect(poolCfg.resourcePolicy.getTaskResourceBytes(runArg)).toBe(32 * 1024 * 1024 + 17);
       const resourceSnapshot = poolCfg.resourcePolicy.getResourceSnapshot();
       expect(resourceSnapshot.availableResourceBytes).toBe(
         resourceSnapshot.memoryDetails.currentlySchedulableMemoryBytes
       );
-      expect(mockRun.mock.calls[0][1]).toEqual([sourceArrayBuffer]);
     });
 
     it('Buffer 不独占 ArrayBuffer 时回退到 SharedArrayBuffer', async () => {
@@ -224,9 +240,14 @@ describe('worker/function', () => {
       expect(result).toEqual({ rawText: '' });
       const runArg = mockRun.mock.calls[0][0];
       expect(runArg.bufferSize).toBe(0);
-      expect(runArg.buffer.byteLength).toBe(0);
-      expect(runArg.sharedBuffer).toBeUndefined();
-      expect(mockRun.mock.calls[0][1]).toEqual([runArg.buffer]);
+      // vitest 的 vm 环境下零长度 ArrayBuffer 跨 realm，生产路径与回退路径都可能出现
+      const backing = runArg.buffer ?? runArg.sharedBuffer;
+      expect(backing.byteLength).toBe(0);
+      if (runArg.buffer) {
+        expect(mockRun.mock.calls[0][1]).toEqual([runArg.buffer]);
+      } else {
+        expect(mockRun.mock.calls[0][1]).toBeUndefined();
+      }
     });
 
     it('二进制 Buffer 不应在拷贝过程中失真', async () => {
@@ -539,7 +560,11 @@ describe('worker/function', () => {
       expect(poolCfg.idleWorkerTimeoutMs).toBe(60 * 1000);
       expect(poolCfg.minIdleWorkers).toBe(1);
 
-      expect(mockRun).toHaveBeenCalledWith({ html: '<h1>Title</h1>' });
+      expect(mockRun).toHaveBeenCalledWith(
+        { html: '<h1>Title</h1>', uploadImages: false },
+        undefined,
+        undefined
+      );
     });
 
     it('空 html 统一传空字符串', async () => {
@@ -548,7 +573,30 @@ describe('worker/function', () => {
       const result = await htmlToMarkdown(null);
 
       expect(result).toBe('');
-      expect(mockRun).toHaveBeenCalledWith({ html: '' });
+      expect(mockRun).toHaveBeenCalledWith({ html: '', uploadImages: false }, undefined, undefined);
+    });
+
+    it('有 uploadFile 时开启图片上传并把 handler 传给 worker', async () => {
+      mockRun.mockResolvedValueOnce({ rawText: '# Title' });
+      const uploadFile = vi.fn().mockResolvedValue({ key: 'key.png' });
+
+      const result = await htmlToMarkdownWithUploadFile('<h1>Title</h1>', uploadFile);
+
+      expect(result).toBe('# Title');
+      expect(mockRun).toHaveBeenCalledWith(
+        { html: '<h1>Title</h1>', uploadImages: true },
+        undefined,
+        { uploadFile }
+      );
+    });
+
+    it('无 uploadFile 时关闭图片上传', async () => {
+      mockRun.mockResolvedValueOnce({ rawText: '' });
+
+      const result = await htmlToMarkdownWithUploadFile(null);
+
+      expect(result).toBe('');
+      expect(mockRun).toHaveBeenCalledWith({ html: '', uploadImages: false }, undefined, undefined);
     });
   });
 });

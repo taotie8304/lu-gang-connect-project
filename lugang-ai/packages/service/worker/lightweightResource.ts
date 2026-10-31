@@ -1,6 +1,13 @@
 import { getSystemCpuInfo } from '../common/system/resource';
-import { fileParseResourceConstants, getFileParseMemoryState } from './fileParseResource';
+import {
+  fileParseResourceConstants,
+  getFileParseMemoryState,
+  type FileParseMemoryState
+} from './fileParseResource';
 import type { WorkerPoolResourcePolicy } from './utils';
+
+/** 轻量 worker（仅 turndown + 文本解码，常驻约 60 MB）所需的独立安全余量。 */
+export const LIGHTWEIGHT_SAFETY_RESERVE_BYTES = 256 * 1024 * 1024;
 
 export const lightweightWorkerResourceConstants = {
   maxWorkers: 5,
@@ -26,6 +33,25 @@ export const getLightweightWorkerMaxWorkers = (
 };
 
 /**
+ * 把文件解析的内存快照换算为轻量通道口径。
+ *
+ * 重解析池为 Office/PDF 解析预留 1 GiB，网页与纯文本无需这部分余量；轻量任务只保留
+ * 256 MiB 垫底，避免在可用内存充足时仍排队等待重解析资源。
+ */
+export const getLightweightMemoryState = (
+  state: FileParseMemoryState = getFileParseMemoryState()
+): FileParseMemoryState => {
+  const safetyReserveBytes = Math.min(state.safetyReserveBytes, LIGHTWEIGHT_SAFETY_RESERVE_BYTES);
+
+  return {
+    ...state,
+    safetyReserveBytes,
+    maximumSafeTaskMemoryBytes: Math.max(0, state.constrainedMemoryBytes - safetyReserveBytes),
+    currentlySchedulableMemoryBytes: Math.max(0, state.availableMemoryBytes - safetyReserveBytes)
+  };
+};
+
+/**
  * 轻量转换任务不根据输入大小估算峰值，只在系统安全预留之外仍有可调度内存时启动。
  * 当前无余量时任务留在 WorkerPool 队列，由任务完成事件或定时轮询再次尝试。
  */
@@ -34,7 +60,7 @@ export const createLightweightWorkerResourcePolicy = <
 >(): WorkerPoolResourcePolicy<Props> => ({
   getTaskResourceBytes: () => 0,
   getResourceSnapshot: () => {
-    const memoryDetails = getFileParseMemoryState();
+    const memoryDetails = getLightweightMemoryState();
     return {
       availableResourceBytes: memoryDetails.currentlySchedulableMemoryBytes,
       maximumTaskResourceBytes: memoryDetails.maximumSafeTaskMemoryBytes,

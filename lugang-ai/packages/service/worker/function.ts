@@ -80,7 +80,10 @@ const getReadFileWorker = () =>
     minIdleWorkers: fileParseResourceConstants.minIdleWorkers
   });
 
-const createUploadFileHandler = (imageKeyOptions?: ReadFileWorkerProps['imageKeyOptions']) =>
+/** 供 readFile worker 与主线程轻量通道共用的图片上传处理器；未配置 prefix 时返回 undefined。 */
+export const createUploadFileHandler = (
+  imageKeyOptions?: ReadFileWorkerProps['imageKeyOptions']
+) =>
   imageKeyOptions?.prefix
     ? async ({ name, mime, buffer }: { name: string; mime: string; buffer: ArrayBuffer }) => {
         const mimetype = normalizeMimeType(mime);

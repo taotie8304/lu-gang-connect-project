@@ -16,12 +16,17 @@ describe('worker/fileParseResource getFileParseMaxWorkers', () => {
   it.each([
     [1, 1],
     [2, 2],
-    [8, 8],
-    [64, 64],
+    [3, 3],
+    [8, 3],
+    [64, 3],
     [0, 1],
     [Number.NaN, 1]
   ])('可用并行度 %i 时返回 %i 个 worker', (parallelism, expected) => {
     expect(getFileParseMaxWorkers(parallelism)).toBe(expected);
+  });
+
+  it('重解析池并发封顶 3，避免 5 路批量读取叠加约 200 MiB 的单 worker 内存', () => {
+    expect(getFileParseMaxWorkers(16)).toBe(3);
   });
 });
 

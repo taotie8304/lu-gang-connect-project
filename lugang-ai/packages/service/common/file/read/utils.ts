@@ -6,7 +6,11 @@ import { createPdfParseUsage } from '../../../support/wallet/usage/controller';
 import { useDoc2xServer } from '../../../thirdProvider/doc2x';
 import { useTextinServer } from '../../../thirdProvider/textin';
 import { useSomarkServer } from '../../../thirdProvider/somark';
-import { readRawContentFromBuffer, readRawContentFromSource } from '../../../worker/function';
+import {
+  createUploadFileHandler,
+  readRawContentFromBuffer,
+  readRawContentFromSource
+} from '../../../worker/function';
 import { getLogger, LogCategories } from '../../logger';
 import { getImageBuffer } from '../image/utils';
 import { uploadParsedPdfImage } from './image';
@@ -21,6 +25,11 @@ import {
   resolveFileSourceEncoding,
   resolveFileSourceExtension
 } from './source';
+import {
+  isLightweightTextExtension,
+  isLightweightTextParse,
+  readLightweightTextContent
+} from './lightweight';
 
 const logger = getLogger(LogCategories.MODULE.DATASET.FILE);
 
@@ -68,8 +77,10 @@ export const readFileContentByBuffer = async ({
   });
 
 /**
- * 从轻量文件来源解析内容。系统解析会把 source 直接交给 worker pool，只有已确认启用的自定义 PDF
- * Provider 才在调用 Provider 前于主线程物化。
+ * 从轻量文件来源解析内容。
+ *
+ * 网页/纯文本在 4 MiB 以内优先走主线程轻量通道；其余情况把 source 直接交给 worker pool，
+ * 只有已确认启用的自定义 PDF Provider 才在调用 Provider 前于主线程物化。
  */
 export const readFileContentBySource = async ({
   teamId,
@@ -194,15 +205,77 @@ const readFileContent = async ({
         : undefined
     });
 
-  const systemParse = () =>
-    source
-      ? readRawContentFromSource({ source, imageKeyOptions })
-      : readRawContentFromBuffer({
-          extension,
-          encoding: initialEncoding,
-          buffer: initialBuffer!,
-          imageKeyOptions
-        });
+  /**
+   * 主线程轻量通道：网页/纯文本不超过 4 MiB 时避开重解析池的内存准入队列。
+   *
+   * 返回 undefined 表示继续走重解析通道；此时若已物化，systemParse 会复用同一份 buffer，
+   * 不再重复下载。
+   */
+  const parseLightweightText = async (): Promise<ReadFileResponse | undefined> => {
+    const uploadFile = createUploadFileHandler(imageKeyOptions);
+
+    if (initialBuffer) {
+      if (!isLightweightTextParse({ extension, sizeBytes: initialBuffer.length })) {
+        return undefined;
+      }
+      return readLightweightTextContent({
+        extension,
+        buffer: initialBuffer,
+        encoding: initialEncoding,
+        uploadFile
+      });
+    }
+
+    const fileSource = source!;
+    if (fileSource.kind === 's3') {
+      // S3 大小可信：超阈值直接留在重解析池，避免为了判定而整份下载。
+      if (!isLightweightTextParse({ extension, sizeBytes: fileSource.sizeBytes })) {
+        return undefined;
+      }
+    } else if (extension && !isLightweightTextExtension(extension)) {
+      // 外链大小未知：声明为已知重格式时保持 worker 流式下载，不在此提前物化。
+      return undefined;
+    }
+
+    const materialized = await getMaterializedFile();
+    if (
+      !isLightweightTextParse({
+        extension: materialized.extension,
+        sizeBytes: materialized.buffer.length
+      })
+    ) {
+      return undefined;
+    }
+
+    const { rawText } = await readLightweightTextContent({
+      extension: materialized.extension,
+      buffer: materialized.buffer,
+      encoding: materialized.encoding,
+      uploadFile
+    });
+
+    return {
+      rawText,
+      sourceMetadata: materialized.metadata
+        ? { ...materialized.metadata, extension: materialized.extension }
+        : undefined
+    };
+  };
+
+  const systemParse = async (): Promise<ReadFileResponse> => {
+    // 来源尚未物化时直接交给 worker，由 worker 请求时在主线程物化并执行硬限制。
+    if (source && !materializedPromise) {
+      return readRawContentFromSource({ source, imageKeyOptions });
+    }
+
+    const materialized = await getMaterializedFile();
+    return readRawContentFromBuffer({
+      extension: materialized.extension,
+      encoding: materialized.encoding,
+      buffer: materialized.buffer,
+      imageKeyOptions
+    });
+  };
 
   const reportPdfParseUsage = (pages: number) => {
     if (onPdfParseUsage) {
@@ -364,10 +437,12 @@ const readFileContent = async ({
   logger.debug('Start parsing file', { extension });
 
   const parseResult = await (async () => {
-    if (extension === 'pdf') {
-      return await pdfParseFn();
+    if (extension !== 'pdf') {
+      const lightweightResult = await parseLightweightText();
+      if (lightweightResult) return lightweightResult;
+      return await systemParse();
     }
-    return await systemParse();
+    return await pdfParseFn();
   })();
   const { rawText, formatText, tableInfo } = parseResult;
   const sourceMetadata =

@@ -4,6 +4,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockReadRawContentFromBuffer,
   mockReadRawContentFromSource,
+  mockReadLightweightTextContent,
+  mockCreateUploadFileHandler,
   mockAxiosPost,
   mockSomarkParsePDF,
   mockDoc2xParsePDF,
@@ -39,6 +41,12 @@ const {
     rawText: 'source-content',
     formatText: 'source-content'
   }),
+  mockReadLightweightTextContent: vi.fn(
+    async ({ buffer, encoding }: { buffer: Buffer; encoding?: string }) => ({
+      rawText: buffer.toString((encoding as BufferEncoding) || 'utf-8')
+    })
+  ),
+  mockCreateUploadFileHandler: vi.fn(() => undefined),
   mockAxiosPost: vi.fn(),
   mockSomarkParsePDF: vi.fn().mockResolvedValue({
     pages: 2,
@@ -59,13 +67,31 @@ const {
   }),
   mockCreatePdfParseUsage: vi.fn(),
   mockEnv: {
-    PARSE_FILE_TIMEOUT_SECONDS: 600
+    PARSE_FILE_TIMEOUT_SECONDS: 600,
+    // s3/config/constants 与 accessLink 在模块加载时读取，mock env 必须给出合法值
+    STORAGE_DOWNLOAD_URL_MODE: 'short-proxy',
+    FILE_TOKEN_KEY: 'test-file-token-key'
   }
 }));
 
 vi.mock('@fastgpt/service/worker/function', () => ({
+  createUploadFileHandler: (...args: any[]) => (mockCreateUploadFileHandler as any)(...args),
   readRawContentFromBuffer: (...args: any[]) => mockReadRawContentFromBuffer(...args),
   readRawContentFromSource: (...args: any[]) => mockReadRawContentFromSource(...args)
+}));
+
+vi.mock('@fastgpt/service/common/file/read/lightweight', async (importOriginal) => {
+  const mod =
+    await importOriginal<typeof import('@fastgpt/service/common/file/read/lightweight')>();
+  return {
+    ...mod,
+    readLightweightTextContent: (...args: any[]) => (mockReadLightweightTextContent as any)(...args)
+  };
+});
+
+vi.mock('@fastgpt/service/common/string/utils', () => ({
+  htmlToMarkdown: vi.fn(async (html?: string | null) => html || ''),
+  htmlToMarkdownWithUploadFile: vi.fn(async (html: string) => html)
 }));
 
 vi.mock('@fastgpt/service/common/api/axios', () => ({
@@ -140,11 +166,33 @@ describe('readFileContentByBuffer', () => {
     });
 
     expect(result.rawText).toBe('Hello from buffer');
+    // 鲁港通 - G5-2：纯文本走轻量通道，不再提交重解析 worker
+    expect(mockReadRawContentFromBuffer).not.toHaveBeenCalled();
+    expect(mockReadLightweightTextContent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        extension: 'txt'
+      })
+    );
+  });
+
+  it('超过阈值的纯文本仍提交重解析 worker', async () => {
+    const buffer = Buffer.alloc(4 * 1024 * 1024 + 1, 0x61);
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'txt',
+      buffer,
+      encoding: 'utf-8'
+    });
+
+    expect(mockReadLightweightTextContent).not.toHaveBeenCalled();
     expect(mockReadRawContentFromBuffer).toHaveBeenLastCalledWith(
       expect.objectContaining({
         extension: 'txt'
       })
     );
+    expect(result.rawText).toBeDefined();
   });
 
   it('should preserve table information returned by the readFile worker', async () => {
@@ -167,17 +215,31 @@ describe('readFileContentByBuffer', () => {
   });
 
   it('should use system parse for non-pdf files', async () => {
-    const buffer = Buffer.from('markdown content');
+    const buffer = Buffer.from('docx content');
 
     const result = await readFileContentByBuffer({
       teamId,
       tmbId,
-      extension: 'md',
+      extension: 'docx',
       buffer,
       encoding: 'utf-8'
     });
 
-    expect(result.rawText).toBe('parsed-md-content');
+    expect(result.rawText).toBe('parsed-docx-content');
+  });
+
+  it('md 也走轻量通道', async () => {
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'md',
+      buffer: Buffer.from('# 标题'),
+      encoding: 'utf-8'
+    });
+
+    expect(result.rawText).toBe('# 标题');
+    expect(mockReadRawContentFromBuffer).not.toHaveBeenCalled();
+    expect(mockReadLightweightTextContent).toHaveBeenCalledTimes(1);
   });
 
   it('should use system parse for pdf when customPdfParse is false', async () => {
@@ -224,7 +286,7 @@ describe('readFileContentByBuffer', () => {
     const result = await readFileContentByBuffer({
       teamId,
       tmbId,
-      extension: 'txt',
+      extension: 'xlsx',
       buffer,
       encoding: 'utf-8',
       getFormatText: true
@@ -239,13 +301,13 @@ describe('readFileContentByBuffer', () => {
     const result = await readFileContentByBuffer({
       teamId,
       tmbId,
-      extension: 'txt',
+      extension: 'xlsx',
       buffer,
       encoding: 'utf-8',
       getFormatText: false
     });
 
-    expect(result.rawText).toBe('content');
+    expect(result.rawText).toBe('q,a\nquestion,answer');
   });
 
   it('should use custom URL service for pdf when configured', async () => {
@@ -796,7 +858,7 @@ describe('readFileContentBySource', () => {
     const source = {
       kind: 's3' as const,
       sizeBytes: 10,
-      metadata: { filename: 'file.txt' },
+      metadata: { filename: 'file.docx' },
       materialize: vi.fn()
     };
 
@@ -809,6 +871,99 @@ describe('readFileContentBySource', () => {
       source,
       imageKeyOptions: undefined
     });
+  });
+
+  it('S3 小文本在入口物化一次后走轻量通道', async () => {
+    const materialize = vi.fn().mockResolvedValue({
+      buffer: Buffer.from('网页正文', 'utf-8'),
+      metadata: { filename: 'file.txt', contentType: 'text/plain' }
+    });
+    const source = {
+      kind: 's3' as const,
+      sizeBytes: 12,
+      metadata: { filename: 'file.txt' },
+      materialize
+    };
+
+    const result = await readFileContentBySource({ teamId, tmbId, source });
+
+    expect(result.rawText).toBe('网页正文');
+    expect(result.sourceMetadata).toMatchObject({
+      filename: 'file.txt',
+      contentType: 'text/plain',
+      extension: 'txt'
+    });
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(mockReadLightweightTextContent).toHaveBeenCalledWith(
+      expect.objectContaining({ extension: 'txt' })
+    );
+    expect(mockReadRawContentFromSource).not.toHaveBeenCalled();
+  });
+
+  it('S3 大文本不提前物化，直接交给重解析 worker', async () => {
+    const materialize = vi.fn();
+    const source = {
+      kind: 's3' as const,
+      sizeBytes: 5 * 1024 * 1024,
+      metadata: { filename: 'big.txt' },
+      materialize
+    };
+
+    await expect(readFileContentBySource({ teamId, tmbId, source })).resolves.toEqual({
+      rawText: 'source-content',
+      tableInfo: undefined
+    });
+    expect(materialize).not.toHaveBeenCalled();
+    expect(mockReadLightweightTextContent).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromSource).toHaveBeenCalledWith({
+      source,
+      imageKeyOptions: undefined
+    });
+  });
+
+  it('外链网页在入口物化后走轻量通道，不再提交重解析 worker', async () => {
+    const materialize = vi.fn().mockResolvedValue({
+      buffer: Buffer.from('<h1>标题</h1>', 'utf-8'),
+      metadata: { filename: 'page.html', contentType: 'text/html' }
+    });
+    const source = {
+      kind: 'externalHttp' as const,
+      maxSizeBytes: 10 * 1024 * 1024,
+      metadata: { filename: 'page.html' },
+      materialize
+    };
+
+    const result = await readFileContentBySource({ teamId, tmbId, source });
+
+    expect(result.rawText).toBe('<h1>标题</h1>');
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(mockReadLightweightTextContent).toHaveBeenCalledWith(
+      expect.objectContaining({ extension: 'html' })
+    );
+    expect(mockReadRawContentFromSource).not.toHaveBeenCalled();
+  });
+
+  it('外链最终判定为重格式时复用已物化 buffer，不重复下载', async () => {
+    const pdfBuffer = Buffer.from('%PDF-1.4');
+    const materialize = vi.fn().mockResolvedValue({
+      buffer: pdfBuffer,
+      metadata: { filename: 'download', contentType: 'application/pdf' }
+    });
+    const source = {
+      kind: 'externalHttp' as const,
+      maxSizeBytes: 1024,
+      metadata: { filename: 'download' },
+      materialize
+    };
+
+    await readFileContentBySource({ teamId, tmbId, source });
+
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(mockReadLightweightTextContent).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromSource).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromBuffer).toHaveBeenCalledWith(
+      expect.objectContaining({ extension: 'pdf', buffer: pdfBuffer })
+    );
   });
 
   it('启用自定义 PDF Provider 时只在调用 Provider 前物化 source', async () => {
