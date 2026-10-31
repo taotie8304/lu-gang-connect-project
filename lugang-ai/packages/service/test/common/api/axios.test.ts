@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi, beforeEach } from 'vitest';
 import http from 'http';
+import net from 'net';
 import os from 'os';
 import dns from 'dns/promises';
 import { createProxyAxios } from '../../../common/api/axios';
@@ -543,6 +544,130 @@ describe('axios.ts', () => {
         'DNS lookup failed'
       );
       expect(adapter).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('safe axios 多地址解析与连接超时', () => {
+    const requestWithAdapter = async (url: string) => {
+      let capturedConfig: any;
+      const adapter = vi.fn(async (config: any) => {
+        capturedConfig = config;
+        return {
+          data: { ok: true },
+          status: 200,
+          statusText: 'OK',
+          headers: {},
+          config
+        };
+      });
+      const instance = createProxyAxios({ adapter });
+      const response = await instance.get(url);
+      expect(response.data).toEqual({ ok: true });
+      return capturedConfig;
+    };
+
+    const lookupAll = (lookup: any, host: string, options: Record<string, unknown> = {}) =>
+      new Promise<any[]>((resolve, reject) => {
+        lookup(host, { ...options, all: true }, (err: Error | null, addresses: any[]) => {
+          if (err) reject(err);
+          else resolve(addresses);
+        });
+      });
+
+    const mockMultiAddressDNS = () => {
+      clearProxyEnv();
+      mutableServiceEnv.CHECK_INTERNAL_IP = false;
+      vi.spyOn(dns, 'resolve4').mockResolvedValue(['8.8.8.8', '9.9.9.9']);
+      vi.spyOn(dns, 'resolve6').mockResolvedValue(['2001:4860:4860::8888']);
+      vi.spyOn(dns, 'lookup').mockImplementation(
+        async () =>
+          [
+            { address: '8.8.8.8', family: 4 },
+            { address: '9.9.9.9', family: 4 },
+            { address: '2001:4860:4860::8888', family: 6 }
+          ] as any
+      );
+    };
+
+    it('应该把 DNS 解析出的全部公网地址交给连接层', async () => {
+      mockMultiAddressDNS();
+
+      const config = await requestWithAdapter('http://multi-address-fastgpt.test/api');
+      const lookup = config.httpAgent?.options?.lookup;
+
+      expect(typeof lookup).toBe('function');
+      await expect(lookupAll(lookup, 'multi-address-fastgpt.test')).resolves.toEqual([
+        { address: '8.8.8.8', family: 4 },
+        { address: '9.9.9.9', family: 4 },
+        { address: '2001:4860:4860::8888', family: 6 }
+      ]);
+    });
+
+    it('lookup 应该按请求的 family 过滤地址', async () => {
+      mockMultiAddressDNS();
+
+      const config = await requestWithAdapter('http://family-filter-fastgpt.test/api');
+      const lookup = config.httpAgent?.options?.lookup;
+
+      await expect(
+        lookupAll(lookup, 'family-filter-fastgpt.test', { family: 4 })
+      ).resolves.toEqual([
+        { address: '8.8.8.8', family: 4 },
+        { address: '9.9.9.9', family: 4 }
+      ]);
+      await expect(
+        lookupAll(lookup, 'family-filter-fastgpt.test', { family: 6 })
+      ).resolves.toEqual([{ address: '2001:4860:4860::8888', family: 6 }]);
+    });
+
+    it('直连 agent 应该启用多地址自动切换', async () => {
+      mockMultiAddressDNS();
+
+      const config = await requestWithAdapter('https://happy-eyeballs-fastgpt.test/api');
+      const httpsAgent = config.httpsAgent;
+
+      expect(typeof httpsAgent?.options?.lookup).toBe('function');
+      expect(httpsAgent?.options?.autoSelectFamily).toBe(true);
+    });
+
+    it('连接建立超时后应该销毁 socket', async () => {
+      const axiosModule: any = await import('../../../common/api/axios');
+      expect(typeof axiosModule.attachConnectTimeout).toBe('function');
+
+      const socket = new net.Socket();
+      const errorPromise = new Promise<Error>((resolve) => socket.once('error', resolve));
+      const closePromise = new Promise<void>((resolve) => socket.once('close', () => resolve()));
+
+      axiosModule.attachConnectTimeout(socket, 30);
+
+      const error = await errorPromise;
+      expect(error.message).toMatch(/connect timeout/i);
+      await closePromise;
+      expect(socket.destroyed).toBe(true);
+    });
+
+    it('连接成功后不应该再被连接超时销毁', async () => {
+      const server = await new Promise<http.Server>((resolve) => {
+        const item = http.createServer((_req, res) => res.end('ok'));
+        item.listen(0, '127.0.0.1', () => resolve(item));
+      });
+      const port = (server.address() as net.AddressInfo).port;
+      const axiosModule: any = await import('../../../common/api/axios');
+      expect(typeof axiosModule.attachConnectTimeout).toBe('function');
+
+      const socket = net.createConnection({ host: '127.0.0.1', port });
+      const connected = new Promise<void>((resolve, reject) => {
+        socket.once('connect', () => resolve());
+        socket.once('error', reject);
+      });
+      axiosModule.attachConnectTimeout(socket, 30);
+      await connected;
+      await new Promise((resolve) => setTimeout(resolve, 90));
+
+      expect(socket.destroyed).toBe(false);
+
+      socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     });
   });
 });

@@ -7,7 +7,7 @@ import _, {
 import dns from 'dns/promises';
 import http from 'http';
 import https from 'https';
-import { isIP } from 'net';
+import { isIP, type Socket } from 'net';
 import { ProxyAgent, type ProxyAgentOptions } from 'proxy-agent';
 import { getProxyForUrl } from 'proxy-from-env';
 import { isDevEnv } from '@fastgpt/global/common/system/constants';
@@ -85,6 +85,12 @@ const addSSRFInterceptor = (instance: AxiosInstance) => {
 const createProxyAgent = (options?: ProxyAgentOptions) => new ProxyAgent(options);
 
 const SAFE_AXIOS_MAX_REDIRECTS = 5;
+// 鲁港通 - 读页连接长尾：地址集固定 + Happy Eyeballs + 建连硬超时
+//
+// Linux 默认 tcp_syn_retries=6,对端静默丢弃 SYN 时 connect 会卡满约 127 秒;
+// 这里把单次建连压到 10 秒,失败后按普通网络错误交给调用方继续兜底。
+const SAFE_AXIOS_CONNECT_TIMEOUT_MS = 10_000;
+const SAFE_AXIOS_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS = 250;
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 
 export type SafeAxiosRequestOptions = {
@@ -190,17 +196,25 @@ const attachPinnedAgent = async (
     return config;
   }
 
-  const resolved = await resolveSafeConnectAddress(parsedUrl.hostname);
+  const resolved = await resolveSafeConnectAddresses(parsedUrl.hostname);
   const lookup = createPinnedLookup(resolved);
   const isHttps = parsedUrl.protocol === 'https:';
   const agent = isHttps
-    ? new https.Agent({
-        lookup,
-        rejectUnauthorized: config.__safeAxios?.rejectUnauthorized ?? true
-      })
-    : new http.Agent({
-        lookup
-      });
+    ? withConnectTimeout(
+        new https.Agent({
+          lookup,
+          autoSelectFamily: true,
+          autoSelectFamilyAttemptTimeout: SAFE_AXIOS_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS,
+          rejectUnauthorized: config.__safeAxios?.rejectUnauthorized ?? true
+        })
+      )
+    : withConnectTimeout(
+        new http.Agent({
+          lookup,
+          autoSelectFamily: true,
+          autoSelectFamilyAttemptTimeout: SAFE_AXIOS_AUTO_SELECT_FAMILY_ATTEMPT_TIMEOUT_MS
+        })
+      );
 
   return {
     ...config,
@@ -210,13 +224,21 @@ const attachPinnedAgent = async (
   };
 };
 
-const resolveSafeConnectAddress = async (hostname: string): Promise<ResolvedAddress> => {
+/**
+ * 返回全部已校验地址,让连接层可以自动切换到下一个。
+ *
+ * 单地址钉死时,首个地址静默丢包就只能等 connect 自带超时(约 127 秒);
+ * 地址集配合 autoSelectFamily 才能在某个地址不可达时快速换路。
+ */
+const resolveSafeConnectAddresses = async (hostname: string): Promise<ResolvedAddress[]> => {
   const ipFamily = isIP(hostname);
   if (ipFamily) {
-    return {
-      address: hostname,
-      family: ipFamily as 4 | 6
-    };
+    return [
+      {
+        address: hostname,
+        family: ipFamily as 4 | 6
+      }
+    ];
   }
 
   const resolved = await dns.lookup(hostname, { all: true, verbatim: true });
@@ -224,17 +246,23 @@ const resolveSafeConnectAddress = async (hostname: string): Promise<ResolvedAddr
     return Promise.reject(new Error('DNS lookup returned no address'));
   }
 
+  // 任一解析结果命中内网即整单拒绝,保持与原 SSRF 策略一致。
   if (resolved.some(({ address }) => isInternalResolvedIP(address))) {
     return Promise.reject(new Error(PRIVATE_URL_TEXT));
   }
 
-  return resolved[0] as ResolvedAddress;
+  return resolved.map(({ address, family }) => ({
+    address,
+    family: (family === 6 ? 6 : 4) as 4 | 6
+  }));
 };
 
 const createPinnedLookup =
-  (resolved: ResolvedAddress) =>
+  (resolvedAddresses: ResolvedAddress[]) =>
   (_hostname: string, optionsOrCallback: unknown, maybeCallback?: LookupCallback): void => {
-    const options = typeof optionsOrCallback === 'function' ? {} : optionsOrCallback || {};
+    const options = (typeof optionsOrCallback === 'function'
+      ? {}
+      : optionsOrCallback || {}) as { all?: boolean; family?: number };
     const callback =
       typeof optionsOrCallback === 'function'
         ? (optionsOrCallback as LookupCallback)
@@ -242,13 +270,61 @@ const createPinnedLookup =
 
     if (!callback) return;
 
-    if ((options as { all?: boolean }).all) {
-      callback(null, [resolved]);
+    const family = options.family === 4 || options.family === 6 ? options.family : undefined;
+    const candidates = family
+      ? resolvedAddresses.filter((item) => item.family === family)
+      : resolvedAddresses;
+
+    if (candidates.length === 0) {
+      const error: NodeJS.ErrnoException = new Error(
+        family ? `No IPv${family} address available` : 'DNS lookup returned no address'
+      );
+      error.code = 'ENOTFOUND';
+      callback(error, options.all ? [] : '');
       return;
     }
 
-    callback(null, resolved.address, resolved.family);
+    if (options.all) {
+      callback(null, candidates);
+      return;
+    }
+
+    const first = candidates[0] as ResolvedAddress;
+    callback(null, first.address, first.family);
   };
+
+/**
+ * 只给建连阶段加硬超时,连接成功后立即清掉计时器,不影响后续读写。
+ */
+export const attachConnectTimeout = (socket: Socket, connectTimeoutMs: number): void => {
+  const timer = setTimeout(() => {
+    socket.destroy(new Error(`Connect timeout after ${connectTimeoutMs}ms`));
+  }, connectTimeoutMs);
+
+  const clear = () => {
+    clearTimeout(timer);
+  };
+
+  socket.once('connect', clear);
+  socket.once('error', clear);
+  socket.once('close', clear);
+};
+
+const withConnectTimeout = <T extends http.Agent | https.Agent>(agent: T): T => {
+  const createConnection = agent.createConnection.bind(agent) as (
+    ...args: any[]
+  ) => Socket | undefined;
+
+  (agent as any).createConnection = (...args: any[]) => {
+    const socket = createConnection(...args);
+    if (socket) {
+      attachConnectTimeout(socket, SAFE_AXIOS_CONNECT_TIMEOUT_MS);
+    }
+    return socket;
+  };
+
+  return agent;
+};
 
 const shouldRedirect = (response: AxiosResponse): boolean =>
   REDIRECT_STATUS_CODES.has(response.status) && typeof response.headers.location === 'string';
