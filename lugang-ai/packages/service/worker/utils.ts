@@ -76,6 +76,15 @@ export type WorkerUploadFileRequest = {
 export type WorkerUploadFileResult = {
   key: string;
 };
+// 鲁港通 - 扫描页视觉识别：worker 只提供页面图像，模型调用由主线程完成
+export type WorkerOcrImageRequest = {
+  imageData: Uint8Array;
+  width: number;
+  height: number;
+};
+export type WorkerOcrImageResult = {
+  text: string;
+};
 export type WorkerLoadFileResult = {
   buffer: ArrayBuffer;
   bufferSize: number;
@@ -102,6 +111,8 @@ export type WorkerRunHandlers = {
     controller: WorkerTaskResourceController,
     signal: AbortSignal
   ) => Promise<WorkerLoadFileResult>;
+  // 鲁港通 - PDF 扫描页 OCR：worker 回传页面图像，主线程返回识别文字
+  ocrImage?: (data: WorkerOcrImageRequest) => Promise<WorkerOcrImageResult>;
 };
 type WorkerQueueItem<Props = Record<string, any>> = {
   id: string;
@@ -736,6 +747,12 @@ export class WorkerPool<Props = Record<string, any>, Response = any> {
         return;
       }
 
+      // 鲁港通 - 扫描页 OCR 中间事件
+      if (type === 'ocrImage') {
+        this.handleOcrImageMessage({ item, requestId, data });
+        return;
+      }
+
       if (type === 'success') {
         this.completeTask(item, { type: 'success', data });
       } else if (type === 'error') {
@@ -898,6 +915,58 @@ export class WorkerPool<Props = Record<string, any>, Response = any> {
     handler(data)
       .then((result) => reply('uploadFileResult', result))
       .catch((error) => reply('uploadFileError', error));
+  }
+
+  /**
+   * 鲁港通 - 处理 worker 发起的扫描页 OCR 请求。
+   *
+   * 与 uploadFile 一致，识别期间保留任务槽位，只有最终 success/error 才结束任务；
+   * 识别失败按任务失败处理，由上层决定是否回退为无文字内容。
+   */
+  private handleOcrImageMessage({
+    item,
+    requestId,
+    data
+  }: {
+    item: WorkerQueueItem<Props>;
+    requestId?: string;
+    data: any;
+  }) {
+    const reply = (type: 'ocrImageResult' | 'ocrImageError', payload: unknown) => {
+      if (!this.workerQueue.includes(item) || item.status !== 'running') return;
+      try {
+        item.worker.postMessage({
+          id: item.id,
+          type,
+          requestId,
+          data: payload
+        });
+      } catch (error) {
+        this.logger.error('Failed to reply worker ocrImage request', {
+          eventName: 'worker.task.handler_reply_error',
+          workerId: item.id,
+          workerName: this.name,
+          taskId: item.currentTask?.taskId,
+          taskType: item.currentTask?.taskType,
+          error
+        });
+      }
+    };
+
+    if (!requestId) {
+      reply('ocrImageError', 'Missing ocrImage requestId');
+      return;
+    }
+
+    const handler = item.handlers?.ocrImage;
+    if (!handler) {
+      reply('ocrImageError', 'Missing ocrImage handler');
+      return;
+    }
+
+    handler(data)
+      .then((result) => reply('ocrImageResult', result))
+      .catch((error) => reply('ocrImageError', error));
   }
 
   /** 处理 readFile worker 的延迟物化请求，并在主线程同步维护任务软预留。 */

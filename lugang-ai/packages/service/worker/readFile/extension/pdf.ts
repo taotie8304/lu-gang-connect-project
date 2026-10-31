@@ -1,8 +1,15 @@
-import { type ReadRawTextByBuffer, type ReadFileResponse } from '../type';
+import {
+  type ReadFileOptions,
+  type ReadRawTextByBuffer,
+  type ReadFileResponse
+} from '../type';
 import { readPdfByLiteParse } from '../utils/LiteParse';
 import { readPdfByPdfJs } from '../utils/pdf/pdfjs';
 
-type PdfReader = (params: ReadRawTextByBuffer) => Promise<ReadFileResponse>;
+type PdfReader = (
+  params: ReadRawTextByBuffer,
+  options: ReadFileOptions
+) => Promise<ReadFileResponse>;
 
 type PdfFallbackReaders = {
   readByLiteParse: PdfReader;
@@ -41,17 +48,18 @@ export const isLiteParseWasmLoadError = (error: unknown) => {
  */
 export const readPdfFileWithFallback = async (
   params: ReadRawTextByBuffer,
-  readers: PdfFallbackReaders
+  readers: PdfFallbackReaders,
+  options: ReadFileOptions = {}
 ): Promise<ReadFileResponse> => {
   try {
-    return await readers.readByLiteParse(params);
+    return await readers.readByLiteParse(params, options);
   } catch (error) {
     if (!isLiteParseWasmLoadError(error)) {
       throw error;
     }
 
     readers.warn?.('LiteParse WASM dependency failed, fallback to PDF.js', error);
-    return readers.readByPdfJs(params);
+    return readers.readByPdfJs(params, options);
   }
 };
 
@@ -60,9 +68,16 @@ export const readPdfFileWithFallback = async (
  *
  * 默认使用 LiteParse WASM；只有 WASM 包加载失败时才注入 PDF.js 兼容路径。
  */
-export const readPdfFile = async (params: ReadRawTextByBuffer): Promise<ReadFileResponse> =>
-  readPdfFileWithFallback(params, {
-    readByLiteParse: readPdfByLiteParse,
-    readByPdfJs: readPdfByPdfJs,
-    warn: console.warn
-  });
+export const readPdfFile = async (
+  params: ReadRawTextByBuffer,
+  options: ReadFileOptions = {}
+): Promise<ReadFileResponse> =>
+  readPdfFileWithFallback(
+    params,
+    {
+      readByLiteParse: readPdfByLiteParse,
+      readByPdfJs: readPdfByPdfJs,
+      warn: console.warn
+    },
+    options
+  );

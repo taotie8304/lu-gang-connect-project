@@ -1,11 +1,13 @@
 import type { SplitProps, SplitResponse } from '../common/string/textSplitter';
 import { getWorkerController, WorkerNameEnum } from './utils';
+import type { WorkerOcrImageRequest } from './utils';
 import type { ReadFileResponse } from './readFile/type';
 import { isTestEnv } from '@fastgpt/global/common/system/constants';
 import { serviceEnv } from '../env';
 import { uploadImage2S3Bucket } from '../common/s3/utils';
 import { createOpaqueS3Filename } from '../common/s3/opaqueKey';
 import { normalizeMimeType, resolveMimeExtension, resolveMimeType } from '../common/s3/utils/mime';
+import { recognizeImageWithVlm } from '../common/file/read/vlmOcr';
 import path from 'node:path';
 import {
   estimateFileParseMemoryBytes,
@@ -46,6 +48,8 @@ type ReadFileWorkerProps = {
   bufferSize: number;
   initialResourceBytes?: number;
   sourceKind?: FileSource['kind'] | 'buffer';
+  // 鲁港通 - 允许 PDF 扫描页发起视觉识别
+  enableVlmOcr?: boolean;
   imageKeyOptions?: {
     prefix: string;
     expiredTime?: Date;
@@ -106,6 +110,18 @@ export const createUploadFileHandler = (
     : undefined;
 
 /**
+ * 鲁港通 - PDF 扫描页视觉识别处理器。
+ *
+ * worker 只回传页面图像，模型调用留在主线程，复用统一的模型配置、鉴权与超时控制。
+ */
+const createOcrImageHandler = () => async (data: WorkerOcrImageRequest) => ({
+  text: await recognizeImageWithVlm({
+    buffer: Buffer.from(data.imageData),
+    mime: 'image/png'
+  })
+});
+
+/**
  * 把轻量 FileSource 提交给 readFile worker；只有任务获得 worker 和初始资源后才在主线程物化。
  *
  * S3 按可信大小一次性预留完整峰值。External HTTP 只按 base 启动，下载过程中执行两个硬限制并单调更新
@@ -113,10 +129,12 @@ export const createUploadFileHandler = (
  */
 export const readRawContentFromSource = ({
   source,
-  imageKeyOptions
+  imageKeyOptions,
+  enableVlmOcr
 }: {
   source: FileSource;
   imageKeyOptions?: ReadFileWorkerProps['imageKeyOptions'];
+  enableVlmOcr?: boolean;
 }) => {
   const initialExtension = resolveFileSourceDeclaredExtension(source.metadata);
   const initialResourceBytes = (() => {
@@ -145,11 +163,13 @@ export const readRawContentFromSource = ({
       bufferSize: source.kind === 's3' ? source.sizeBytes : 0,
       initialResourceBytes,
       sourceKind: source.kind,
+      enableVlmOcr,
       imageKeyOptions
     },
     undefined,
     {
       uploadFile: createUploadFileHandler(imageKeyOptions),
+      ocrImage: enableVlmOcr ? createOcrImageHandler() : undefined,
       loadFile: async (controller, signal) => {
         const materialized = await source.materialize({
           signal,
@@ -211,6 +231,8 @@ export const readRawContentFromBuffer = (props: {
   extension: string;
   encoding: string;
   buffer: Buffer;
+  // 鲁港通 - 允许 PDF 扫描页发起视觉识别
+  enableVlmOcr?: boolean;
   imageKeyOptions?: {
     prefix: string;
     expiredTime?: Date;
@@ -224,6 +246,10 @@ export const readRawContentFromBuffer = (props: {
     sourceArrayBuffer instanceof ArrayBuffer;
 
   const uploadFile = createUploadFileHandler(props.imageKeyOptions);
+  const handlers = {
+    uploadFile,
+    ocrImage: props.enableVlmOcr ? createOcrImageHandler() : undefined
+  };
 
   if (canTransferBuffer) {
     /**
@@ -236,10 +262,11 @@ export const readRawContentFromBuffer = (props: {
         encoding: props.encoding,
         buffer: sourceArrayBuffer,
         bufferSize,
+        enableVlmOcr: props.enableVlmOcr,
         imageKeyOptions: props.imageKeyOptions
       },
       [sourceArrayBuffer],
-      { uploadFile }
+      handlers
     );
   }
 
@@ -253,9 +280,10 @@ export const readRawContentFromBuffer = (props: {
       encoding: props.encoding,
       sharedBuffer,
       bufferSize,
+      enableVlmOcr: props.enableVlmOcr,
       imageKeyOptions: props.imageKeyOptions
     },
     undefined,
-    { uploadFile }
+    handlers
   );
 };

@@ -96,4 +96,62 @@ describe('readPdfByLiteParse', () => {
 
     expect(mockLiteParseFree).toHaveBeenCalledTimes(1);
   });
+
+  it('未传 OCR 回调时保持 LiteParse OCR 关闭', async () => {
+    mockLiteParseParse.mockResolvedValueOnce({ pages: [] });
+
+    await readPdfByLiteParse({
+      extension: 'pdf',
+      encoding: 'utf-8',
+      buffer: Buffer.from('pdf')
+    });
+
+    const [config] = mockLiteParseConstructor.mock.calls[0];
+    expect(config.ocrEnabled).toBe(false);
+    expect(config.ocrEngine).toBeUndefined();
+  });
+
+  it('传入 OCR 回调时开启 OCR 并按行注入 ocrEngine', async () => {
+    mockLiteParseParse.mockResolvedValueOnce({ pages: [] });
+    const ocr = vi.fn().mockResolvedValue('第一行文字\n第二行文字');
+
+    await readPdfByLiteParse(
+      {
+        extension: 'pdf',
+        encoding: 'utf-8',
+        buffer: Buffer.from('pdf')
+      },
+      { ocr }
+    );
+
+    const [config] = mockLiteParseConstructor.mock.calls[0];
+    expect(config.ocrEnabled).toBe(true);
+    expect(config.ocrEngine).toBeDefined();
+
+    const imageData = new Uint8Array([1, 2, 3]);
+    const blocks = await config.ocrEngine.recognize(imageData, 300, 200, 'chi_sim');
+
+    expect(ocr).toHaveBeenCalledWith({ imageData, width: 300, height: 200 });
+    expect(blocks).toEqual([
+      { text: '第一行文字', bbox: [0, 0, 300, 100], confidence: 1 },
+      { text: '第二行文字', bbox: [0, 100, 300, 200], confidence: 1 }
+    ]);
+  });
+
+  it('OCR 回调返回空文本时不产出文本块', async () => {
+    mockLiteParseParse.mockResolvedValueOnce({ pages: [] });
+    const ocr = vi.fn().mockResolvedValue('   ');
+
+    await readPdfByLiteParse(
+      {
+        extension: 'pdf',
+        encoding: 'utf-8',
+        buffer: Buffer.from('pdf')
+      },
+      { ocr }
+    );
+
+    const [config] = mockLiteParseConstructor.mock.calls[0];
+    await expect(config.ocrEngine.recognize(new Uint8Array([1]), 100, 100)).resolves.toEqual([]);
+  });
 });

@@ -30,9 +30,32 @@ describe('readPdfFile', () => {
     });
 
     expect(result).toBe(expected);
-    expect(mockReadPdfByLiteParse).toHaveBeenCalledWith(params);
+    expect(mockReadPdfByLiteParse).toHaveBeenCalledWith(params, {});
     expect(mockReadPdfByPdfJs).not.toHaveBeenCalled();
     expect(mockWarn).not.toHaveBeenCalled();
+  });
+
+  it('传入 OCR 回调时透传给 LiteParse 解析器', async () => {
+    mockReadPdfByLiteParse.mockResolvedValue({ rawText: 'ocr text' });
+    const ocr = vi.fn().mockResolvedValue('');
+
+    const params = {
+      extension: 'pdf',
+      encoding: 'utf-8',
+      buffer: Buffer.from('pdf')
+    };
+    await readPdfFileWithFallback(
+      params,
+      {
+        readByLiteParse: mockReadPdfByLiteParse,
+        readByPdfJs: mockReadPdfByPdfJs,
+        warn: mockWarn
+      },
+      { ocr }
+    );
+
+    expect(mockReadPdfByLiteParse).toHaveBeenCalledWith(params, { ocr });
+    expect(mockReadPdfByPdfJs).not.toHaveBeenCalled();
   });
 
   it('LiteParse WASM 初始化失败时回退到 PDF.js', async () => {
@@ -53,8 +76,8 @@ describe('readPdfFile', () => {
     });
 
     expect(result).toBe(expected);
-    expect(mockReadPdfByLiteParse).toHaveBeenCalledWith(params);
-    expect(mockReadPdfByPdfJs).toHaveBeenCalledWith(params);
+    expect(mockReadPdfByLiteParse).toHaveBeenCalledWith(params, {});
+    expect(mockReadPdfByPdfJs).toHaveBeenCalledWith(params, {});
     expect(mockWarn).toHaveBeenCalledWith(
       'LiteParse WASM dependency failed, fallback to PDF.js',
       error

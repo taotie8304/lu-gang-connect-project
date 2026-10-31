@@ -17,6 +17,19 @@ export type UploadFileHandler = (data: {
   buffer: ArrayBuffer;
 }) => Promise<UploadedFileResult>;
 
+/**
+ * 鲁港通 - 扫描页视觉识别回调：由主线程调用视觉模型，worker 只负责切图与拼装文本
+ */
+export type OcrPageHandler = (data: {
+  imageData: Uint8Array;
+  width: number;
+  height: number;
+}) => Promise<string | undefined>;
+
+export type ReadFileOptions = {
+  ocr?: OcrPageHandler;
+};
+
 export type TextItem = {
   text: string;
   x: number;

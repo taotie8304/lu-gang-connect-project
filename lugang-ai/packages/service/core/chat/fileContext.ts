@@ -675,7 +675,9 @@ export const getFileContentByUrl = async ({
         }
       : undefined,
     usageId,
-    onPdfParseUsage
+    onPdfParseUsage,
+    // 鲁港通 - 聊天侧开启诚实兜底：图片/扫描件读不出内容时明确告知，绝不按文件名编造
+    emptyContentTip: true
   });
 
   const replacedText = await replaceS3KeyToPreviewUrl(rawText, addDays(new Date(), 90));

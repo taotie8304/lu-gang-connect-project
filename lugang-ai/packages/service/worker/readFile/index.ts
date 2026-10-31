@@ -1,6 +1,6 @@
 import { parentPort } from 'worker_threads';
 import { readFileRawText } from './extension/rawText';
-import { type ReadRawTextByBuffer, type ReadRawTextProps } from './type';
+import { type OcrPageHandler, type ReadRawTextByBuffer, type ReadRawTextProps } from './type';
 import { readHtmlRawText } from './extension/html';
 import { readPdfFile } from './extension/pdf';
 import { readDocsFile } from './extension/docx';
@@ -21,6 +21,8 @@ type IncomingMessage = {
     buffer?: ArrayBuffer;
     sharedBuffer?: SharedArrayBuffer;
     bufferSize: number;
+    // 鲁港通 - 开启扫描页视觉识别
+    enableVlmOcr?: boolean;
     imageKeyOptions?: {
       prefix: string;
       expiredTime?: Date;
@@ -34,6 +36,14 @@ type LoadFileResponse = {
   data?: MaterializedWorkerFile | unknown;
 };
 
+// 鲁港通 - 主线程视觉识别回包
+type OcrImageResponse = {
+  id: string;
+  type?: 'ocrImageResult' | 'ocrImageError';
+  requestId?: string;
+  data?: { text?: string } | unknown;
+};
+
 type MaterializedWorkerFile = {
   buffer: ArrayBuffer;
   bufferSize: number;
@@ -44,6 +54,10 @@ type MaterializedWorkerFile = {
 };
 
 const isLoadFileResponse = (type?: string) => type === 'loadFileResult' || type === 'loadFileError';
+
+// 鲁港通 - 扫描页视觉识别的回包类型
+const isOcrImageResponse = (type?: string) =>
+  type === 'ocrImageResult' || type === 'ocrImageError';
 
 /** 当前 worker 任务向主线程请求延迟物化文件，并按 requestId 隔离回包。 */
 const requestMaterializedFile = ({ id }: { id: string }) =>
@@ -77,9 +91,57 @@ const requestMaterializedFile = ({ id }: { id: string }) =>
     }
   });
 
+/**
+ * 鲁港通 - 当前 worker 任务向主线程请求单页视觉识别，并按 requestId 隔离回包。
+ *
+ * 识别失败不终止整份解析：返回空文本，由上层按“无文字内容”诚实告知用户。
+ */
+const requestOcrImage = ({
+  id,
+  imageData,
+  width,
+  height
+}: {
+  id: string;
+  imageData: Uint8Array;
+  width: number;
+  height: number;
+}) =>
+  new Promise<string | undefined>((resolve) => {
+    const requestId = crypto.randomUUID();
+    const onMessage = (message: OcrImageResponse) => {
+      if (message.id !== id || message.requestId !== requestId || !isOcrImageResponse(message.type)) {
+        return;
+      }
+
+      parentPort?.off('message', onMessage);
+      if (message.type === 'ocrImageError') {
+        resolve(undefined);
+        return;
+      }
+
+      const text = (message.data as { text?: unknown } | undefined)?.text;
+      resolve(typeof text === 'string' ? text : undefined);
+    };
+
+    parentPort?.on('message', onMessage);
+    try {
+      // 复制一份字节，避免后续 WASM 侧改动原视图影响已投递的消息。
+      parentPort?.postMessage({
+        id,
+        type: 'ocrImage',
+        requestId,
+        data: { imageData: new Uint8Array(imageData), width, height }
+      });
+    } catch (error) {
+      parentPort?.off('message', onMessage);
+      resolve(undefined);
+    }
+  });
+
 const read = async (
   params: ReadRawTextByBuffer,
-  options: { uploadFile?: UploadFileHandler } = {}
+  options: { uploadFile?: UploadFileHandler; ocr?: OcrPageHandler } = {}
 ) => {
   switch (params.extension) {
     case 'txt':
@@ -92,7 +154,7 @@ const read = async (
         uploadFile: options.uploadFile
       });
     case 'pdf':
-      return readPdfFile(params);
+      return readPdfFile(params, { ocr: options.ocr });
     case 'docx':
       return readDocsFile(params, {
         uploadFile: options.uploadFile
@@ -117,7 +179,11 @@ const read = async (
 };
 
 parentPort?.on('message', async (props: IncomingMessage) => {
-  if (isWorkerUploadFileResponse(props.type) || isLoadFileResponse(props.type)) {
+  if (
+    isWorkerUploadFileResponse(props.type) ||
+    isLoadFileResponse(props.type) ||
+    isOcrImageResponse(props.type)
+  ) {
     return;
   }
 
@@ -128,6 +194,7 @@ parentPort?.on('message', async (props: IncomingMessage) => {
     bufferSize,
     extension,
     encoding,
+    enableVlmOcr,
     imageKeyOptions
   } = props;
 
@@ -148,10 +215,15 @@ parentPort?.on('message', async (props: IncomingMessage) => {
       enabled: Boolean(imageKeyOptions?.prefix)
     });
 
+    // 鲁港通 - 仅在主线程声明具备视觉模型时开启扫描页识别
+    const ocr: OcrPageHandler | undefined = enableVlmOcr
+      ? (data) => requestOcrImage({ id, ...data })
+      : undefined;
+
     try {
       const data = await read(
         { extension: finalExtension, encoding: finalEncoding, buffer },
-        { uploadFile: uploadFileHandler.uploadFile }
+        { uploadFile: uploadFileHandler.uploadFile, ocr }
       );
 
       parentPort?.postMessage({

@@ -4,12 +4,19 @@ import { countPromptTokensInWorker } from '@fastgpt/service/worker/countGptMessa
 import { availableParallelism } from 'node:os';
 
 // hoisted: 这些 mock 必须在 vi.mock 工厂里可见
-const { mockRun, mockGetWorkerController, mockUploadImage2S3Bucket, mockEnv } = vi.hoisted(() => {
+const {
+  mockRun,
+  mockGetWorkerController,
+  mockUploadImage2S3Bucket,
+  mockRecognizeImageWithVlm,
+  mockEnv
+} = vi.hoisted(() => {
   const mockRun = vi.fn();
   return {
     mockRun,
     mockGetWorkerController: vi.fn(() => ({ run: mockRun })),
     mockUploadImage2S3Bucket: vi.fn(),
+    mockRecognizeImageWithVlm: vi.fn(),
     mockEnv: {
       PARSE_FILE_TIMEOUT_SECONDS: 300,
       // s3/config/constants 与 accessLink 在模块加载时读取，mock env 必须给出合法值
@@ -45,6 +52,12 @@ vi.mock('@fastgpt/service/common/s3/utils', async (importOriginal) => {
   };
 });
 
+// 鲁港通 - 视觉读图：worker 只负责发起 ocrImage 请求，真实模型调用在主线程完成
+vi.mock('@fastgpt/service/common/file/read/vlmOcr', () => ({
+  isVlmOcrAvailable: vi.fn(() => true),
+  recognizeImageWithVlm: mockRecognizeImageWithVlm
+}));
+
 // 必须在 vi.mock 之后再 import 被测模块
 const { text2Chunks, readRawContentFromBuffer, readRawContentFromSource } =
   await import('@fastgpt/service/worker/function');
@@ -58,6 +71,7 @@ describe('worker/function', () => {
     mockGetWorkerController.mockReset();
     mockGetWorkerController.mockImplementation(() => ({ run: mockRun }));
     mockUploadImage2S3Bucket.mockReset();
+    mockRecognizeImageWithVlm.mockReset();
   });
 
   describe('text2Chunks', () => {
@@ -345,6 +359,48 @@ describe('worker/function', () => {
       ).rejects.toThrow('Unsupported worker uploadFile mime type: text/plain');
     });
 
+    it('enableVlmOcr 时注册 ocrImage handler 并把识别文字回传给 worker', async () => {
+      mockRun.mockResolvedValueOnce({ rawText: 'parsed pdf' });
+      mockRecognizeImageWithVlm.mockResolvedValueOnce('扫描页文字');
+
+      await readRawContentFromBuffer({
+        extension: 'pdf',
+        encoding: 'utf-8',
+        buffer: Buffer.from('pdf'),
+        enableVlmOcr: true
+      });
+
+      expect(mockRun.mock.calls[0][0].enableVlmOcr).toBe(true);
+      const handlers = mockRun.mock.calls[0][2];
+      expect(handlers.ocrImage).toBeInstanceOf(Function);
+
+      await expect(
+        handlers.ocrImage({
+          imageData: new Uint8Array([1, 2, 3]),
+          width: 100,
+          height: 200
+        })
+      ).resolves.toEqual({ text: '扫描页文字' });
+      expect(mockRecognizeImageWithVlm).toHaveBeenCalledWith({
+        buffer: Buffer.from([1, 2, 3]),
+        mime: 'image/png'
+      });
+    });
+
+    it('未开启 enableVlmOcr 时不注册 ocrImage handler', async () => {
+      mockRun.mockResolvedValueOnce({ rawText: 'parsed pdf' });
+
+      await readRawContentFromBuffer({
+        extension: 'pdf',
+        encoding: 'utf-8',
+        buffer: Buffer.from('pdf')
+      });
+
+      expect(mockRun.mock.calls[0][0].enableVlmOcr).toBeUndefined();
+      expect(mockRun.mock.calls[0][2].ocrImage).toBeUndefined();
+      expect(mockRecognizeImageWithVlm).not.toHaveBeenCalled();
+    });
+
     it('并发文件解析直接交给资源感知 readFile worker pool', async () => {
       let activeCount = 0;
       let maxActiveCount = 0;
@@ -533,6 +589,35 @@ describe('worker/function', () => {
       await expect(
         handlers.loadFile({ updateResourceBytes: vi.fn() }, new AbortController().signal)
       ).rejects.toBe(sourceError);
+    });
+
+    it('enableVlmOcr 透传给 worker 并注册 ocrImage handler', async () => {
+      mockRun.mockResolvedValueOnce({ rawText: 'ok' });
+      mockRecognizeImageWithVlm.mockResolvedValueOnce('扫描页文字');
+
+      await readRawContentFromSource({
+        source: {
+          kind: 's3',
+          sizeBytes: 10,
+          metadata: { filename: 'scan.pdf', extension: 'pdf' },
+          materialize: vi.fn()
+        },
+        enableVlmOcr: true
+      });
+
+      expect(mockRun.mock.calls[0][0].enableVlmOcr).toBe(true);
+      const handlers = mockRun.mock.calls[0][2];
+      await expect(
+        handlers.ocrImage({
+          imageData: new Uint8Array([7, 8]),
+          width: 300,
+          height: 400
+        })
+      ).resolves.toEqual({ text: '扫描页文字' });
+      expect(mockRecognizeImageWithVlm).toHaveBeenCalledWith({
+        buffer: Buffer.from([7, 8]),
+        mime: 'image/png'
+      });
     });
   });
 

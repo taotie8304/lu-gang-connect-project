@@ -30,8 +30,26 @@ import {
   isLightweightTextParse,
   readLightweightTextContent
 } from './lightweight';
+import { isVlmOcrAvailable, recognizeImageWithVlm } from './vlmOcr';
 
 const logger = getLogger(LogCategories.MODULE.DATASET.FILE);
+
+// 鲁港通 - 图片内容识别：按扩展名映射 MIME，只覆盖上传白名单内的位图格式
+const IMAGE_VLM_MIME: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  webp: 'image/webp',
+  bmp: 'image/bmp'
+};
+
+// 鲁港通 - 诚实兜底：读不出内容时明确告知用户，绝不按文件名虚构内容
+const IMAGE_VLM_DISABLED_TIP =
+  '当前未启用图片文字识别功能，这张图片暂时无法提取内容。请改用文字版内容（例如 Word、PDF）重新上传，或直接把图片中的文字粘贴到对话中。';
+const IMAGE_EMPTY_TIP =
+  '未能从这张图片中识别出文字内容，图片可能不清晰或不含文字。请上传更清晰的原图，或改用文字版内容（例如 Word、PDF）。';
+const PDF_EMPTY_TIP =
+  '未能从这份 PDF 中提取到文字内容，这份 PDF 可能是扫描件或图片版。请提供文字版 PDF，或把关键内容转成文字后重新上传。';
 
 export const readFileContentByBuffer = async ({
   teamId,
@@ -44,7 +62,8 @@ export const readFileContentByBuffer = async ({
   usageId,
   getFormatText = true,
   imageKeyOptions,
-  onPdfParseUsage
+  onPdfParseUsage,
+  emptyContentTip = false
 }: {
   teamId: string;
   tmbId: string;
@@ -62,6 +81,8 @@ export const readFileContentByBuffer = async ({
   };
   /** 注入后由上层工作流归集增强解析费用；未注入时保持原有的独立落账行为。 */
   onPdfParseUsage?: (usage: ChatNodeUsageType) => void;
+  /** 鲁港通 - 开启后图片/PDF 读不出内容时返回可操作的中文说明，而不是空文本。 */
+  emptyContentTip?: boolean;
 }): Promise<Pick<ReadFileResponse, 'rawText' | 'tableInfo' | 'sourceMetadata'>> =>
   readFileContent({
     teamId,
@@ -73,7 +94,8 @@ export const readFileContentByBuffer = async ({
     usageId,
     getFormatText,
     imageKeyOptions,
-    onPdfParseUsage
+    onPdfParseUsage,
+    emptyContentTip
   });
 
 /**
@@ -90,7 +112,8 @@ export const readFileContentBySource = async ({
   usageId,
   getFormatText = true,
   imageKeyOptions,
-  onPdfParseUsage
+  onPdfParseUsage,
+  emptyContentTip = false
 }: {
   teamId: string;
   tmbId: string;
@@ -103,6 +126,8 @@ export const readFileContentBySource = async ({
     expiredTime?: Date;
   };
   onPdfParseUsage?: (usage: ChatNodeUsageType) => void;
+  /** 鲁港通 - 开启后图片/PDF 读不出内容时返回可操作的中文说明，而不是空文本。 */
+  emptyContentTip?: boolean;
 }): Promise<Pick<ReadFileResponse, 'rawText' | 'tableInfo' | 'sourceMetadata'>> =>
   readFileContent({
     teamId,
@@ -114,7 +139,8 @@ export const readFileContentBySource = async ({
     usageId,
     getFormatText,
     imageKeyOptions,
-    onPdfParseUsage
+    onPdfParseUsage,
+    emptyContentTip
   });
 
 const readFileContent = async ({
@@ -128,7 +154,8 @@ const readFileContent = async ({
   usageId,
   getFormatText,
   imageKeyOptions,
-  onPdfParseUsage
+  onPdfParseUsage,
+  emptyContentTip
 }: {
   teamId: string;
   tmbId: string;
@@ -144,6 +171,7 @@ const readFileContent = async ({
     expiredTime?: Date;
   };
   onPdfParseUsage?: (usage: ChatNodeUsageType) => void;
+  emptyContentTip: boolean;
 }): Promise<Pick<ReadFileResponse, 'rawText' | 'tableInfo' | 'sourceMetadata'>> => {
   if (!initialBuffer && !source) {
     throw new Error('File content or source is required');
@@ -262,10 +290,42 @@ const readFileContent = async ({
     };
   };
 
+  /**
+   * 鲁港通 - 图片内容识别：位图格式直接在主线程调用视觉模型提取文字。
+   *
+   * 未启用视觉模型时，开启诚实兜底就明确告知用户，否则保持原有的系统解析行为。
+   */
+  const parseImageFile = async (): Promise<ReadFileResponse | undefined> => {
+    if (!IMAGE_VLM_MIME[extension]) return undefined;
+
+    if (!isVlmOcrAvailable()) {
+      return emptyContentTip
+        ? { rawText: IMAGE_VLM_DISABLED_TIP, formatText: IMAGE_VLM_DISABLED_TIP }
+        : undefined;
+    }
+
+    const materialized = await getMaterializedFile();
+    const recognized = await recognizeImageWithVlm({
+      buffer: materialized.buffer,
+      mime: IMAGE_VLM_MIME[materialized.extension] ?? IMAGE_VLM_MIME[extension]
+    });
+    const text = recognized.trim();
+    const content = !text && emptyContentTip ? IMAGE_EMPTY_TIP : text;
+
+    return {
+      rawText: content,
+      formatText: content,
+      sourceMetadata: materialized.metadata
+        ? { ...materialized.metadata, extension: materialized.extension }
+        : undefined
+    };
+  };
+
   const systemParse = async (): Promise<ReadFileResponse> => {
+    const enableVlmOcr = isVlmOcrAvailable();
     // 来源尚未物化时直接交给 worker，由 worker 请求时在主线程物化并执行硬限制。
     if (source && !materializedPromise) {
-      return readRawContentFromSource({ source, imageKeyOptions });
+      return readRawContentFromSource({ source, imageKeyOptions, enableVlmOcr });
     }
 
     const materialized = await getMaterializedFile();
@@ -273,7 +333,8 @@ const readFileContent = async ({
       extension: materialized.extension,
       encoding: materialized.encoding,
       buffer: materialized.buffer,
-      imageKeyOptions
+      imageKeyOptions,
+      enableVlmOcr
     });
   };
 
@@ -437,12 +498,14 @@ const readFileContent = async ({
   logger.debug('Start parsing file', { extension });
 
   const parseResult = await (async () => {
-    if (extension !== 'pdf') {
-      const lightweightResult = await parseLightweightText();
-      if (lightweightResult) return lightweightResult;
-      return await systemParse();
-    }
-    return await pdfParseFn();
+    if (extension === 'pdf') return await pdfParseFn();
+
+    const imageResult = await parseImageFile();
+    if (imageResult) return imageResult;
+
+    const lightweightResult = await parseLightweightText();
+    if (lightweightResult) return lightweightResult;
+    return await systemParse();
   })();
   const { rawText, formatText, tableInfo } = parseResult;
   const sourceMetadata =
@@ -451,8 +514,13 @@ const readFileContent = async ({
 
   logger.debug('File parsing completed', { extension, durationMs: Date.now() - start });
 
+  const content = getFormatText ? formatText || rawText : rawText;
+  // 鲁港通 - 诚实兜底：PDF 读不出文字时明确告知，绝不能按文件名虚构内容
+  const finalText =
+    emptyContentTip && extension === 'pdf' && !content.trim() ? PDF_EMPTY_TIP : content;
+
   return {
-    rawText: getFormatText ? formatText || rawText : rawText,
+    rawText: finalText,
     tableInfo,
     ...(sourceMetadata ? { sourceMetadata } : {})
   };

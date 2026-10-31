@@ -26,7 +26,7 @@ const { parentPort } = require('worker_threads');
 parentPort.on('message', (message) => {
   const { id } = message;
 
-  if (/^(loadFile|uploadFile)(Result|Error)$/.test(message.type || '')) return;
+  if (/^(loadFile|uploadFile|ocrImage)(Result|Error)$/.test(message.type || '')) return;
 
   if (message.loadFile) {
     parentPort.once('message', (response) => {
@@ -63,6 +63,32 @@ parentPort.on('message', (message) => {
         data: message.fail ? 'simple failure' : { payload: message.payload }
       });
     }, message.delayMs || 0);
+    return;
+  }
+
+  if (message.ocrImage) {
+    parentPort.once('message', (response) => {
+      if (response.type === 'ocrImageResult') {
+        parentPort.postMessage({
+          id,
+          type: 'success',
+          data: response.data
+        });
+        return;
+      }
+
+      parentPort.postMessage({ id, type: 'error', data: response.data });
+    });
+    parentPort.postMessage({
+      id,
+      type: 'ocrImage',
+      requestId: 'ocr-1',
+      data: {
+        imageData: new Uint8Array([9, 8, 7]),
+        width: 320,
+        height: 240
+      }
+    });
     return;
   }
 
@@ -194,6 +220,53 @@ describe('worker/utils WorkerPool', () => {
     expect(logger.error).toHaveBeenCalledWith(
       'Worker task failed',
       expect.objectContaining({ eventName: 'worker.task.failed', error: uploadError })
+    );
+  });
+
+  it('处理 worker 通用 ocrImage 中间事件并回传识别文本', async () => {
+    const pool = createPool<{ ocrImage: boolean }, { text: string }>({
+      name: WorkerNameEnum.readFile,
+      maxReservedThreads: 1
+    });
+    const ocrImage = vi.fn().mockResolvedValue({ text: '识别文字' });
+
+    const result = await pool.run({ ocrImage: true }, undefined, { ocrImage });
+
+    expect(ocrImage).toHaveBeenCalledWith({
+      imageData: expect.any(Uint8Array),
+      width: 320,
+      height: 240
+    });
+    expect(Array.from((ocrImage.mock.calls[0][0] as any).imageData)).toEqual([9, 8, 7]);
+    expect(result).toEqual({ text: '识别文字' });
+    expect(pool.workerQueue[0].status).toBe('idle');
+  });
+
+  it('ocrImage handler 失败时把错误回传给 worker', async () => {
+    const logger = createLogger();
+    const pool = createPool<{ ocrImage: boolean }, { text: string }>({
+      name: WorkerNameEnum.readFile,
+      maxReservedThreads: 1,
+      logger
+    });
+    const ocrError = new Error('ocr failed');
+    const ocrImage = vi.fn().mockRejectedValue(ocrError);
+
+    await expect(pool.run({ ocrImage: true }, undefined, { ocrImage })).rejects.toEqual(ocrError);
+    expect(logger.error).toHaveBeenCalledWith(
+      'Worker task failed',
+      expect.objectContaining({ eventName: 'worker.task.failed', error: ocrError })
+    );
+  });
+
+  it('缺少 ocrImage handler 时回传明确错误', async () => {
+    const pool = createPool<{ ocrImage: boolean }, { text: string }>({
+      name: WorkerNameEnum.readFile,
+      maxReservedThreads: 1
+    });
+
+    await expect(pool.run({ ocrImage: true }, undefined, {})).rejects.toBe(
+      'Missing ocrImage handler'
     );
   });
 

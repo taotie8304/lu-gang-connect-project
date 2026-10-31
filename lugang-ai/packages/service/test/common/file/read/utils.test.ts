@@ -135,6 +135,17 @@ vi.mock('@fastgpt/service/common/file/image/utils', () => ({
   getImageBuffer: mockGetImageBuffer
 }));
 
+// 鲁港通 - 视觉读图：图片文件与空内容诚实兜底的依赖在本文件内可控
+const { mockRecognizeImageWithVlm, mockVlmOcrState } = vi.hoisted(() => ({
+  mockRecognizeImageWithVlm: vi.fn(),
+  mockVlmOcrState: { available: true }
+}));
+
+vi.mock('@fastgpt/service/common/file/read/vlmOcr', () => ({
+  isVlmOcrAvailable: () => mockVlmOcrState.available,
+  recognizeImageWithVlm: (...args: any[]) => (mockRecognizeImageWithVlm as any)(...args)
+}));
+
 vi.mock('@fastgpt/service/env', () => ({
   serviceEnv: mockEnv
 }));
@@ -152,6 +163,8 @@ describe('readFileContentByBuffer', () => {
     vi.clearAllMocks();
     global.systemEnv = {} as any;
     mockEnv.PARSE_FILE_TIMEOUT_SECONDS = 600;
+    mockVlmOcrState.available = true;
+    mockRecognizeImageWithVlm.mockReset();
   });
 
   it('should parse a txt buffer', async () => {
@@ -842,16 +855,202 @@ describe('readFileContentByBuffer', () => {
       })
     );
   });
+
+  it('png 图片启用视觉识别时直接返回识别文字，不提交重解析 worker', async () => {
+    mockRecognizeImageWithVlm.mockResolvedValueOnce('图片中的文字');
+    const buffer = Buffer.from('png-bytes');
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'png',
+      buffer,
+      encoding: ''
+    });
+
+    expect(result.rawText).toBe('图片中的文字');
+    expect(mockRecognizeImageWithVlm).toHaveBeenCalledWith({ buffer, mime: 'image/png' });
+    expect(mockReadRawContentFromBuffer).not.toHaveBeenCalled();
+    expect(mockReadLightweightTextContent).not.toHaveBeenCalled();
+  });
+
+  it('大写图片扩展名归一化后按小写映射 MIME', async () => {
+    mockRecognizeImageWithVlm.mockResolvedValueOnce('截图文字');
+
+    await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'JPG',
+      buffer: Buffer.from('jpg-bytes'),
+      encoding: ''
+    });
+
+    expect(mockRecognizeImageWithVlm).toHaveBeenCalledWith({
+      buffer: Buffer.from('jpg-bytes'),
+      mime: 'image/jpeg'
+    });
+  });
+
+  it('未启用视觉模型但开启诚实兜底时，返回可操作的中文说明且不调用解析器', async () => {
+    mockVlmOcrState.available = false;
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'png',
+      buffer: Buffer.from('png'),
+      encoding: '',
+      emptyContentTip: true
+    });
+
+    expect(result.rawText).toContain('当前未启用图片文字识别');
+    expect(result.rawText).toContain('Word');
+    expect(mockRecognizeImageWithVlm).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromBuffer).not.toHaveBeenCalled();
+  });
+
+  it('未启用视觉模型且未开启诚实兜底时，图片保持原有系统解析行为', async () => {
+    mockVlmOcrState.available = false;
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'png',
+      buffer: Buffer.from('png'),
+      encoding: ''
+    });
+
+    expect(result.rawText).toBe('parsed-png-content');
+    expect(mockReadRawContentFromBuffer).toHaveBeenCalledTimes(1);
+  });
+
+  it('视觉识别没有返回文字时输出图片空内容兜底说明', async () => {
+    mockRecognizeImageWithVlm.mockResolvedValueOnce('   ');
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'webp',
+      buffer: Buffer.from('webp'),
+      encoding: '',
+      emptyContentTip: true
+    });
+
+    expect(result.rawText).toContain('未能从这张图片中识别出文字内容');
+  });
+
+  it('视觉识别没有返回文字且未开启诚实兜底时保持空内容返回', async () => {
+    mockRecognizeImageWithVlm.mockResolvedValueOnce('');
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'png',
+      buffer: Buffer.from('png'),
+      encoding: ''
+    });
+
+    expect(result.rawText).toBe('');
+  });
+
+  it('PDF 解析结果为空且开启诚实兜底时输出扫描件说明', async () => {
+    mockReadRawContentFromBuffer.mockResolvedValueOnce({ rawText: '', formatText: '' });
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'pdf',
+      buffer: Buffer.from('%PDF-1.4'),
+      encoding: '',
+      emptyContentTip: true
+    });
+
+    expect(result.rawText).toContain('未能从这份 PDF 中提取到文字内容');
+  });
+
+  it('PDF 解析结果为空但未开启诚实兜底时保持原样空字符串', async () => {
+    mockReadRawContentFromBuffer.mockResolvedValueOnce({ rawText: '', formatText: '' });
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'pdf',
+      buffer: Buffer.from('%PDF-1.4'),
+      encoding: ''
+    });
+
+    expect(result.rawText).toBe('');
+  });
+
+  it('PDF 有内容时诚实兜底不改变解析结果', async () => {
+    mockReadRawContentFromBuffer.mockResolvedValueOnce({
+      rawText: 'PDF 正文',
+      formatText: 'PDF 正文'
+    });
+
+    const result = await readFileContentByBuffer({
+      teamId,
+      tmbId,
+      extension: 'pdf',
+      buffer: Buffer.from('%PDF-1.4'),
+      encoding: '',
+      emptyContentTip: true
+    });
+
+    expect(result.rawText).toBe('PDF 正文');
+  });
 });
 
 describe('readFileContentBySource', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     global.systemEnv = {} as any;
+    mockVlmOcrState.available = true;
+    mockRecognizeImageWithVlm.mockReset();
     mockReadRawContentFromSource.mockResolvedValue({
       rawText: 'source-content',
       formatText: 'source-content'
     });
+  });
+
+  it('图片来源启用视觉识别时物化一次并直接返回识别文字', async () => {
+    const buffer = Buffer.from('photo-bytes');
+    const materialize = vi.fn().mockResolvedValue({
+      buffer,
+      metadata: { filename: 'photo.png', contentType: 'image/png' }
+    });
+    const source = {
+      kind: 's3' as const,
+      sizeBytes: buffer.length,
+      metadata: { filename: 'photo.png' },
+      materialize
+    };
+    mockRecognizeImageWithVlm.mockResolvedValueOnce('照片文字');
+
+    const result = await readFileContentBySource({ teamId, tmbId, source, emptyContentTip: true });
+
+    expect(result.rawText).toBe('照片文字');
+    expect(result.sourceMetadata).toMatchObject({ filename: 'photo.png', extension: 'png' });
+    expect(materialize).toHaveBeenCalledTimes(1);
+    expect(mockRecognizeImageWithVlm).toHaveBeenCalledWith({ buffer, mime: 'image/png' });
+    expect(mockReadRawContentFromSource).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromBuffer).not.toHaveBeenCalled();
+  });
+
+  it('图片来源未启用视觉模型但开启诚实兜底时直接返回说明，不物化也不提交 worker', async () => {
+    mockVlmOcrState.available = false;
+    const source = {
+      kind: 's3' as const,
+      sizeBytes: 5,
+      metadata: { filename: 'photo.png' },
+      materialize: vi.fn()
+    };
+
+    const result = await readFileContentBySource({ teamId, tmbId, source, emptyContentTip: true });
+
+    expect(result.rawText).toContain('当前未启用图片文字识别');
+    expect(source.materialize).not.toHaveBeenCalled();
+    expect(mockReadRawContentFromSource).not.toHaveBeenCalled();
   });
 
   it('系统解析直接把轻量 source 交给 worker，不在入口提前物化', async () => {
@@ -869,7 +1068,8 @@ describe('readFileContentBySource', () => {
     expect(source.materialize).not.toHaveBeenCalled();
     expect(mockReadRawContentFromSource).toHaveBeenCalledWith({
       source,
-      imageKeyOptions: undefined
+      imageKeyOptions: undefined,
+      enableVlmOcr: true
     });
   });
 
@@ -917,7 +1117,8 @@ describe('readFileContentBySource', () => {
     expect(mockReadLightweightTextContent).not.toHaveBeenCalled();
     expect(mockReadRawContentFromSource).toHaveBeenCalledWith({
       source,
-      imageKeyOptions: undefined
+      imageKeyOptions: undefined,
+      enableVlmOcr: true
     });
   });
 
