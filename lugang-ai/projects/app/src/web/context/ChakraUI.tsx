@@ -6,7 +6,11 @@ import NProgress from 'nprogress'; //nprogress module
 
 import 'nprogress/nprogress.css';
 
-Router.events.on('routeChangeStart', () => NProgress.start());
+// 鲁港通 - 浅路由只更新 query 不切换页面，启动顶部进度条会让移动端一直处于加载态
+Router.events.on('routeChangeStart', (url, options) => {
+  if (options?.shallow) return;
+  NProgress.start();
+});
 Router.events.on('routeChangeComplete', () => NProgress.done());
 Router.events.on('routeChangeError', () => NProgress.done());
 

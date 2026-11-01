@@ -1,5 +1,5 @@
 import ChatBox from '@/components/core/chat/ChatContainer/ChatBox';
-import { Flex, Box, IconButton } from '@chakra-ui/react';
+import { Flex, Box, IconButton, Button } from '@chakra-ui/react';
 import { useTranslation } from 'react-i18next';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 import { ChatContext } from '@/web/core/chat/context/chatContext';
@@ -89,7 +89,11 @@ const AppChatWindow = () => {
   );
   const onChatGenerateStatusChange = useAppChatGenerateStatusSync();
 
-  const { loading } = useRequest(
+  const {
+    loading,
+    error: initChatError,
+    run: reloadChat
+  } = useRequest(
     async () => {
       if (!appId || forbidLoadChatRef.current) return;
 
@@ -140,6 +144,8 @@ const AppChatWindow = () => {
       }
     }
   );
+
+  const isChatInitFailed = !!initChatError && !loading && !!appId && !isCurrentChatReady;
 
   const onStartChat = useCallback(
     async ({
@@ -269,6 +275,23 @@ const AppChatWindow = () => {
               }}
               onStartChat={onStartChat}
             />
+          ) : isChatInitFailed ? (
+            <Flex
+              h="100%"
+              direction="column"
+              align="center"
+              justifyContent="center"
+              px={8}
+              gap={4}
+              textAlign="center"
+            >
+              <Box fontSize="14px" color="myGray.600" lineHeight={1.7}>
+                {t('common:core.chat.load_failed')}
+              </Box>
+              <Button size="sm" colorScheme="primary" onClick={() => reloadChat()}>
+                {t('common:core.chat.reload')}
+              </Button>
+            </Flex>
           ) : (
             <ChatBox
               sourceTarget={{ sourceType: ChatSourceTypeEnum.app, sourceId: appId }}

@@ -6,6 +6,7 @@ import {
   type CollapseStatusType
 } from '@/pageComponents/chat/constants';
 import { getChatSetting } from '@/web/core/chat/api';
+import { resolveChatPaneRedirect } from '@/web/core/chat/context/chatPaneRouting';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import type { ChatSettingType } from '@fastgpt/global/core/chat/setting/type';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
@@ -241,37 +242,30 @@ export const ChatPageContextProvider = ({
   const isRoot = userInfo?.username === 'root';
   const normalUserDefaultAppId = !feConfigs.isPlus && !isRoot ? defaultAppId : '';
 
-  useEffect(() => {
-    if (Object.values(ChatSidebarPaneEnum).includes(pane)) return;
-
-    if (normalUserDefaultAppId) {
-      handlePaneChange(
-        ChatSidebarPaneEnum.RECENTLY_USED_APPS,
-        routeAppId || normalUserDefaultAppId
-      );
-      return;
-    }
-
-    handlePaneChange(feConfigs.isPlus ? ChatSidebarPaneEnum.HOME : ChatSidebarPaneEnum.ALL_APPS);
-  }, [feConfigs.isPlus, handlePaneChange, pane, normalUserDefaultAppId, routeAppId]);
+  // 鲁港通 - 浅路由不会刷新 SSR props，落点判定必须用地址栏实时 appId，否则会无限 replace
+  const liveQueryAppId = typeof router.query.appId === 'string' ? router.query.appId : '';
+  const liveQueryPane = typeof pane === 'string' ? pane : undefined;
 
   useEffect(() => {
-    if (feConfigs.isPlus) return;
+    const redirect = resolveChatPaneRedirect({
+      isPlus: !!feConfigs.isPlus,
+      isRoot: !!isRoot,
+      defaultAppId: normalUserDefaultAppId,
+      pane: liveQueryPane,
+      queryAppId: liveQueryAppId
+    });
 
-    if (normalUserDefaultAppId) {
-      if (pane !== ChatSidebarPaneEnum.RECENTLY_USED_APPS || !routeAppId) {
-        handlePaneChange(
-          ChatSidebarPaneEnum.RECENTLY_USED_APPS,
-          routeAppId || normalUserDefaultAppId
-        );
-      }
-      return;
+    if (redirect) {
+      handlePaneChange(redirect.pane, redirect.appId || undefined);
     }
-
-    if (![ChatSidebarPaneEnum.ALL_APPS, ChatSidebarPaneEnum.RECENTLY_USED_APPS].includes(pane)) {
-      handlePaneChange(ChatSidebarPaneEnum.ALL_APPS);
-    }
-  }, [feConfigs.isPlus, handlePaneChange, pane, normalUserDefaultAppId, routeAppId]);
+  }, [
+    feConfigs.isPlus,
+    handlePaneChange,
+    isRoot,
+    liveQueryAppId,
+    liveQueryPane,
+    normalUserDefaultAppId
+  ]);
 
   const logos: Pick<ChatSettingType, 'wideLogoUrl' | 'squareLogoUrl'> = useMemo(
     () => ({

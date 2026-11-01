@@ -19,7 +19,8 @@ const NextHead = ({ title, icon, desc }: { title?: string; icon?: string; desc?:
       />
       <meta httpEquiv="Content-Security-Policy" content="img-src * data: blob:;" />
       {desc && <meta name="description" content={desc} />}
-      {icon && <link rel="icon" href={formatIcon} />}
+      {/* 鲁港通 - 恒定渲染单个图标链接：条件渲染会让浏览器回退抓 /favicon.ico，重渲染时形成请求风暴 */}
+      <link rel="icon" href={formatIcon} />
     </Head>
   );
 };

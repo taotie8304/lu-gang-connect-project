@@ -88,6 +88,24 @@ describe('getErrText', () => {
 
     expect(getErrText(err)).toBe('');
   });
+
+  it('should map browser fetch failures to actionable network message', () => {
+    expect(getErrText(new TypeError('Failed to fetch'))).toBe('common:error.network_unstable');
+  });
+
+  it('should map webview and safari network failures to actionable network message', () => {
+    expect(getErrText({ message: 'Load failed' })).toBe('common:error.network_unstable');
+    expect(getErrText({ message: 'NetworkError when attempting to fetch resource.' })).toBe(
+      'common:error.network_unstable'
+    );
+    expect(getErrText({ message: 'net::ERR_CONNECTION_TIMED_OUT' })).toBe(
+      'common:error.network_unstable'
+    );
+  });
+
+  it('should keep non-network messages untouched', () => {
+    expect(getErrText({ message: 'quota exceeded' })).toBe('quota exceeded');
+  });
 });
 
 describe('UserError', () => {

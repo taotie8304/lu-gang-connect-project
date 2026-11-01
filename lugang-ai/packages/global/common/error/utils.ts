@@ -3,6 +3,10 @@ import { ERROR_RESPONSE } from './errorCode';
 import type { localeType } from '../i18n/type';
 import { parseI18nString } from '../i18n/utils';
 
+// Chrome/WebView、Safari、Firefox、Electron 的网络失败原文
+const NETWORK_ERROR_TEXT =
+  /^(failed to fetch|load failed|fetch failed|networkerror.*|net::err_\w+|the network connection was lost\.?|the request timed out\.?|a server with the specified hostname could not be found\.?)$/i;
+
 export const getErrText = (err: any, def = '', lang?: localeType): any => {
   const parseI18nError = (value: any): string | undefined => {
     if (!lang || !value || typeof value !== 'object') return;
@@ -37,6 +41,11 @@ export const getErrText = (err: any, def = '', lang?: localeType): any => {
   };
 
   const msg = getRawMsg(err) || def;
+
+  // 鲁港通 - 浏览器/WebView 的原生网络错误是英文且不可操作，统一转为可翻译的友好文案
+  if (typeof msg === 'string' && NETWORK_ERROR_TEXT.test(msg.trim())) {
+    return 'common:error.network_unstable';
+  }
 
   if (ERROR_RESPONSE[msg]) {
     return ERROR_RESPONSE[msg].message;
