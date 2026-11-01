@@ -22,16 +22,20 @@ function main() {
   if (!existsSync(manifestPath)) fail('缺少 dist/latest.json，请使用签名构建产物');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   const apkName = `lugang-android-${manifest.versionName}-${manifest.versionCode}.apk`;
+  // 鲁港通 - 安装包名参与远端路径拼接，先做白名单校验防注入
+  if (!/^[A-Za-z0-9._-]+$/.test(apkName)) fail(`安装包名含非法字符：${apkName}`);
   const apkPath = join(dist, apkName);
   if (!existsSync(apkPath)) fail(`缺少安装包 ${apkName}`);
-  if (!manifest.apkUrl.startsWith(`${PUBLIC_BASE}/`)) fail(`apkUrl 不在更新源目录：${manifest.apkUrl}`);
+  // 鲁港通 - apkUrl 必须与安装包名逐字对应，不做前缀放宽
+  const expectedApkUrl = `${PUBLIC_BASE}/${apkName}`;
+  if (manifest.apkUrl !== expectedApkUrl) fail(`apkUrl 与安装包名不一致：${manifest.apkUrl}`);
 
   const size = statSync(apkPath).size;
   const sha256 = createHash('sha256').update(readFileSync(apkPath)).digest('hex');
   if (size !== manifest.size) fail(`本地体积不一致：${size} vs ${manifest.size}`);
   if (sha256 !== manifest.sha256) fail(`本地 sha256 不一致：${sha256} vs ${manifest.sha256}`);
 
-  const remoteRaw = ssh(`cat ${REMOTE_DIR}/latest.json 2>/dev/null || true`).trim();
+  const remoteRaw = readRemoteManifest().trim();
   if (remoteRaw) {
     const remote = JSON.parse(remoteRaw);
     if (!force && remote.versionCode >= manifest.versionCode) {
@@ -81,6 +85,22 @@ function readArg(name) {
 
 function ssh(command) {
   return execFileSync('ssh', [REMOTE, command], { encoding: 'utf8' });
+}
+
+// 鲁港通 - 读取服务器 latest.json：无清单返回空串，读取失败必须显式报错而不是静默继续
+function readRemoteManifest() {
+  const marker = '__LUGANG_NO_MANIFEST__';
+  let output;
+  try {
+    output = execFileSync(
+      'ssh',
+      [REMOTE, `if [ -f ${REMOTE_DIR}/latest.json ]; then cat ${REMOTE_DIR}/latest.json; else printf ${marker}; fi`],
+      { encoding: 'utf8' }
+    );
+  } catch (error) {
+    fail(`读取服务器 latest.json 失败：${String(error.message).split('\n')[0]}`);
+  }
+  return output.trim() === marker ? '' : output;
 }
 
 function scp(localPath, remotePath) {
