@@ -2,10 +2,13 @@
 package com.airscend.lugang
 
 import android.annotation.SuppressLint
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
@@ -29,10 +32,12 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.airscend.lugang.bridge.BridgeOrigin
 import com.airscend.lugang.bridge.LugangBridge
+import com.airscend.lugang.download.DirectDownloader
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
@@ -54,6 +59,20 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     private var bridgeScript: String = ""
     @Volatile private var currentUrl: String = ""
     @Volatile private var bridgeAllowed: Boolean = false
+    private lateinit var directDownloader: DirectDownloader
+    private val downloadReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
+            val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+            if (id != directDownloader.lastDownloadId) return
+            val message = if (directDownloader.statusOf(id) == DownloadManager.STATUS_SUCCESSFUL) {
+                R.string.download_saved
+            } else {
+                R.string.download_failed
+            }
+            Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +83,13 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         errorMessage = findViewById(R.id.errorMessage)
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
+        directDownloader = DirectDownloader(this)
+        ContextCompat.registerReceiver(
+            this,
+            downloadReceiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
         bridgeScript = readBridgeScript()
         registerBackCallback()
         createWebView()
@@ -94,6 +120,16 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         injectBridgeScript(view)
         view.webViewClient = shellClient()
         view.webChromeClient = chromeClient()
+        view.setDownloadListener { url, userAgent, contentDisposition, mimeType, _ ->
+            if (!url.startsWith("https://")) {
+                Toast.makeText(this, R.string.download_unsupported, Toast.LENGTH_SHORT).show()
+                return@setDownloadListener
+            }
+            val cookie = CookieManager.getInstance().getCookie(url)
+            val id = directDownloader.enqueue(url, contentDisposition, mimeType, cookie, userAgent)
+            val message = if (id == null) R.string.download_failed else R.string.download_started
+            Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        }
         webContainer.addView(view)
         webView = view
         view.loadUrl(START_URL)
@@ -307,6 +343,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(downloadReceiver) }
         webView?.destroy()
         webView = null
         super.onDestroy()

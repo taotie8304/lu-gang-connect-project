@@ -13,6 +13,7 @@
     <string name="download_too_large">文件过大，请在电脑端导出</string>
     <string name="download_busy">请等待当前文件保存完成</string>
     <string name="download_unsupported">暂不支持该下载链接</string>
+    <string name="download_started">已开始下载，完成后可在通知栏查看</string>
     <string name="update_title">发现新版本</string>
     <string name="update_download">下载更新</string>
     <string name="update_later">稍后</string>
