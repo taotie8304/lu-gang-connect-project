@@ -7,16 +7,11 @@ import java.security.MessageDigest
 object Sha256 {
     private val HEX = "0123456789abcdef".toCharArray()
 
-    fun hex(input: ByteArray): String {
-        val out = CharArray(input.size * 2)
-        for (index in input.indices) {
-            val value = input[index].toInt() and 0xFF
-            out[index * 2] = HEX[value ushr 4]
-            out[index * 2 + 1] = HEX[value and 0x0F]
-        }
-        return String(out)
-    }
+    // 鲁港通 - 对字节内容求 SHA-256 摘要并转小写十六进制
+    fun hex(input: ByteArray): String =
+        encode(MessageDigest.getInstance("SHA-256").digest(input))
 
+    // 鲁港通 - 对流式读取文件求 SHA-256 摘要（64KB 分块，避免整包读入内存）
     fun ofFile(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
@@ -27,6 +22,17 @@ object Sha256 {
                 digest.update(buffer, 0, read)
             }
         }
-        return hex(digest.digest())
+        return encode(digest.digest())
+    }
+
+    // 鲁港通 - 摘要字节转小写十六进制，不依赖 Locale
+    private fun encode(digest: ByteArray): String {
+        val out = CharArray(digest.size * 2)
+        for (index in digest.indices) {
+            val value = digest[index].toInt() and 0xFF
+            out[index * 2] = HEX[value ushr 4]
+            out[index * 2 + 1] = HEX[value and 0x0F]
+        }
+        return String(out)
     }
 }
