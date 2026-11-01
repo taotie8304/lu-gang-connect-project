@@ -232,3 +232,12 @@ fix-deployment.sh
 
 # 鲁港通 - 临时 SSH 远程调试脚本（含凭据，勿提交）
 ssh_*.py
+
+# 鲁港通 - 安卓工程（签名材料与构建产物绝不入库）
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/dist/
+android/*.jks
+android/keystore.b64
+android/keystore-password.txt
