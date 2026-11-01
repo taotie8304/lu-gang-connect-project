@@ -27,6 +27,26 @@ class UploadMimeTest {
     }
 
     @Test
+    fun `网页默认扩展名全部有映射`() {
+        assertArrayEquals(
+            arrayOf(
+                "image/bmp",
+                "image/svg+xml",
+                "text/html",
+                "video/quicktime",
+                "audio/x-wav",
+                "application/vnd.ms-word.document.macroenabled.12"
+            ),
+            UploadMime.fromAccept(".bmp,.svg,.html,.mov,.wav,.docm")
+        )
+    }
+
+    @Test
+    fun `不可解析 token 跳过且不影响其余项`() {
+        assertArrayEquals(arrayOf("application/pdf"), UploadMime.fromAccept("abc,.pdf"))
+    }
+
+    @Test
     fun `空或未知回退为任意文件`() {
         assertArrayEquals(arrayOf("*/*"), UploadMime.fromAccept(null))
         assertArrayEquals(arrayOf("*/*"), UploadMime.fromAccept(""))
