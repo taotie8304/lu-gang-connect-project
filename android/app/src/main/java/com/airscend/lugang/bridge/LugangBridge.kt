@@ -11,6 +11,10 @@ class LugangBridge(private val host: Host) {
         fun isBridgeTrusted(): Boolean
         fun onBridgeOpenExternal(url: String?)
         fun onBridgeToast(message: String?)
+        fun startBlobSave(name: String?, mime: String?, size: Long): String?
+        fun appendBlobChunk(id: String?, base64: String?): Boolean
+        fun finishBlobSave(id: String?): Boolean
+        fun abortBlobSave(id: String?)
     }
 
     @JavascriptInterface
@@ -33,5 +37,29 @@ class LugangBridge(private val host: Host) {
     fun toast(message: String?) {
         if (!host.isBridgeTrusted()) return
         host.onBridgeToast(message)
+    }
+
+    @JavascriptInterface
+    fun saveBlobStart(name: String?, mime: String?, size: Long): String? {
+        if (!host.isBridgeTrusted()) return null
+        return host.startBlobSave(name, mime, size)
+    }
+
+    @JavascriptInterface
+    fun saveBlobChunk(id: String?, base64: String?): Boolean {
+        if (!host.isBridgeTrusted()) return false
+        return host.appendBlobChunk(id, base64)
+    }
+
+    @JavascriptInterface
+    fun saveBlobEnd(id: String?): Boolean {
+        if (!host.isBridgeTrusted()) return false
+        return host.finishBlobSave(id)
+    }
+
+    @JavascriptInterface
+    fun saveBlobAbort(id: String?) {
+        if (!host.isBridgeTrusted()) return
+        host.abortBlobSave(id)
     }
 }

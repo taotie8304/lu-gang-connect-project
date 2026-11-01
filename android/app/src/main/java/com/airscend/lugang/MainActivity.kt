@@ -37,6 +37,7 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.airscend.lugang.bridge.BridgeOrigin
 import com.airscend.lugang.bridge.LugangBridge
+import com.airscend.lugang.download.BlobSaver
 import com.airscend.lugang.download.DirectDownloader
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
@@ -60,6 +61,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     @Volatile private var currentUrl: String = ""
     @Volatile private var bridgeAllowed: Boolean = false
     private lateinit var directDownloader: DirectDownloader
+    private lateinit var blobSaver: BlobSaver
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
@@ -84,6 +86,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
         directDownloader = DirectDownloader(this)
+        blobSaver = BlobSaver(this)
         ContextCompat.registerReceiver(
             this,
             downloadReceiver,
@@ -341,6 +344,16 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         if (message.isNullOrBlank()) return
         runOnUiThread { Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show() }
     }
+
+    override fun startBlobSave(name: String?, mime: String?, size: Long): String? =
+        blobSaver.start(name, mime, size)
+
+    override fun appendBlobChunk(id: String?, base64: String?): Boolean =
+        blobSaver.append(id, base64)
+
+    override fun finishBlobSave(id: String?): Boolean = blobSaver.finish(id)
+
+    override fun abortBlobSave(id: String?) = blobSaver.abort(id)
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(downloadReceiver) }
