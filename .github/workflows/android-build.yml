@@ -90,8 +90,9 @@ jobs:
         run: |
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
 
+      # 鲁港通 - v3 仍强制安装已下线的 tools 包（Failed to find package 'tools'），改用 v4（上游 2026-09 修复）
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install SDK packages
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
