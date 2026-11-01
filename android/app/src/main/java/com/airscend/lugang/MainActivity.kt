@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -32,9 +33,13 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import com.airscend.lugang.bridge.BridgeOrigin
@@ -44,6 +49,7 @@ import com.airscend.lugang.download.DirectDownloader
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
+import com.airscend.lugang.shell.ShellInsets
 import com.airscend.lugang.update.UpdateChecker
 import com.airscend.lugang.update.UpdateDownloader
 import com.airscend.lugang.update.UpdateManifest
@@ -87,11 +93,17 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 鲁港通 - Android 15 强制 edge-to-edge，自绘安全区避免标题栏被状态栏压住
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        )
         setContentView(R.layout.activity_main)
         webContainer = findViewById(R.id.webContainer)
         splashView = findViewById(R.id.splashView)
         errorView = findViewById(R.id.errorView)
         errorMessage = findViewById(R.id.errorMessage)
+        applyWindowInsets()
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
         directDownloader = DirectDownloader(this)
@@ -151,6 +163,20 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         webContainer.addView(view)
         webView = view
         view.loadUrl(START_URL)
+    }
+
+    private fun applyWindowInsets() {
+        val root = findViewById<View>(R.id.root)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+            val bars = insets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
+            )
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val padding = ShellInsets.resolve(bars.left, bars.top, bars.right, bars.bottom, ime.bottom)
+            view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
+            insets
+        }
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun registerBackCallback() {
