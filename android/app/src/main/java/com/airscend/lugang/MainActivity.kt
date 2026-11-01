@@ -2,38 +2,60 @@
 package com.airscend.lugang
 
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
 import android.net.Uri
+import android.net.http.SslError
+import android.os.Build
 import android.os.Bundle
 import android.os.Message
 import android.view.View
 import android.view.ViewGroup
 import android.webkit.CookieManager
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webContainer: FrameLayout
     private lateinit var splashView: View
+    private lateinit var errorView: View
+    private lateinit var errorMessage: TextView
     private var webView: WebView? = null
     private var lastBackPressAt = 0L
+    private var lastError: String? = null
+    private var lastErrorUrl: String? = null
+    private val renderCrashTimes = mutableListOf<Long>()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         webContainer = findViewById(R.id.webContainer)
         splashView = findViewById(R.id.splashView)
+        errorView = findViewById(R.id.errorView)
+        errorMessage = findViewById(R.id.errorMessage)
+        findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
+        findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
         registerBackCallback()
         createWebView()
     }
@@ -101,7 +123,45 @@ class MainActivity : AppCompatActivity() {
 
         override fun onPageFinished(view: WebView, url: String?) {
             splashView.visibility = View.GONE
-            view.visibility = View.VISIBLE
+            if (errorView.visibility != View.VISIBLE) {
+                view.visibility = View.VISIBLE
+            }
+        }
+
+        override fun onReceivedError(
+            view: WebView,
+            request: WebResourceRequest,
+            error: WebResourceError
+        ) {
+            if (!request.isForMainFrame) return
+            lastErrorUrl = request.url.toString()
+            lastError = "${error.errorCode} ${error.description}"
+            showError(errorTextFor(error.errorCode))
+        }
+
+        override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
+            handler.cancel()
+            lastErrorUrl = view.url
+            lastError = "SSL ${error.primaryError}"
+            showError(getString(R.string.error_ssl))
+        }
+
+        override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+            val now = System.currentTimeMillis()
+            renderCrashTimes.removeAll { now - it > 60_000L }
+            renderCrashTimes.add(now)
+            webContainer.removeView(view)
+            view.destroy()
+            webView = null
+            if (renderCrashTimes.size >= 3) {
+                lastError = "render process gone"
+                showError(getString(R.string.error_render))
+                return true
+            }
+            errorView.visibility = View.GONE
+            splashView.visibility = View.VISIBLE
+            createWebView()
+            return true
         }
     }
 
@@ -147,6 +207,54 @@ class MainActivity : AppCompatActivity() {
         if (url.isNullOrBlank() || NavigationPolicy.decide(url) != NavAction.EXTERNAL) return
         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
             .onFailure { Toast.makeText(this, R.string.link_open_failed, Toast.LENGTH_SHORT).show() }
+    }
+
+    private fun errorTextFor(code: Int): String = when (code) {
+        WebViewClient.ERROR_HOST_LOOKUP -> getString(R.string.error_network)
+        WebViewClient.ERROR_CONNECT -> getString(R.string.error_connect)
+        WebViewClient.ERROR_TIMEOUT -> getString(R.string.error_timeout)
+        WebViewClient.ERROR_UNSUPPORTED_SCHEME -> getString(R.string.error_unsupported)
+        else -> getString(R.string.error_generic)
+    }
+
+    private fun showError(message: String) {
+        errorMessage.text = message
+        errorView.visibility = View.VISIBLE
+        splashView.visibility = View.GONE
+        webView?.visibility = View.INVISIBLE
+    }
+
+    private fun hideError() {
+        errorView.visibility = View.GONE
+        webView?.visibility = View.VISIBLE
+    }
+
+    private fun retryLoad() {
+        hideError()
+        splashView.visibility = View.VISIBLE
+        val view = webView
+        if (view == null) {
+            createWebView()
+            return
+        }
+        view.visibility = View.INVISIBLE
+        val target = lastErrorUrl?.takeIf { NavigationPolicy.decide(it) == NavAction.INTERNAL } ?: START_URL
+        view.loadUrl(target)
+    }
+
+    private fun copyDiagnostics() {
+        val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+        val text = Diagnostics.build(
+            BuildConfig.VERSION_NAME,
+            Build.VERSION.RELEASE ?: "",
+            Build.MODEL ?: "",
+            lastErrorUrl ?: webView?.url,
+            lastError,
+            time
+        )
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("鲁港通诊断", text))
+        Toast.makeText(this, R.string.error_copied, Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {

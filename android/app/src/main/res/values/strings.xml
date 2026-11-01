@@ -21,4 +21,11 @@
     <string name="update_install_hint">请允许鲁港通安装应用后重试</string>
     <string name="update_latest">已是最新版本</string>
     <string name="choose_file">选择文件</string>
+    <string name="error_network">网络连接失败，请检查网络后重试</string>
+    <string name="error_connect">无法连接到服务器，请稍后重试</string>
+    <string name="error_timeout">连接超时，请检查网络后重试</string>
+    <string name="error_unsupported">无法打开该地址</string>
+    <string name="error_generic">页面加载失败，请稍后重试</string>
+    <string name="error_ssl">证书校验失败，请检查网络后重试</string>
+    <string name="error_render">页面渲染异常，请重试</string>
 </resources>
