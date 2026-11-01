@@ -32,6 +32,7 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewCompat
@@ -43,6 +44,9 @@ import com.airscend.lugang.download.DirectDownloader
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
+import com.airscend.lugang.update.UpdateChecker
+import com.airscend.lugang.update.UpdateDownloader
+import com.airscend.lugang.update.UpdateManifest
 import com.airscend.lugang.upload.UploadChooser
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -65,6 +69,8 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     private lateinit var directDownloader: DirectDownloader
     private lateinit var blobSaver: BlobSaver
     private lateinit var uploadChooser: UploadChooser
+    private lateinit var updateDownloader: UpdateDownloader
+    private lateinit var updateChecker: UpdateChecker
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
@@ -100,6 +106,11 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         bridgeScript = readBridgeScript()
         registerBackCallback()
         createWebView()
+        updateDownloader = UpdateDownloader(this)
+        updateChecker = UpdateChecker(this, BuildConfig.VERSION_CODE) { manifest ->
+            showUpdateDialog(manifest)
+        }
+        updateChecker.scheduleStartupCheck()
     }
 
     @SuppressLint("SetJavaScriptEnabled")
@@ -340,6 +351,29 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         clipboard.setPrimaryClip(ClipData.newPlainText("鲁港通诊断", text))
         Toast.makeText(this, R.string.error_copied, Toast.LENGTH_SHORT).show()
     }
+
+    private fun showUpdateDialog(manifest: UpdateManifest) {
+        if (isFinishing || isDestroyed) return
+        val message = buildString {
+            append("版本 ")
+            append(manifest.versionName)
+            if (manifest.changelog.isNotBlank()) {
+                append("\n")
+                append(manifest.changelog)
+            }
+            append("\n\n安装包 ")
+            append(readableSize(manifest.size))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.update_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.update_download) { _, _ -> updateDownloader.download(manifest) }
+            .setNegativeButton(R.string.update_later, null)
+            .show()
+    }
+
+    private fun readableSize(bytes: Long): String =
+        String.format(Locale.US, "%.1f MB", bytes / 1024.0 / 1024.0)
 
     private fun readBridgeScript(): String =
         runCatching {
