@@ -20,6 +20,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
@@ -42,6 +43,7 @@ import com.airscend.lugang.download.DirectDownloader
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
+import com.airscend.lugang.upload.UploadChooser
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -62,6 +64,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     @Volatile private var bridgeAllowed: Boolean = false
     private lateinit var directDownloader: DirectDownloader
     private lateinit var blobSaver: BlobSaver
+    private lateinit var uploadChooser: UploadChooser
     private val downloadReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
@@ -87,6 +90,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
         directDownloader = DirectDownloader(this)
         blobSaver = BlobSaver(this)
+        uploadChooser = UploadChooser(this)
         ContextCompat.registerReceiver(
             this,
             downloadReceiver,
@@ -253,6 +257,20 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
             }
             transport.webView = temp
             resultMsg.sendToTarget()
+            return true
+        }
+
+        override fun onShowFileChooser(
+            view: WebView?,
+            filePathCallback: ValueCallback<Array<Uri>>?,
+            fileChooserParams: WebChromeClient.FileChooserParams?
+        ): Boolean {
+            if (filePathCallback == null) return false
+            uploadChooser.open(
+                filePathCallback,
+                fileChooserParams?.acceptTypes?.joinToString(","),
+                fileChooserParams?.isCaptureEnabled == true
+            )
             return true
         }
     }
