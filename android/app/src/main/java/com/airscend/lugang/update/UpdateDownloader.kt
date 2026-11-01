@@ -29,8 +29,10 @@ class UpdateDownloader(private val activity: Activity) {
             val dir = File(activity.cacheDir, "updates").apply { mkdirs() }
             val target = File(dir, "lugang-${manifest.versionCode}.apk")
             val downloaded = runCatching { downloadTo(manifest, target, dialog) }.getOrDefault(false)
-            val verified = downloaded &&
+            // 鲁港通 - 校验计算自身也可能抛异常（文件被清理/存储异常），必须兜底，避免下载线程崩溃且弹窗不关
+            val verified = downloaded && runCatching {
                 UpdateVerifier.matches(manifest.sha256, manifest.size, Sha256.ofFile(target), target.length())
+            }.getOrDefault(false)
             if (!verified) target.delete()
             activity.runOnUiThread {
                 runCatching { dialog.dismiss() }
