@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
 import android.os.Build
@@ -28,6 +29,10 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.app.AppCompatActivity
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import com.airscend.lugang.bridge.BridgeOrigin
+import com.airscend.lugang.bridge.LugangBridge
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
@@ -35,7 +40,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     private lateinit var webContainer: FrameLayout
     private lateinit var splashView: View
@@ -46,6 +51,9 @@ class MainActivity : AppCompatActivity() {
     private var lastError: String? = null
     private var lastErrorUrl: String? = null
     private val renderCrashTimes = mutableListOf<Long>()
+    private var bridgeScript: String = ""
+    @Volatile private var currentUrl: String = ""
+    @Volatile private var bridgeAllowed: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,6 +64,7 @@ class MainActivity : AppCompatActivity() {
         errorMessage = findViewById(R.id.errorMessage)
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
+        bridgeScript = readBridgeScript()
         registerBackCallback()
         createWebView()
     }
@@ -81,6 +90,8 @@ class MainActivity : AppCompatActivity() {
             userAgentString = userAgentString + " LugangAndroid/" + BuildConfig.VERSION_NAME
         }
         CookieManager.getInstance().setAcceptThirdPartyCookies(view, false)
+        view.addJavascriptInterface(LugangBridge(this), "LugangApp")
+        injectBridgeScript(view)
         view.webViewClient = shellClient()
         view.webChromeClient = chromeClient()
         webContainer.addView(view)
@@ -121,7 +132,22 @@ class MainActivity : AppCompatActivity() {
             return route(request.url.toString())
         }
 
+        override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+            currentUrl = url ?: ""
+            bridgeAllowed = BridgeOrigin.isTrusted(url)
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT) && bridgeScript.isNotEmpty()) {
+                view.evaluateJavascript(bridgeScript, null)
+            }
+        }
+
+        override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+            currentUrl = url ?: currentUrl
+            bridgeAllowed = BridgeOrigin.isTrusted(currentUrl)
+        }
+
         override fun onPageFinished(view: WebView, url: String?) {
+            currentUrl = url ?: currentUrl
+            bridgeAllowed = BridgeOrigin.isTrusted(currentUrl)
             splashView.visibility = View.GONE
             if (errorView.visibility != View.VISIBLE) {
                 view.visibility = View.VISIBLE
@@ -255,6 +281,29 @@ class MainActivity : AppCompatActivity() {
         val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newPlainText("鲁港通诊断", text))
         Toast.makeText(this, R.string.error_copied, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun readBridgeScript(): String =
+        runCatching {
+            assets.open("lugang_bridge.js").bufferedReader(Charsets.UTF_8).use { it.readText() }
+        }.getOrDefault("")
+
+    private fun injectBridgeScript(view: WebView) {
+        if (bridgeScript.isEmpty()) return
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            WebViewCompat.addDocumentStartJavaScript(view, bridgeScript, setOf(BridgeOrigin.ORIGIN))
+        }
+    }
+
+    override fun isBridgeTrusted(): Boolean = bridgeAllowed && BridgeOrigin.isTrusted(currentUrl)
+
+    override fun onBridgeOpenExternal(url: String?) {
+        runOnUiThread { openExternalUrl(url) }
+    }
+
+    override fun onBridgeToast(message: String?) {
+        if (message.isNullOrBlank()) return
+        runOnUiThread { Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show() }
     }
 
     override fun onDestroy() {
