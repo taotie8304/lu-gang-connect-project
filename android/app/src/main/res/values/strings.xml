@@ -2,4 +2,23 @@
 <resources>
     <string name="app_name">鲁港通</string>
     <string name="splash_tagline">香港民生与政策助手</string>
+    <string name="error_title">暂时无法打开鲁港通</string>
+    <string name="error_retry">重试</string>
+    <string name="error_copy">复制诊断信息</string>
+    <string name="error_copied">诊断信息已复制</string>
+    <string name="exit_hint">再按一次退出鲁港通</string>
+    <string name="link_open_failed">无法打开该链接</string>
+    <string name="download_saved">已保存到 下载/鲁港通</string>
+    <string name="download_failed">保存失败，请重试</string>
+    <string name="download_too_large">文件过大，请在电脑端导出</string>
+    <string name="download_busy">请等待当前文件保存完成</string>
+    <string name="download_unsupported">暂不支持该下载链接</string>
+    <string name="update_title">发现新版本</string>
+    <string name="update_download">下载更新</string>
+    <string name="update_later">稍后</string>
+    <string name="update_downloading">正在下载更新</string>
+    <string name="update_failed">下载校验失败，请稍后重试</string>
+    <string name="update_install_hint">请允许鲁港通安装应用后重试</string>
+    <string name="update_latest">已是最新版本</string>
+    <string name="choose_file">选择文件</string>
 </resources>
