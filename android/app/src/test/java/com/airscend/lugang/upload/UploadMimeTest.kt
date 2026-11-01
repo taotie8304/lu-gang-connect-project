@@ -19,6 +19,14 @@ class UploadMimeTest {
     }
 
     @Test
+    fun `未知扩展名跳过而非放宽为任意文件`() {
+        assertArrayEquals(
+            arrayOf("image/jpeg", "application/pdf"),
+            UploadMime.fromAccept(".jpg,.unknown,.pdf")
+        )
+    }
+
+    @Test
     fun `空或未知回退为任意文件`() {
         assertArrayEquals(arrayOf("*/*"), UploadMime.fromAccept(null))
         assertArrayEquals(arrayOf("*/*"), UploadMime.fromAccept(""))
