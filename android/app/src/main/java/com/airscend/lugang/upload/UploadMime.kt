@@ -34,9 +34,8 @@ object UploadMime {
             val token = raw.trim()
             if (token.isEmpty()) continue
             when {
-                token.startsWith(".") -> result.add(EXTENSIONS[token.lowercase()] ?: "*/*")
+                token.startsWith(".") -> EXTENSIONS[token.lowercase()]?.let(result::add)
                 MIME.matches(token) -> result.add(token)
-                else -> result.add("*/*")
             }
         }
         if (result.isEmpty()) return arrayOf("*/*")

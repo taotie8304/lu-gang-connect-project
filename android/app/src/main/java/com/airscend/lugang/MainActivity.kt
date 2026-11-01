@@ -266,10 +266,11 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
             fileChooserParams: WebChromeClient.FileChooserParams?
         ): Boolean {
             if (filePathCallback == null) return false
+            // 鲁港通 - 现网网页不设 capture，拍照入口由外壳补齐（非图片 accept 在 UploadChooser 内被挡）
             uploadChooser.open(
                 filePathCallback,
                 fileChooserParams?.acceptTypes?.joinToString(","),
-                fileChooserParams?.isCaptureEnabled == true
+                true
             )
             return true
         }
