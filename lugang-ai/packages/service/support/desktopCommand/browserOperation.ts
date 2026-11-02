@@ -907,6 +907,11 @@ const formatPdfFillResult = (
   return lines.join('\n');
 };
 
+// 鲁港通 - 点击登录/注册后站点常把页面重定向到 OAuth/接口地址（原始 JSON 或代码页），
+// 这类回执必须当场纠正，避免模型把错误页当成正常页面继续填写
+const API_LANDING_WARNING =
+  '页面现在停在网站的接口或登录跳转地址上；这类地址只会显示 JSON、报错数据或代码页，不能继续在这个页面上办事。请立即返回上一页，改用页面上公开的「注册 / 登录 / 申请 / 成为会员 / 立即加入」入口重新进入；不要重复点击刚才的「登入/注册」按钮，也不要直接打开这个地址。';
+
 const guidanceForCode = (code?: string, action?: string): string | undefined => {
   const isFormFill = action === 'fill_form';
   const isDocumentEdit = action === 'edit_document';
@@ -1373,6 +1378,11 @@ export const createDesktopBrowserOperationExecutor = ({
 
     const snapshotBlock = snapshot ? `\n\n${formatSnapshot(snapshot)}` : '';
     const prefix = hint ? `${hint}\n\n` : '';
+    // 鲁港通 - 任意动作落到接口/OAuth 地址都按错误页处理，不区分 navigate/click
+    const landedOnApiEndpoint = Boolean(
+      touchesPage && snapshot?.url && isDesktopBrowserApiEndpointUrl(snapshot.url)
+    );
+    const apiLandingWarning = landedOnApiEndpoint ? `${API_LANDING_WARNING}\n\n` : '';
 
     if (!result.ok) {
       const guidance =
@@ -1387,7 +1397,7 @@ export const createDesktopBrowserOperationExecutor = ({
         result.code === 'invalid_command' && result.message
           ? `\n错误原因：${result.message}`
           : '';
-      const message = `${prefix}${guidance}${detail}${snapshotBlock}`;
+      const message = `${prefix}${apiLandingWarning}${guidance}${detail}${snapshotBlock}`;
 
       return finish({
         response: message,
@@ -1452,7 +1462,9 @@ export const createDesktopBrowserOperationExecutor = ({
       result.changed === false
         ? '\n页面没有检测到明显变化。如果操作没有生效，请先重新读取页面确认状态。'
         : '';
-    const response = `${prefix}${successLead}${changedNote}${snapshotBlock}`;
+    const response = landedOnApiEndpoint
+      ? `${prefix}${apiLandingWarning}${changedNote}${snapshotBlock}`
+      : `${prefix}${successLead}${changedNote}${snapshotBlock}`;
 
     const continuation = isContinuationMessage(currentGoal);
     const goal = continuation
@@ -1484,6 +1496,7 @@ export const createDesktopBrowserOperationExecutor = ({
       deviceId,
       url: resultUrl || resume?.url,
       ok: true,
+      code: landedOnApiEndpoint ? 'api_endpoint_landed' : undefined,
       changed: result.changed,
       stopped: result.stopped,
       confirmation: result.confirmation?.decision

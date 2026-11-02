@@ -765,6 +765,61 @@ describe('desktop browser operation executor', () => {
     expect(result.response).toContain('姓名');
   });
 
+  it('warns the model and audits when a click lands on an API or OAuth redirect page', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      changed: true,
+      snapshot: {
+        ...snapshot,
+        url: 'https://api-sso2.hktdc.com/v2/uaa/oauth2/authorize',
+        title: '',
+        text: '{"datetime":"2026-11-02T06:04:18.968Z"}',
+        elements: []
+      }
+    } as any);
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('接口或登录跳转地址');
+    expect(result.response).toContain('返回上一页');
+    expect(result.response).toContain('注册');
+    expect(result.response).not.toContain('操作已执行。');
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'click', ok: true, code: 'api_endpoint_landed' })
+    );
+  });
+
+  it('keeps the normal success response when a click lands on a regular page', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('操作已执行。');
+    expect(result.response).not.toContain('接口或登录跳转地址');
+  });
+
+  it('adds the API landing warning to a failed action result as well', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'failed',
+      snapshot: {
+        ...snapshot,
+        url: 'https://api.example.com/v1/session'
+      }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('接口或登录跳转地址');
+    expect(result.response).toContain('返回上一页');
+  });
+
   it('types text without writing the input into the audit record', async () => {
     const store = createFakeStore();
     const audit = vi.fn(async () => {});
