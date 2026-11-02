@@ -8,6 +8,7 @@ import {
 } from '@fastgpt/service/core/ai/llm/agentLoop/domain/systemTool/browserOperation';
 import {
   createDesktopBrowserOperationExecutor,
+  isDesktopBrowserApiEndpointUrl,
   isDesktopBrowserEnabledForUser,
   isDesktopBrowserUrlOperable
 } from '@fastgpt/service/support/desktopCommand/browserOperation';
@@ -565,6 +566,31 @@ describe('desktop browser url policy', () => {
     expect(isDesktopBrowserUrlOperable('file:///C:/secret.txt')).toBe(false);
     expect(isDesktopBrowserUrlOperable('not a url')).toBe(false);
   });
+
+  it('recognizes API endpoints and static resource links', () => {
+    expect(
+      isDesktopBrowserApiEndpointUrl(
+        'https://my.hktdc.com/api/auth/signIn?locale=en&action=register'
+      )
+    ).toBe(true);
+    expect(
+      isDesktopBrowserApiEndpointUrl('https://api-sso2.hktdc.com/v2/uaa/oauth2/authorize')
+    ).toBe(true);
+    expect(isDesktopBrowserApiEndpointUrl('https://api.example.com/v1/profile')).toBe(true);
+    expect(isDesktopBrowserApiEndpointUrl('https://example.com/data/report.json')).toBe(true);
+    expect(isDesktopBrowserApiEndpointUrl('https://example.com/assets/app.js')).toBe(true);
+    expect(isDesktopBrowserApiEndpointUrl('/api/auth/signIn?locale=en')).toBe(true);
+    expect(isDesktopBrowserApiEndpointUrl('api/auth/signIn')).toBe(true);
+  });
+
+  it('keeps ordinary pages navigable', () => {
+    expect(isDesktopBrowserApiEndpointUrl('https://sourcing.hktdc.com/en/registration')).toBe(
+      false
+    );
+    expect(isDesktopBrowserApiEndpointUrl('https://www.cr.gov.hk/sc/forms/index.htm')).toBe(false);
+    expect(isDesktopBrowserApiEndpointUrl('/en/registration')).toBe(false);
+    expect(isDesktopBrowserApiEndpointUrl('not a url')).toBe(false);
+  });
 });
 
 describe('desktop command store waiting and resume state', () => {
@@ -672,6 +698,52 @@ describe('desktop browser operation executor', () => {
       command: { action: 'navigate', url: 'https://www.empf.org.hk/register' }
     });
     expect(result.response).toContain('操作已执行');
+  });
+
+  it('blocks navigating to an API endpoint before touching the device', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {});
+    const execute = createExecutor({ store, audit });
+
+    const result = await execute({
+      action: 'navigate',
+      url: 'https://my.hktdc.com/api/auth/signIn?locale=en&action=register'
+    });
+
+    expect(result.response).toContain('接口地址');
+    expect(result.response).toContain('click');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'navigate', ok: false, code: 'api_endpoint_blocked' })
+    );
+  });
+
+  it('marks API endpoint links in the page snapshot', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: true,
+      changed: true,
+      snapshot: {
+        ...snapshot,
+        elements: [
+          ...snapshot.elements,
+          {
+            ref: 'e13',
+            role: 'link',
+            name: '注册',
+            tag: 'a',
+            href: '/api/auth/signIn?locale=en&action=register',
+            inViewport: true
+          }
+        ]
+      }
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'read' });
+
+    expect(result.response).toContain('接口地址，勿直接打开，请用 click');
+    expect(result.response).toContain('[e13]');
   });
 
   it('sends a click command and returns the fresh snapshot', async () => {

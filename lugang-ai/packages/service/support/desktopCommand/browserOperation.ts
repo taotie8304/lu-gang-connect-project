@@ -165,6 +165,28 @@ export const isDesktopBrowserUrlOperable = (input: string): boolean => {
   }
 };
 
+/**
+ * 鲁港通 - 识别接口与静态资源地址（/api/、oauth2/authorize、api-* 主机、.json/.xml/.js/.css）。
+ * 这类地址不是可办理的网页，直接导航只会得到 404、JSON 数据或代码页；快照里的 href 可能是相对路径。
+ */
+export const isDesktopBrowserApiEndpointUrl = (input: string): boolean => {
+  const raw = typeof input === 'string' ? input.trim() : '';
+  if (!raw) return false;
+
+  let url: URL;
+  try {
+    url = new URL(raw, 'https://placeholder.invalid');
+  } catch {
+    return false;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+  if (/^apis?(?:[.-]|$)/i.test(url.hostname)) return true;
+  if (/\.(?:json|xml|js|css)$/i.test(url.pathname)) return true;
+  return url.pathname
+    .split('/')
+    .some((segment) => /^(?:api|oauth2?|authorize)$/i.test(segment));
+};
+
 /** 审计与续跑状态只保留源与路径，查询串和锚点可能含令牌。 */
 const sanitizeUrl = (input: unknown): string => {
   if (typeof input !== 'string' || !input) return '';
@@ -223,7 +245,13 @@ const formatSnapshot = (snapshot: DesktopBrowserSnapshot): string => {
         element.value ? `value="${element.value}"` : '',
         element.checked !== undefined ? `checked=${element.checked}` : '',
         element.disabled ? 'disabled' : '',
-        element.href ? `href=${element.href}` : '',
+        element.href
+          ? `href=${element.href}${
+              isDesktopBrowserApiEndpointUrl(element.href)
+                ? '（接口地址，勿直接打开，请用 click）'
+                : ''
+            }`
+          : '',
         element.inViewport === false ? '不在视口内' : ''
       ]
         .filter(Boolean)
@@ -1138,6 +1166,16 @@ export const createDesktopBrowserOperationExecutor = ({
           url: requestUrl,
           ok: false,
           code: 'not_allowed'
+        });
+      }
+      if (isDesktopBrowserApiEndpointUrl(url)) {
+        return finish({
+          response:
+            '这个地址是网站的接口地址，不是可以操作的网页，直接打开只会看到 404、乱码数据或代码页。请不要直接打开这类链接：改用 click 点击页面上的按钮或链接，或者从网站首页一步步进入；需要时先 read 重新查看当前页面的可操作元素。',
+          action,
+          url: requestUrl,
+          ok: false,
+          code: 'api_endpoint_blocked'
         });
       }
     }
