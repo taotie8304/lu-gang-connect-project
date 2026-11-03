@@ -820,6 +820,121 @@ describe('desktop browser operation executor', () => {
     expect(result.response).toContain('返回上一页');
   });
 
+  it('blocks clicking a privacy or ordinance link even when the model asks for it', async () => {
+    const store = createFakeStore();
+    const audit = vi.fn(async () => {});
+    store.waitForResult.mockResolvedValueOnce({
+      ok: true,
+      changed: true,
+      snapshot: {
+        ...snapshot,
+        elements: [
+          ...snapshot.elements,
+          {
+            ref: 'e6',
+            role: 'link',
+            name: '《個人資料（私隱）條例》',
+            tag: 'a',
+            href: 'http://www.pcpd.org.hk/tc_chi/data_privacy_law/ordinance_at_a_Glance/ordinance.html',
+            inViewport: false
+          }
+        ]
+      }
+    } as any);
+    const execute = createExecutor({ store, audit });
+
+    await execute({ action: 'read' });
+    store.enqueue.mockClear();
+
+    const result = await execute({
+      action: 'click',
+      ref: 'e6',
+      target: '《個人資料（私隱）條例》'
+    });
+
+    expect(result.response).toContain('拦截');
+    expect(result.response).toContain('复选框');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'click', ok: false, code: 'policy_link_blocked' })
+    );
+  });
+
+  it('still clicks the agreement checkbox whose label mentions privacy terms', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValueOnce({
+      ok: true,
+      changed: true,
+      snapshot: {
+        ...snapshot,
+        elements: [
+          {
+            ref: 'e7',
+            role: 'checkbox',
+            name: '我已閱讀並同意以上的私隱政策、收集個人資料的目的、版權告示及免責聲明。',
+            tag: 'input',
+            checked: true,
+            inViewport: true
+          }
+        ]
+      }
+    } as any);
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'read' });
+    store.enqueue.mockClear();
+
+    const result = await execute({ action: 'click', ref: 'e7' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'click', ref: 'e7' }
+    });
+    expect(result.response).toContain('操作已执行');
+  });
+
+  it('blocks a policy link click by target text when no snapshot is cached', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', target: '隐私政策' });
+
+    expect(result.response).toContain('拦截');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('allows clicking the agree button next to policy links', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValueOnce({
+      ok: true,
+      changed: true,
+      snapshot: {
+        ...snapshot,
+        elements: [
+          {
+            ref: 'e8',
+            role: 'button',
+            name: '我同意',
+            tag: 'button',
+            inViewport: true
+          }
+        ]
+      }
+    } as any);
+    const execute = createExecutor({ store });
+
+    await execute({ action: 'read' });
+    store.enqueue.mockClear();
+
+    const result = await execute({ action: 'click', ref: 'e8' });
+
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'click', ref: 'e8' }
+    });
+    expect(result.response).toContain('操作已执行');
+  });
+
   it('types text without writing the input into the audit record', async () => {
     const store = createFakeStore();
     const audit = vi.fn(async () => {});

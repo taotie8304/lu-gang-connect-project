@@ -84,6 +84,26 @@ const SENSITIVE_TARGET_PATTERN =
 const CONTINUATION_PATTERN =
   /^(继续|繼續|接着|接著|往下|继续吧|繼續吧|继续填写|繼續填寫|continue|go on|keep going)[。.!！?？\s]*$/i;
 
+// 鲁港通 - 隐私/条款类说明链接不参与办理：模型在声明页多次误点条例、隐私链接，改为服务端确定性拦截
+const POLICY_LINK_TEXT_PATTERN =
+  /隐私政策|私隱政策|隱私政策|privacy\s*policy|個人資料（私隱）|个人资料（私隐）|私隱條例|私隐条例|條例|条例|服務條款|服务条款|使用條款|使用条款|條款及細則|条款及细则|terms\s*(?:of\s*service|and\s*conditions)?|版權告示|版权告示|copyright|免責聲明|免责声明|disclaimer|cookie\s*(?:policy|政策)/i;
+
+const POLICY_LINK_HREF_PATTERN =
+  /privacy|personal[-_]?data|ordinance|copyright|disclaimer|cookie|\/terms(?:[/?#]|$)|terms[-_]|conditions/i;
+
+const isPolicyLinkElement = (element?: DesktopBrowserSnapshot['elements'][number]): boolean => {
+  if (!element) return false;
+  const isLink = element.role === 'link' || element.tag === 'a';
+  if (!isLink) return false;
+  return (
+    POLICY_LINK_TEXT_PATTERN.test(element.name ?? '') ||
+    (element.href ? POLICY_LINK_HREF_PATTERN.test(element.href) : false)
+  );
+};
+
+const POLICY_LINK_BLOCK_MESSAGE =
+  '已拦截：这是隐私政策或条款类说明链接，不需要打开，也不需要反复阅读。请回到当前办理步骤：勾选页面上的同意复选框，或直接点击「同意/继续」；勾选没反应时先 read 重新定位同一个复选框再点，不要打开任何条例、隐私或条款链接。';
+
 const normalizeHost = (hostname: string): string =>
   hostname.trim().toLowerCase().replace(/\.$/, '');
 
@@ -1051,6 +1071,8 @@ export const createDesktopBrowserOperationExecutor = ({
   let resumeLoaded = false;
   let cachedResume: DesktopBrowserResumeState | undefined;
   let resumeHintShown = false;
+  // 鲁港通 - 记住最近一次快照元素，点击前据此识别隐私/条款链接
+  let latestElements: DesktopBrowserSnapshot['elements'] = [];
 
   const loadResume = async () => {
     if (resumeLoaded) return cachedResume;
@@ -1159,6 +1181,23 @@ export const createDesktopBrowserOperationExecutor = ({
         ok: false,
         code: 'sensitive_blocked'
       });
+    }
+
+    if (action === 'click') {
+      const ref = typeof args.ref === 'string' ? args.ref.trim() : '';
+      const clickElement = ref ? latestElements.find((item) => item.ref === ref) : undefined;
+      const blocksPolicyLink =
+        isPolicyLinkElement(clickElement) ||
+        (!clickElement && Boolean(target) && POLICY_LINK_TEXT_PATTERN.test(target));
+      if (blocksPolicyLink) {
+        return finish({
+          response: POLICY_LINK_BLOCK_MESSAGE,
+          action,
+          url: requestUrl,
+          ok: false,
+          code: 'policy_link_blocked'
+        });
+      }
     }
 
     if (action === 'navigate') {
@@ -1359,6 +1398,7 @@ export const createDesktopBrowserOperationExecutor = ({
     }
 
     const snapshot = result.snapshot;
+    if (snapshot) latestElements = snapshot.elements ?? [];
     const resultUrl = snapshot?.url || requestUrl;
     // 鲁港通 - 表单、文档与 PDF 动作只处理本机文件，不改变页面位置，也不应覆盖或打断页面续跑状态
     const touchesPage =
