@@ -14,7 +14,7 @@ export const Prompt_userQuotePromptList: PromptTemplateItem[] = [
 
 ## 追溯展示规则
 
-- 使用 [id](CITE) 的格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量, id 为引文中的 id。
+- 使用 **[引用编号](CITE)** 格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量，引用编号必须是 Cites 中该条目对应的 24 位 id（24 位字母与数字组合），原样复制填入；禁止照抄 "id"、"ref" 等字样作为占位（如 [id](CITE)、[ref](CITE) 均为错误写法）。
 - 在 **每段话结尾** 自然地整合引用。例如: "Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)。"。
 - 每段话**至少包含一个引用**，多个引用时按顺序排列，例如："Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)[67e517e74767063e882d6862](CITE)。\n 它的特点是非常轻量[67e517e74767063e882d6863](CITE)。"
 - 不要把示例作为知识点。
@@ -76,7 +76,7 @@ export const Prompt_userQuotePromptList: PromptTemplateItem[] = [
 
 ## 追溯展示规则
 
-- 使用 [id](CITE) 的格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量, id 为引文中的 id。
+- 使用 **[引用编号](CITE)** 格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量，引用编号必须是 Cites 中该条目对应的 24 位 id（24 位字母与数字组合），原样复制填入；禁止照抄 "id"、"ref" 等字样作为占位（如 [id](CITE)、[ref](CITE) 均为错误写法）。
 - 在 **每段话结尾** 自然地整合引用。例如: "Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)。"。
 - 每段话**至少包含一个引用**，多个引用时按顺序排列，例如："Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)[67e517e74767063e882d6862](CITE)。\n 它的特点是非常轻量[67e517e74767063e882d6863](CITE)。"
 - 不要把示例作为知识点。
@@ -149,7 +149,7 @@ export const Prompt_systemQuotePromptList: PromptTemplateItem[] = [
 
 ## 追溯展示规则
 
-- 使用 [id](CITE) 的格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量, id 为引文中的 id。
+- 使用 **[引用编号](CITE)** 格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量，引用编号必须是 Cites 中该条目对应的 24 位 id（24 位字母与数字组合），原样复制填入；禁止照抄 "id"、"ref" 等字样作为占位（如 [id](CITE)、[ref](CITE) 均为错误写法）。
 - 在 **每段话结尾** 自然地整合引用。例如: "Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)。"。
 - 每段话**至少包含一个引用**，多个引用时按顺序排列，例如："Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)[67e517e74767063e882d6862](CITE)。\n 它的特点是非常轻量[67e517e74767063e882d6863](CITE)。"
 - 不要把示例作为知识点。
@@ -197,7 +197,7 @@ export const Prompt_systemQuotePromptList: PromptTemplateItem[] = [
 
 ## 追溯展示规则
 
-- 使用 [id](CITE) 的格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量, id 为引文中的 id。
+- 使用 **[引用编号](CITE)** 格式来引用 <Cites></Cites> 中的知识，其中 CITE 是固定常量，引用编号必须是 Cites 中该条目对应的 24 位 id（24 位字母与数字组合），原样复制填入；禁止照抄 "id"、"ref" 等字样作为占位（如 [id](CITE)、[ref](CITE) 均为错误写法）。
 - 在 **每段话结尾** 自然地整合引用。例如: "Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)。"。
 - 每段话**至少包含一个引用**，多个引用时按顺序排列，例如："Nginx是一款轻量级的Web服务器、反向代理服务器[67e517e74767063e882d6861](CITE)[67e517e74767063e882d6862](CITE)。\n 它的特点是非常轻量[67e517e74767063e882d6863](CITE)。"
 - 不要把示例作为知识点。

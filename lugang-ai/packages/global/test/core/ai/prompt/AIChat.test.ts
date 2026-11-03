@@ -242,4 +242,32 @@ describe('getQuotePrompt', () => {
       expect(systemResult).not.toContain('{{question}}');
     });
   });
+
+  // 鲁港通 - 引用模板统一口径：禁止模型照抄 [id](CITE) 占位
+  describe('鲁港通引用模板口径', () => {
+    const citationPromptItems = [
+      Prompt_userQuotePromptList[0],
+      Prompt_userQuotePromptList[2],
+      Prompt_systemQuotePromptList[0],
+      Prompt_systemQuotePromptList[2]
+    ];
+
+    it('标准/严格模板应要求填写 24 位引用编号并禁止占位写法', () => {
+      citationPromptItems.forEach((item) => {
+        Object.values(item.value).forEach((prompt) => {
+          expect(prompt).toContain('24 位');
+          expect(prompt).toContain('禁止照抄');
+          expect(prompt).not.toContain('使用 [id](CITE) 的格式');
+        });
+      });
+    });
+
+    it('问答对模板不含 CITE 引用规则', () => {
+      [Prompt_userQuotePromptList[1], Prompt_userQuotePromptList[3]].forEach((item) => {
+        Object.values(item.value).forEach((prompt) => {
+          expect(prompt).not.toContain('(CITE)');
+        });
+      });
+    });
+  });
 });
