@@ -191,7 +191,8 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
       var box = el.getBoundingClientRect();
       var outside = box.bottom < 0 || box.top > (globalThis.innerHeight || 0) || box.right < 0 || box.left > (globalThis.innerWidth || 0);
       if (outside && typeof el.scrollIntoView === 'function') {
-        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        // 鲁港通 - 平滑滚动会让取到的坐标停在动画前位置，点击因此落空，这里强制立即到位
+        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
       }
     }
     var rect = el.getBoundingClientRect();
@@ -205,6 +206,28 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
         height: Math.round(rect.height)
       }
     };
+    // 鲁港通 - 命中点被固定层/弹窗遮住时坐标点击会落到别的元素上，提前把遮挡物报给上层
+    if (rect.width > 0 && rect.height > 0 && typeof document.elementFromPoint === 'function') {
+      var pointX = Math.round(rect.left + rect.width / 2);
+      var pointY = Math.round(rect.top + rect.height / 2);
+      var viewHeight = globalThis.innerHeight || 0;
+      var viewWidth = globalThis.innerWidth || 0;
+      if (pointX >= 0 && pointY >= 0 && pointX <= viewWidth && pointY <= viewHeight) {
+        var hit = null;
+        try {
+          hit = document.elementFromPoint(pointX, pointY);
+        } catch (error) {
+          hit = null;
+        }
+        if (hit && hit.nodeType === 1 && hit !== el && !el.contains(hit) && !hit.contains(el)) {
+          result.covered = {
+            tag: hit.tagName ? hit.tagName.toLowerCase() : '',
+            role: roleOf(hit),
+            name: clip(labelOf(hit), 60)
+          };
+        }
+      }
+    }
     var inputType = (el.getAttribute('type') || '').toLowerCase();
     if (!isSensitive(el) && inputType !== 'file' && 'value' in el && el.value != null) result.value = clip(el.value, 500);
     else if (el.isContentEditable) result.value = clip(textOf(el), 500);

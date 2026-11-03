@@ -215,6 +215,59 @@ describe('AI 页面脚本', () => {
     expect(stale.found).toBe(false);
   });
 
+  it('滚动到目标使用即时定位，避免平滑滚动导致点击坐标过期', () => {
+    const snapshot = evalInPage<{ elements: Array<{ ref: string; name: string }> }>(
+      buildAiSnapshotExpression()
+    );
+    const next = snapshot.elements.find((item) => item.name === '下一步')!;
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(document.getElementById('next')!, 'scrollIntoView', {
+      configurable: true,
+      value: scrollIntoView
+    });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 50 });
+
+    evalInPage(buildAiResolveExpression(next.ref, { scrollIntoView: true }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: 'center',
+      inline: 'nearest',
+      behavior: 'instant'
+    });
+  });
+
+  it('解析元素时报告遮挡层，命中自身或子元素不算遮挡', () => {
+    const snapshot = evalInPage<{ elements: Array<{ ref: string; name: string }> }>(
+      buildAiSnapshotExpression()
+    );
+    const next = snapshot.elements.find((item) => item.name === '下一步')!;
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1024 });
+
+    const overlay = document.createElement('div');
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', '隐私提示');
+    document.body.appendChild(overlay);
+
+    const elementFromPoint = vi.fn(() => overlay as Element);
+    Object.defineProperty(document, 'elementFromPoint', {
+      configurable: true,
+      value: elementFromPoint
+    });
+
+    const covered = evalInPage<{
+      found: boolean;
+      covered?: { tag: string; role: string; name: string };
+    }>(buildAiResolveExpression(next.ref, { scrollIntoView: true }));
+    expect(covered.found).toBe(true);
+    expect(covered.covered).toMatchObject({ tag: 'div', role: 'dialog', name: '隐私提示' });
+    expect(elementFromPoint).toHaveBeenCalledWith(70, 116);
+
+    elementFromPoint.mockReturnValue(document.getElementById('next')!);
+    const self = evalInPage<{ covered?: unknown }>(buildAiResolveExpression(next.ref));
+    expect(self.covered).toBeUndefined();
+  });
+
   it('准备输入框：聚焦并全选现有内容，按钮不可输入', () => {
     const snapshot = evalInPage<{ elements: Array<{ ref: string; name: string }> }>(
       buildAiSnapshotExpression()

@@ -47,6 +47,7 @@ type DriverOptions = {
   fileStateAfterSet?: AiFileInputState;
   setFilesResult?: boolean;
   uploadSnapshot?: AiPageSnapshot;
+  coveredBy?: { tag?: string; role?: string; name?: string };
 };
 
 const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
@@ -90,7 +91,8 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
         visible: element.visible !== false,
         rect: { x: 10, y: 20, width: 100, height: 40 },
         value: element.value,
-        checked: element.checked
+        checked: element.checked,
+        ...(options.coveredBy ? { coveredBy: options.coveredBy } : {})
       };
     },
     prepareInput: async (ref) => {
@@ -186,6 +188,21 @@ describe('AI 页面执行器', () => {
     expect(result.snapshot?.text).toBe('已进入第二步');
     expect(calls.clickAt).toEqual([[60, 40]]);
     expect(calls.settle).toBe(1);
+  });
+
+  it('目标被页面遮挡层挡住时不下发点击，并明确指出遮挡元素', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '注册', text: '注册' })]),
+      { coveredBy: { tag: 'div', role: 'dialog', name: '隐私提示' } }
+    );
+    const result = await createExecutor(driver).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('element_covered');
+    expect(result.message).toContain('注册');
+    expect(result.message).toContain('隐私提示');
+    expect(result.message).toContain('遮挡');
+    expect(calls.clickAt).toHaveLength(0);
   });
 
   it('目标不存在时补读一次页面，再失败才返回可操作提示', async () => {

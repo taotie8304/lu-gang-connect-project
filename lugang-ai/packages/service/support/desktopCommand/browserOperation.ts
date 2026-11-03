@@ -946,6 +946,8 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
       return '找不到目标元素。页面可能已经变化，请先重新读取页面，再决定下一步操作。';
     case 'ambiguous':
       return '匹配到多个可能的元素。请改用元素引用（ref）重新操作。';
+    case 'element_covered':
+      return '目标被页面上的浮层挡住了，点击没有发出。请先关闭或避开这个遮挡层（例如点掉提示条、弹窗或浮层上的关闭按钮），再重新读取页面后定位点击；不要重复点击原来的位置。';
     case 'verification_failed':
       return '操作后没有检测到预期变化。请先重新读取页面，确认是否已经成功。';
     case 'not_allowed':

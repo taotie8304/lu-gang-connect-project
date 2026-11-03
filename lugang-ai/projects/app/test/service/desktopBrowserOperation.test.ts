@@ -1224,6 +1224,23 @@ describe('desktop browser operation executor', () => {
     expect(result.response).toContain('[e12]');
   });
 
+  it('guides the model to clear the overlay when the target is covered', async () => {
+    const store = createFakeStore();
+    store.waitForResult.mockResolvedValue({
+      ok: false,
+      code: 'element_covered',
+      message: '「注册」被页面上的「隐私提示」挡住了，点击没有发出。',
+      snapshot
+    } as any);
+    const execute = createExecutor({ store });
+
+    const result = await execute({ action: 'click', ref: 'e12' });
+
+    expect(result.response).toContain('遮挡');
+    expect(result.response).toContain('关闭');
+    expect(result.response).toContain('重新读取页面');
+  });
+
   it('saves the resume url and goal after a successful action', async () => {
     const store = createFakeStore();
     const execute = createExecutor({ store });

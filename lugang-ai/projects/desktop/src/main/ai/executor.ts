@@ -45,6 +45,7 @@ export type AiActionErrorCode =
   | 'high_risk_blocked'
   | 'not_editable'
   | 'option_not_found'
+  | 'element_covered'
   | 'verification_failed'
   | 'file_generation_failed'
   | 'cancelled_by_user'
@@ -251,6 +252,7 @@ export type AiResolvedElement = {
   found: boolean;
   visible?: boolean;
   rect?: { x: number; y: number; width: number; height: number };
+  coveredBy?: { tag?: string; role?: string; name?: string };
   value?: string;
   checked?: boolean;
 };
@@ -479,6 +481,17 @@ export class AiExecutor {
           ok: false,
           code: 'high_risk_blocked',
           message: AI_STOP_MESSAGES.high_risk_blocked,
+          snapshot: located.snapshot
+        };
+      }
+      const cover = resolved.coveredBy;
+      if (cover) {
+        const coverName =
+          cover.name?.trim() || cover.role?.trim() || cover.tag?.trim() || '页面上的其他元素';
+        return {
+          ok: false,
+          code: 'element_covered',
+          message: `「${label.trim() || element.name || element.ref}」被页面上的「${coverName}」挡住了，点击没有发出。请先关闭或避开这个遮挡层（例如点掉提示条、弹窗或浮层上的关闭按钮），再重新读取页面后定位点击。`,
           snapshot: located.snapshot
         };
       }

@@ -68,6 +68,22 @@ const normalizeRect = (raw: unknown): AiResolvedElement['rect'] => {
   return { x, y, width, height };
 };
 
+const normalizeCovered = (raw: unknown): AiResolvedElement['coveredBy'] => {
+  if (typeof raw !== 'object' || raw === null) return undefined;
+  const record = raw as Record<string, unknown>;
+  const text = (value: unknown) =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  const tag = text(record.tag);
+  const role = text(record.role);
+  const name = text(record.name);
+  if (!tag && !role && !name) return undefined;
+  return {
+    ...(tag ? { tag } : {}),
+    ...(role ? { role } : {}),
+    ...(name ? { name } : {})
+  };
+};
+
 const isCommandError = (error: unknown): error is AiDriverError =>
   error instanceof Error && error.name === 'AiDriverError';
 
@@ -110,10 +126,12 @@ export class CdpPageDriver implements AiPageDriver {
     if (typeof raw !== 'object' || raw === null) return null;
     const record = raw as Record<string, unknown>;
     if (record.found !== true) return null;
+    const coveredBy = normalizeCovered(record.covered);
     return {
       found: true,
       visible: record.visible !== false,
       rect: normalizeRect(record.rect),
+      ...(coveredBy ? { coveredBy } : {}),
       ...(typeof record.value === 'string' ? { value: record.value } : {}),
       ...(typeof record.checked === 'boolean' ? { checked: record.checked } : {})
     };

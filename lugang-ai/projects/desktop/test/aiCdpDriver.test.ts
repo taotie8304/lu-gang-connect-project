@@ -88,6 +88,25 @@ describe('CDP 页面驱动', () => {
     expect(String(calls[0].params?.expression)).toContain('scrollIntoView');
   });
 
+  it('解析引用透传遮挡信息', async () => {
+    const { driver } = createDriver(() => ({
+      result: {
+        value: {
+          found: true,
+          visible: true,
+          rect: { x: 10, y: 20, width: 100, height: 40 },
+          covered: { tag: 'div', role: 'dialog', name: '隐私提示' }
+        }
+      }
+    }));
+
+    const found = await driver.resolve('e1', { scrollIntoView: true });
+    expect(found).toMatchObject({
+      found: true,
+      coveredBy: { tag: 'div', role: 'dialog', name: '隐私提示' }
+    });
+  });
+
   it('点击使用真实鼠标事件序列', async () => {
     const { driver, calls } = createDriver();
     await driver.clickAt(60.4, 40.6);
