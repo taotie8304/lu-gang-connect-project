@@ -903,6 +903,26 @@ describe('desktop browser operation executor', () => {
     expect(store.enqueue).not.toHaveBeenCalled();
   });
 
+  it('allows clicking an agreement checkbox by label text when no snapshot is cached', async () => {
+    const store = createFakeStore();
+    const execute = createExecutor({ store });
+
+    const result = await execute({
+      action: 'click',
+      target: '我已閱讀並同意以上的私隱政策、收集個人資料的目的、版權告示及免責聲明。'
+    });
+
+    expect(result.response).toContain('操作已执行');
+    expect(store.enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        command: expect.objectContaining({
+          action: 'click',
+          target: '我已閱讀並同意以上的私隱政策、收集個人資料的目的、版權告示及免責聲明。'
+        })
+      })
+    );
+  });
+
   it('allows clicking the agree button next to policy links', async () => {
     const store = createFakeStore();
     store.waitForResult.mockResolvedValueOnce({

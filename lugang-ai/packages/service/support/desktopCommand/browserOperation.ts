@@ -91,6 +91,10 @@ const POLICY_LINK_TEXT_PATTERN =
 const POLICY_LINK_HREF_PATTERN =
   /privacy|personal[-_]?data|ordinance|copyright|disclaimer|cookie|\/terms(?:[/?#]|$)|terms[-_]|conditions/i;
 
+// 鲁港通 - 同意类控件常把「私隱政策/條款」写在标签里，不能按政策链接误拦
+const CONSENT_TARGET_PATTERN =
+  /我已(?:閱讀|阅读|詳閱|详阅|明白|同意)|勾选|勾選|勾上|复选|複選|checkbox|check\s*(?:the\s*)?box|tick\s*(?:the\s*)?box/i;
+
 const isPolicyLinkElement = (element?: DesktopBrowserSnapshot['elements'][number]): boolean => {
   if (!element) return false;
   const isLink = element.role === 'link' || element.tag === 'a';
@@ -1188,7 +1192,10 @@ export const createDesktopBrowserOperationExecutor = ({
       const clickElement = ref ? latestElements.find((item) => item.ref === ref) : undefined;
       const blocksPolicyLink =
         isPolicyLinkElement(clickElement) ||
-        (!clickElement && Boolean(target) && POLICY_LINK_TEXT_PATTERN.test(target));
+        (!clickElement &&
+          Boolean(target) &&
+          POLICY_LINK_TEXT_PATTERN.test(target) &&
+          !CONSENT_TARGET_PATTERN.test(target));
       if (blocksPolicyLink) {
         return finish({
           response: POLICY_LINK_BLOCK_MESSAGE,
