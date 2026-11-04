@@ -2,13 +2,16 @@
 # 鲁港通 - 来源观察工具（只读）：按天统计指定来源的「发现条数 / 零发现率 / 被拒次数」，
 # 供采集韧性加固的上线观察期（2026-11-04 起 3 天）判定「保留 or 退役」。
 #
-# 用法（服务器容器内）：
-#   docker exec lugang-osg python tools/observe_sources.py jinan_gov,jinan_hrss,jinan_zwfw --days 3
+# 用法（服务器容器内，需带 PYTHONPATH 才能 import app）：
+#   docker exec -e PYTHONPATH=/app lugang-osg python tools/observe_sources.py \
+#     jinan_gov,jinan_hrss,jinan_zwfw --days 3
 #
 # 口径说明（重要，别把截断当真实值）：
 #   · 发现条数 = 该轮列表/接口返回的候选 URL 数（crawl_run.discovered_urls）。
-#   · 零发现轮 = 发现条数为 0 的轮次；零新增轮 = 新文档为 0 的轮次（两者分开看：
-#     发现>0 而新增=0 通常是「站点这段时间确实没发文」，不等于被拦）。
+#   · 抓取 成功/失败 = crawl_run.fetch_ok / fetch_failed，即真正发起过内容请求的条数。
+#   · 零发现轮 = 发现条数为 0 的轮次；零新增轮 = 新文档为 0 的轮次。
+#   · 零抓取轮 = 「发现>0 但成功+失败=0」的轮次：候选一条都没被尝试抓取，属于候选
+#     选择/判重短路问题，既不是站点拒绝也不是「没发文」，判退役时须与前者区分开。
 #   · 被拒次数按 error_summary 里的标记统计，而 error_summary 只保留前 10 条，
 #     因此单轮标记数达到 10 时按「≥10（已截断）」呈现，只用于横向比较不作精确计数。
 from __future__ import annotations
@@ -25,11 +28,14 @@ _ERROR_CAP = 10
 
 def summarize(runs: list[dict]) -> dict[str, dict]:
     """按日期（UTC）聚合轮次指标。runs 的每项含 started_at / discovered_urls /
-    new_docs / error_summary，本函数不碰数据库，便于单测。"""
+    fetch_ok / fetch_failed / new_docs / error_summary，本函数不碰数据库，便于单测。"""
     days: dict[str, dict] = defaultdict(
         lambda: {
             "runs": 0,
             "discovered": 0,
+            "fetch_ok": 0,
+            "fetch_failed": 0,
+            "no_attempt": 0,
             "new_docs": 0,
             "zero_discovery": 0,
             "zero_new": 0,
@@ -44,11 +50,17 @@ def summarize(runs: list[dict]) -> dict[str, dict]:
         d = days[day]
         summary = run.get("error_summary") or ""
         tags = summary.count(_BLOCKED_TAG)
+        fetched = (run.get("fetch_ok") or 0) + (run.get("fetch_failed") or 0)
         d["runs"] += 1
         d["discovered"] += run.get("discovered_urls") or 0
+        d["fetch_ok"] += run.get("fetch_ok") or 0
+        d["fetch_failed"] += run.get("fetch_failed") or 0
         d["new_docs"] += run.get("new_docs") or 0
         if not run.get("discovered_urls"):
             d["zero_discovery"] += 1
+        elif not fetched:
+            # 有候选却一次抓取都没发生：选择/短路问题，不是站点拒绝
+            d["no_attempt"] += 1
         if not run.get("new_docs"):
             d["zero_new"] += 1
         d["blocked"] += tags
@@ -67,6 +79,7 @@ def report_rows(code: str, days: dict[str, dict]) -> list[str]:
         blocked = f"{d['blocked']}" + ("（≥，已截断）" if d["blocked_truncated"] else "")
         lines.append(
             f"{code:<12} {day}  轮次 {d['runs']:>2}  发现 {d['discovered']:>5}"
+            f"  抓取 {d['fetch_ok']}/{d['fetch_failed']}  零抓取轮 {d['no_attempt']:>2}"
             f"  新增 {d['new_docs']:>3}  零发现轮 {d['zero_discovery']:>2}"
             f"  零新增轮 {d['zero_new']:>2}  被拒 {blocked:>4}"
             f"  退避重试 {d['retries']:>3}  熔断收尾 {d['cutoffs']:>2}"
@@ -109,6 +122,8 @@ def main() -> int:
                         {
                             "started_at": r.started_at,
                             "discovered_urls": r.discovered_urls,
+                            "fetch_ok": r.fetch_ok,
+                            "fetch_failed": r.fetch_failed,
                             "new_docs": r.new_docs,
                             "error_summary": r.error_summary,
                         }

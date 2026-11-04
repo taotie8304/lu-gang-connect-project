@@ -8,12 +8,23 @@ from datetime import datetime, timezone
 from tools.observe_sources import report_rows, summarize
 
 
-def _run(day: int, hour: int, *, discovered: int, new: int, errors: str = "") -> dict:
+def _run(
+    day: int,
+    hour: int,
+    *,
+    discovered: int,
+    new: int,
+    errors: str = "",
+    fetch_ok: int = 0,
+    fetch_failed: int = 0,
+) -> dict:
     return {
         "started_at": datetime(2026, 11, day, hour, tzinfo=timezone.utc),
         "discovered_urls": discovered,
         "new_docs": new,
         "error_summary": errors,
+        "fetch_ok": fetch_ok,
+        "fetch_failed": fetch_failed,
     }
 
 
@@ -60,6 +71,24 @@ class TestSummarize:
         assert sorted(days) == ["2026-11-03", "2026-11-04"]
         assert days["2026-11-03"]["discovered"] == 10
 
+    def test_counts_fetch_attempts(self):
+        """抓取成功/失败数分开累加——零新增到底是「没新内容」还是「没去抓」，靠这两个数区分。"""
+        d = summarize([
+            _run(4, 1, discovered=4905, new=11, fetch_ok=60, fetch_failed=2),
+            _run(4, 9, discovered=120, new=0, fetch_ok=0, fetch_failed=0),
+        ])["2026-11-04"]
+        assert d["fetch_ok"] == 60
+        assert d["fetch_failed"] == 2
+
+    def test_marks_discovered_but_never_fetched(self):
+        """发现>0 却一次抓取都没尝试：是候选选择/短路问题，不是被拦，必须单独标出来。"""
+        d = summarize([
+            _run(4, 1, discovered=232, new=0, fetch_ok=0, fetch_failed=0),
+            _run(4, 9, discovered=0, new=0, fetch_ok=0, fetch_failed=0),
+            _run(4, 17, discovered=50, new=1, fetch_ok=5, fetch_failed=0),
+        ])["2026-11-04"]
+        assert d["no_attempt"] == 1  # 只有第一轮是「有发现但零抓取」
+
 
 class TestReportRows:
     def test_row_shows_truncated_marker(self):
@@ -68,3 +97,11 @@ class TestReportRows:
         assert len(rows) == 1
         assert "被拒 10（≥，已截断）" in rows[0]
         assert rows[0].startswith("jinan_gov")
+
+    def test_row_shows_fetch_and_no_attempt_marker(self):
+        rows = report_rows(
+            "jinan_hrss",
+            summarize([_run(4, 1, discovered=232, new=0, fetch_ok=0, fetch_failed=0)]),
+        )
+        assert "抓取 0/0" in rows[0]
+        assert "零抓取轮  1" in rows[0]

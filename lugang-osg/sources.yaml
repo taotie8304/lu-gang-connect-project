@@ -701,7 +701,7 @@ sources:
     extra_headers:
       Accept-Language: "zh-CN,zh;q=0.9"
     discovery_min_interval_s: 6
-    schedule: "35 20,4,12 * * *"
+    schedule: "35 19,20,21 * * *"
     rate_limit_per_minute: 4
     enabled: true
 
@@ -776,7 +776,7 @@ sources:
     extra_headers:
       Accept-Language: "zh-CN,zh;q=0.9"
     discovery_min_interval_s: 6
-    schedule: "55 21,5,13 * * *"
+    schedule: "55 19,20,21 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 50
     enabled: true
@@ -902,7 +902,7 @@ sources:
     extra_headers:
       Accept-Language: "zh-CN,zh;q=0.9"
     discovery_min_interval_s: 8
-    schedule: "15 19,7 * * *"
+    schedule: "15 18,20 * * *"
     rate_limit_per_minute: 6
     max_pages_per_run: 60
     enabled: true
