@@ -11,8 +11,10 @@ import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import type { UserMemoryItemType } from '@fastgpt/global/support/memory/type';
 import {
   getUserMemoryList,
+  postAdoptMemoryCandidate,
   postClearUserMemories,
   postDeleteUserMemory,
+  postIgnoreMemoryCandidate,
   postSaveUserMemory,
   postToggleUserMemory,
   postUpdateUserMemorySetting
@@ -33,13 +35,22 @@ const Memories = () => {
   const [editingId, setEditingId] = useState<string>();
   const [editingContent, setEditingContent] = useState('');
   const [masterEnabled, setMasterEnabled] = useState(true);
+  const [autoExtractEnabled, setAutoExtractEnabled] = useState(true);
+  const [pendingDrafts, setPendingDrafts] = useState<Record<string, string>>({});
 
   const { data, loading, refresh } = useRequest(getUserMemoryList, {
     manual: false,
-    onSuccess: (res) => setMasterEnabled(res.enabled)
+    onSuccess: (res) => {
+      setMasterEnabled(res.enabled);
+      setAutoExtractEnabled(res.autoExtractEnabled);
+      setPendingDrafts(
+        Object.fromEntries((res.pending ?? []).map((item) => [item.id, item.content]))
+      );
+    }
   });
 
   const list = data?.list ?? [];
+  const pendingList = data?.pending ?? [];
   const maxCount = data?.maxCount ?? 50;
   const maxContentLength = data?.maxContentLength ?? 200;
   const reachedLimit = list.length >= maxCount;
@@ -80,12 +91,25 @@ const Memories = () => {
     successToast: t('account:memory_cleared')
   });
 
-  const { run: updateMasterSwitch, loading: savingMaster } = useRequest(
+  const { run: updateSettings, loading: savingSettings } = useRequest(
     postUpdateUserMemorySetting,
     {
       onSuccess: () => refresh()
     }
   );
+
+  const { run: adoptCandidate, loading: adoptingCandidate } = useRequest(
+    postAdoptMemoryCandidate,
+    {
+      onSuccess: () => refresh(),
+      successToast: t('account:memory_pending_adopted')
+    }
+  );
+
+  const { run: ignoreCandidate } = useRequest(postIgnoreMemoryCandidate, {
+    onSuccess: () => refresh(),
+    successToast: t('account:memory_pending_ignored')
+  });
 
   const { openConfirm, ConfirmModal } = useConfirm({ type: 'delete' });
 
@@ -162,10 +186,112 @@ const Memories = () => {
               flexShrink={0}
               colorScheme={'blue'}
               isChecked={masterEnabled}
-              isDisabled={loading || savingMaster}
-              onChange={(e) => updateMasterSwitch(e.target.checked)}
+              isDisabled={loading || savingSettings}
+              onChange={(e) => updateSettings({ enabled: e.target.checked })}
             />
           </Flex>
+
+          {/* 自动记住：对话中识别到的候选先确认再保存 */}
+          <Flex
+            px={4}
+            py={3.5}
+            borderRadius={'xl'}
+            border={'1px solid'}
+            borderColor={'myGray.200'}
+            bg={'white'}
+            alignItems={'center'}
+            gap={3}
+          >
+            <MyIcon
+              name={'core/chat/think'}
+              w={'20px'}
+              flexShrink={0}
+              color={'primary.600'}
+            />
+            <Box flex={1} minW={0}>
+              <Box fontSize={'sm'} fontWeight={500} color={'myGray.900'}>
+                {t('account:memory_auto_extract_switch')}
+              </Box>
+              <Box mt={0.5} fontSize={'xs'} color={'myGray.500'} lineHeight={1.6}>
+                {t('account:memory_auto_extract_switch_desc')}
+              </Box>
+            </Box>
+            <Switch
+              flexShrink={0}
+              colorScheme={'blue'}
+              isChecked={autoExtractEnabled}
+              isDisabled={loading || savingSettings || !masterEnabled}
+              onChange={(e) => updateSettings({ autoExtractEnabled: e.target.checked })}
+            />
+          </Flex>
+
+          {/* 待确认记忆 */}
+          {pendingList.length > 0 && (
+            <Box>
+              <Flex alignItems={'center'} mb={2}>
+                <Box fontSize={'sm'} fontWeight={500} color={'myGray.900'}>
+                  {t('account:memory_pending_title', { count: pendingList.length })}
+                </Box>
+              </Flex>
+              <Box mb={2} fontSize={'xs'} color={'myGray.500'} lineHeight={1.6}>
+                {t('account:memory_pending_desc')}
+              </Box>
+              <Flex flexDirection={'column'} gap={3}>
+                {pendingList.map((item) => {
+                  const draft = pendingDrafts[item.id] ?? item.content;
+                  const trimmedDraft = draft.trim();
+                  return (
+                    <Box
+                      key={item.id}
+                      px={4}
+                      py={3.5}
+                      borderRadius={'xl'}
+                      border={'1px solid'}
+                      borderColor={'primary.200'}
+                      bg={'primary.50'}
+                    >
+                      <Textarea
+                        rows={2}
+                        resize={'none'}
+                        bg={'white'}
+                        borderColor={'primary.200'}
+                        fontSize={'sm'}
+                        value={draft}
+                        maxLength={maxContentLength}
+                        onChange={(e) =>
+                          setPendingDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))
+                        }
+                      />
+                      <Flex mt={2} alignItems={'center'} gap={2}>
+                        <Box fontSize={'xs'} color={'myGray.400'}>
+                          {formatMemoryTime(item.createdAt)}
+                        </Box>
+                        <Box flex={1} />
+                        <Button
+                          size={'sm'}
+                          variant={'whiteBase'}
+                          onClick={() => ignoreCandidate(item.id)}
+                        >
+                          {t('account:memory_pending_ignore')}
+                        </Button>
+                        <Button
+                          size={'sm'}
+                          variant={'primary'}
+                          isLoading={adoptingCandidate}
+                          isDisabled={!trimmedDraft || reachedLimit}
+                          onClick={() =>
+                            adoptCandidate({ id: item.id, content: trimmedDraft })
+                          }
+                        >
+                          {t('account:memory_pending_adopt')}
+                        </Button>
+                      </Flex>
+                    </Box>
+                  );
+                })}
+              </Flex>
+            </Box>
+          )}
 
           {/* 新增记忆 */}
           <Box

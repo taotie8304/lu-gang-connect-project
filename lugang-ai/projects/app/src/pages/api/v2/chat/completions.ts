@@ -42,6 +42,7 @@ import {
 import { updateApiKeyUsage } from '@fastgpt/service/support/openapi/tools';
 import { getRunningUserInfoByTmbId } from '@fastgpt/service/support/user/team/utils';
 import { getUserMemoryPrompt } from '@fastgpt/service/support/memory/controller';
+import { scheduleUserMemoryExtractionForChat } from '@fastgpt/service/support/memory/extract';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { type AuthOutLinkChatProps } from '@fastgpt/global/support/outLink/api';
 import { MongoChat } from '@fastgpt/service/core/chat/chatSchema';
@@ -454,6 +455,23 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       });
     } else if (preparedRound.shouldFinalizePreparedRound) {
       await finalizeChatRound(params);
+
+      // 鲁港通 - 落库后异步提取候选记忆，不阻塞对话响应
+      if (!shareId && !isPlugin) {
+        scheduleUserMemoryExtractionForChat({
+          teamId: String(teamId),
+          tmbId: String(tmbId),
+          chatId: saveChatId,
+          question: workflowUserQuestion.value
+            .map((item) => item.text?.content || '')
+            .filter(Boolean)
+            .join('\n'),
+          answer: assistantResponses
+            .map((item) => item.text?.content || '')
+            .filter(Boolean)
+            .join('\n')
+        });
+      }
     }
 
     if (!preparedRound.shouldFinalizePreparedRound && preparedRound.shouldPersistChatRound) {

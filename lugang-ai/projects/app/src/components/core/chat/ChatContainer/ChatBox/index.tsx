@@ -57,6 +57,7 @@ import { useChatGenerate } from './hooks/useChatGenerate';
 import { useChatRecordActions } from './hooks/useChatRecordActions';
 import { useChatFeedbackActions } from './hooks/useChatFeedbackActions';
 import ChatBoxModals from './components/ChatBoxModals';
+import MemoryCandidateTip from './components/MemoryCandidateTip';
 import type { ChatRecordsListProps } from './components/ChatRecordsList';
 import AppChatMain from './components/AppChatMain';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
@@ -749,6 +750,11 @@ const ChatBox = ({
           {canRenderChatInput && (
             <Box {...ChatInputWrapperStyle} {...inputBodyProps}>
               {resolvedFeatures.workorder && <WorkorderEntrance />}
+              <MemoryCandidateTip
+                chatId={chatId}
+                isChatting={isChatting}
+                enabled={chatType === ChatTypeEnum.chat && !outLinkAuthData}
+              />
               <Box position="relative">
                 <ScrollToBottomButton
                   isVisible={canRenderScrollToBottomButton}
