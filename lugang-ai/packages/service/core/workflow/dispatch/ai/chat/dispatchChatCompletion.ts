@@ -32,6 +32,7 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
     workflowStreamResponse,
     chatConfig,
     usageId,
+    userMemoryBlock,
     params: {
       model,
       temperature,
@@ -107,6 +108,10 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       model: modelConstantsData,
       maxToken
     });
+    // 鲁港通 - 用户长期记忆并入系统提示词（位于原提示词之后，不改变助手既有规则）
+    const finalSystemPrompt = userMemoryBlock
+      ? `${systemPrompt}\n\n${userMemoryBlock}`
+      : systemPrompt;
 
     const [filterMessages] = await Promise.all([
       getChatMessages({
@@ -114,7 +119,7 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
         maxTokens: max_tokens,
         histories: chatHistories,
         datasetCiteSystemPrompt: datasetCiteData.systemPrompt,
-        systemPrompt,
+        systemPrompt: finalSystemPrompt,
         userChatInput,
         userFiles,
         parseHistoryFiles: fileContextConfig.parseHistoryFiles,
@@ -126,7 +131,7 @@ export const dispatchChatCompletion = async (props: ChatProps): Promise<ChatResp
       (() => {
         if (modelConstantsData.censor && !externalProvider.openaiAccount?.key) {
           return postTextCensor({
-            text: `${systemPrompt}
+            text: `${finalSystemPrompt}
             ${userChatInput}
           `
           });

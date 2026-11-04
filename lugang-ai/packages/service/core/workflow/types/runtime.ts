@@ -95,6 +95,8 @@ export type ChatDispatchProps = {
   stream: boolean;
   retainDatasetCite?: boolean;
   showSkillReferences?: boolean;
+  /** 鲁港通 - 用户长期记忆块（由聊天入口加载，追加到 AI 节点 systemPrompt） */
+  userMemoryBlock?: string;
   maxRunTimes: number;
   isToolCall?: boolean;
   workflowStreamResponse?: WorkflowResponseType;

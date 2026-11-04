@@ -20,7 +20,8 @@ export enum TabEnum {
   'team' = 'team',
   'model' = 'model',
   'customDomain' = 'customDomain',
-  'myTickets' = 'myTickets'
+  'myTickets' = 'myTickets',
+  'memories' = 'memories'
 }
 
 const AccountContainer = ({
@@ -84,6 +85,12 @@ const AccountContainer = ({
       icon: 'common/quickActionFeedback',
       label: t('account:my_tickets'),
       value: TabEnum.myTickets
+    },
+    // 鲁港通 - 智能体记忆：所有登录用户可查看/编辑自己的记忆
+    {
+      icon: 'core/chat/deepThinking',
+      label: t('account:memories'),
+      value: TabEnum.memories
     },
     ...(showThirdPartyTab
       ? [

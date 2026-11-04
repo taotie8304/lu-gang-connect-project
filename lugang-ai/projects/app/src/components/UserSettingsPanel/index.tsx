@@ -295,6 +295,16 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       label: t('common:user_settings.ticket_feedback'),
       onClick: handleTicketFeedback
     },
+    // 鲁港通 - 智能体记忆：查看/编辑自己的长期记忆资料卡
+    {
+      key: 'myMemories',
+      icon: 'core/chat/deepThinking',
+      label: t('account:memories'),
+      onClick: () => {
+        onClose();
+        router.push('/account/memories');
+      }
+    },
     {
       key: 'accessibility',
       icon: 'common/info',

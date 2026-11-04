@@ -41,6 +41,7 @@ import {
 } from '@fastgpt/global/core/chat/utils';
 import { updateApiKeyUsage } from '@fastgpt/service/support/openapi/tools';
 import { getRunningUserInfoByTmbId } from '@fastgpt/service/support/user/team/utils';
+import { getUserMemoryPrompt } from '@fastgpt/service/support/memory/controller';
 import { MongoApp } from '@fastgpt/service/core/app/schema';
 import { type AuthOutLinkChatProps } from '@fastgpt/global/support/outLink/api';
 import { MongoChat } from '@fastgpt/service/core/chat/chatSchema';
@@ -238,26 +239,31 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       sourceType: ChatSourceTypeEnum.app,
       sourceId: String(app._id)
     };
-    const [{ histories }, { versionId, nodes, edges, chatConfig }, chatDetail] = await Promise.all([
-      getChatItems({
-        ...chatSource,
-        chatId,
-        offset: 0,
-        limit,
-        field: `obj value memories nodeOutputs`
-      }),
-      getAppLatestVersion(app._id, app),
-      MongoChat.findOne(
-        {
-          ...buildChatSourceQuery({
-            sourceType: ChatSourceTypeEnum.app,
-            sourceId: String(app._id)
-          }),
-          chatId
-        },
-        'source variableList variables'
-      )
-    ]);
+    const [{ histories }, { versionId, nodes, edges, chatConfig }, chatDetail, userMemoryBlock] =
+      await Promise.all([
+        getChatItems({
+          ...chatSource,
+          chatId,
+          offset: 0,
+          limit,
+          field: `obj value memories nodeOutputs`
+        }),
+        getAppLatestVersion(app._id, app),
+        MongoChat.findOne(
+          {
+            ...buildChatSourceQuery({
+              sourceType: ChatSourceTypeEnum.app,
+              sourceId: String(app._id)
+            }),
+            chatId
+          },
+          'source variableList variables'
+        ),
+        // 鲁港通 - 用户长期记忆：仅登录用户本人对话注入；外链分享与工具型应用不注入，读取失败不阻断聊天
+        !shareId && !isPlugin
+          ? getUserMemoryPrompt({ teamId: String(teamId), tmbId: String(tmbId) }).catch(() => '')
+          : ''
+      ]);
 
     // Get store variables(Api variable precedence)
     if (chatDetail?.variables) {
@@ -397,6 +403,7 @@ async function handler(req: NextApiRequest, res: NextApiResponse) {
       chatConfig,
       histories: newHistories,
       stream,
+      userMemoryBlock: userMemoryBlock || undefined,
       retainDatasetCite: workflowRetainDatasetCite,
       showSkillReferences: finalShowSkillReferences,
       maxRunTimes: WORKFLOW_MAX_RUN_TIMES,
