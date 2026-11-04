@@ -696,7 +696,12 @@ sources:
       - "https://jnhrss.jinan.gov.cn/col/col121890/index_1.html"
       - "https://jnhrss.jinan.gov.cn/col/col39924/index_1.html"
     content_selector: "#zoom"
-    schedule: "0 */8 * * *"
+    # 鲁港通 - 采集韧性加固（2026-11-04）：拟真姿态 + 翻页随机停顿 + 凌晨低峰错峰
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh;q=0.9"
+    discovery_min_interval_s: 6
+    schedule: "35 20,4,12 * * *"
     rate_limit_per_minute: 4
     enabled: true
 
@@ -766,7 +771,12 @@ sources:
       - "https://zwfw.jinan.gov.cn/col/col127148/index.html"
       - "https://zwfw.jinan.gov.cn/col/col127149/index.html"
       - "https://zwfw.jinan.gov.cn/col/col127242/index.html"
-    schedule: "0 */8 * * *"
+    # 鲁港通 - 采集韧性加固（2026-11-04）：拟真姿态 + 翻页随机停顿 + 凌晨低峰错峰
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh;q=0.9"
+    discovery_min_interval_s: 6
+    schedule: "55 21,5,13 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 50
     enabled: true
@@ -885,7 +895,14 @@ sources:
       endpoints:
       - https://www.jinan.gov.cn/api-gateway/jpaas-jpolicy-web-server/front/info/do-search?title=&issue=&publishYear=&infoLevel=&category=&agencyword=&publishUnit=&themeCategory=&city=&sortKey=publishdate&level=0&content=&analysis=&pageSize=100&pageNo={pageNo}
     content_selector: .main_content
-    schedule: "0 */6 * * *"
+    # 鲁港通 - 采集韧性加固（2026-11-04）：本站是 55 页连发的 POST 翻页大户，
+    # 旧实现一轮 49 页零间隔（≈20 req/s）直接踩 WAF CC，是零发现主因。
+    # 拟真姿态 + 页随机停顿（基数 8s）+ 凌晨低峰两次跑（其余济南站在 0/8/16 点，不撞）。
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh;q=0.9"
+    discovery_min_interval_s: 8
+    schedule: "15 19,7 * * *"
     rate_limit_per_minute: 6
     max_pages_per_run: 60
     enabled: true

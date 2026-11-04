@@ -551,7 +551,10 @@ def _article_html(title: str, body: str) -> bytes:
 
 
 def _mk_settings(**kw) -> Settings:
-    return Settings(api_key_fastgpt="x", source_min_interval_s=0, **kw)
+    # 鲁港通 - 节流默认关闭（翻页随机停顿单独在 test_resilience 显式打开断言），
+    # 否则既有 pipeline 测试的 sleeps 精确断言会被页间隔污染
+    return Settings(api_key_fastgpt="x", source_min_interval_s=0,
+                    discovery_min_interval_s=0, **kw)
 
 
 # 鲁港通 - 测试用假 DNS：白名单域名一律解析到公网 IP，不碰真实网络
@@ -728,8 +731,8 @@ class TestPipeline:
         assert stats.discovered == 2
         run = db.execute(select(CrawlRun)).scalar_one()
         assert run.status == "finished"
-        # 每个失败 URL 调用 3 次（初次+2 重试）
-        assert fetcher.calls.count("https://www.news.gov.hk/en/2026/09/1.html") == 3
+        # 每个失败 URL 调用 4 次（初次 + 3 次递增退避；加固把重试从 2 次放宽到 3 次）
+        assert fetcher.calls.count("https://www.news.gov.hk/en/2026/09/1.html") == 4
 
     # ------------------------------------------------------------------
     # 鲁港通 - 噪声页过滤（服务器首轮采集实测发现的两类污染）

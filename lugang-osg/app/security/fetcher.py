@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 
 import httpx
 
@@ -16,7 +18,10 @@ from app.security.url_validator import (
 )
 
 _REDIRECT_STATUSES = {301, 302, 303, 307, 308}
-_BLOCKED_STATUSES = {401, 403, 429}
+_BLOCKED_STATUSES = {401, 403}
+# 鲁港通 - 5xx 与 429 是「现在不行」而不是「不许来」：政务站网关抖动/WAF CC 限流实测
+# 大量返回 500/502/503，旧实现一律归为 FetchAborted 且不重试，一次抖动即整天零发现。
+_TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
 
 
 @dataclass(frozen=True)
@@ -31,7 +36,7 @@ class FetchResult:
 
 
 class FetchBlocked(Exception):
-    """来源返回 401/403/429：调用方必须退避（spec 6.4：至少 24h 后再查）。"""
+    """来源返回 401/403（明确拒绝）：调用方必须退避且不硬闯（spec 6.4：至少 24h 后再查）。"""
 
     def __init__(self, http_status: int, url: str) -> None:
         self.http_status = http_status
@@ -48,9 +53,48 @@ class FetchAborted(Exception):
         super().__init__(f"{reason.value}: {detail}")
 
 
+class FetchTransient(Exception):
+    """瞬时失败：服务端 5xx 或 429 限流。调用方可退避重试（spec 6.4）。"""
+
+    def __init__(self, http_status: int, url: str, retry_after_s: float | None = None) -> None:
+        self.http_status = http_status
+        self.url = url
+        self.retry_after_s = retry_after_s
+        super().__init__(f"HTTP {http_status} at {url}")
+
+
 def normalize_content_type(content_type: str | None) -> str:
     """去参数归一化：'text/html; charset=utf-8' -> 'text/html'。"""
     return (content_type or "").split(";", 1)[0].strip().lower()
+
+
+def parse_retry_after(value: str | None) -> float | None:
+    """解析 Retry-After（RFC 9110 两种形态）为等待秒数；认不出来返回 None。
+
+    鲁港通 - WAF 明确告诉我们等多久就等多久（上限由调用方把关），
+    比自己的固定退避更准，也不会比对方要求更贪。
+    """
+    if not value:
+        return None
+    text = value.strip()
+    if text.isdigit():
+        return float(text)
+    try:
+        when = parsedate_to_datetime(text)
+    except (TypeError, ValueError):
+        return None
+    if when is None:
+        return None
+    if when.tzinfo is None:
+        when = when.replace(tzinfo=timezone.utc)
+    return max(0.0, (when - datetime.now(timezone.utc)).total_seconds())
+
+
+def _request_headers(settings: Settings) -> dict[str, str]:
+    """默认 UA + 来源级覆写头（extra_headers 为空时与加固前逐字节一致）。"""
+    headers = {"User-Agent": settings.user_agent}
+    headers.update(settings.extra_headers or {})
+    return headers
 
 
 def _max_bytes_for(content_type: str, settings: Settings) -> int:
@@ -84,7 +128,7 @@ def fetch_url(
             write=settings.read_timeout_s,
             pool=settings.total_timeout_s,
         ),
-        "headers": {"User-Agent": settings.user_agent},
+        "headers": _request_headers(settings),
     }
     if transport is not None:
         client_kwargs["transport"] = transport
@@ -125,6 +169,12 @@ def fetch_url(
                 blocked_url = str(response.url)
                 response.close()
                 raise FetchBlocked(response.status_code, blocked_url)
+
+            if response.status_code in _TRANSIENT_STATUSES:
+                transient_url = str(response.url)
+                retry_after = parse_retry_after(response.headers.get("retry-after"))
+                response.close()
+                raise FetchTransient(response.status_code, transient_url, retry_after_s=retry_after)
 
             if response.status_code != 200:
                 response.close()

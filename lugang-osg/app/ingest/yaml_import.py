@@ -52,6 +52,11 @@ _DISCOVERY_KEYS = (
     "title_overrides",
     "sitemap_since_days",
     "sitemap_url_pattern",
+    # 鲁港通 - 采集韧性加固（济南三站，2026-11-04）：来源级拟真姿态三键。
+    # 漏登记会静默丢配置——YAML 写了、来源却照旧用全局 bot 标识（历史上踩过两次）。
+    "user_agent",
+    "extra_headers",
+    "discovery_min_interval_s",
 )
 
 

@@ -1,6 +1,7 @@
 # 鲁港通 - OSG 配置（pydantic-settings，全部经环境变量 OSG_ 前缀覆盖，禁止硬编码密钥）
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,9 @@ class Settings(BaseSettings):
         "LuGangTongOfficialSourceBot/1.0 "
         "(+https://www.airscend.com/official-sources; contact=service@airscend.com)"
     )
+    # 鲁港通 - 来源级请求头覆写通道：默认只有 UA，声明了 user_agent/extra_headers 的
+    # 来源（济南三站实测 bot 标识被 WAF 拦成零发现）经 discovery_config 换成浏览器姿态。
+    extra_headers: dict[str, str] = Field(default_factory=dict)
     connect_timeout_s: float = 8.0
     read_timeout_s: float = 20.0
     total_timeout_s: float = 25.0
@@ -52,6 +56,13 @@ class Settings(BaseSettings):
 
     # 鲁港通 - 频率限制（spec 12.2）
     source_min_interval_s: int = 10          # 单来源请求间隔 ≥ 10s
+    # 鲁港通 - 发现层节流：列表/翻页端点之间的基础间隔（实际等待按 _PACE_JITTER 随机抖动）。
+    # 旧实现只给详情页限速，翻页连发（jinan_gov 一轮 49 个 POST 无间隔）正踩政务 WAF 的
+    # 单 IP 频率规则，表现为整轮零发现。
+    discovery_min_interval_s: int = 4
+    # 鲁港通 - 瞬时失败重试的等待上限：对方要求等得更久就直接放弃本轮，
+    # 绝不干等（全局同步锁会被一个来源占住，其他来源全部排队）
+    transient_retry_max_wait_s: float = 120.0
     global_concurrency: int = 3
     verify_cache_ttl_s: int = 24 * 3600      # verify 结果缓存 24h
 

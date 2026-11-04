@@ -224,7 +224,8 @@ class TestFetcherLimits:
         assert ei.value.reason is RejectReason.REDIRECT_TOO_MANY
 
     def test_extra_403_raises_fetch_blocked(self):
-        """补充：403/429 上抛 FetchBlocked（调用方退避，不重试轰炸）。"""
+        """补充：401/403 上抛 FetchBlocked（硬拒绝，调用方退避不硬闯）；
+        429/5xx 归 FetchTransient，见 test_resilience.py。"""
         import httpx
 
         transport = httpx.MockTransport(

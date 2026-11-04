@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import random
 import re
 import time
 from dataclasses import dataclass, field
@@ -34,16 +35,23 @@ from app.security.fetcher import (
     FetchAborted,
     FetchBlocked,
     FetchResult,
+    FetchTransient,
     fetch_url,
 )
 from app.security.url_validator import URLRejected, validate_target_url
 
 logger = logging.getLogger("lugang.osg.pipeline")
 
-# 鲁港通 - 网络层异常重试（退避秒数）；FetchBlocked 绝不重试（spec 6.4 退避 ≥24h 由调度层负责）
-_RETRY_BACKOFF_S = (5, 15)
+# 鲁港通 - 网络层/瞬时失败重试（逐次递增的退避秒数）；FetchBlocked 绝不重试
+# （spec 6.4 退避 ≥24h 由调度层负责）
+_RETRY_BACKOFF_S = (5, 15, 45)
 _SITEMAP_MAX_DEPTH = 2   # sitemapindex 嵌套上限
-
+# 鲁港通 - 发现层节流抖动倍率（真人翻页不是节拍器）：sleep = base × uniform(lo, hi)
+_PACE_JITTER = (0.7, 1.6)
+# 鲁港通 - 连续被拒熔断阈值：同一轮里连吃 N 次 401/403 即判定「对方现在不欢迎我们」，
+# 立刻收尾，剩余候选留待下轮（旧实现会把 max_pages_per_run 篇一路撞到底，正是被
+# 拉黑整天的成因）。
+_BLOCK_CUTOFF = 3
 # 鲁港通 - 济南市系政务云（jpaas）栏目单元构建端点：栏目页是 JS 空壳，文章列表由该接口
 # 按栏目（pageId/tagId）异步返回（unitbuild.js 破译 + d4r7~d4r11 七站服务器实测，2026-10-14）。
 _JPAAS_UNIT_API_PATH = "/api-gateway/jpaas-publish-server/front/page/build/unit"
@@ -73,6 +81,11 @@ class SyncStats:
     # 鲁港通 - 政策白名单：抓取前跳过与抓取后归档的非政策条目数（P1-A）
     skipped_offtopic: int = 0
     archived_offtopic: int = 0
+    # 鲁港通 - 连续被拒熔断（济南三站加固）：本轮被 401/403 硬拒的次数、截至熔断时的
+    # 连续计数、以及因熔断而未发起的候选数——观察期靠这三个数判断「保留还是退役」。
+    blocked: int = 0
+    consecutive_blocked: int = 0
+    skipped_after_block: int = 0
     errors: list[str] = field(default_factory=list)
 
 
@@ -92,7 +105,7 @@ def sync_source(
     fixed_url 来源每次同步强制重抓：ITF/EMF 等固定页承载「申请截止/已停止」状态，
     跳过已知文档会让状态永久停在首次抓取（2026-10-17 P1-A）。
     """
-    settings = settings or get_settings()
+    settings = _source_settings(settings or get_settings(), source)
     force_refetch = force_refetch or source.discovery_method == "fixed_url"
     stats = SyncStats()
     run = CrawlRun(source_id=source.id, status="running")
@@ -146,6 +159,50 @@ def _rules_for_source(db: Session, source: Source):
         )
         for r in rows
     )
+
+
+# ---------------------------------------------------------------------------
+# 来源级访问姿态（济南三站零成本加固，2026-11-04）
+# ---------------------------------------------------------------------------
+
+def _source_settings(base: Settings, source: Source) -> Settings:
+    """把来源声明的 user_agent / extra_headers / discovery_min_interval_s 覆写到全局配置克隆上。
+
+    鲁港通 - 加固只作用于声明了这些键的来源：全局自报家门的 bot 标识被济南政务云 WAF
+    判为爬虫（do-search 返回零发现），换成浏览器姿态 + 中文 Accept-Language 才与真人一致；
+    其余来源（HA/RSS 类）仍用 bot 标识，不做无差别的身份伪装。
+    走 model_copy 而非给 fetch_url 加参数：几十个测试假 fetcher 都按
+    (url, rules, settings, method) 签名注入，改签名会波及全量测试。
+    """
+    cfg = source.discovery_config or {}
+    update: dict = {}
+    ua = cfg.get("user_agent")
+    if isinstance(ua, str) and ua.strip():
+        update["user_agent"] = ua.strip()
+    headers = cfg.get("extra_headers")
+    if isinstance(headers, dict) and headers:
+        merged = dict(base.extra_headers or {})
+        merged.update({str(k): str(v) for k, v in headers.items()})
+        update["extra_headers"] = merged
+    interval = cfg.get("discovery_min_interval_s")
+    if interval is not None:
+        try:
+            update["discovery_min_interval_s"] = max(0, int(interval))
+        except (TypeError, ValueError):
+            logger.warning("%s: discovery_min_interval_s 非整数（忽略）: %r", source.code, interval)
+    return base.model_copy(update=update) if update else base
+
+
+def _pace_discovery(sleeper, settings: Settings) -> None:
+    """翻页之间的随机停顿：真人翻列表页不会用节拍器速度连点。
+
+    鲁港通 - 旧实现翻页零间隔，jinan_gov 一轮 49 页连发约 20 req/s，正是 WAF CC 防护
+    的典型触发形态。base ≤ 0 时完全不睡（本地/一次性来源与既有测试的无节流口径）。
+    """
+    base = settings.discovery_min_interval_s
+    if base <= 0:
+        return
+    sleeper(round(base * random.uniform(*_PACE_JITTER), 1))
 
 
 def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[DiscoveredItem]:
@@ -269,6 +326,14 @@ def _discover_paged(db, endpoint, parser, http_method, paginate,
     seen: set[str] = set()
     page = start
     while page < start + max_pages:
+        # 鲁港通 - 连续被拒熔断：列表接口连吃 N 次 401/403 说明「现在别再来」，
+        # 继续按 max_pages 翻页只会把一次拦截升级成整天封禁（发现层也要收手，
+        # 不只是抓取层）。
+        if stats.consecutive_blocked >= _BLOCK_CUTOFF:
+            logger.warning("翻页连续被拒 %s 次，本轮停止翻页", stats.consecutive_blocked)
+            break
+        if page != start:
+            _pace_discovery(sleeper, settings)
         url = endpoint.replace(placeholder, str(page)) if placeholder in endpoint else endpoint
         page_items = _fetch_and_parse(db, url, rules, settings, fetcher, sleeper, stats,
                                       parser, method=http_method)
@@ -389,13 +454,49 @@ def _entry_urls(source: Source) -> set[str]:
     return urls
 
 
+def _transient_wait_s(exc: FetchTransient, settings: Settings, attempt: int) -> float | None:
+    """本次瞬时失败该等多久；None = 等待超出上限，本轮直接放弃。
+
+    鲁港通 - 绝不真睡超过 transient_retry_max_wait_s：sync_source 全程持有全局同步锁，
+    服务端要等 2 小时时留在那里睡觉会把其他来源一起阻塞在外头，放弃留待下轮更划算。
+    """
+    if exc.retry_after_s is not None and exc.retry_after_s > settings.transient_retry_max_wait_s:
+        return None
+    backoff = _RETRY_BACKOFF_S[attempt] if attempt < len(_RETRY_BACKOFF_S) else 0
+    return max(float(backoff), float(exc.retry_after_s or 0.0))
+
+
 def _fetch_with_retry(url, rules, settings, fetcher, sleeper, stats, method="GET") -> FetchResult | None:
-    """网络异常重试（指数退避）；FetchBlocked/FetchAborted 不重试直接放弃。
-    method 透传给 fetcher（济南 do-search 列表接口须 POST，GET 返 500）。"""
+    """抓取一个 URL：瞬时失败退避重试，明确拒绝与形态问题立即放弃。
+
+    鲁港通 - 三类失败分级（加固前只有两类，5xx 与 403 同样「一次即弃」，政务网关抖一下
+    就导致整天零发现）：
+      FetchTransient（429/5xx）：逐次递增间隔重试，最多 len(_RETRY_BACKOFF_S) 次；
+        服务端给了 Retry-After 就至少等那么久（超过上限则本轮放弃）。
+      FetchBlocked（401/403）：绝不重试，并累加连续被拒计数供熔断判断。
+      FetchAborted（内容类型/大小/重定向）：重试无意义，直接放弃。
+    method 透传给 fetcher（济南 do-search 列表接口须 POST，GET 返 500）。
+    """
     for attempt in range(len(_RETRY_BACKOFF_S) + 1):
         try:
-            return fetcher(url, rules, settings, method=method)
+            result = fetcher(url, rules, settings, method=method)
+            stats.consecutive_blocked = 0
+            return result
+        except FetchTransient as exc:
+            wait = _transient_wait_s(exc, settings, attempt)
+            if wait is None:
+                stats.errors.append(
+                    f"transient {exc.http_status} {url}: Retry-After {exc.retry_after_s:.0f}s 超上限，本轮放弃")
+                return None
+            if attempt < len(_RETRY_BACKOFF_S):
+                stats.errors.append(f"transient retry {attempt + 1} {url}: {exc}")
+                sleeper(wait)
+                continue
+            stats.errors.append(f"transient failed {url}: {exc}")
+            return None
         except FetchBlocked:
+            stats.blocked += 1
+            stats.consecutive_blocked += 1
             stats.errors.append(f"blocked: {url}")
             return None
         except FetchAborted as exc:
@@ -426,6 +527,18 @@ def _process_candidates(db, source, run, candidates, rules, settings,
     shape_filter = source.discovery_method not in ("fixed_url", "api_json")
 
     for idx, item in enumerate(candidates):
+        # 鲁港通 - 连续被拒熔断（济南三站加固）：对方已明确拒绝 _BLOCK_CUTOFF 次，继续
+        # 逐个硬闯只会从「这一条被拦」升级为「出口 IP 被拉黑一天」。剩余候选留待下轮，
+        # 并记入 skipped_after_block——观察期用它区分「被拦」与「没来得及试」。
+        if stats.consecutive_blocked >= _BLOCK_CUTOFF:
+            remaining = len(candidates) - idx
+            stats.skipped_after_block = remaining
+            stats.errors.append(
+                f"连续被拒 {stats.consecutive_blocked} 次，本轮提前收尾（剩余 {remaining} 条留待下轮）")
+            logger.warning("%s: 连续被拒 %s 次，剩余 %s 条候选本轮不再请求",
+                           source.code, stats.consecutive_blocked, remaining)
+            break
+
         # 0) 单轮抓取页数上限（spec 12.2）：达标即结束本轮，不再为剩余候选逐条建
         #    crawl_task。实测 hk_investhk 的 sitemap 有 4787 条 URL，采满 100 篇上限后
         #    仍逐条建了 4600+ 行 skipped_limit 并逐行 commit，白耗十几分钟且全程占着
