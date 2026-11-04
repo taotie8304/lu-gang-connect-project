@@ -28,6 +28,7 @@ import UpdatePswModal from '@/pageComponents/account/info/UpdatePswModal';
 import AccessibilityModal from '@/components/AccessibilityModal';
 import SystemContentModal from '@/components/SystemContentModal';
 import MyDevicesModal from './MyDevicesModal';
+import MemoriesModal from './MemoriesModal';
 import { SystemContentKeyEnum } from '@fastgpt/global/support/systemContent/constant';
 import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMenuItems';
 import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
@@ -64,6 +65,8 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
   const [isAccessibilityModalOpen, setIsAccessibilityModalOpen] = useState(false);
   const [isDevicesModalOpen, setIsDevicesModalOpen] = useState(false);
+  // 鲁港通 - 「我的记忆」改为客户端风格弹窗，不再跳转 FastGPT 账号页
+  const [isMemoriesModalOpen, setIsMemoriesModalOpen] = useState(false);
   const [isLanguageExpanded, setIsLanguageExpanded] = useState(false);
 
   // 鲁港通 - D11 系统内容弹窗状态（使用条款/隐私政策/资料收集声明）
@@ -296,15 +299,12 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       label: t('common:user_settings.ticket_feedback'),
       onClick: handleTicketFeedback
     },
-    // 鲁港通 - 智能体记忆：查看/编辑自己的长期记忆资料卡
+    // 鲁港通 - 智能体记忆：在设置面板内以弹窗管理，保持客户端风格，不再跳转 FastGPT 账号页
     {
       key: 'myMemories',
       icon: 'core/chat/deepThinking',
       label: t('account:memories'),
-      onClick: () => {
-        onClose();
-        router.push('/account/memories');
-      }
+      onClick: () => setIsMemoriesModalOpen(true)
     },
     {
       key: 'accessibility',
@@ -476,6 +476,11 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
 
       {/* 鲁港通 - 1A 我的设备弹窗 */}
       <MyDevicesModal isOpen={isDevicesModalOpen} onClose={() => setIsDevicesModalOpen(false)} />
+
+      {/* 鲁港通 - 我的记忆弹窗（客户端风格，避免跳回 FastGPT 账号页） */}
+      {isMemoriesModalOpen && (
+        <MemoriesModal isOpen={isMemoriesModalOpen} onClose={() => setIsMemoriesModalOpen(false)} />
+      )}
 
       {/* 鲁港通 - D11 系统内容弹窗（使用条款/隐私政策/资料收集声明） */}
       {systemContentModal.isOpen && systemContentModal.contentKey && (

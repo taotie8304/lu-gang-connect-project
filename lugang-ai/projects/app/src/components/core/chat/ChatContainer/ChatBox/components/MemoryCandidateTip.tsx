@@ -1,10 +1,10 @@
 // 鲁港通 - 对话轻提示：本次对话提取到待确认记忆时引导用户去确认
 import React, { useEffect, useRef, useState } from 'react';
 import { Box, Button, Flex, IconButton } from '@chakra-ui/react';
-import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { getChatMemoryCandidates } from '@/web/support/memory/api';
+import MemoriesModal from '@/components/UserSettingsPanel/MemoriesModal';
 
 /** 提取在响应结束后异步执行，用短轮询等待候选落库 */
 const POLL_TIMES = 4;
@@ -18,9 +18,10 @@ type Props = {
 
 const MemoryCandidateTip = ({ chatId, isChatting = false, enabled }: Props) => {
   const { t } = useTranslation();
-  const router = useRouter();
   const [visible, setVisible] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  // 鲁港通 - 去确认改为客户端内弹窗，不再跳转 FastGPT 账号页
+  const [isMemoriesOpen, setIsMemoriesOpen] = useState(false);
   const prevIsChattingRef = useRef(isChatting);
 
   useEffect(() => {
@@ -55,43 +56,45 @@ const MemoryCandidateTip = ({ chatId, isChatting = false, enabled }: Props) => {
     };
   }, [chatId, enabled, isChatting]);
 
-  if (!enabled || !visible || dismissed) return null;
+  if (!enabled) return null;
 
   return (
-    <Flex
-      mb={2}
-      px={3}
-      py={2}
-      gap={2}
-      alignItems={'center'}
-      borderRadius={'lg'}
-      border={'1px solid'}
-      borderColor={'primary.200'}
-      bg={'primary.50'}
-      fontSize={'sm'}
-    >
-      <MyIcon name={'core/chat/think'} w={'16px'} flexShrink={0} color={'primary.600'} />
-      <Box flex={1} minW={0} color={'myGray.700'}>
-        {t('account:memory_tip_text')}
-      </Box>
-      <Button
-        size={'xs'}
-        variant={'primary'}
-        flexShrink={0}
-        onClick={() => router.push('/account/memories')}
-      >
-        {t('account:memory_tip_action')}
-      </Button>
-      <IconButton
-        aria-label={t('account:memory_tip_close')}
-        size={'xs'}
-        variant={'unstyled'}
-        flexShrink={0}
-        color={'myGray.500'}
-        icon={<MyIcon name={'close'} w={'14px'} />}
-        onClick={() => setDismissed(true)}
-      />
-    </Flex>
+    <>
+      {visible && !dismissed && (
+        <Flex
+          mb={2}
+          px={3}
+          py={2}
+          gap={2}
+          alignItems={'center'}
+          borderRadius={'lg'}
+          border={'1px solid'}
+          borderColor={'primary.200'}
+          bg={'primary.50'}
+          fontSize={'sm'}
+        >
+          <MyIcon name={'core/chat/think'} w={'16px'} flexShrink={0} color={'primary.600'} />
+          <Box flex={1} minW={0} color={'myGray.700'}>
+            {t('account:memory_tip_text')}
+          </Box>
+          <Button size={'xs'} variant={'primary'} flexShrink={0} onClick={() => setIsMemoriesOpen(true)}>
+            {t('account:memory_tip_action')}
+          </Button>
+          <IconButton
+            aria-label={t('account:memory_tip_close')}
+            size={'xs'}
+            variant={'unstyled'}
+            flexShrink={0}
+            color={'myGray.500'}
+            icon={<MyIcon name={'close'} w={'14px'} />}
+            onClick={() => setDismissed(true)}
+          />
+        </Flex>
+      )}
+      {isMemoriesOpen && (
+        <MemoriesModal isOpen={isMemoriesOpen} onClose={() => setIsMemoriesOpen(false)} />
+      )}
+    </>
   );
 };
 
