@@ -48,7 +48,8 @@ type SettingsMenuItem = {
 };
 
 const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
-  const { t } = useClientTranslation();
+  // 鲁港通 - 需加载 account 命名空间，否则「我的记忆」等账号页文案会显示原始 key
+  const { t } = useClientTranslation('account');
   const router = useRouter();
   const { setUserInfo } = useUserStore();
   const { resetChatCache } = useChatStore();
