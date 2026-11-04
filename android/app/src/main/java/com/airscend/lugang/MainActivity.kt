@@ -46,6 +46,8 @@ import com.airscend.lugang.bridge.BridgeOrigin
 import com.airscend.lugang.bridge.LugangBridge
 import com.airscend.lugang.download.BlobSaver
 import com.airscend.lugang.download.DirectDownloader
+import com.airscend.lugang.download.DownloadCenterActivity
+import com.airscend.lugang.download.DownloadStore
 import com.airscend.lugang.shell.Diagnostics
 import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
@@ -74,6 +76,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     @Volatile private var bridgeAllowed: Boolean = false
     private lateinit var directDownloader: DirectDownloader
     private lateinit var blobSaver: BlobSaver
+    private lateinit var downloadStore: DownloadStore
     private lateinit var uploadChooser: UploadChooser
     private lateinit var updateDownloader: UpdateDownloader
     private lateinit var updateChecker: UpdateChecker
@@ -82,11 +85,11 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
             if (intent.action != DownloadManager.ACTION_DOWNLOAD_COMPLETE) return
             val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
             if (id != directDownloader.lastDownloadId) return
-            val message = if (directDownloader.statusOf(id) == DownloadManager.STATUS_SUCCESSFUL) {
-                R.string.download_saved
-            } else {
-                R.string.download_failed
+            val succeeded = directDownloader.statusOf(id) == DownloadManager.STATUS_SUCCESSFUL
+            if (succeeded) {
+                directDownloader.completionRecord(id)?.let { downloadStore.add(it) }
             }
+            val message = if (succeeded) R.string.download_saved else R.string.download_failed
             Toast.makeText(this@MainActivity, message, Toast.LENGTH_SHORT).show()
         }
     }
@@ -106,8 +109,9 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         applyWindowInsets()
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
+        downloadStore = DownloadStore(this)
         directDownloader = DirectDownloader(this)
-        blobSaver = BlobSaver(this)
+        blobSaver = BlobSaver(this, downloadStore)
         uploadChooser = UploadChooser(this)
         ContextCompat.registerReceiver(
             this,
@@ -433,6 +437,10 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     override fun finishBlobSave(id: String?): Boolean = blobSaver.finish(id)
 
     override fun abortBlobSave(id: String?) = blobSaver.abort(id)
+
+    override fun onBridgeOpenDownloads() {
+        runOnUiThread { startActivity(Intent(this, DownloadCenterActivity::class.java)) }
+    }
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(downloadReceiver) }

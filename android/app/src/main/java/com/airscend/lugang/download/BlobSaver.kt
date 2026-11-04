@@ -1,20 +1,22 @@
-// 鲁港通 - Blob 导出：分块写缓存，结束后一次性写入 MediaStore 的「下载/鲁港通」
+// 鲁港通 - Blob 导出：分块写缓存，结束后写入 MediaStore 的「下载/鲁港通」并记录到下载中心
 package com.airscend.lugang.download
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.provider.MediaStore
 import android.util.Base64
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
-class BlobSaver(private val context: Context) {
+class BlobSaver(private val context: Context, private val store: DownloadStore) {
 
     private data class Session(
         val file: File,
         val name: String,
         val mime: String,
+        val size: Long,
         val budget: BlobBudget
     )
 
@@ -30,6 +32,7 @@ class BlobSaver(private val context: Context) {
             file = File(dir, "$id.part"),
             name = DownloadsQuery.uniqueName(context, name),
             mime = mime?.takeIf { it.isNotBlank() } ?: "application/octet-stream",
+            size = size,
             budget = budget
         )
         return id
@@ -53,7 +56,17 @@ class BlobSaver(private val context: Context) {
             session.file.delete()
             return false
         }
-        return writeToDownloads(session)
+        val uri = writeToDownloads(session) ?: return false
+        store.add(
+            DownloadRecord(
+                uri = uri.toString(),
+                name = session.name,
+                mime = session.mime,
+                size = session.size,
+                savedAt = System.currentTimeMillis()
+            )
+        )
+        return true
     }
 
     fun abort(id: String?) {
@@ -61,7 +74,7 @@ class BlobSaver(private val context: Context) {
         session.file.delete()
     }
 
-    private fun writeToDownloads(session: Session): Boolean {
+    private fun writeToDownloads(session: Session): Uri? {
         val resolver = context.contentResolver
         val values = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, session.name)
@@ -72,7 +85,7 @@ class BlobSaver(private val context: Context) {
         val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
         if (uri == null) {
             session.file.delete()
-            return false
+            return null
         }
         val copied = runCatching {
             resolver.openOutputStream(uri)?.use { output ->
@@ -86,7 +99,7 @@ class BlobSaver(private val context: Context) {
             resolver.delete(uri, null, null)
         }
         session.file.delete()
-        return copied
+        return if (copied) uri else null
     }
 
     companion object {

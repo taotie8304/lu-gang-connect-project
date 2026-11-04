@@ -202,6 +202,20 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       }
     : null;
 
+  // 鲁港通 - 安卓客户端「下载中心」：仅新版 App 提供桥能力时显示，旧版本自动隐藏
+  const androidBridge =
+    typeof window === 'undefined'
+      ? undefined
+      : (window as typeof window & { LugangApp?: { openDownloads?: () => void } }).LugangApp;
+  const downloadsMenuItem: SettingsMenuItem | null = androidBridge?.openDownloads
+    ? {
+        key: 'downloadCenter',
+        icon: 'common/download',
+        label: t('common:user_settings.download_center'),
+        onClick: () => androidBridge.openDownloads?.()
+      }
+    : null;
+
   // 鲁港通 - 桌面客户端退出时先关闭内置浏览器并撤销设备注册，避免下一位登录者看到上一位的网页会话
   const handleLogout = useCallback(() => {
     performLogout({
@@ -344,7 +358,8 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
           title: t('common:system_content.payment_privacy_policy')
         })
     },
-    // 鲁港通 - 仅桌面客户端：检查更新 + 导出诊断包
+    // 鲁港通 - 仅客户端：下载中心（安卓）/ 检查更新与导出诊断包（桌面）
+    ...(downloadsMenuItem ? [downloadsMenuItem] : []),
     ...(updateMenuItem ? [updateMenuItem] : []),
     ...(diagnosticsMenuItem ? [diagnosticsMenuItem] : []),
     {

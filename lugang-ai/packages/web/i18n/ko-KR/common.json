@@ -1424,6 +1424,7 @@
   "user_settings.diagnostics_failed": "내보내기에 실패했습니다. 잠시 후 다시 시도하세요",
   "user_settings.diagnostics_saved": "진단 패키지가 저장되었습니다",
   "user_settings.devices_hint": "데스크톱 클라이언트는 로그인 후 자동으로 연결됩니다. 연결 해제 시 다시 로그인해야 합니다.",
+  "user_settings.download_center": "다운로드 센터",
   "user_settings.export_diagnostics": "진단 패키지 내보내기",
   "user_settings.my_devices": "내 기기",
   "user_settings.feedback_subject": "루강통 제품 피드백",

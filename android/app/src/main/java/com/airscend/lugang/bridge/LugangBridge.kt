@@ -15,6 +15,7 @@ class LugangBridge(private val host: Host) {
         fun appendBlobChunk(id: String?, base64: String?): Boolean
         fun finishBlobSave(id: String?): Boolean
         fun abortBlobSave(id: String?)
+        fun onBridgeOpenDownloads()
     }
 
     @JavascriptInterface
@@ -37,6 +38,12 @@ class LugangBridge(private val host: Host) {
     fun toast(message: String?) {
         if (!host.isBridgeTrusted()) return
         host.onBridgeToast(message)
+    }
+
+    @JavascriptInterface
+    fun openDownloads() {
+        if (!host.isBridgeTrusted()) return
+        host.onBridgeOpenDownloads()
     }
 
     @JavascriptInterface

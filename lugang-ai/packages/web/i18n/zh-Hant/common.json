@@ -1428,6 +1428,7 @@
   "user_settings.diagnostics_failed": "匯出失敗，請稍後重試",
   "user_settings.diagnostics_saved": "診斷包已儲存",
   "user_settings.devices_hint": "桌面用戶端登入後會自動綁定；解除綁定後該裝置需重新登入。",
+  "user_settings.download_center": "下載中心",
   "user_settings.export_diagnostics": "匯出診斷包",
   "user_settings.my_devices": "我的裝置",
   "user_settings.feedback_subject": "魯港通產品回饋",
