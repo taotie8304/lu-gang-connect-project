@@ -6,4 +6,13 @@
     <color name="app_text_primary">#1A1A1A</color>
     <color name="app_text_secondary">#666666</color>
     <color name="app_divider">#EDEDED</color>
+    <color name="splash_bg_top">#F5F9FE</color>
+    <color name="splash_bg_mid">#E9F2FC</color>
+    <color name="splash_bg_bottom">#E2EDFA</color>
+    <color name="splash_title">#1E3346</color>
+    <color name="splash_sub">#5E7C98</color>
+    <color name="splash_loading">#7C93AB</color>
+    <color name="splash_track">#D9E6F6</color>
+    <color name="splash_bar_start">#4C86C8</color>
+    <color name="splash_bar_end">#7FB4E4</color>
 </resources>

@@ -10,9 +10,9 @@ type LugangWelcomeHeroProps = {
   onPickPrompt?: (text: string, mode: HomePromptMode) => void;
 };
 
-type CapabilityKey = 'people' | 'policy' | 'finance' | 'transport' | 'business' | 'shandong';
+type CapabilityKey = 'policy' | 'finance' | 'transport' | 'shandong';
 
-// 鲁港通 - 图标沿用预览中的线性小图标，避免为六张卡片引入额外图标依赖
+// 鲁港通 - 图标沿用预览中的线性小图标，避免为四张卡片引入额外图标依赖
 const CapabilityIcon = ({ name }: { name: CapabilityKey }) => {
   const common = {
     width: 15,
@@ -26,14 +26,6 @@ const CapabilityIcon = ({ name }: { name: CapabilityKey }) => {
   };
 
   switch (name) {
-    case 'people':
-      return (
-        <svg {...common}>
-          <path d="M4 21h16" />
-          <path d="M6 21V9l6-4 6 4v12" />
-          <path d="M10 21v-5h4v5" />
-        </svg>
-      );
     case 'policy':
       return (
         <svg {...common}>
@@ -60,14 +52,6 @@ const CapabilityIcon = ({ name }: { name: CapabilityKey }) => {
           <path d="M7 7.5c5 2 4 7 10 9" />
         </svg>
       );
-    case 'business':
-      return (
-        <svg {...common}>
-          <rect x="3" y="7" width="18" height="13" rx="2" />
-          <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          <line x1="3" y1="12" x2="21" y2="12" />
-        </svg>
-      );
     case 'shandong':
       return (
         <svg {...common}>
@@ -81,12 +65,10 @@ const CapabilityIcon = ({ name }: { name: CapabilityKey }) => {
 };
 
 const CAPABILITIES: { key: CapabilityKey; tone: 'blue' | 'sand' }[] = [
-  { key: 'people', tone: 'blue' },
   { key: 'policy', tone: 'sand' },
   { key: 'finance', tone: 'blue' },
   { key: 'transport', tone: 'blue' },
-  { key: 'business', tone: 'sand' },
-  { key: 'shandong', tone: 'blue' }
+  { key: 'shandong', tone: 'sand' }
 ];
 
 const SUGGESTIONS = ['talent', 'mpf', 'airport'] as const;
@@ -97,7 +79,7 @@ const toneStyle = {
 } as const;
 
 /**
- * 鲁港通 - 品牌首屏：问候语 + 六张能力卡 + 建议问题。
+ * 鲁港通 - 品牌首屏：问候语 + 四张能力卡 + 建议问题。
  *
  * 首页面板与应用空会话共用这一份内容，避免两处维护两套视觉。
  * 能力卡只把提示词填进输入框，建议问题直接发送。
@@ -151,7 +133,7 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
         w="100%"
         mt="26px"
         display="grid"
-        gridTemplateColumns={{ base: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' }}
+        gridTemplateColumns="repeat(2, 1fr)"
         gap="12px"
       >
         {CAPABILITIES.map(({ key, tone }) => {

@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">鲁港通</string>
     <string name="splash_tagline">香港民生与政策助手</string>
+    <string name="splash_loading">正在载入服务…</string>
     <string name="error_title">暂时无法打开鲁港通</string>
     <string name="error_retry">重试</string>
     <string name="error_copy">复制诊断信息</string>

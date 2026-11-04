@@ -1,6 +1,7 @@
 // 鲁港通 - 安卓外壳入口：承载线上聊天页，负责导航策略、返回键与新窗口接管
 package com.airscend.lugang
 
+import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.app.DownloadManager
 import android.content.BroadcastReceiver
@@ -18,6 +19,7 @@ import android.os.Bundle
 import android.os.Message
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.webkit.CookieManager
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.SslErrorHandler
@@ -66,6 +68,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     private lateinit var splashView: View
     private lateinit var errorView: View
     private lateinit var errorMessage: TextView
+    private var splashAnimator: ValueAnimator? = null
     private var webView: WebView? = null
     private var lastBackPressAt = 0L
     private var lastError: String? = null
@@ -107,6 +110,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         errorView = findViewById(R.id.errorView)
         errorMessage = findViewById(R.id.errorMessage)
         applyWindowInsets()
+        startSplashSweep()
         findViewById<Button>(R.id.errorRetry).setOnClickListener { retryLoad() }
         findViewById<Button>(R.id.errorCopy).setOnClickListener { copyDiagnostics() }
         downloadStore = DownloadStore(this)
@@ -171,16 +175,64 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     private fun applyWindowInsets() {
         val root = findViewById<View>(R.id.root)
-        ViewCompat.setOnApplyWindowInsetsListener(root) { view, insets ->
+        val container = webContainer
+        val error = errorView
+        val errorBaseLeft = error.paddingLeft
+        val errorBaseTop = error.paddingTop
+        val errorBaseRight = error.paddingRight
+        val errorBaseBottom = error.paddingBottom
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val bars = insets.getInsets(
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
             val padding = ShellInsets.resolve(bars.left, bars.top, bars.right, bars.bottom, ime.bottom)
-            view.setPadding(padding.left, padding.top, padding.right, padding.bottom)
+            // 鲁港通 - 安全区让给网页与错误页，开屏页保持整屏渐变不被状态栏截条
+            container.setPadding(padding.left, padding.top, padding.right, padding.bottom)
+            error.setPadding(
+                errorBaseLeft + padding.left,
+                errorBaseTop + padding.top,
+                errorBaseRight + padding.right,
+                errorBaseBottom + padding.bottom
+            )
             insets
         }
         ViewCompat.requestApplyInsets(root)
+    }
+
+    private fun startSplashSweep() {
+        if (splashAnimator != null) return
+        val track = findViewById<View>(R.id.splashTrack)
+        val bar = findViewById<View>(R.id.splashBar)
+        track.post {
+            if (isFinishing || isDestroyed) return@post
+            if (splashView.visibility != View.VISIBLE || splashAnimator != null) return@post
+            val travel = track.width + bar.width
+            splashAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+                duration = 1200L
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                addUpdateListener { anim ->
+                    bar.translationX = -bar.width + (anim.animatedValue as Float) * travel
+                }
+                start()
+            }
+        }
+    }
+
+    private fun stopSplashSweep() {
+        splashAnimator?.cancel()
+        splashAnimator = null
+    }
+
+    private fun hideSplash() {
+        splashView.visibility = View.GONE
+        stopSplashSweep()
+    }
+
+    private fun showSplash() {
+        splashView.visibility = View.VISIBLE
+        startSplashSweep()
     }
 
     private fun registerBackCallback() {
@@ -232,7 +284,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
         override fun onPageFinished(view: WebView, url: String?) {
             currentUrl = url ?: currentUrl
             bridgeAllowed = BridgeOrigin.isTrusted(currentUrl)
-            splashView.visibility = View.GONE
+            hideSplash()
             if (errorView.visibility != View.VISIBLE) {
                 view.visibility = View.VISIBLE
             }
@@ -269,7 +321,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
                 return true
             }
             errorView.visibility = View.GONE
-            splashView.visibility = View.VISIBLE
+            showSplash()
             createWebView()
             return true
         }
@@ -345,7 +397,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     private fun showError(message: String) {
         errorMessage.text = message
         errorView.visibility = View.VISIBLE
-        splashView.visibility = View.GONE
+        hideSplash()
         webView?.visibility = View.INVISIBLE
     }
 
@@ -356,7 +408,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     private fun retryLoad() {
         hideError()
-        splashView.visibility = View.VISIBLE
+        showSplash()
         val view = webView
         if (view == null) {
             createWebView()
@@ -444,6 +496,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     override fun onDestroy() {
         runCatching { unregisterReceiver(downloadReceiver) }
+        stopSplashSweep()
         webView?.destroy()
         webView = null
         super.onDestroy()
