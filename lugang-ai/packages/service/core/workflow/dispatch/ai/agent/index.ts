@@ -117,6 +117,7 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
     uid,
     responseChatItemId,
     timezone,
+    userMemoryBlock,
     params: {
       systemPrompt = '',
       userChatInput,
@@ -248,6 +249,10 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
       text: systemPrompt,
       resolveName: (id) => promptToolReferenceInfoMap.get(id) || getSubAppInfo(id).name || undefined
     });
+    // 鲁港通 - 用户长期记忆并入 Agent 系统提示词
+    const userSystemPrompt = userMemoryBlock
+      ? `${formattedUserSystemPrompt}\n\n${userMemoryBlock}`
+      : formattedUserSystemPrompt;
 
     // 2. 创建 workflow adapter。
     // 通用 agent loop 不感知 workflow；工具执行、SSE、usage、nodeResponse 都通过 runtime 参数回调进来。
@@ -261,7 +266,7 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
     const { runtime, artifacts } = createWorkflowAgentLoopRuntime({
       context: {
         ...props,
-        systemPrompt: formattedUserSystemPrompt,
+        systemPrompt: userSystemPrompt,
         getSubAppInfo,
         getSubApp,
         completionTools: agentCompletionTools,
@@ -277,7 +282,7 @@ export const dispatchRunAgent = async (props: DispatchAgentModuleProps): Promise
       browserOperationEnabled
     });
     const agentSystemPrompt = buildDefaultAgentSystemPrompt({
-      userSystemPrompt: formattedUserSystemPrompt,
+      userSystemPrompt: userSystemPrompt,
       sandboxEnabled: !!sandboxClient
     });
 

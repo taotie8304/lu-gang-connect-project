@@ -363,9 +363,9 @@ describe('dispatchRunAgent user context', () => {
     expect(currentText).toContain('<url>https://files.example.com/current.pdf</url>');
     expect(historyText).not.toContain('<id>');
     expect(currentText).not.toContain('<id>current_ai_1-');
-    expect(historyText).not.toContain('## 知识库');
+    expect(historyText).not.toContain('## 参考资料');
     expect(historyText).not.toContain('## 背景信息');
-    expect(currentText).toContain('## 知识库');
+    expect(currentText).toContain('## 参考资料');
     expect(currentText).toContain('## 背景信息');
     expect(currentText).toContain('当前问题');
   });
@@ -438,6 +438,28 @@ describe('dispatchRunAgent user context', () => {
     const systemPrompt = runAgentLoopMock.mock.calls[0][0].input.systemPrompt;
     expect(systemPrompt).toContain('{{Search documentation}}');
     expect(systemPrompt).not.toContain('{{@mcp-app_1/search@}}');
+  });
+
+  it('appends user memory block to the agent system prompt', async () => {
+    const props = createProps();
+    props.userMemoryBlock = '【用户长期记忆】\n- 用户偏好简体中文';
+
+    const { dispatchRunAgent } = await import('@fastgpt/service/core/workflow/dispatch/ai/agent');
+    let resultPromise: Promise<any>;
+    runWithContext(
+      {
+        mcpClientMemory: {}
+      },
+      () => {
+        resultPromise = dispatchRunAgent(props);
+      }
+    );
+    await resultPromise!;
+
+    const systemPrompt = runAgentLoopMock.mock.calls[0][0].input.systemPrompt;
+    expect(systemPrompt).toContain('system prompt');
+    expect(systemPrompt).toContain('【用户长期记忆】');
+    expect(systemPrompt).toContain('用户偏好简体中文');
   });
 
   it('uses the default agent system prompt when the user prompt is omitted', async () => {

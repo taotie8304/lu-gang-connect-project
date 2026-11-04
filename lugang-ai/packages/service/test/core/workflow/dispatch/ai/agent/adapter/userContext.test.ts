@@ -194,10 +194,10 @@ describe('buildAgentLoopCoreUserReminderInput', () => {
     expect(result).toContain('<available_skills>');
     expect(result).toContain('<location>/workspace/Skill/SKILL.md</location>');
     expect(result.indexOf('<available_skills>')).toBeLessThan(result.indexOf('## 对话文件'));
-    expect(result.indexOf('## 对话文件')).toBeLessThan(result.indexOf('## 知识库'));
-    expect(result.indexOf('## 知识库')).toBeLessThan(result.indexOf('## 背景信息'));
+    expect(result.indexOf('## 对话文件')).toBeLessThan(result.indexOf('## 参考资料'));
+    expect(result.indexOf('## 参考资料')).toBeLessThan(result.indexOf('## 背景信息'));
     expect(result).toContain('## 对话文件');
-    expect(result).toContain('## 知识库');
+    expect(result).toContain('## 参考资料');
     expect(result).toContain('<id>dataset_1</id>');
     expect(result).toContain('## 背景信息');
     expect(result).toContain('当前时间: 2026-05-14 10:00:00 Thursday');
@@ -259,7 +259,7 @@ describe('buildAgentLoopCoreUserReminderInput', () => {
       query: 'hello',
       selectedDataset
     });
-    expect(datasetOnly).toContain('## 知识库');
+    expect(datasetOnly).toContain('## 参考资料');
     expect(datasetOnly).not.toContain('## 对话文件');
     expect(datasetOnly).not.toContain('当前时间');
   });
@@ -388,7 +388,7 @@ describe('useUserContext', () => {
         expect(currentText).toContain('<url>https://files.example.com/current.pdf</url>');
         expect(currentText).toContain('<url>https://files.example.com/current.png</url>');
         expect(currentText).not.toContain('<id>current_chat_item-');
-        expect(currentText).toContain('## 知识库');
+        expect(currentText).toContain('## 参考资料');
         expect(currentText).toContain('<description>后端读取到的知识库介绍</description>');
         expect(currentText).toContain('2026-05-14 10:00:00 Thursday');
         expect(currentText).toContain('当前问题');

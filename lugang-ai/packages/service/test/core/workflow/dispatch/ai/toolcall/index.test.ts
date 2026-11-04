@@ -181,6 +181,30 @@ describe('dispatchRunTools file context', () => {
     );
   });
 
+  it('appends user memory block to the tool call system prompt', async () => {
+    await dispatchRunTools(
+      createProps({
+        userMemoryBlock: '【用户长期记忆】\n- 用户偏好简体中文'
+      })
+    );
+
+    expect(useToolMessagesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: 'system prompt\n\n【用户长期记忆】\n- 用户偏好简体中文'
+      })
+    );
+  });
+
+  it('keeps the tool call system prompt unchanged when no memory is provided', async () => {
+    await dispatchRunTools(createProps());
+
+    expect(useToolMessagesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: 'system prompt'
+      })
+    );
+  });
+
   it('keeps file links when the node explicitly selects a file link input', async () => {
     await dispatchRunTools(
       createProps({

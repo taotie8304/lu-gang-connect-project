@@ -45,6 +45,7 @@ export const dispatchRunTools = async (props: DispatchToolModuleProps): Promise<
     runningAppInfo,
     externalProvider,
     responseChatItemId,
+    userMemoryBlock,
     params: {
       model,
       systemPrompt,
@@ -101,9 +102,14 @@ export const dispatchRunTools = async (props: DispatchToolModuleProps): Promise<
     // 交互恢复入口会由子工具继续接管，父 ToolCall 节点本轮不再作为入口节点。
     props.node.isEntry = false;
 
+    // 鲁港通 - 用户长期记忆并入工具节点系统提示词（生产默认应用走工具节点出答案）
+    const finalSystemPrompt = userMemoryBlock
+      ? `${systemPrompt}\n\n${userMemoryBlock}`
+      : systemPrompt;
+
     const { messages, currentInputFiles } = await useToolMessages({
       defaultSystemPrompt: toolModel.defaultSystemChatPrompt,
-      systemPrompt,
+      systemPrompt: finalSystemPrompt,
       chatHistories,
       responseChatItemId,
       userChatInput,
