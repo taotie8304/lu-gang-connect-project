@@ -10,7 +10,7 @@ import MyIcon from '@fastgpt/web/components/common/Icon';
 import { useTranslation } from 'next-i18next';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
-import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
+import { decideNavbarNavigation } from './navbarNavigation';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import { LOGO_ICON } from '@fastgpt/global/common/system/constants';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
@@ -225,17 +225,11 @@ const Navbar = ({ unread }: { unread: number }) => {
                       bg: isDashboardPage || isDetailPage ? 'white' : 'rgba(255,255,255,0.9)'
                     }
                   })}
-              {...(item.link !== router.asPath
-                ? {
-                    onClick: () => {
-                      if (item.link.startsWith('/chat')) {
-                        window.open(getWebReqUrl(item.link), '_blank', 'noopener,noreferrer');
-                        return;
-                      }
-                      router.push(item.link);
-                    }
-                  }
-                : {})}
+              onClick={() => {
+                // 鲁港通 - 顶栏一律同窗跳转：门户曾用 window.open，桌面客户端会因此弹出第二个窗口
+                const navigation = decideNavbarNavigation({ href: item.link, asPath: router.asPath });
+                if (navigation.type === 'navigate') router.push(navigation.href);
+              }}
             >
               <Badge isDot count={item.unread}>
                 <MyIcon

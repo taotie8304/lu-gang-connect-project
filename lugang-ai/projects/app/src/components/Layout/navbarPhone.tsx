@@ -9,6 +9,7 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getTicketUnreadCount } from '@/web/support/ticket/api';
+import { decideNavbarNavigation } from './navbarNavigation';
 
 // 鲁港通 - 导航项类型（显式标注，避免 t() 返回值被推断为 never 导致 filteredList 重新赋值报 “string 不能赋给 never”）
 type NavbarItem = {
@@ -191,12 +192,9 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
                   color: 'myGray.500'
                 })}
             onClick={() => {
-              if (item.link === router.asPath) return;
-              if (item.link.startsWith('/chat')) {
-                window.open(item.link, '_blank');
-                return;
-              }
-              router.push(item.link);
+              // 鲁港通 - 顶栏一律同窗跳转：门户曾用 window.open，桌面客户端会因此弹出第二个窗口
+              const navigation = decideNavbarNavigation({ href: item.link, asPath: router.asPath });
+              if (navigation.type === 'navigate') router.push(navigation.href);
             }}
           >
             <Badge isDot count={item.unread}>

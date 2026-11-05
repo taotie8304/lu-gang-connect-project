@@ -29,6 +29,9 @@ import AccessibilityModal from '@/components/AccessibilityModal';
 import SystemContentModal from '@/components/SystemContentModal';
 import MyDevicesModal from './MyDevicesModal';
 import MemoriesModal from './MemoriesModal';
+import MyTicketsModal from './MyTicketsModal';
+import MyOrdersModal from './MyOrdersModal';
+import UsageDetailModal from './UsageDetailModal';
 import { SystemContentKeyEnum } from '@fastgpt/global/support/systemContent/constant';
 import LanguageMenuItems from '@/pageComponents/chat/LanguageSelector/LanguageMenuItems';
 import { useChatLanguageSwitch } from '@/pageComponents/chat/LanguageSelector/useChatLanguageSwitch';
@@ -67,6 +70,12 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
   const [isDevicesModalOpen, setIsDevicesModalOpen] = useState(false);
   // 鲁港通 - 「我的记忆」改为客户端风格弹窗，不再跳转 FastGPT 账号页
   const [isMemoriesModalOpen, setIsMemoriesModalOpen] = useState(false);
+  // 鲁港通 - 「工单反馈」同样弹窗化，普通用户不再进入账号页后台风格
+  const [isTicketsModalOpen, setIsTicketsModalOpen] = useState(false);
+  // 鲁港通 - 「我的订单」弹窗化
+  const [isOrdersModalOpen, setIsOrdersModalOpen] = useState(false);
+  // 鲁港通 - 「用量明细」弹窗化
+  const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
   const [isLanguageExpanded, setIsLanguageExpanded] = useState(false);
 
   // 鲁港通 - D11 系统内容弹窗状态（使用条款/隐私政策/资料收集声明）
@@ -236,11 +245,11 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
     });
   }, [isDesktop, resetChatCache, setUserInfo, router]);
 
-  // 鲁港通 - 批2-C：产品反馈升级为站内工单系统，点击直达「我的工单」页（不再走邮箱）。
-  const handleTicketFeedback = useCallback(() => {
-    onClose();
-    router.push('/account/myTickets');
-  }, [onClose, router]);
+  // 鲁港通 - 批2-C：产品反馈升级为站内工单系统；关闭弹窗时刷新未读角标（查看工单会清空未读）
+  const handleTicketsModalClose = useCallback(() => {
+    setIsTicketsModalOpen(false);
+    refreshTicketUnread();
+  }, [refreshTicketUnread]);
 
   // 鲁港通 - 设置菜单入口。D11 已补入使用条款/隐私政策/资料收集声明（走 SystemContentModal + /api/system/content/[key]，正文按 getLocale 多语言）。
   // D10 商业化一期：订阅套餐 / 我的订单 / 用量明细 三个入口前置（普通用户付款与消费可见性的唯一入口）。
@@ -260,19 +269,13 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       key: 'myOrders',
       icon: 'common/billing',
       label: t('common:user_settings.my_orders'),
-      onClick: () => {
-        onClose();
-        router.push('/account/bill');
-      }
+      onClick: () => setIsOrdersModalOpen(true)
     },
     {
       key: 'usageDetail',
       icon: 'chart',
       label: t('common:user_settings.usage_detail'),
-      onClick: () => {
-        onClose();
-        router.push('/account/usage');
-      }
+      onClick: () => setIsUsageModalOpen(true)
     },
     // 鲁港通 - 1A 设备管理：查看当前账号绑定的桌面客户端并解绑
     {
@@ -297,7 +300,7 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       key: 'ticketFeedback',
       icon: 'common/quickActionFeedback',
       label: t('common:user_settings.ticket_feedback'),
-      onClick: handleTicketFeedback
+      onClick: () => setIsTicketsModalOpen(true)
     },
     // 鲁港通 - 智能体记忆：在设置面板内以弹窗管理，保持客户端风格，不再跳转 FastGPT 账号页
     {
@@ -480,6 +483,21 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       {/* 鲁港通 - 我的记忆弹窗（客户端风格，避免跳回 FastGPT 账号页） */}
       {isMemoriesModalOpen && (
         <MemoriesModal isOpen={isMemoriesModalOpen} onClose={() => setIsMemoriesModalOpen(false)} />
+      )}
+
+      {/* 鲁港通 - 工单反馈弹窗（客户端风格，普通用户不再进入账号页后台风格） */}
+      {isTicketsModalOpen && (
+        <MyTicketsModal isOpen={isTicketsModalOpen} onClose={handleTicketsModalClose} />
+      )}
+
+      {/* 鲁港通 - 我的订单弹窗（客户端风格，查看后可随时关闭回会话） */}
+      {isOrdersModalOpen && (
+        <MyOrdersModal isOpen={isOrdersModalOpen} onClose={() => setIsOrdersModalOpen(false)} />
+      )}
+
+      {/* 鲁港通 - 用量明细弹窗（客户端风格，查看后可随时关闭回会话） */}
+      {isUsageModalOpen && (
+        <UsageDetailModal isOpen={isUsageModalOpen} onClose={() => setIsUsageModalOpen(false)} />
       )}
 
       {/* 鲁港通 - D11 系统内容弹窗（使用条款/隐私政策/资料收集声明） */}
