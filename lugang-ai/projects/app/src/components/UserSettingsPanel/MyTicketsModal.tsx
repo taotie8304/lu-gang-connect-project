@@ -10,6 +10,8 @@ const MyTicketsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => v
     onClose={onClose}
     size={'lg'}
     maxW={['92vw', '860px']}
+    // 鲁港通 - 面板沿用账号页的百分比高度布局，弹窗必须给出确定高度，否则内容区会塌成 0
+    h={['auto', '80vh']}
     showCloseButton={false}
   >
     <ModalBody p={0} overflowY={'auto'}>
