@@ -57,6 +57,8 @@ _DISCOVERY_KEYS = (
     "user_agent",
     "extra_headers",
     "discovery_min_interval_s",
+    # 鲁港通 - 发布时限（济南政策源，2026-11-05）：URL 年份早于此值的候选不进抓取队列
+    "min_publish_year",
 )
 
 

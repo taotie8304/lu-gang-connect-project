@@ -27,6 +27,7 @@ from app.ingest.discover import (
     parse_listing,
     parse_rss,
     parse_sitemap,
+    url_publish_year,
 )
 from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf
 from app.ingest.title_filter import first_matching_pattern
@@ -284,7 +285,12 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
         # unit 接口按栏目异步返回（d4r7~d4r11 七站实测）。逐单元拉取（paramJson 翻页）；
         # 跨单元 seen 去重——同一文章可挂多个栏目，不去重会重复抓详情页。
         unit_cfg = cfg.get("unit_config") or {}
+        # 鲁港通 - min_publish_year：URL 年份早于下限的候选不进抓取队列。实测 jinan_hrss
+        # 候选池 189 条中 48 条是 2018 年前（市人事局/劳动和社会保障局时期）文件，无现行
+        # 有效性却挤占每晚配额；解析不出年份的 URL 保留（站点换形态也不能整源清零）。
+        min_year = cfg.get("min_publish_year")
         seen: set[str] = set()
+        stale_dropped = 0
         for unit in unit_cfg.get("units", []):
             endpoint = _build_jpaas_unit_endpoint(unit, unit_cfg)
             paginate = {
@@ -298,7 +304,15 @@ def _discover(db, source, rules, settings, fetcher, sleeper, stats) -> list[Disc
                 if it.url in seen:
                     continue
                 seen.add(it.url)
+                if min_year is not None:
+                    year = url_publish_year(it.url)
+                    if year is not None and year < int(min_year):
+                        stale_dropped += 1
+                        continue
                 items.append(it)
+        if stale_dropped:
+            logger.info("jpaas_unit %s: %d 条早于 %s 年的候选未进抓取队列",
+                        source.code, stale_dropped, min_year)
     else:
         stats.errors.append(f"未知 discovery_method: {method}")
     return items

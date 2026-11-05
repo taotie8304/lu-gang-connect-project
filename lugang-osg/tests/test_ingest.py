@@ -20,6 +20,7 @@ from app.ingest.discover import (
     parse_listing,
     parse_rss,
     parse_sitemap,
+    url_publish_year,
 )
 from app.ingest.extract import MIN_CONTENT_CHARS, clean_title, extract_html
 from app.ingest.pipeline import _build_jpaas_unit_endpoint, sync_source
@@ -1278,6 +1279,125 @@ class TestPipelineJpaasUnit:
         ver = db.execute(select(DocumentVersion)).scalars().first()
         assert ver.extracted_text and "省商务厅今日发布通知" in ver.extracted_text
         assert "当前位置" not in ver.extracted_text
+
+
+# ---------------------------------------------------------------------------
+# 鲁港通 - jpaas_unit 发布时限（min_publish_year）：只采 N 年以后的文件
+# ---------------------------------------------------------------------------
+
+# 实测（2026-11-05 服务器探针）：jinan_hrss 候选池 189 条里 48 条是 2018 年前的
+# 市人事局/劳动和社会保障局/劳动就业办公室时期文件——现行有效性为零，且会挤占
+# 每晚抓取配额。每条候选 URL 都带 /art/<年份>/，故在发现层按 URL 年份截断。
+JPAAS_YEAR_HREF_2013 = "/col/col21118/art/2013/art_20130000000000000000000000000013.html"
+JPAAS_YEAR_HREF_2018 = "/col/col21118/art/2018/art_20180000000000000000000000000018.html"
+JPAAS_YEAR_HREF_NOYEAR = "/col/col21118/art/art_unknown000000000000000000000001.html"
+
+
+def _jpaas_year_yaml(min_year_line: str) -> str:
+    return f"""
+sources:
+  - id: hy_year_test
+    name: 槐荫区时限测试
+    group: sd_core_gov
+    base_domains: [www.huaiyin.gov.cn]
+    allowed_path_prefixes: [/]
+    allow_http: true
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      page_size: 50
+      max_pages: 1
+      units:
+        - base_url: http://www.huaiyin.gov.cn
+          params: {{parseType: bulidstatic, webId: '80', tplSetId: 'se1jER3qXWToUC5N6Trvt', pageType: column, tagId: '当前栏目列表', editType: 'null', pageId: '21118'}}
+{min_year_line}    content_selector: "#zoom"
+    rate_limit_per_minute: 60
+    max_pages_per_run: 100
+    enabled: true
+"""
+
+
+class TestPipelineJpaasUnitYearGate:
+    """min_publish_year：发现层按 URL 年份截断，早于下限的文章不消耗抓取配额。"""
+
+    BASE = "http://www.huaiyin.gov.cn"
+    OLD = BASE + JPAAS_YEAR_HREF_2013
+    EDGE = BASE + JPAAS_YEAR_HREF_2018
+    NEW = BASE + _HY_UNIT_HREF_A
+    NOYEAR = BASE + JPAAS_YEAR_HREF_NOYEAR
+
+    def _page(self) -> bytes:
+        return _hy_unit_page([
+            (JPAAS_YEAR_HREF_2013, "市人事局关于印发有关事项的通知", "市人事局关于印发有关事项的通知"),
+            (JPAAS_YEAR_HREF_2018, "槐荫区人才住房补贴申报指南", "槐荫区人才住房补贴申报指南"),
+            (_HY_UNIT_HREF_A, "济南弘阳广场西沙商业综合体项目签约落地", "济南弘阳广场西沙商业综合体项目签约落地"),
+            (JPAAS_YEAR_HREF_NOYEAR, "形态变更后的无年份文章", "形态变更后的无年份文章"),
+        ])
+
+    def test_min_publish_year_drops_older_articles_before_fetch(self, db):
+        """下限 2018：2013 年文章不成候选（不抓详情）；2018 当年保留；解析不出
+        年份的 URL 保留（站点改版换了形态也不能整源清零）。"""
+        import_sources_yaml(_jpaas_year_yaml("    min_publish_year: 2018\n"), db)
+        src = db.execute(select(Source).where(Source.code == "hy_year_test")).scalar_one()
+        # 鲁港通 - 新配置键必须登记 _DISCOVERY_KEYS，否则导入静默丢字段（历史踩过两次）
+        assert src.discovery_config["min_publish_year"] == 2018
+
+        fetcher = _FakeFetcher({
+            _hy_unit_url("21118", 1): self._page(),
+            self.OLD: _hy_article(),
+            self.EDGE: _hy_article(),
+            self.NEW: _hy_article(),
+            self.NOYEAR: _hy_article(),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert stats.discovered == 3
+        assert stats.new_docs == 3
+        assert self.OLD not in fetcher.calls   # 时限过滤发生在抓取之前
+        assert fetcher.calls.count(self.EDGE) == 1
+        stored = sorted(d.canonical_url for d in db.execute(select(Document)).scalars().all())
+        assert stored == sorted([self.EDGE, self.NEW, self.NOYEAR])
+
+    def test_without_min_publish_year_keeps_every_candidate(self, db):
+        """未配置下限 → 行为与加固前一致（4 条全采），确认该过滤是来源级 opt-in。"""
+        import_sources_yaml(_jpaas_year_yaml(""), db)
+        src = db.execute(select(Source).where(Source.code == "hy_year_test")).scalar_one()
+        fetcher = _FakeFetcher({
+            _hy_unit_url("21118", 1): self._page(),
+            self.OLD: _hy_article(),
+            self.EDGE: _hy_article(),
+            self.NEW: _hy_article(),
+            self.NOYEAR: _hy_article(),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+
+        assert stats.discovered == 4
+        assert self.OLD in fetcher.calls
+
+
+class TestUrlPublishYear:
+    """鲁港通 - 从 URL 取发布年份：济南市系与山东省级两种文章页形态实测覆盖。"""
+
+    @pytest.mark.parametrize("url,expected", [
+        # 实测 jinan_hrss/jinan_gov 形态：/col/colN/art/YYYY/art_<hash>.html
+        ("http://jnhrss.jinan.gov.cn/col/col40907/art/2013/art_40907_1000000.html", 2013),
+        # 实测嵌在栏目路径下的变体：/colN/art/YYYY/art_NNNN_N.html
+        ("https://www.jinan.gov.cn/col2607/art/2022/art_2607_4947289.html", 2022),
+        # 实测山东省级形态：/art/YYYY/M/D/art_<id>_<n>.html
+        ("http://czt.shandong.gov.cn/art/2026/8/25/art_10579_10332325.html", 2026),
+    ])
+    def test_measured_article_urls(self, url, expected):
+        assert url_publish_year(url) == expected
+
+    @pytest.mark.parametrize("url", [
+        "http://www.huaiyin.gov.cn/col/col21118/index.html",        # 栏目页
+        "http://www.huaiyin.gov.cn/col/col21118/art/art_x.html",     # 形态变更无年份
+        "http://www.huaiyin.gov.cn/api-gateway/x/build/unit?pageId=20131",  # 年份不在 /art/ 段
+    ])
+    def test_no_parseable_year_returns_none(self, url):
+        assert url_publish_year(url) is None
 
 
 # ---------------------------------------------------------------------------

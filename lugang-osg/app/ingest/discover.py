@@ -285,6 +285,22 @@ def is_column_page(url: str) -> bool:
     return bool(_COLUMN_PATH_RE.search(path)) and bool(_LISTING_PAGE_RE.search(path))
 
 
+# 鲁港通 - 政务 CMS 文章页 URL 内嵌发布年份（济南市系 /col/colN/art/YYYY/…、嵌栏目路径
+# 变体 /colN/art/YYYY/…、省级 /art/YYYY/M/D/…），2026-11-05 对 jinan_hrss/jinan_tzcjj
+# 全部候选实测 100% 命中，故可直接用作「只采某年以后」的时限判据（min_publish_year）。
+_ARTICLE_YEAR_RE = re.compile(r"/art/((?:19|20)\d{2})/")
+
+
+def url_publish_year(url: str) -> int | None:
+    """从 URL 路径的 /art/<年份>/ 段取发布年份；取不到返回 None。
+
+    只看 path（查询串里的 pageId=20131 之类不得误判）；None 表示形态未知，
+    调用方按「保留」处理——站点改版换 URL 形态时绝不能把整源清零。
+    """
+    match = _ARTICLE_YEAR_RE.search(urlsplit(url).path)
+    return int(match.group(1)) if match else None
+
+
 def _decode_html(content: bytes) -> str:
     """按 meta charset 或 BOM 解码 HTML（GB18030/UTF-8/BIG5 混杂是政务站常态）。
 
