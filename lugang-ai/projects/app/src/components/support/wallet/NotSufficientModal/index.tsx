@@ -13,6 +13,7 @@ import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
 import { useMount } from 'ahooks';
 import { useRouter } from 'next/router';
 import { subRoute } from '@fastgpt/web/common/system/utils';
+import UsageDetailModal from '@/components/UserSettingsPanel/UsageDetailModal';
 
 const NotSufficientModal = () => {
   const { t } = useClientTranslation();
@@ -94,7 +95,6 @@ export const RechargeModal = ({
   title?: string;
 }) => {
   const { t } = useClientTranslation();
-  const router = useRouter();
   const { userInfo, teamPlanStatus, initTeamPlanStatus } = useUserStore();
   const { subPlans } = useSystemStore();
 
@@ -115,131 +115,132 @@ export const RechargeModal = ({
   const [userSubMode, setUserSubMode] = useState<`${SubModeEnum}`>(SubModeEnum.month);
   const selectSubMode = subPlans?.activityExpirationTime ? SubModeEnum.year : userSubMode;
   const isWecomTeam = !!userInfo?.team?.isWecomTeam;
+  // 鲁港通 - 「用量记录」改为客户端弹窗，不再跳到 /account/usage 后台风格页
+  const [isUsageModalOpen, setIsUsageModalOpen] = useState(false);
 
   return (
-    <MyModal
-      isOpen
-      title={title ?? t('common:user.Pay')}
-      onClose={onClose}
-      isCentered
-      minW={'90%'}
-      maxH={'90%'}
-    >
-      <Flex alignItems={'center'} mb={6}>
-        <Flex>
-          <FormLabel fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-            {t('common:support.wallet.subscription.Current plan')}
-          </FormLabel>
-          <Box fontSize={'14px'} ml={5} color={'myGray.900'}>
-            {t(planName as any)}
+    <>
+      <MyModal
+        isOpen
+        title={title ?? t('common:user.Pay')}
+        onClose={onClose}
+        isCentered
+        minW={'90%'}
+        maxH={'90%'}
+      >
+        <Flex alignItems={'center'} mb={6}>
+          <Flex>
+            <FormLabel fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
+              {t('common:support.wallet.subscription.Current plan')}
+            </FormLabel>
+            <Box fontSize={'14px'} ml={5} color={'myGray.900'}>
+              {t(planName as any)}
+            </Box>
+          </Flex>
+          <Box flex={1} />
+          <Button
+            size={'md'}
+            variant={'transparentBase'}
+            color={'primary.700'}
+            onClick={() => setIsUsageModalOpen(true)}
+          >
+            {t('common:usage_records')}
+          </Button>
+        </Flex>
+
+        {/* 鲁港通 - 去「知识库容量」：充值弹窗仅保留 Credits 使用量，不再向用户展示容量进度 */}
+        <Flex mb={6} w={'100%'}>
+          <Box flex={1}>
+            <Flex gap={4} alignItems={'center'} mb={2}>
+              <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
+                {t('common:support.wallet.subscription.AI points usage')}
+              </Box>
+              <Box
+                fontSize={'14px'}
+                fontWeight={'medium'}
+              >{`${teamPlanStatus?.usedPoints === null ? t('common:Unlimited') : Math.round(teamPlanStatus?.usedPoints ?? 0)} / ${teamPlanStatus?.totalPoints ?? t('common:Unlimited')}`}</Box>
+            </Flex>
+            <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
+              <Box
+                borderRadius={'sm'}
+                transition="width 0.3s"
+                w={`${teamPlanStatus?.totalPoints && teamPlanStatus.usedPoints !== null ? Math.max((teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100, 0) : 0}%`}
+                bg={`${
+                  teamPlanStatus?.totalPoints && teamPlanStatus.usedPoints !== null
+                    ? (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 50
+                      ? 'primary'
+                      : (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 80
+                        ? 'yellow'
+                        : 'red'
+                    : 'primary'
+                }.500`}
+              />
+            </Flex>
           </Box>
         </Flex>
-        <Box flex={1} />
-        <Button
-          size={'md'}
-          variant={'transparentBase'}
-          color={'primary.700'}
-          onClick={() => {
-            router.push('/account/usage');
-            onClose();
-            onPaySuccess();
-          }}
+
+        <Box
+          p={8}
+          bg={'myGray.50'}
+          border={'1px solid'}
+          borderColor={'myGray.200'}
+          rounded={'12px'}
+          fontSize={'md'}
+          lineHeight={'normal'}
+          letterSpacing={'normal'}
         >
-          {t('common:usage_records')}
-        </Button>
-      </Flex>
-
-      {/* 鲁港通 - 去「知识库容量」：充值弹窗仅保留 Credits 使用量，不再向用户展示容量进度 */}
-      <Flex mb={6} w={'100%'}>
-        <Box flex={1}>
-          <Flex gap={4} alignItems={'center'} mb={2}>
-            <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-              {t('common:support.wallet.subscription.AI points usage')}
-            </Box>
-            <Box
-              fontSize={'14px'}
-              fontWeight={'medium'}
-            >{`${teamPlanStatus?.usedPoints === null ? t('common:Unlimited') : Math.round(teamPlanStatus?.usedPoints ?? 0)} / ${teamPlanStatus?.totalPoints ?? t('common:Unlimited')}`}</Box>
-          </Flex>
-          <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-            <Box
-              borderRadius={'sm'}
-              transition="width 0.3s"
-              w={`${teamPlanStatus?.totalPoints && teamPlanStatus.usedPoints !== null ? Math.max((teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100, 0) : 0}%`}
-              bg={`${
-                teamPlanStatus?.totalPoints && teamPlanStatus.usedPoints !== null
-                  ? (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 50
-                    ? 'primary'
-                    : (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100 < 80
-                      ? 'yellow'
-                      : 'red'
-                  : 'primary'
-              }.500`}
+          <Flex flexDirection={'column'} alignItems={'center'}>
+            <PricePlanTabs
+              list={[
+                {
+                  label: t('price:support.wallet.subscription.Basic plan tab'),
+                  value: 'standard'
+                },
+                {
+                  label: t('price:support.wallet.subscription.Extra points and dataset tab'),
+                  value: 'extra'
+                }
+              ]}
+              value={tab}
+              onChange={setTab}
             />
+            {tab === 'standard' && !isWecomTeam && (
+              <Box mt={4}>
+                <BillingModeSwitch value={selectSubMode} onChange={setUserSubMode} />
+              </Box>
+            )}
+            {tab === 'extra' && (
+              <Box
+                mt={4}
+                color={'#485264'}
+                fontFamily={'Inter, sans-serif'}
+                fontSize={'16px'}
+                fontWeight={400}
+                lineHeight={'24px'}
+                textAlign={'center'}
+              >
+                {t('price:support.wallet.subscription.Extra plan tip')}
+              </Box>
+            )}
           </Flex>
-        </Box>
-      </Flex>
 
-      <Box
-        p={8}
-        bg={'myGray.50'}
-        border={'1px solid'}
-        borderColor={'myGray.200'}
-        rounded={'12px'}
-        fontSize={'md'}
-        lineHeight={'normal'}
-        letterSpacing={'normal'}
-      >
-        <Flex flexDirection={'column'} alignItems={'center'}>
-          <PricePlanTabs
-            list={[
-              {
-                label: t('price:support.wallet.subscription.Basic plan tab'),
-                value: 'standard'
-              },
-              {
-                label: t('price:support.wallet.subscription.Extra points and dataset tab'),
-                value: 'extra'
-              }
-            ]}
-            value={tab}
-            onChange={setTab}
-          />
-          {tab === 'standard' && !isWecomTeam && (
-            <Box mt={4}>
-              <BillingModeSwitch value={selectSubMode} onChange={setUserSubMode} />
-            </Box>
-          )}
-          {tab === 'extra' && (
-            <Box
-              mt={4}
-              color={'#485264'}
-              fontFamily={'Inter, sans-serif'}
-              fontSize={'16px'}
-              fontWeight={400}
-              lineHeight={'24px'}
-              textAlign={'center'}
-            >
-              {t('price:support.wallet.subscription.Extra plan tip')}
-            </Box>
-          )}
-        </Flex>
-
-        <Box mt={8}>
-          {tab === 'standard' ? (
-            <StandardPlan
-              standardPlan={teamPlanStatus?.standard}
-              onPaySuccess={onPaySuccess}
-              selectSubMode={selectSubMode}
-              onSelectSubModeChange={setUserSubMode}
-              hideBillingToggle
-              responsiveCardLayout
-            />
-          ) : (
-            <ExtraPlan onPaySuccess={onPaySuccess} />
-          )}
+          <Box mt={8}>
+            {tab === 'standard' ? (
+              <StandardPlan
+                standardPlan={teamPlanStatus?.standard}
+                onPaySuccess={onPaySuccess}
+                selectSubMode={selectSubMode}
+                onSelectSubModeChange={setUserSubMode}
+                hideBillingToggle
+                responsiveCardLayout
+              />
+            ) : (
+              <ExtraPlan onPaySuccess={onPaySuccess} />
+            )}
+          </Box>
         </Box>
-      </Box>
-    </MyModal>
+      </MyModal>
+      <UsageDetailModal isOpen={isUsageModalOpen} onClose={() => setIsUsageModalOpen(false)} />
+    </>
   );
 };

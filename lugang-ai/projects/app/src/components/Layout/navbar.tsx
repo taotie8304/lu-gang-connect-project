@@ -11,6 +11,7 @@ import { useTranslation } from 'next-i18next';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { decideNavbarNavigation } from './navbarNavigation';
+import { decideShowAdminFeatures } from './adminFeatures';
 import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import { LOGO_ICON } from '@fastgpt/global/common/system/constants';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
@@ -51,7 +52,7 @@ const Navbar = ({ unread }: { unread: number }) => {
   // 鲁港通 - 是否启用纯聊天模式
   const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
   // 鲁港通 - 普通用户在纯聊天模式下隐藏管理功能
-  const showAdminFeatures = isOwner || !enableUserChatOnly;
+  const showAdminFeatures = decideShowAdminFeatures({ isOwner, enableUserChatOnly });
 
   // 鲁港通 - root 用户工单未读角标（路由切换时刷新）
   const isRoot = userInfo?.username === 'root';
@@ -62,7 +63,7 @@ const Navbar = ({ unread }: { unread: number }) => {
       errorToast: ''
     }
   );
-  const ticketUnread = isRoot ? ticketUnreadData?.count ?? 0 : 0;
+  const ticketUnread = isRoot ? (ticketUnreadData?.count ?? 0) : 0;
   useEffect(() => {
     if (isRoot) refreshTicketUnread();
   }, [isRoot, router.pathname, refreshTicketUnread]);
@@ -128,7 +129,9 @@ const Navbar = ({ unread }: { unread: number }) => {
           '/account/myTickets'
         ],
         unread: 0,
-        showForUser: true // 鲁港通 - 普通用户可见
+        // 鲁港通 - 账号页是 FastGPT 后台风格页：普通用户改用「设置面板」弹窗（订单/用量/工单/记忆），
+        // 不再从顶栏进入 /account/*
+        showForUser: false
       }
     ];
 
@@ -227,7 +230,10 @@ const Navbar = ({ unread }: { unread: number }) => {
                   })}
               onClick={() => {
                 // 鲁港通 - 顶栏一律同窗跳转：门户曾用 window.open，桌面客户端会因此弹出第二个窗口
-                const navigation = decideNavbarNavigation({ href: item.link, asPath: router.asPath });
+                const navigation = decideNavbarNavigation({
+                  href: item.link,
+                  asPath: router.asPath
+                });
                 if (navigation.type === 'navigate') router.push(navigation.href);
               }}
             >

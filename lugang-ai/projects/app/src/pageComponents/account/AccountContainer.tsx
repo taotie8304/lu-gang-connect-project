@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { Box, Flex } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRouter } from 'next/router';
@@ -6,6 +6,8 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import SecondaryNavigationContainer from '@/pageComponents/common/SecondaryNavigationContainer';
+import { decideShowAdminFeatures } from '@/components/Layout/adminFeatures';
+import { decideAccountAccess } from './accountAccess';
 
 export enum TabEnum {
   'info' = 'info',
@@ -35,6 +37,22 @@ const AccountContainer = ({
   const { userInfo, setUserInfo } = useUserStore();
   const { feConfigs, systemVersion } = useSystemStore();
   const router = useRouter();
+
+  // 鲁港通 - 账号页是 FastGPT 后台风格页：纯聊天模式下的普通用户即使手敲网址也不进入，统一弹回聊天
+  const showAdminFeatures = decideShowAdminFeatures({
+    isOwner: !!userInfo?.team?.permission?.isOwner,
+    enableUserChatOnly: !!feConfigs?.enableUserChatOnly
+  });
+  const accountAccess = decideAccountAccess({
+    isUserInfoLoaded: !!userInfo,
+    showAdminFeatures,
+    fallbackHref: '/chat'
+  });
+  const redirectHref = accountAccess.type === 'redirect' ? accountAccess.href : undefined;
+  useEffect(() => {
+    if (!redirectHref) return;
+    void router.replace(redirectHref);
+  }, [redirectHref, router]);
 
   const showThirdPartyTab =
     feConfigs?.show_openai_account === true ||
@@ -169,6 +187,9 @@ const AccountContainer = ({
     },
     [openConfirm, router, setUserInfo]
   );
+
+  // 鲁港通 - 普通用户被弹回聊天期间不渲染后台风格布局，避免闪现
+  if (redirectHref) return null;
 
   return (
     <SecondaryNavigationContainer

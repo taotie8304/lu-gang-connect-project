@@ -10,6 +10,7 @@ import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { getTicketUnreadCount } from '@/web/support/ticket/api';
 import { decideNavbarNavigation } from './navbarNavigation';
+import { decideShowAdminFeatures } from './adminFeatures';
 
 // 鲁港通 - 导航项类型（显式标注，避免 t() 返回值被推断为 never 导致 filteredList 重新赋值报 “string 不能赋给 never”）
 type NavbarItem = {
@@ -34,7 +35,7 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
   // 鲁港通 - 是否启用纯聊天模式
   const enableUserChatOnly = !!feConfigs?.enableUserChatOnly;
   // 鲁港通 - 普通用户在纯聊天模式下隐藏管理功能
-  const showAdminFeatures = isOwner || !enableUserChatOnly;
+  const showAdminFeatures = decideShowAdminFeatures({ isOwner, enableUserChatOnly });
 
   // 鲁港通 - root 用户工单未读角标（路由切换时刷新）
   const isRoot = userInfo?.username === 'root';
@@ -45,122 +46,120 @@ const NavbarPhone = ({ unread }: { unread: number }) => {
       errorToast: ''
     }
   );
-  const ticketUnread = isRoot ? ticketUnreadData?.count ?? 0 : 0;
+  const ticketUnread = isRoot ? (ticketUnreadData?.count ?? 0) : 0;
   useEffect(() => {
     if (isRoot) refreshTicketUnread();
   }, [isRoot, router.pathname, refreshTicketUnread]);
 
-  const navbarList = useMemo(
-    () => {
-      const baseList: NavbarItem[] = [
+  const navbarList = useMemo(() => {
+    const baseList: NavbarItem[] = [
+      {
+        label: t('common:navbar.Chat'),
+        icon: 'core/chat/chatLight',
+        activeIcon: 'core/chat/chatFill',
+        link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
+        activeLink: ['/chat'],
+        unread: 0,
+        showForUser: true // 鲁港通 - 普通用户可见
+      },
+      {
+        label: t('common:navbar.Studio'),
+        icon: 'core/app/aiLight',
+        activeIcon: 'core/app/aiFill',
+        link: `/dashboard/agent`,
+        activeLink: [
+          '/dashboard/agent',
+          '/app/detail',
+          '/dashboard/tool',
+          '/dashboard/tool/marketplace',
+          '/dashboard/systemTool',
+          '/dashboard/templateMarket',
+          '/dashboard/mcpServer',
+          '/dashboard/evaluation',
+          '/dashboard/evaluation/create'
+        ],
+        unread: 0,
+        showForUser: false // 鲁港通 - 仅管理员可见
+      },
+      {
+        label: t('common:navbar.Datasets'),
+        icon: 'core/dataset/datasetLight',
+        activeIcon: 'core/dataset/datasetFill',
+        link: `/dataset/list`,
+        activeLink: ['/dataset/list', '/dataset/detail'],
+        unread: 0,
+        showForUser: false // 鲁港通 - 仅管理员可见
+      },
+      {
+        label: t('common:navbar.Account'),
+        icon: 'support/user/userLight',
+        activeIcon: 'support/user/userFill',
+        link: '/account/info',
+        activeLink: [
+          '/account/bill',
+          '/account/info',
+          '/account/team',
+          '/account/usage',
+          '/account/apikey',
+          '/account/setting',
+          '/account/inform',
+          '/account/model'
+        ],
+        unread,
+        // 鲁港通 - 账号页是 FastGPT 后台风格页：普通用户改用「设置面板」弹窗，不再从底部导航进入 /account/*
+        showForUser: false
+      }
+    ];
+
+    // 鲁港通 - 根据用户角色过滤导航项
+    let filteredList = showAdminFeatures ? baseList : baseList.filter((item) => item.showForUser);
+
+    // 鲁港通 - root 用户添加用户管理入口、工单管理入口和配置入口
+    if (userInfo?.username === 'root') {
+      filteredList = [
+        ...filteredList,
         {
-          label: t('common:navbar.Chat'),
-          icon: 'core/chat/chatLight',
-          activeIcon: 'core/chat/chatFill',
-          link: `/chat?appId=${lastChatAppId}&pane=${lastPane}`,
-          activeLink: ['/chat'],
+          label: '用户管理',
+          icon: 'support/team/memberLight',
+          activeIcon: 'support/team/memberFill',
+          link: '/admin/users',
+          activeLink: ['/admin/users'],
           unread: 0,
-          showForUser: true // 鲁港通 - 普通用户可见
+          showForUser: false
         },
         {
-          label: t('common:navbar.Studio'),
-          icon: 'core/app/aiLight',
-          activeIcon: 'core/app/aiFill',
-          link: `/dashboard/agent`,
-          activeLink: [
-            '/dashboard/agent',
-            '/app/detail',
-            '/dashboard/tool',
-            '/dashboard/tool/marketplace',
-            '/dashboard/systemTool',
-            '/dashboard/templateMarket',
-            '/dashboard/mcpServer',
-            '/dashboard/evaluation',
-            '/dashboard/evaluation/create'
-          ],
-          unread: 0,
-          showForUser: false // 鲁港通 - 仅管理员可见
+          label: t('common:navbar.TicketManage'),
+          icon: 'common/quickActionFeedback',
+          activeIcon: 'common/quickActionFeedback',
+          link: '/admin/tickets',
+          activeLink: ['/admin/tickets'],
+          unread: ticketUnread,
+          showForUser: false
         },
         {
-          label: t('common:navbar.Datasets'),
-          icon: 'core/dataset/datasetLight',
-          activeIcon: 'core/dataset/datasetFill',
-          link: `/dataset/list`,
-          activeLink: ['/dataset/list', '/dataset/detail'],
+          // 鲁港通 - 1A 桌面客户端运维（开关/设备/崩溃报告）
+          label: t('common:navbar.DesktopManage'),
+          icon: 'core/chat/monitor',
+          activeIcon: 'core/chat/monitor',
+          link: '/admin/desktop',
+          activeLink: ['/admin/desktop'],
           unread: 0,
-          showForUser: false // 鲁港通 - 仅管理员可见
+          showForUser: false
         },
         {
-          label: t('common:navbar.Account'),
-          icon: 'support/user/userLight',
-          activeIcon: 'support/user/userFill',
-          link: '/account/info',
-          activeLink: [
-            '/account/bill',
-            '/account/info',
-            '/account/team',
-            '/account/usage',
-            '/account/apikey',
-            '/account/setting',
-            '/account/inform',
-            '/account/model'
-          ],
-          unread,
-          showForUser: true // 鲁港通 - 普通用户可见
+          label: t('common:navbar.Config'),
+          icon: 'support/config/configLight',
+          activeIcon: 'support/config/configFill',
+          link: '/config/plugin/tool',
+          activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model'],
+          unread: 0,
+          showForUser: false
         }
       ];
+    }
 
-      // 鲁港通 - 根据用户角色过滤导航项
-      let filteredList = showAdminFeatures ? baseList : baseList.filter((item) => item.showForUser);
-
-      // 鲁港通 - root 用户添加用户管理入口、工单管理入口和配置入口
-      if (userInfo?.username === 'root') {
-        filteredList = [
-          ...filteredList,
-          {
-            label: '用户管理',
-            icon: 'support/team/memberLight',
-            activeIcon: 'support/team/memberFill',
-            link: '/admin/users',
-            activeLink: ['/admin/users'],
-            unread: 0,
-            showForUser: false
-          },
-          {
-            label: t('common:navbar.TicketManage'),
-            icon: 'common/quickActionFeedback',
-            activeIcon: 'common/quickActionFeedback',
-            link: '/admin/tickets',
-            activeLink: ['/admin/tickets'],
-            unread: ticketUnread,
-            showForUser: false
-          },
-          {
-            // 鲁港通 - 1A 桌面客户端运维（开关/设备/崩溃报告）
-            label: t('common:navbar.DesktopManage'),
-            icon: 'core/chat/monitor',
-            activeIcon: 'core/chat/monitor',
-            link: '/admin/desktop',
-            activeLink: ['/admin/desktop'],
-            unread: 0,
-            showForUser: false
-          },
-          {
-            label: t('common:navbar.Config'),
-            icon: 'support/config/configLight',
-            activeIcon: 'support/config/configFill',
-            link: '/config/plugin/tool',
-            activeLink: ['/config/plugin/tool', '/config/plugin/marketplace', '/config/model'],
-            unread: 0,
-            showForUser: false
-          }
-        ];
-      }
-
-      return filteredList;
-    },
-    [lastChatAppId, lastPane, t, ticketUnread, unread, userInfo?.username, showAdminFeatures]
-  );
+    return filteredList;
+  }, [lastChatAppId, lastPane, t, ticketUnread, unread, userInfo?.username, showAdminFeatures]);
 
   return (
     <>

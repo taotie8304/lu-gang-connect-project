@@ -20,11 +20,13 @@ import {
   savePricePurchaseIntent,
   type PricePurchaseIntent
 } from '@/pageComponents/price/purchaseIntent';
+import { decideShowAdminFeatures } from '@/components/Layout/adminFeatures';
+import { decidePriceFallback } from '@/pageComponents/price/priceFallback';
 
 const PriceBox = () => {
   const { initUserInfo } = useUserStore();
   const { t } = useClientTranslation('price');
-  const { subPlans } = useSystemStore();
+  const { subPlans, feConfigs } = useSystemStore();
   const router = useRouter();
 
   const backButtonRef = useRef<HTMLButtonElement>(null);
@@ -130,13 +132,19 @@ const PriceBox = () => {
     };
   });
 
+  // 鲁港通 - 无历史可回时的落地页：普通用户回聊天，不进 /dashboard/agent 后台风格页
+  const showAdminFeatures = decideShowAdminFeatures({
+    isOwner: !!userInfo?.team?.permission?.isOwner,
+    enableUserChatOnly: !!feConfigs?.enableUserChatOnly
+  });
+
   const handleBack = useCallback(() => {
     if (window.history.length > 1) {
       router.back();
     } else {
-      router.push('/dashboard/agent');
+      router.push(decidePriceFallback({ showAdminFeatures }));
     }
-  }, [router]);
+  }, [router, showAdminFeatures]);
 
   const onPaySuccess = useCallback(() => {
     // 鲁港通 - N4：支付成功后仅刷新套餐状态与用户数据，不再整页刷新（成功结果面板已在支付弹窗内就地展示）

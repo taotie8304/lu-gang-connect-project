@@ -47,7 +47,8 @@ const ConfigContainer = ({
 
   useEffect(() => {
     if (!router.isReady || !initd || !userInfo || isRoot) return;
-    void router.replace('/account/info');
+    // 鲁港通 - 非 root 不进入配置页，也不落到 /account/* 后台风格页，直接回聊天
+    void router.replace('/chat');
   }, [initd, isRoot, router, userInfo]);
 
   const setCurrentTab = useCallback(
