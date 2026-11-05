@@ -687,15 +687,88 @@ sources:
 
   - id: jinan_hrss
     name: 济南市人力资源和社会保障局
+    # 鲁港通 - 发现通道重做（2026-11-05 服务器实测）：栏目页是 JS 空壳，旧 listing 配置
+    # 指向的 col44837 静态页实测 0 条 /art/ 链接（且未知栏目 URL 返回 soft-200 同一段
+    # 模板，状态码判不出改版）。改走 jpaas「组配分类」接口按信息公开类目直取政策文件：
+    # A06-03 规范性文件 23 / A06-04 其他文件 115 / A06-05 政策解读 96 / A32 政策评价 3，
+    # 实测四类互不重叠、共 237 条唯一文章。类目之外的机构职能、领导信息、仲裁开庭与
+    # 送达公告、月度执法公示、财政预决算在发现层就不进候选（不是抓回再筛）。
     group: sd_business_talent
     organization: 济南市人力资源和社会保障局
     base_domains: [jnhrss.jinan.gov.cn]
-    allowed_path_prefixes: [/col/col121890/, /col/col39924/, /col121890/, /col39924/]
-    discovery_method: listing
-    listing_urls:
-      - "https://jnhrss.jinan.gov.cn/col/col121890/index_1.html"
-      - "https://jnhrss.jinan.gov.cn/col/col39924/index_1.html"
+    allowed_path_prefixes: [/col, /api-gateway/]
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 4
+      units:
+      - base_url: https://jnhrss.jinan.gov.cn
+        max_pages: 2
+        search:
+          xxgkId: A06-03
+          xxgkType: ''
+          className: 政策法规
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '16'
+          tplSetId: 'MAMvqpH003gztRDn5troz'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '44837'
+      - base_url: https://jnhrss.jinan.gov.cn
+        max_pages: 4
+        search:
+          xxgkId: A06-04
+          xxgkType: ''
+          className: 政策法规
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '16'
+          tplSetId: 'MAMvqpH003gztRDn5troz'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '44837'
+      - base_url: https://jnhrss.jinan.gov.cn
+        max_pages: 3
+        search:
+          xxgkId: A06-05
+          xxgkType: ''
+          className: 政策法规
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '16'
+          tplSetId: 'MAMvqpH003gztRDn5troz'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '44837'
+      - base_url: https://jnhrss.jinan.gov.cn
+        max_pages: 2
+        search:
+          xxgkId: A32
+          xxgkType: ''
+          className: 政策评价
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '16'
+          tplSetId: 'MAMvqpH003gztRDn5troz'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '44837'
     content_selector: "#zoom"
+    # 鲁港通 - 类目内仍混有事务性噪声（通过名单/评审结果/赛事与专项活动通知）与同一
+    # 政策的音视频、图解副本；后者正文多不足 200 字，标题命中即归档，不占抓取配额
+    title_exclude_patterns:
+      - '名单|评审结果|获奖|考核评定|大赛|春风行动|就业援助月|春运|社会监督员|有声朗读|电子书浏览|一图读懂|视频解读|音频解读|新闻发布会|政府信息公开工作年度报告|部门决算|部门预算|巡察|廉政'
     # 鲁港通 - 采集韧性加固（2026-11-04）：拟真姿态 + 翻页随机停顿 + 凌晨低峰错峰
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     extra_headers:
@@ -703,6 +776,54 @@ sources:
     discovery_min_interval_s: 6
     schedule: "35 19,20,21 * * *"
     rate_limit_per_minute: 4
+    max_pages_per_run: 90
+    enabled: true
+
+  - id: jinan_tzcjj
+    name: 济南市投资促进局
+    # 鲁港通 - 新增（2026-11-05 服务器实测）：外资奖励/招商引资政策原文所在地，此前
+    # 全库空缺。同走 jpaas 类目接口：A06 政策法规共 34 条（含 A06-04 其他文件 8 条与
+    # A06-05 政策解读 26 条，父类目一次覆盖），实测第 2 页起为 0 条即全部。
+    # 该站无「规范性文件」类目，政策原文只挂在「其他文件」下。
+    group: sd_business_talent
+    organization: 济南市投资促进局
+    base_domains: [jntzcjj.jinan.gov.cn]
+    allowed_path_prefixes: [/col, /api-gateway/]
+    force_ipv4: true
+    discovery_method: jpaas_unit
+    unit_config:
+      api_path: /api-gateway/jpaas-publish-server/front/page/build/unit
+      page_size: 50
+      max_pages: 2
+      units:
+      - base_url: https://jntzcjj.jinan.gov.cn
+        max_pages: 2
+        search:
+          xxgkId: A06
+          xxgkType: ''
+          className: 政策法规
+        params:
+          parseType: 'bulidstatic'
+          unitType: 'ajax-xxgk'
+          webId: '45'
+          tplSetId: '6BjoiRZJsZNPertlktaH4'
+          pageType: 'column'
+          tagId: '组配分类list'
+          editType: 'null'
+          pageId: '56048'
+    content_selector: "#zoom"
+    # 鲁港通 - 剔除媒体报道体与同一政策的图解/音视频副本（实测同一份意见有文字、
+    # 音频、视频、新闻发布会九段等 12 个版本，只保留文字版与政策原文）
+    title_exclude_patterns:
+      - '媒体解读|一图读懂|新闻发布会|音频解读|视频解读|有声朗读|电子书浏览|名单|行政执法|预决算|部门决算|部门预算|巡察'
+    # 鲁港通 - 采集韧性加固：拟真姿态 + 随机停顿 + 凌晨低峰错峰（避开人社/政务云同刻起始）
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh;q=0.9"
+    discovery_min_interval_s: 6
+    schedule: "45 19,20 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
     enabled: true
 
   - id: jinan_rc
