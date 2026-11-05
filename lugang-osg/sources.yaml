@@ -791,6 +791,11 @@ sources:
     schedule: "35 19,20,21 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 90
+    # 鲁港通 - 同文判重（2026-11-05 服务器实测）：政策原文地址会被发一个每次刷新都变的
+    # ?type=<token>（65 条存量文档中 12 条带此参数，且同一 token 在起步区等其他来源也出现，
+    # 说明是渲染期会话参数、不是文件标识）。按原始网址判重时同一篇文章建了两条文档、进了
+    # 知识库两份同名文件；忽略该参数后两种网址形态折成同一个文档身份。
+    url_identity_ignore_params: [type]
     enabled: true
 
   - id: jinan_tzcjj
@@ -1270,6 +1275,10 @@ sources:
       - '常务会议'
       - '非物质文化遗产|不可移动文物'
       - '建制调整'
+    # 鲁港通 - 同文判重（2026-11-05 服务器实测）：306 条存量文档中 64 条正文地址带一个会
+    # 漂移的 ?type=<token>（同一文件同时以裸地址和带参数地址入库，实测同一篇政策两种形态
+    # 各建一条文档）。忽略该参数后按同一个文档身份判重，来源网址仍按列表页给用户的原样入库。
+    url_identity_ignore_params: [type]
     enabled: true
 
   - id: jinan_shizhong
@@ -1302,6 +1311,11 @@ sources:
       - '常务会议'
       - '非物质文化遗产|不可移动文物'
       - '建制调整'
+    # 鲁港通 - 同文判重（2026-11-05 服务器实测）：同一份文件常同时挂在两个类目通道下
+    # （实测 doc_6572b13ae7cffa9218f2f996 分别出现在 channel_6389a12f… 与 channel_6389a131…
+    # 两路径下，正文 2512 字完全一致、标题略有出入），按原始网址判重会各建一条文档、进知识库
+    # 两份。改为只认正文的 doc_<24hex>.html 编号做身份，不同栏目挂载折成同一篇、不同编号仍分开。
+    url_identity_path_capture: '/(doc_[0-9a-f]{16,40}\.html)$'
     enabled: true
 
   - id: jinan_zhangqiu
@@ -1366,6 +1380,11 @@ sources:
       - '常务会议'
       - '非物质文化遗产|不可移动文物'
       - '建制调整'
+    # 鲁港通 - 同文判重（2026-11-05 服务器实测）：同一份文件会同时挂在「历史沿革」等专题
+    # 栏目和主管部门自有栏目下（实测形态 /gongkai/channel_changqingqu_lsyg/doc_<24hex>.html
+    # 与 /gongkai/site_<部门>/channel_<24hex>/doc_<24hex>.html，254 条存量文档里 6 组），
+    # 按原始网址判重于是各建一条文档、进知识库两份。只认正文 doc_ 编号做身份。
+    url_identity_path_capture: '/(doc_[0-9a-f]{16,40}\.html)$'
     enabled: true
 
   - id: jinan_tianqiao

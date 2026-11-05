@@ -59,6 +59,10 @@ _DISCOVERY_KEYS = (
     "discovery_min_interval_s",
     # 鲁港通 - 发布时限（济南政策源，2026-11-05）：URL 年份早于此值的候选不进抓取队列
     "min_publish_year",
+    # 鲁港通 - 同文判重（济南县市区源，2026-11-05）：把多栏目挂载 / 漂移查询参数折成
+    # 同一个文档身份。漏登记则配置静默丢失，同一篇文章会继续进知识库两份。
+    "url_identity_path_capture",
+    "url_identity_ignore_params",
 )
 
 

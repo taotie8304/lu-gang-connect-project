@@ -31,6 +31,7 @@ from app.ingest.discover import (
 )
 from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf
 from app.ingest.title_filter import first_matching_pattern
+from app.ingest.url_identity import identity_key
 from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
 from app.security.fetcher import (
     FetchAborted,
@@ -531,10 +532,8 @@ def _fetch_with_retry(url, rules, settings, fetcher, sleeper, stats, method="GET
 
 def _process_candidates(db, source, run, candidates, rules, settings,
                         fetcher, sleeper, stats, force_refetch, resolver):
-    known = {d.canonical_url: d for d in db.execute(
-        select(Document).where(Document.source_id == source.id)
-    ).scalars()}
     cfg = source.discovery_config or {}
+    known = _known_documents(db, source, cfg)
     entry_urls = _entry_urls(source)
     # 鲁港通 - fixed_url 入口即目标文档；api_json 的 canonical_url 是详情 API 端点
     # （/prod-api/...getInfo?id=），网页形态规则对它无意义，两者均豁免栏目页形态过滤。
@@ -595,8 +594,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             db.commit()
             continue
 
-        # 2) 已知文档：默认跳过；force_refetch 或 RSS 有更新信号时重抓
-        doc = known.get(canonical)
+        # 2) 已知文档：默认跳过；force_refetch 或 RSS 有更新信号时重抓。
+        #    鲁港通 - 查表键用「文档身份」而非原始网址：同一份文件换栏目挂载或带上漂移
+        #    参数时不再新建第二条文档（否则知识库出现同名多份，且夜间只会越长越多）。
+        doc = known.get(identity_key(canonical, cfg))
         if doc is not None and not force_refetch:
             task.status = "skipped_known"
             stats.already_known += 1
@@ -631,7 +632,15 @@ def _process_candidates(db, source, run, candidates, rules, settings,
                 continue
 
         # 5) 提取 + 版本化入库
-        action = _store_document(db, source, canonical, result, item)
+        action = _store_document(db, source, canonical, result, item, known_doc=doc)
+        # 鲁港通 - 本轮新建的文档立刻进身份索引：同一轮列表里同一篇文章常同时挂两种网址
+        # 形态（起步区裸地址 + 带 type 参数地址），索引不更新则第二条照样建一份文档。
+        if doc is None and action in ("new", "archived_noise", "archived_offtopic"):
+            created = db.execute(
+                select(Document).where(Document.canonical_url == canonical)
+            ).scalar_one_or_none()
+            if created is not None:
+                known.setdefault(identity_key(canonical, cfg), created)
         task.status = action
         task.http_status = result.http_status
         task.bytes_downloaded = len(result.content)
@@ -668,7 +677,22 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             sleeper(settings.source_min_interval_s)
 
 
-def _store_document(db, source, canonical, result: FetchResult, item) -> str:
+def _known_documents(db, source, cfg) -> dict:
+    """按文档身份建立「已入库」索引：同一篇文章的别名网址只留一条代表文档。"""
+    known: dict[str, Document] = {}
+    for d in db.execute(
+        select(Document).where(Document.source_id == source.id)
+    ).scalars():
+        key = identity_key(d.canonical_url, cfg)
+        current = known.get(key)
+        # 鲁港通 - 同一身份下既有归档副本又有在用文档时，以在用那份为代表：
+        # 内容更新不会落到归档行，清理掉的副本也不会被别名网址重新喂大。
+        if current is None or (current.status == "archived" and d.status != "archived"):
+            known[key] = d
+    return known
+
+
+def _store_document(db, source, canonical, result: FetchResult, item, known_doc=None) -> str:
     """sha256 版本化入库。返回 new / archived_noise / updated / unchanged / skipped_low_content。"""
     content_sha = hashlib.sha256(result.content).hexdigest()
     cfg = source.discovery_config or {}
@@ -677,9 +701,11 @@ def _store_document(db, source, canonical, result: FetchResult, item) -> str:
     overrides = cfg.get("title_overrides") or {}
     override = overrides.get(canonical) if isinstance(overrides, dict) else None
 
-    doc = db.execute(
-        select(Document).where(Document.canonical_url == canonical)
-    ).scalar_one_or_none()
+    doc = known_doc
+    if doc is None:
+        doc = db.execute(
+            select(Document).where(Document.canonical_url == canonical)
+        ).scalar_one_or_none()
 
     if doc is not None:
         # 标题覆盖先于「内容未变」短路生效，配置修正后下次同步即可刷新旧文档标题
