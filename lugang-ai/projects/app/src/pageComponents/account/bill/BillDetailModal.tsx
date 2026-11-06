@@ -131,7 +131,10 @@ const BillDetailModal = ({ billId, onClose }: BillDetailModalProps) => {
     >
       <Flex alignItems={'center'} pb={4}>
         <FormLabel flex={'0 0 120px'}>{t('account:order_number')}:</FormLabel>
-        <Box>{bill?.orderId}</Box>
+        {/* 鲁港通 - 手机端弹窗窄，长订单号需断行，避免右侧被裁切 */}
+        <Box flex={1} minW={0} wordBreak="break-all" lineHeight="1.6">
+          {bill?.orderId}
+        </Box>
       </Flex>
       <Flex alignItems={'center'} pb={4}>
         <FormLabel flex={'0 0 120px'}>{t('account:generation_time')}:</FormLabel>
