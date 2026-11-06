@@ -38,9 +38,11 @@ import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConf
 import BillDetailModal from './BillDetailModal';
 import { accountContentScrollStyles, accountPageRootStyles } from '@/pageComponents/account/styles';
 import type { BillItemType } from '@fastgpt/global/openapi/support/wallet/bill/api';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 const BillTable = () => {
   const { t } = useClientTranslation('account_bill');
+  const { isPc } = useSystem();
   const { toast } = useToast();
   const [billType, setBillType] = useState<BillTypeEnum | undefined>(undefined);
   const [billDetailId, setBillDetailId] = useState<string>();
@@ -137,90 +139,148 @@ const BillTable = () => {
     }
   );
 
+  const renderActions = (item: BillItemType) => (
+    <>
+      {item.status === 'NOTPAY' && (
+        <>
+          <Button
+            isLoading={isRefreshing}
+            mr={2}
+            onClick={() => handleRefreshPayOrder(item)}
+            size={'sm'}
+            variant={'primary'}
+          >
+            {t('common:Update')}
+          </Button>
+          <PopoverConfirm
+            content={t('common:cancel_bill_confirm')}
+            type={'delete'}
+            onConfirm={() => handleCancelBill(item._id)}
+            Trigger={
+              <Button isLoading={isCancelling} mr={2} size={'sm'} variant={'whiteBase'}>
+                {t('common:cancel_bill')}
+              </Button>
+            }
+          />
+        </>
+      )}
+      <Button variant={'whiteBase'} size={'sm'} onClick={() => setBillDetailId(item._id)}>
+        {t('account_bill:detail')}
+      </Button>
+    </>
+  );
+
+  const renderEmpty = () =>
+    !isLoading && bills.length === 0 ? (
+      <Flex
+        mt={['12vh', '20vh']}
+        flexDirection={'column'}
+        alignItems={'center'}
+        justifyContent={'center'}
+      >
+        <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
+        <Box mt={2} color={'myGray.500'}>
+          {t('account_bill:no_invoice_record')}
+        </Box>
+      </Flex>
+    ) : null;
+
   return (
     <MyBox {...accountPageRootStyles} isLoading={isLoading} display={'flex'} flexDir={'column'}>
-      <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} px={[2, 6]}>
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>#</Th>
-              <Th>
-                <MySelect
-                  list={billTypeList}
-                  value={billType}
-                  size={'sm'}
-                  onChange={(e) => {
-                    setBillType(e);
-                  }}
-                  w={'130px'}
-                ></MySelect>
-              </Th>
-              <Th>{t('account_bill:time')}</Th>
-              <Th>{t('account_bill:support_wallet_amount')}</Th>
-              <Th>{t('account_bill:status')}</Th>
-              <Th></Th>
-            </Tr>
-          </Thead>
-          <Tbody fontSize={'sm'}>
-            {bills.map((item, i) => (
-              <Tr key={item._id}>
-                <Td>{i + 1}</Td>
-                <Td>{t(billTypeMap[item.type]?.label as any)}</Td>
-                <Td>
-                  {item.createTime ? dayjs(item.createTime).format('YYYY/MM/DD HH:mm:ss') : '-'}
-                </Td>
-                <Td>{t('account_bill:yuan', { amount: formatStorePrice2Read(item.price) })}</Td>
-                <Td>{t(billStatusMap[item.status]?.label as any)}</Td>
-                <Td display={'flex'} justifyContent={'end'}>
-                  {item.status === 'NOTPAY' && (
-                    <>
-                      <Button
-                        isLoading={isRefreshing}
-                        mr={2}
-                        onClick={() => handleRefreshPayOrder(item)}
-                        size={'sm'}
-                        variant={'primary'}
-                      >
-                        {t('common:Update')}
-                      </Button>
-                      <PopoverConfirm
-                        content={t('common:cancel_bill_confirm')}
-                        type={'delete'}
-                        onConfirm={() => handleCancelBill(item._id)}
-                        Trigger={
-                          <Button isLoading={isCancelling} mr={2} size={'sm'} variant={'whiteBase'}>
-                            {t('common:cancel_bill')}
-                          </Button>
-                        }
-                      />
-                    </>
-                  )}
-                  <Button
-                    variant={'whiteBase'}
+      {isPc ? (
+        <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} px={[2, 6]}>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>#</Th>
+                <Th>
+                  <MySelect
+                    list={billTypeList}
+                    value={billType}
                     size={'sm'}
-                    onClick={() => setBillDetailId(item._id)}
-                  >
-                    {t('account_bill:detail')}
-                  </Button>
-                </Td>
+                    onChange={(e) => {
+                      setBillType(e);
+                    }}
+                    w={'130px'}
+                  ></MySelect>
+                </Th>
+                <Th>{t('account_bill:time')}</Th>
+                <Th>{t('account_bill:support_wallet_amount')}</Th>
+                <Th>{t('account_bill:status')}</Th>
+                <Th></Th>
               </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {!isLoading && bills.length === 0 && (
-          <Flex
-            mt={'20vh'}
-            flexDirection={'column'}
-            alignItems={'center'}
-            justifyContent={'center'}
-          >
-            <MyIcon name="empty" w={'48px'} h={'48px'} color={'transparent'} />
-            <Box mt={2} color={'myGray.500'}>
-              {t('account_bill:no_invoice_record')}
-            </Box>
+            </Thead>
+            <Tbody fontSize={'sm'}>
+              {bills.map((item, i) => (
+                <Tr key={item._id}>
+                  <Td>{i + 1}</Td>
+                  <Td>{t(billTypeMap[item.type]?.label as any)}</Td>
+                  <Td>
+                    {item.createTime ? dayjs(item.createTime).format('YYYY/MM/DD HH:mm:ss') : '-'}
+                  </Td>
+                  <Td>{t('account_bill:yuan', { amount: formatStorePrice2Read(item.price) })}</Td>
+                  <Td>{t(billStatusMap[item.status]?.label as any)}</Td>
+                  <Td display={'flex'} justifyContent={'end'}>{renderActions(item)}</Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          {renderEmpty()}
+        </TableContainer>
+      ) : (
+        <>
+          <Flex px={3} pb={3}>
+            <MySelect
+              list={billTypeList}
+              value={billType}
+              size={'sm'}
+              onChange={(e) => {
+                setBillType(e);
+              }}
+              w={'100%'}
+            />
           </Flex>
-        )}
-      </TableContainer>
+          <Box px={3} display={'flex'} flexDirection={'column'} gap={3}>
+            {bills.map((item) => (
+              <Box
+                key={item._id}
+                border={'1px solid'}
+                borderColor={'myGray.200'}
+                borderRadius={'md'}
+                p={3}
+                bg={'white'}
+              >
+                <Flex alignItems={'flex-start'} justifyContent={'space-between'} gap={2}>
+                  <Box fontWeight={'500'} color={'myGray.900'} flex={1} minW={0}>
+                    {t(billTypeMap[item.type]?.label as any)}
+                  </Box>
+                  <Box fontWeight={'600'} color={'myGray.900'} flexShrink={0}>
+                    {t('account_bill:yuan', { amount: formatStorePrice2Read(item.price) })}
+                  </Box>
+                </Flex>
+                <Flex
+                  mt={'6px'}
+                  fontSize={'xs'}
+                  color={'myGray.500'}
+                  alignItems={'center'}
+                  flexWrap={'wrap'}
+                  gap={2}
+                >
+                  <Box>
+                    {item.createTime ? dayjs(item.createTime).format('YYYY/MM/DD HH:mm:ss') : '-'}
+                  </Box>
+                  <Box color={'myGray.300'}>|</Box>
+                  <Box>{t(billStatusMap[item.status]?.label as any)}</Box>
+                </Flex>
+                <Flex mt={3} justifyContent={'flex-end'} alignItems={'center'}>
+                  {renderActions(item)}
+                </Flex>
+              </Box>
+            ))}
+          </Box>
+          {renderEmpty()}
+        </>
+      )}
 
       {total >= pageSize && (
         <Flex mt={3} justifyContent={'center'}>

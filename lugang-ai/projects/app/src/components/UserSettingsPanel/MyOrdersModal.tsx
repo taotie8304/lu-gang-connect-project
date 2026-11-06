@@ -13,9 +13,10 @@ const MyOrdersModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
       isOpen={isOpen}
       onClose={onClose}
       size={'lg'}
-      maxW={['92vw', '860px']}
+      maxW={['94vw', '860px']}
       // 鲁港通 - 面板沿用账号页的百分比高度布局，弹窗必须给出确定高度，否则内容区会塌成 0
-      h={['auto', '80vh']}
+      h={['88dvh', '80vh']}
+      maxH={['92dvh', '85vh']}
       showCloseButton={false}
     >
       <ModalBody p={0} overflowY={'auto'}>

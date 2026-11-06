@@ -79,10 +79,18 @@ const UsageDetail = ({ usage, onClose }: { usage: UsageListItemType; onClose: ()
   }, [usage.list]);
 
   return (
-    <MyModal isOpen={true} onClose={onClose} title={t('account_usage:usage_detail')} w={'700px'}>
+    <MyModal
+      isOpen={true}
+      onClose={onClose}
+      title={t('account_usage:usage_detail')}
+      w={['92vw', '700px']}
+      maxW={'92vw'}
+      headerStyles={{ px: [4, 8], pt: [4, 8] }}
+      bodyStyles={{ px: [4, 8], pt: [4, 6] }}
+    >
       <Flex alignItems={'center'} pb={4}>
         <FormLabel flex={'0 0 80px'}>{t('account_usage:order_number')}:</FormLabel>
-        <Box>{usage.id}</Box>
+        <Box wordBreak={'break-all'}>{usage.id}</Box>
       </Flex>
       <Flex alignItems={'center'} pb={4}>
         <FormLabel flex={'0 0 80px'}>{t('account_usage:generation_time')}:</FormLabel>

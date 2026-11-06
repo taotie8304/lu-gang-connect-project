@@ -28,6 +28,7 @@ import { downloadFetch } from '@/web/common/system/utils';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import { accountContentScrollStyles, accountPageRootStyles } from '@/pageComponents/account/styles';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 const UsageDetail = dynamic(() => import('./UsageDetail'));
 
@@ -41,6 +42,7 @@ const UsageTableList = ({
   filterParams: UsageFilterParams;
 }) => {
   const { t } = useClientTranslation('account_usage');
+  const { isPc } = useSystem();
 
   const { dateRange, selectTmbIds, isSelectAllTmb, usageSources, isSelectAllSource, projectName } =
     filterParams;
@@ -164,46 +166,107 @@ const UsageTableList = ({
           onConfirm={exportUsage}
         />
       </Flex>
-      <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} mt={3} px={[3, 6]}>
-        <Table>
-          <Thead>
-            <Tr>
-              <Th>{t('common:user.Time')}</Th>
-              <Th>{t('account_usage:member')}</Th>
-              <Th>{t('account_usage:user_type')}</Th>
-              <Th>{t('account_usage:project_name')}</Th>
-              <Th>{t('account_usage:total_points')}</Th>
-              <Th></Th>
-            </Tr>
-          </Thead>
-          <Tbody fontSize={'sm'}>
-            {usages.map((item) => (
-              <Tr key={item.id}>
-                <Td>{dayjs(item.time).format('YYYY/MM/DD HH:mm:ss')}</Td>
-                <Td>
-                  <Flex alignItems={'center'} color={'myGray.500'}>
-                    <Avatar src={item.sourceMember.avatar} w={'20px'} mr={1} rounded={'full'} />
-                    {item.sourceMember.name}
-                  </Flex>
-                </Td>
-                <Td>{t(UsageSourceMap[item.source]?.label as any) || '-'}</Td>
-                <Td className="textEllipsis" maxW={'400px'} title={t(item.appName as any)}>
-                  {t(item.appName as any) || '-'}
-                </Td>
-                <Td>{formatNumber(item.totalPoints) || 0}</Td>
-                <Td>
-                  <Button size={'sm'} variant={'whitePrimary'} onClick={() => setUsageDetail(item)}>
-                    {t('account_usage:details')}
-                  </Button>
-                </Td>
+      {isPc ? (
+        <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} mt={3} px={[3, 6]}>
+          <Table>
+            <Thead>
+              <Tr>
+                <Th>{t('common:user.Time')}</Th>
+                <Th>{t('account_usage:member')}</Th>
+                <Th>{t('account_usage:user_type')}</Th>
+                <Th>{t('account_usage:project_name')}</Th>
+                <Th>{t('account_usage:total_points')}</Th>
+                <Th></Th>
               </Tr>
-            ))}
-          </Tbody>
-        </Table>
-        {!isLoading && usages.length === 0 && (
-          <EmptyTip text={t('account_usage:no_usage_records')}></EmptyTip>
-        )}
-      </TableContainer>
+            </Thead>
+            <Tbody fontSize={'sm'}>
+              {usages.map((item) => (
+                <Tr key={item.id}>
+                  <Td>{dayjs(item.time).format('YYYY/MM/DD HH:mm:ss')}</Td>
+                  <Td>
+                    <Flex alignItems={'center'} color={'myGray.500'}>
+                      <Avatar src={item.sourceMember.avatar} w={'20px'} mr={1} rounded={'full'} />
+                      {item.sourceMember.name}
+                    </Flex>
+                  </Td>
+                  <Td>{t(UsageSourceMap[item.source]?.label as any) || '-'}</Td>
+                  <Td className="textEllipsis" maxW={'400px'} title={t(item.appName as any)}>
+                    {t(item.appName as any) || '-'}
+                  </Td>
+                  <Td>{formatNumber(item.totalPoints) || 0}</Td>
+                  <Td>
+                    <Button
+                      size={'sm'}
+                      variant={'whitePrimary'}
+                      onClick={() => setUsageDetail(item)}
+                    >
+                      {t('account_usage:details')}
+                    </Button>
+                  </Td>
+                </Tr>
+              ))}
+            </Tbody>
+          </Table>
+          {!isLoading && usages.length === 0 && (
+            <EmptyTip text={t('account_usage:no_usage_records')}></EmptyTip>
+          )}
+        </TableContainer>
+      ) : (
+        // 鲁港通 - 手机端（<900px）改用卡片列表，避免 6 列表格横向挤压
+        <Box px={3} mt={3} display={'flex'} flexDirection={'column'} gap={3}>
+          {usages.map((item) => (
+            <Box
+              key={item.id}
+              border={'1px solid'}
+              borderColor={'myGray.200'}
+              borderRadius={'md'}
+              p={3}
+              bg={'white'}
+            >
+              <Flex alignItems={'center'} gap={2} fontSize={'xs'} color={'myGray.500'}>
+                <Box>{dayjs(item.time).format('YYYY/MM/DD HH:mm:ss')}</Box>
+                <Box flex={1} />
+                <Box flexShrink={0}>{t(UsageSourceMap[item.source]?.label as any) || '-'}</Box>
+              </Flex>
+              <Box
+                mt={1}
+                fontWeight={'500'}
+                color={'myGray.900'}
+                className="textEllipsis"
+                title={t(item.appName as any)}
+              >
+                {t(item.appName as any) || '-'}
+              </Box>
+              <Flex mt={2.5} alignItems={'center'}>
+                <Flex alignItems={'center'} color={'myGray.500'} fontSize={'xs'} flex={1} minW={0}>
+                  <Avatar
+                    src={item.sourceMember.avatar}
+                    w={'18px'}
+                    mr={1}
+                    rounded={'full'}
+                    flexShrink={0}
+                  />
+                  <Box className="textEllipsis">{item.sourceMember.name}</Box>
+                </Flex>
+                <Box fontWeight={'600'} color={'myGray.900'} mr={3} flexShrink={0}>
+                  {formatNumber(item.totalPoints) || 0}
+                </Box>
+                <Button
+                  size={'sm'}
+                  variant={'whitePrimary'}
+                  flexShrink={0}
+                  onClick={() => setUsageDetail(item)}
+                >
+                  {t('account_usage:details')}
+                </Button>
+              </Flex>
+            </Box>
+          ))}
+          {!isLoading && usages.length === 0 && (
+            <EmptyTip text={t('account_usage:no_usage_records')}></EmptyTip>
+          )}
+        </Box>
+      )}
       <Flex mt={3} justifyContent={'center'}>
         <Pagination />
       </Flex>
