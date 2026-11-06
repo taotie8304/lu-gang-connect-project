@@ -14,7 +14,9 @@ const unAuthPage: { [key: string]: boolean } = {
   '/chat': true,
   '/chat/share': true,
   '/tools/price': true,
-  '/price': true
+  '/price': true,
+  // 鲁港通 - 关于页是公开介绍页，未登录也必须可看；漏配白名单会被重定向回登录页（表现为点击「关于」没反应）
+  '/about': true
 };
 
 const Auth = ({ children }: { children: JSX.Element | React.ReactNode }) => {
