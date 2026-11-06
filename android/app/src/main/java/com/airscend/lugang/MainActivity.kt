@@ -55,6 +55,7 @@ import com.airscend.lugang.shell.NavAction
 import com.airscend.lugang.shell.NavigationPolicy
 import com.airscend.lugang.shell.ShellInsets
 import com.airscend.lugang.update.UpdateChecker
+import com.airscend.lugang.update.UpdateCheckResult
 import com.airscend.lugang.update.UpdateDownloader
 import com.airscend.lugang.update.UpdateManifest
 import com.airscend.lugang.upload.UploadChooser
@@ -77,6 +78,7 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
     private var bridgeScript: String = ""
     @Volatile private var currentUrl: String = ""
     @Volatile private var bridgeAllowed: Boolean = false
+    @Volatile private var manualUpdateCheckRunning: Boolean = false
     private lateinit var directDownloader: DirectDownloader
     private lateinit var blobSaver: BlobSaver
     private lateinit var downloadStore: DownloadStore
@@ -445,6 +447,9 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
             }
             append("\n\n安装包 ")
             append(readableSize(manifest.size))
+            // 鲁港通 - 未上架应用商店，安装时会被 Play 保护机制提示风险，先说明清楚避免用户误以为安装包有问题
+            append("\n\n")
+            append(getString(R.string.update_play_protect_hint))
         }
         AlertDialog.Builder(this)
             .setTitle(R.string.update_title)
@@ -452,6 +457,24 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
             .setPositiveButton(R.string.update_download) { _, _ -> updateDownloader.download(manifest) }
             .setNegativeButton(R.string.update_later, null)
             .show()
+    }
+
+    // 鲁港通 - 手动检查更新：跳过 24 小时节流与静默策略，「已最新 / 失败」也明确告知用户
+    private fun checkUpdateManually() {
+        if (manualUpdateCheckRunning || isFinishing || isDestroyed) return
+        manualUpdateCheckRunning = true
+        Toast.makeText(this, R.string.update_checking, Toast.LENGTH_SHORT).show()
+        updateChecker.checkNow { result ->
+            manualUpdateCheckRunning = false
+            if (isFinishing || isDestroyed) return@checkNow
+            when (result) {
+                is UpdateCheckResult.Available -> showUpdateDialog(result.manifest)
+                UpdateCheckResult.UpToDate ->
+                    Toast.makeText(this, R.string.update_latest, Toast.LENGTH_SHORT).show()
+                UpdateCheckResult.Failed ->
+                    Toast.makeText(this, R.string.update_check_failed, Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun readableSize(bytes: Long): String =
@@ -492,6 +515,10 @@ class MainActivity : AppCompatActivity(), LugangBridge.Host {
 
     override fun onBridgeOpenDownloads() {
         runOnUiThread { startActivity(Intent(this, DownloadCenterActivity::class.java)) }
+    }
+
+    override fun onBridgeCheckUpdate() {
+        runOnUiThread { checkUpdateManually() }
     }
 
     override fun onDestroy() {

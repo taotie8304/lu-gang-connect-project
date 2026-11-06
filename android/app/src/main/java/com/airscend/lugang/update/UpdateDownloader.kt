@@ -140,15 +140,22 @@ class UpdateDownloader(private val activity: Activity) {
     private fun install(file: File) {
         val canInstall = runCatching { activity.packageManager.canRequestPackageInstalls() }.getOrDefault(false)
         if (!canInstall) {
-            Toast.makeText(activity, R.string.update_install_hint, Toast.LENGTH_LONG).show()
-            runCatching {
-                activity.startActivity(
-                    Intent(
-                        Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:" + activity.packageName)
-                    )
-                )
-            }
+            // 鲁港通 - 首次安装需要用户去系统设置授权，直接跳设置会让用户不知道刚才发生了什么
+            AlertDialog.Builder(activity)
+                .setTitle(R.string.update_install_permission_title)
+                .setMessage(R.string.update_install_permission_message)
+                .setPositiveButton(R.string.update_install_permission_action) { _, _ ->
+                    runCatching {
+                        activity.startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                                Uri.parse("package:" + activity.packageName)
+                            )
+                        )
+                    }
+                }
+                .setNegativeButton(R.string.update_later, null)
+                .show()
             return
         }
         val uri = FileProvider.getUriForFile(

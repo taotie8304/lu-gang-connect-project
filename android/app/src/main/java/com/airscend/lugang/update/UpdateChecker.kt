@@ -7,6 +7,13 @@ import android.os.Looper
 import java.net.HttpURLConnection
 import java.net.URL
 
+// 鲁港通 - 手动检查更新的结果：有新版本 / 已是最新 / 检查失败（网络或清单异常）
+sealed class UpdateCheckResult {
+    data class Available(val manifest: UpdateManifest) : UpdateCheckResult()
+    object UpToDate : UpdateCheckResult()
+    object Failed : UpdateCheckResult()
+}
+
 class UpdateChecker(
     context: Context,
     private val currentVersionCode: Int,
@@ -29,6 +36,24 @@ class UpdateChecker(
                 mainHandler.post { onUpdateAvailable(manifest) }
             }
         }.apply { name = "lugang-update-check" }.start()
+    }
+
+    // 鲁港通 - 用户主动检查：跳过 24 小时节流，失败与已最新也必须回执，结果统一回主线程
+    fun checkNow(onResult: (UpdateCheckResult) -> Unit) {
+        Thread {
+            val manifest = fetchManifest()
+            val result = if (manifest == null) {
+                UpdateCheckResult.Failed
+            } else {
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+                if (UpdatePolicy.isNewer(manifest.versionCode, currentVersionCode)) {
+                    UpdateCheckResult.Available(manifest)
+                } else {
+                    UpdateCheckResult.UpToDate
+                }
+            }
+            mainHandler.post { onResult(result) }
+        }.apply { name = "lugang-update-check-now" }.start()
     }
 
     // 鲁港通 - 整段抓取兜底：地址构造、建连、读流、解析任一失败都只返回 null，不抛到线程外

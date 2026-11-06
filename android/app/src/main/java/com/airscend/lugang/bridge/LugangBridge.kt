@@ -16,6 +16,7 @@ class LugangBridge(private val host: Host) {
         fun finishBlobSave(id: String?): Boolean
         fun abortBlobSave(id: String?)
         fun onBridgeOpenDownloads()
+        fun onBridgeCheckUpdate()
     }
 
     @JavascriptInterface
@@ -44,6 +45,12 @@ class LugangBridge(private val host: Host) {
     fun openDownloads() {
         if (!host.isBridgeTrusted()) return
         host.onBridgeOpenDownloads()
+    }
+
+    @JavascriptInterface
+    fun checkUpdate() {
+        if (!host.isBridgeTrusted()) return
+        host.onBridgeCheckUpdate()
     }
 
     @JavascriptInterface
