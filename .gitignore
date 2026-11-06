@@ -238,6 +238,7 @@ android/.gradle/
 android/.kotlin/
 android/local.properties
 android/dist/
+android/.icon-work/
 android/*.jks
 android/keystore.b64
 android/keystore-password.txt
