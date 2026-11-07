@@ -64,6 +64,7 @@ const pcUnShowLayoutRoute: Record<string, boolean> = {
   '/chat': true,
   '/tools/price': true,
   '/price': true,
+  '/about': true,
   '/skill/detail': true,
   '/config/plugin/marketplace': true,
   '/dashboard/tool/marketplace': true
@@ -78,6 +79,7 @@ const phoneUnShowLayoutRoute: Record<string, boolean> = {
   '/chat/share': true,
   '/tools/price': true,
   '/price': true,
+  '/about': true,
   '/skill/detail': true,
   '/config/plugin/marketplace': true,
   '/dashboard/tool/marketplace': true
