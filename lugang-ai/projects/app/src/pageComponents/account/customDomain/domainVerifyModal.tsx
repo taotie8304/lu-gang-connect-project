@@ -5,9 +5,11 @@ import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { updateCustomDomainVerifyFile } from '@/web/support/customDomain/api';
 import { useForm } from 'react-hook-form';
 import FormLabel from '@fastgpt/web/components/common/MyBox/FormLabel';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 function domainVerifyModal({ onClose, domain }: { onClose: () => void; domain: string }) {
   const { t } = useClientTranslation('account_custom_domain');
+  const { isPc } = useSystem();
   const { watch, handleSubmit, register } = useForm({
     defaultValues: {
       path: '',
@@ -32,7 +34,8 @@ function domainVerifyModal({ onClose, domain }: { onClose: () => void; domain: s
   return (
     <MyModal isOpen onClose={onClose} title={t('account_custom_domain:domain_verify')} minW="800px">
       <ModalBody>
-        <Grid gridTemplateColumns="1fr 1fr" gap="16px">
+        {/* 鲁港通 - 手机端两列输入框改单列，避免输入框被压到无法辨认 */}
+        <Grid gridTemplateColumns={isPc ? '1fr 1fr' : '1fr'} gap="16px">
           <Box>
             <FormLabel required>{t('account_custom_domain:domain_verify.path')}</FormLabel>
             <Input {...register('path')} />

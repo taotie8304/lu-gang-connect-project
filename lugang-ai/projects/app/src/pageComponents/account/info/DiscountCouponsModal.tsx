@@ -12,12 +12,14 @@ import MyImage from '@fastgpt/web/components/common/Image/MyImage';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import BillDetailModal from '@/pageComponents/account/bill/BillDetailModal';
 import { DiscountCouponStatusEnum } from '@fastgpt/global/support/wallet/sub/discountCoupon/constants';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
   const { t, i18n } = useClientTranslation('discount_coupon');
   const { userInfo } = useUserStore();
   const router = useRouter();
   const isZh = i18n.language === 'zh-CN';
+  const { isPc } = useSystem();
   const [billId, setBillId] = useState<string>();
   const teamId = userInfo?.team?.teamId;
 
@@ -51,9 +53,9 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
       isLoading={loading}
       maxW={'900px'}
     >
-      <ModalBody minH={'200px'} px={6} py={4}>
+      <ModalBody minH={'200px'} px={isPc ? 6 : 4} py={isPc ? 4 : 3}>
         {coupons.length > 0 ? (
-          <Flex flexDirection={'column'} gap={6}>
+          <Flex flexDirection={'column'} gap={isPc ? 6 : 4}>
             {coupons.map((coupon) => {
               return (
                 <Box
@@ -61,46 +63,62 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                   position={'relative'}
                   filter={'drop-shadow(0 4px 20.2px rgba(14, 66, 187, 0.12))'}
                 >
-                  <Flex alignItems={'stretch'} position={'relative'} minH={'96px'}>
+                  {/* 鲁港通 - 手机端券面改为上下堆叠：上半部分券信息、下半部分有效期与操作按钮 */}
+                  <Flex
+                    alignItems={'stretch'}
+                    position={'relative'}
+                    minH={'96px'}
+                    flexDirection={isPc ? 'row' : 'column'}
+                    borderRadius={isPc ? undefined : 'lg'}
+                    overflow={isPc ? undefined : 'hidden'}
+                    bg={isPc ? undefined : 'white'}
+                  >
                     <Flex
-                      px={2}
+                      px={isPc ? 2 : 4}
+                      py={isPc ? 0 : 3}
                       bg={'white'}
                       flex={1}
                       alignItems={'center'}
-                      borderRight={'1px dashed'}
+                      borderRight={isPc ? '1px dashed' : undefined}
+                      borderBottom={isPc ? undefined : '1px dashed'}
                       borderColor={'myGray.300'}
-                      sx={{
-                        WebkitMask: `
+                      sx={
+                        isPc
+                          ? {
+                              WebkitMask: `
                           radial-gradient(circle at 0 0, transparent 8px, white 8px) top left,
                           radial-gradient(circle at 100% 0, transparent 4px, white 4px) top right,
                           radial-gradient(circle at 0 100%, transparent 8px, white 8px) bottom left,
                           radial-gradient(circle at 100% 100%, transparent 4px, white 4px) bottom right
                         `,
-                        WebkitMaskSize: '51% 51%',
-                        WebkitMaskRepeat: 'no-repeat',
-                        mask: `
+                              WebkitMaskSize: '51% 51%',
+                              WebkitMaskRepeat: 'no-repeat',
+                              mask: `
                           radial-gradient(circle at 0 0, transparent 8px, white 8px) top left,
                           radial-gradient(circle at 100% 0, transparent 4px, white 4px) top right,
                           radial-gradient(circle at 0 100%, transparent 8px, white 8px) bottom left,
                           radial-gradient(circle at 100% 100%, transparent 4px, white 4px) bottom right
                         `,
-                        maskSize: '51% 51%',
-                        maskRepeat: 'no-repeat'
-                      }}
+                              maskSize: '51% 51%',
+                              maskRepeat: 'no-repeat'
+                            }
+                          : undefined
+                      }
                     >
                       <Box
-                        w={20}
-                        h={20}
+                        w={isPc ? 20 : 14}
+                        h={isPc ? 20 : 14}
                         bg={'#F9FAFE'}
-                        mr={2}
+                        mr={isPc ? 2 : 3}
+                        flexShrink={0}
                         opacity={coupon.status === DiscountCouponStatusEnum.active ? 1 : 0.6}
                       >
                         <MyImage src={isZh ? coupon.iconZh : coupon.iconEn} alt={coupon.name} />
                       </Box>
 
-                      <Box flex={1} pr={4}>
+                      <Box flex={1} pr={isPc ? 4 : 0}>
                         <Box
-                          fontSize={'18px'}
+                          fontSize={isPc ? '18px' : '16px'}
                           fontWeight={'600'}
                           color={
                             coupon.status === DiscountCouponStatusEnum.active
@@ -119,37 +137,44 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                     </Flex>
 
                     <Flex
-                      flexDir={'column'}
-                      justifyContent={'center'}
-                      w={'141px'}
-                      px={'15px'}
+                      flexDir={isPc ? 'column' : 'row'}
+                      alignItems={isPc ? undefined : 'center'}
+                      justifyContent={isPc ? 'center' : 'space-between'}
+                      gap={isPc ? undefined : 3}
+                      w={isPc ? '141px' : '100%'}
+                      px={isPc ? '15px' : 4}
+                      py={isPc ? 0 : 3}
                       bg={'white'}
-                      sx={{
-                        WebkitMask: `
+                      sx={
+                        isPc
+                          ? {
+                              WebkitMask: `
                           radial-gradient(circle at 0 0, transparent 4px, white 4px) top left,
                           radial-gradient(circle at 100% 0, transparent 8px, white 8px) top right,
                           radial-gradient(circle at 0 100%, transparent 4px, white 4px) bottom left,
                           radial-gradient(circle at 100% 100%, transparent 8px, white 8px) bottom right
                         `,
-                        WebkitMaskSize: '51% 51%',
-                        WebkitMaskRepeat: 'no-repeat',
-                        mask: `
+                              WebkitMaskSize: '51% 51%',
+                              WebkitMaskRepeat: 'no-repeat',
+                              mask: `
                           radial-gradient(circle at 0 0, transparent 4px, white 4px) top left,
                           radial-gradient(circle at 100% 0, transparent 8px, white 8px) top right,
                           radial-gradient(circle at 0 100%, transparent 4px, white 4px) bottom left,
                           radial-gradient(circle at 100% 100%, transparent 8px, white 8px) bottom right
                         `,
-                        maskSize: '51% 51%',
-                        maskRepeat: 'no-repeat'
-                      }}
+                              maskSize: '51% 51%',
+                              maskRepeat: 'no-repeat'
+                            }
+                          : undefined
+                      }
                     >
                       {coupon.usedAt ? (
                         <Box
                           fontSize={'10px'}
                           fontWeight={'medium'}
                           color={'myGray.500'}
-                          mb={1}
-                          mx={'auto'}
+                          mb={isPc ? 1 : 0}
+                          mx={isPc ? 'auto' : 0}
                         >
                           {`${t('discount_coupon:used_time')}: `}
                           {dayjs(coupon.usedAt).format('YYYY-MM-DD')}
@@ -159,8 +184,8 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                           fontSize={'10px'}
                           fontWeight={'medium'}
                           color={'myGray.500'}
-                          mb={1}
-                          mx={'auto'}
+                          mb={isPc ? 1 : 0}
+                          mx={isPc ? 'auto' : 0}
                         >
                           {`${t('discount_coupon:expiration_time')}: `}
                           {dayjs(coupon.expiredTime).format('YYYY-MM-DD')}
@@ -170,6 +195,7 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                         <Button
                           variant={'primary'}
                           size={'md'}
+                          flexShrink={0}
                           onClick={() => router.push('/price')}
                           leftIcon={<MyIcon name={'common/arrowRight'} w={4} />}
                         >
@@ -177,7 +203,7 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                         </Button>
                       ) : coupon.status === DiscountCouponStatusEnum.expired ? (
                         <Box
-                          mx={'auto'}
+                          mx={isPc ? 'auto' : 0}
                           fontSize={'10px'}
                           fontWeight={'medium'}
                           color={'myGray.500'}
@@ -186,7 +212,7 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                         </Box>
                       ) : coupon.status === DiscountCouponStatusEnum.notStart ? (
                         <Box
-                          mx={'auto'}
+                          mx={isPc ? 'auto' : 0}
                           fontSize={'10px'}
                           fontWeight={'medium'}
                           color={'myGray.500'}
@@ -195,7 +221,7 @@ const DiscountCouponsModal = ({ onClose }: { onClose: () => void }) => {
                         </Box>
                       ) : coupon.status === DiscountCouponStatusEnum.used ? (
                         <Box
-                          mx={'auto'}
+                          mx={isPc ? 'auto' : 0}
                           fontSize={'10px'}
                           fontWeight={'medium'}
                           cursor={coupon.billId ? 'pointer' : 'not-allowed'}

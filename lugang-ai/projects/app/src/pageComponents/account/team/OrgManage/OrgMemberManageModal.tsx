@@ -12,6 +12,7 @@ import { type OrgListItemType } from '@fastgpt/global/support/user/team/org/type
 import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
 import { getTeamMembers } from '@/web/support/user/team/api';
 import MemberItemCard from '@/components/support/permission/MemberManager/MemberItemCard';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 export type GroupFormType = {
   members: {
@@ -30,7 +31,11 @@ function OrgMemberManageModal({
   onClose: () => void;
 }) {
   const { t } = useClientTranslation('user');
+  const { isPc } = useSystem();
   const [searchKey, setSearchKey] = useState('');
+
+  // 鲁港通 - 手机端左右分栏改为单栏，用顶部切换在「全部」和「已选」之间切换
+  const [mobilePane, setMobilePane] = useState<'all' | 'selected'>('all');
 
   const { data: allMembers, ScrollData: MemberScrollData } = useScrollPagination(getTeamMembers, {
     pageSize: 20,
@@ -120,21 +125,52 @@ function OrgMemberManageModal({
       h={'100%'}
       isCentered
     >
-      <ModalBody flex={1}>
+      <ModalBody flex={1} p={isPc ? undefined : 4}>
+        {!isPc && (
+          <Flex
+            mb={3}
+            border={'1px solid'}
+            borderColor={'myGray.200'}
+            borderRadius={'md'}
+            overflow={'hidden'}
+            flexShrink={0}
+          >
+            <Button
+              flex={1}
+              size={'sm'}
+              borderRadius={0}
+              variant={mobilePane === 'all' ? 'primary' : 'unstyled'}
+              onClick={() => setMobilePane('all')}
+            >
+              {t('common:All')}
+            </Button>
+            <Button
+              flex={1}
+              size={'sm'}
+              borderRadius={0}
+              variant={mobilePane === 'selected' ? 'primary' : 'unstyled'}
+              onClick={() => setMobilePane('selected')}
+            >
+              {`${t('common:chosen')} · ${selected.length}`}
+            </Button>
+          </Flex>
+        )}
         <Grid
-          border="1px solid"
+          borderWidth={isPc ? '1px' : 0}
           borderColor="myGray.200"
-          borderRadius="0.5rem"
-          gridTemplateColumns="1fr 1fr"
-          h={'100%'}
+          borderRadius={isPc ? '0.5rem' : undefined}
+          gridTemplateColumns={isPc ? '1fr 1fr' : '1fr'}
+          h={isPc ? '100%' : 'auto'}
         >
           <Flex
             flexDirection="column"
-            p="4"
-            overflowY="auto"
+            p={isPc ? 4 : 0}
+            overflowY={isPc ? 'auto' : 'visible'}
             overflowX="hidden"
-            borderRight={'1px solid'}
+            display={!isPc && mobilePane !== 'all' ? 'none' : 'flex'}
+            borderRightWidth={isPc ? '1px' : 0}
             borderColor={'myGray.200'}
+            minH={0}
           >
             <SearchInput
               placeholder={t('user:search_user')}
@@ -144,7 +180,12 @@ function OrgMemberManageModal({
                 setSearchKey(e.target.value);
               }}
             />
-            <MemberScrollData mt={3} flexGrow="1" overflow={'auto'}>
+            <MemberScrollData
+              mt={3}
+              flexGrow={isPc ? '1' : 0}
+              maxH={isPc ? undefined : '52vh'}
+              overflow={'auto'}
+            >
               {allMembers.map((member) => {
                 return (
                   <MemberItemCard
@@ -159,9 +200,19 @@ function OrgMemberManageModal({
               })}
             </MemberScrollData>
           </Flex>
-          <Flex flexDirection="column" p="4" overflowY="auto" overflowX="hidden">
-            <OrgMemberScrollData flexGrow="1" overflow={'auto'}>
-              <Box mt={2} mb={3}>{`${t('common:chosen')}:${selected.length}`}</Box>
+          <Flex
+            flexDirection="column"
+            p={isPc ? 4 : 0}
+            overflowY={isPc ? 'auto' : 'visible'}
+            overflowX="hidden"
+            display={!isPc && mobilePane !== 'selected' ? 'none' : 'flex'}
+          >
+            <OrgMemberScrollData
+              flexGrow={isPc ? '1' : 0}
+              maxH={isPc ? undefined : '54vh'}
+              overflow={'auto'}
+            >
+              <Box mt={2} mb={3} display={isPc ? 'block' : 'none'}>{`${t('common:chosen')}:${selected.length}`}</Box>
               {selected.map((member) => {
                 return (
                   <HStack

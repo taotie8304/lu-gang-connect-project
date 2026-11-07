@@ -19,6 +19,7 @@ import { type TeamMemberItemType } from '@fastgpt/global/support/user/team/type'
 import { type PaginationResponse } from '@fastgpt/global/openapi/api';
 import { useScrollPagination } from '@fastgpt/web/hooks/useScrollPagination';
 import MemberItemCard from '@/components/support/permission/MemberManager/MemberItemCard';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 export type GroupFormType = {
   members: {
@@ -42,6 +43,10 @@ function GroupEditModal({
   const { t } = useClientTranslation('user');
   const { userInfo } = useUserStore();
   const { toast } = useToast();
+  const { isPc } = useSystem();
+
+  // 鲁港通 - 手机端左右分栏改为单栏，用顶部切换在「全部」和「已选」之间切换
+  const [mobilePane, setMobilePane] = useState<'all' | 'selected'>('all');
 
   const [searchKey, setSearchKey] = useState('');
   const [selected, setSelected] = useState<
@@ -182,15 +187,51 @@ function GroupEditModal({
       h={'100%'}
       isCentered
     >
-      <ModalBody flex={1}>
+      <ModalBody flex={1} p={isPc ? undefined : 4}>
+        {!isPc && (
+          <Flex
+            mb={3}
+            border={'1px solid'}
+            borderColor={'myGray.200'}
+            borderRadius={'md'}
+            overflow={'hidden'}
+            flexShrink={0}
+          >
+            <Button
+              flex={1}
+              size={'sm'}
+              borderRadius={0}
+              variant={mobilePane === 'all' ? 'primary' : 'unstyled'}
+              onClick={() => setMobilePane('all')}
+            >
+              {t('common:All')}
+            </Button>
+            <Button
+              flex={1}
+              size={'sm'}
+              borderRadius={0}
+              variant={mobilePane === 'selected' ? 'primary' : 'unstyled'}
+              onClick={() => setMobilePane('selected')}
+            >
+              {`${t('common:chosen')} · ${selected.length}`}
+            </Button>
+          </Flex>
+        )}
         <Grid
-          border="1px solid"
+          borderWidth={isPc ? '1px' : 0}
           borderColor="myGray.200"
-          borderRadius="0.5rem"
-          gridTemplateColumns="1fr 1fr"
-          h={'100%'}
+          borderRadius={isPc ? '0.5rem' : undefined}
+          gridTemplateColumns={isPc ? '1fr 1fr' : '1fr'}
+          h={isPc ? '100%' : 'auto'}
         >
-          <Flex flexDirection="column" p="4" overflowY={'auto'} overflowX={'hidden'}>
+          <Flex
+            flexDirection="column"
+            p={isPc ? 4 : 0}
+            overflowY={isPc ? 'auto' : 'visible'}
+            overflowX={'hidden'}
+            display={!isPc && mobilePane !== 'all' ? 'none' : 'flex'}
+            minH={0}
+          >
             <SearchInput
               placeholder={t('user:search_user')}
               fontSize="sm"
@@ -199,7 +240,12 @@ function GroupEditModal({
                 setSearchKey(e.target.value);
               }}
             />
-            <MemberScrollData mt={3} flexGrow="1" overflow={'auto'}>
+            <MemberScrollData
+              mt={3}
+              flexGrow={isPc ? '1' : 0}
+              maxH={isPc ? undefined : '52vh'}
+              overflow={'auto'}
+            >
               {allMembers.map((member) => {
                 return (
                   <MemberItemCard
@@ -214,11 +260,23 @@ function GroupEditModal({
               })}
             </MemberScrollData>
           </Flex>
-          <Flex borderLeft="1px" borderColor="myGray.200" flexDirection="column" p="4" h={'100%'}>
-            <Box mt={2} mb={3}>
+          <Flex
+            borderLeftWidth={isPc ? '1px' : 0}
+            borderColor="myGray.200"
+            flexDirection="column"
+            p={isPc ? 4 : 0}
+            h={isPc ? '100%' : 'auto'}
+            display={!isPc && mobilePane !== 'selected' ? 'none' : 'flex'}
+          >
+            <Box mt={2} mb={3} display={isPc ? 'block' : 'none'}>
               {t('common:chosen') + ': ' + selected.length}
             </Box>
-            <GroupScrollData flex={'1 0 0'} h={0}>
+            <GroupScrollData
+              flex={isPc ? '1 0 0' : undefined}
+              h={isPc ? 0 : undefined}
+              maxH={isPc ? undefined : '54vh'}
+              overflow={'auto'}
+            >
               {selected.map((member) => {
                 return (
                   <HStack
@@ -263,7 +321,8 @@ function GroupEditModal({
                         } else if (member.role === 'member') {
                           return (
                             myRole === 'owner' &&
-                            hoveredMemberId === member.tmbId && (
+                            // 鲁港通 - 手机端没有悬停，改为常显「设为管理员」入口
+                            (hoveredMemberId === member.tmbId || !isPc) && (
                               <Tag
                                 ml={2}
                                 colorSchema="yellow"

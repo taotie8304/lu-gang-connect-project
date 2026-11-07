@@ -44,6 +44,17 @@ const MyModal = ({
 }: MyModalProps) => {
   const { isPc } = useSystem();
 
+  // 鲁港通 - 手机端统一为近全宽卡片：左右各留 4vw、纵向撑满可视高，内容区独立滚动；桌面端保持原样
+  const mobileContentProps = isPc
+    ? {}
+    : {
+        w: '92vw',
+        minW: 0,
+        maxW: '92vw',
+        minH: 0,
+        maxH: 'calc(100vh - 16px)'
+      };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -51,7 +62,7 @@ const MyModal = ({
       size={size}
       autoFocus={false}
       isCentered={isPc ? isCentered : true}
-      blockScrollOnMount={false}
+      blockScrollOnMount={isPc ? false : true}
       allowPinchZoom
       scrollBehavior={'inside'}
       closeOnOverlayClick={closeOnOverlayClick}
@@ -69,6 +80,7 @@ const MyModal = ({
           zIndex: props.zIndex
         }}
         {...props}
+        {...mobileContentProps}
       >
         {!title && onClose && showCloseButton && <ModalCloseButton zIndex={1} />}
         {!!title && (
@@ -82,6 +94,7 @@ const MyModal = ({
             fontSize={'md'}
             fontWeight={'bold'}
             minH={['46px', '53px']}
+            flexShrink={0}
           >
             {iconSrc && (
               <>
@@ -107,8 +120,13 @@ const MyModal = ({
 
         <MyBox
           isLoading={isLoading}
-          overflow={props.overflow || 'overlay'}
-          h={'100%'}
+          overflow={isPc ? props.overflow || 'overlay' : 'hidden'}
+          overflowX={isPc ? undefined : 'hidden'}
+          overflowY={isPc ? undefined : 'auto'}
+          overscrollBehavior={isPc ? undefined : 'contain'}
+          h={isPc ? '100%' : 'auto'}
+          flex={isPc ? undefined : '1 1 auto'}
+          minH={isPc ? undefined : 0}
           display={'flex'}
           flexDirection={'column'}
         >

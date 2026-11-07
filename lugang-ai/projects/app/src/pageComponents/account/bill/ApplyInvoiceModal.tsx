@@ -31,6 +31,7 @@ import { InvoiceHeaderSingleForm } from './InvoiceHeaderForm';
 import MyBox from '@fastgpt/web/components/common/MyBox';
 import { getTeamInvoiceHeader } from '@/web/support/user/team/api';
 import { useForm } from 'react-hook-form';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 type chosenBillDataType = {
   _id: string;
@@ -45,6 +46,7 @@ const ApplyInvoiceModal = ({
   onSuccess: () => void;
 }) => {
   const { t } = useClientTranslation('account_bill');
+  const { isPc } = useSystem();
 
   const [chosenBillDataList, setChosenBillDataList] = useState<chosenBillDataType[]>([]);
   const [totalPrice, setTotalPrice] = useState(0);
@@ -176,10 +178,12 @@ const ApplyInvoiceModal = ({
               <InvoiceHeaderSingleForm inputForm={inputForm} required />
             </Flex>
           </MyBox>
+          {/* 鲁港通 - 手机端提示条宽度跟随弹窗并允许换行 */}
           <Flex
             align={'center'}
-            w={'19.8rem'}
-            h={'1.75rem'}
+            w={isPc ? '19.8rem' : '100%'}
+            h={isPc ? '1.75rem' : 'auto'}
+            minH={'1.75rem'}
             mt={4}
             px={'0.75rem'}
             py={'0.38rem'}
@@ -198,8 +202,9 @@ const ApplyInvoiceModal = ({
           <Box fontWeight={500} fontSize={'1rem'} pb={'0.75rem'}>
             {t('account_bill:support_wallet_apply_invoice')}
           </Box>
-          <TableContainer minH={'50vh'}>
-            <Table>
+          {/* 鲁港通 - 手机端账单表格横向滚动，避免四列被压成不可读 */}
+          <TableContainer minH={isPc ? '50vh' : '40vh'} overflowX={'auto'}>
+            <Table minW={isPc ? undefined : '560px'}>
               <Thead>
                 <Tr>
                   <Th>

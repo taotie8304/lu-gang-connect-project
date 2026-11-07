@@ -30,6 +30,7 @@ import EmptyTip from '@fastgpt/web/components/common/EmptyTip';
 import QuickCreateDatasetModal from '@/pageComponents/app/detail/components/QuickCreateDatasetModal';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
+import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 // Dataset selection modal component
 export const DatasetSelectModal = ({
@@ -54,6 +55,10 @@ export const DatasetSelectModal = ({
   const hasDeletedSelectedDatasets = availableSelectedDatasets.length !== selectedDatasets.length;
   const { toast } = useToast();
   const { userInfo } = useUserStore();
+  const { isPc } = useSystem();
+
+  // 鲁港通 - 手机端左右分栏改为单栏，用顶部切换在「全部」和「已选」之间切换
+  const [mobilePane, setMobilePane] = useState<'all' | 'selected'>('all');
 
   // Use server-side search, following the logic of the dataset list page
   const {
@@ -162,7 +167,7 @@ export const DatasetSelectModal = ({
     >
       {/* Main vertical layout */}
       <Flex h="100%" direction="column" flex={1} overflow="hidden" minH={0}>
-        <ModalBody flex={1} h={0} overflow="hidden">
+        <ModalBody flex={1} h={0} overflow="hidden" display={'flex'} flexDirection={'column'}>
           {isRootEmpty ? (
             <VStack h={'full'} justifyContent={'center'}>
               <EmptyTip
@@ -179,23 +184,56 @@ export const DatasetSelectModal = ({
             </VStack>
           ) : (
             <>
+              {/* 鲁港通 - 手机端左右分栏改为单栏，顶部切换「全部」和「已选」 */}
+              {!isPc && (
+                <Flex
+                  mb={3}
+                  border={'1px solid'}
+                  borderColor={'myGray.200'}
+                  borderRadius={'md'}
+                  overflow={'hidden'}
+                  flexShrink={0}
+                >
+                  <Button
+                    flex={1}
+                    size={'sm'}
+                    borderRadius={0}
+                    variant={mobilePane === 'all' ? 'primary' : 'unstyled'}
+                    onClick={() => setMobilePane('all')}
+                  >
+                    {t('common:All')}
+                  </Button>
+                  <Button
+                    flex={1}
+                    size={'sm'}
+                    borderRadius={0}
+                    variant={mobilePane === 'selected' ? 'primary' : 'unstyled'}
+                    onClick={() => setMobilePane('selected')}
+                  >
+                    {`${t('common:chosen')} · ${availableSelectedDatasets.length}`}
+                  </Button>
+                </Flex>
+              )}
               {/* Two-column layout */}
               <Grid
                 border="1px solid"
                 borderColor="myGray.200"
                 borderRadius="md"
-                gridTemplateColumns="1fr 1fr"
-                h="100%"
+                gridTemplateColumns={isPc ? '1fr 1fr' : '1fr'}
+                h={isPc ? '100%' : undefined}
+                flex={isPc ? undefined : 1}
+                minH={isPc ? undefined : 0}
                 overflow="hidden"
               >
                 {/* Left: search and dataset list */}
                 <Flex
-                  h="100%"
+                  h={isPc ? '100%' : 'auto'}
                   direction="column"
-                  borderRight="1px solid"
+                  borderRightWidth={isPc ? '1px' : 0}
                   borderColor="myGray.200"
                   py={4}
                   overflow="hidden"
+                  display={!isPc && mobilePane !== 'all' ? 'none' : 'flex'}
                 >
                   {/* Search box */}
                   <Box mb={2} px={4}>
@@ -401,7 +439,14 @@ export const DatasetSelectModal = ({
                 </Flex>
 
                 {/* Right: selected datasets display */}
-                <Flex h="100%" py={4} direction="column" overflow="hidden" minH={0}>
+                <Flex
+                  h={isPc ? '100%' : 'auto'}
+                  py={4}
+                  direction="column"
+                  overflow="hidden"
+                  minH={0}
+                  display={!isPc && mobilePane !== 'selected' ? 'none' : 'flex'}
+                >
                   {!isRootEmpty && (
                     <>
                       {/* Selected count display */}
@@ -510,6 +555,7 @@ export const DatasetSelectModal = ({
                     fontSize={'11px'}
                     color={'primary.600'}
                     gap={1}
+                    display={isPc ? 'flex' : 'none'}
                   >
                     <MyIcon name={'common/info'} w={3.5} />
                     {t('app:dataset.Select_dataset_model_tip')}

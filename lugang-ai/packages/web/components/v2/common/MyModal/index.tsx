@@ -65,6 +65,22 @@ const MyModal = ({
 
   const sizeData = sizeMap[size] || sizeMap.sm;
 
+  // 鲁港通 - 手机端统一为近全宽卡片：左右各留 4vw、纵向撑满可视高，内容区独立滚动；桌面端保持原样
+  const mobileContentProps = isPc
+    ? {}
+    : {
+        w: '92vw',
+        maxW: '92vw',
+        minH: 0,
+        maxH: 'calc(100vh - 16px)'
+      };
+  // 鲁港通 - 手机端收窄内边距，标题右侧预留关闭按钮空间
+  const headerPadding = isPc ? { px: 8, pt: 8, pr: 8 } : { px: 4, pt: 5, pr: 12 };
+  const bodyPadding = isPc
+    ? { px: 8, pt: title ? 6 : 8, pb: footer ? 6 : 8 }
+    : { px: 4, pt: title ? 4 : 5, pb: footer ? 4 : 5 };
+  const footerPadding = isPc ? { px: 8, pb: 8 } : { px: 4, pb: 5 };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -72,7 +88,7 @@ const MyModal = ({
       size={size}
       autoFocus={false}
       isCentered={isPc ? isCentered : true}
-      blockScrollOnMount={blockScrollOnMount}
+      blockScrollOnMount={isPc ? blockScrollOnMount : true}
       allowPinchZoom
       scrollBehavior={'inside'}
       closeOnOverlayClick={closeOnOverlayClick}
@@ -93,6 +109,7 @@ const MyModal = ({
           zIndex: props.zIndex
         }}
         {...props}
+        {...mobileContentProps}
       >
         {onClose && showCloseButton && (
           <ModalCloseButton position={'absolute'} fontSize={'xs'} top={3} right={3} />
@@ -103,10 +120,10 @@ const MyModal = ({
             alignItems={'center'}
             fontSize={'lg'}
             fontWeight={'500'}
-            px={8}
-            pt={8}
+            {...headerPadding}
             pb={0}
             gap={3}
+            flexShrink={0}
             {...headerStyles}
           >
             <Box
@@ -123,13 +140,16 @@ const MyModal = ({
 
         <MyBox
           isLoading={isLoading}
-          overflow={props.overflow || 'overlay'}
-          h={'100%'}
+          overflow={isPc ? props.overflow || 'overlay' : 'hidden'}
+          overflowX={isPc ? undefined : 'hidden'}
+          overflowY={isPc ? undefined : 'auto'}
+          overscrollBehavior={isPc ? undefined : 'contain'}
+          h={isPc ? '100%' : 'auto'}
+          flex={isPc ? undefined : '1 1 auto'}
+          minH={isPc ? undefined : 0}
           display={'flex'}
           flexDirection={'column'}
-          px={8}
-          pt={title ? 6 : 8}
-          pb={footer ? 6 : 8}
+          {...bodyPadding}
           fontSize={'14px'}
           lineHeight={'20px'}
           letterSpacing={'0.25px'}
@@ -143,9 +163,9 @@ const MyModal = ({
           <Flex
             justifyContent={'flex-end'}
             gap={3}
-            px={8}
-            pb={8}
+            {...footerPadding}
             pt={0}
+            flexShrink={0}
             fontSize={'12px'}
             lineHeight={'16px'}
             letterSpacing={'0.5px'}
