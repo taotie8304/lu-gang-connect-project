@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 鲁港通 - 自适应图标：完整插画放进 72dp 可视区，外侧同色延伸；底色层复用同一前景图，避免视差露出色带 -->
+<!-- 鲁港通 - 自适应图标：插画按 66dp 内缩留出遮罩安全边，外侧品牌蓝延伸；底色层复用同一前景图，避免视差露出色带 -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@mipmap/ic_launcher_foreground" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
