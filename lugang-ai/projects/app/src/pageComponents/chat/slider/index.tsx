@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { Box, Button, Flex, Input, Text } from '@chakra-ui/react';
+import { Box, Button, Flex, Image, Input, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { useRouter } from 'next/router';
 import { useContextSelector } from 'use-context-selector';
@@ -30,27 +30,20 @@ type Props = {
   activeAppId: string;
 };
 
-// 鲁港通 - 品牌印章（预览稿：淡蓝渐变方印 + 楷体「鲁」）
-const BrandSeal = ({ size = 34, onClick }: { size?: number; onClick?: () => void }) => (
-  <Flex
+// 鲁港通 - 品牌小圆脸（与全端图标同一套资源）
+const BrandFace = ({ size = 34, onClick }: { size?: number; onClick?: () => void }) => (
+  <Image
+    src={'/imgs/chat/lugang_banner_fold.svg'}
+    alt={'鲁港通'}
     w={`${size}px`}
     h={`${size}px`}
     flexShrink={0}
     borderRadius={'9px'}
-    bg={LG.seal}
-    color={'#FFFFFF'}
-    alignItems={'center'}
-    justifyContent={'center'}
-    fontSize={`${Math.round(size * 0.5)}px`}
-    fontWeight={700}
-    fontFamily={'"STKaiti","KaiTi","PingFang SC",serif'}
-    boxShadow={'0 4px 12px rgba(78,128,178,0.28), inset 0 0 0 1px rgba(255,255,255,0.55)'}
+    boxShadow={'0 4px 12px rgba(78,128,178,0.28)'}
     cursor={onClick ? 'pointer' : undefined}
     userSelect={'none'}
     onClick={onClick}
-  >
-    鲁
-  </Flex>
+  />
 );
 
 const SectionLabel = ({ label }: { label: string }) => (
@@ -191,7 +184,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
           {!desktopTitleBar && (
             <MyTooltip label={t('chat:sidebar.expand')}>
               <Box onClick={onTriggerCollapse}>
-                <BrandSeal />
+                <BrandFace />
               </Box>
             </MyTooltip>
           )}
@@ -325,7 +318,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
         {/* 品牌区：桌面客户端由窗口标题栏承载品牌与折叠，这里不再重复 */}
         {!desktopTitleBar && (
           <Flex alignItems={'center'} gap={'10px'} px={'6px'} pt={'2px'} pb={'6px'}>
-            <BrandSeal onClick={handlers.openHome} />
+            <BrandFace onClick={handlers.openHome} />
             <Box minW={0} flex={'1 0 0'} cursor={'pointer'} onClick={handlers.openHome}>
               <Text
                 fontSize={'15px'}

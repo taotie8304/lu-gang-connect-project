@@ -218,21 +218,15 @@ const DesktopTitleBar = () => {
           )}
 
           <Flex alignItems="center" gap="8px" flexShrink={0}>
-            <Flex
+            <Box
+              as="img"
+              src="/imgs/chat/lugang_banner_fold.svg"
+              alt={brand}
               w="18px"
               h="18px"
               flexShrink={0}
               borderRadius="5px"
-              bg={theme.sealBg}
-              color="#FFFFFF"
-              alignItems="center"
-              justifyContent="center"
-              fontSize="10px"
-              fontWeight={700}
-              fontFamily={'"STKaiti","KaiTi","PingFang SC",serif'}
-            >
-              鲁
-            </Flex>
+            />
             <Text
               fontSize="12px"
               fontWeight={600}
