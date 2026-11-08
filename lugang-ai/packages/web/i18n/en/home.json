@@ -1,0 +1,389 @@
+{
+  "nav": {
+    "brandAria": "Lugang Connect home",
+    "brandSub": "LUGANG CONNECT",
+    "mainAria": "Main navigation",
+    "menuAria": "Mobile navigation",
+    "menuOpen": "Open navigation menu",
+    "menuClose": "Close navigation menu",
+    "links": ["Home", "Capabilities", "What it's doing", "Pricing", "About"],
+    "download": "Download app",
+    "login": "Log in",
+    "start": "Get started",
+    "menuLogin": "Log in / Get started"
+  },
+  "hero": {
+    "eyebrow": "Shandong × Hong Kong · Cross-border policy & errand assistant",
+    "titleTop": "Between two places,",
+    "titleAccent": "just ask.",
+    "lede": "From Hong Kong visas, MPF and bank accounts to Shandong startup subsidies, school admission and travel routes — ask once and get answers with official sources.",
+    "ctaPrimary": "Start for free",
+    "ctaSecondary": "Download app",
+    "meta": [
+      "6 policy areas covered",
+      "1,200+ official entries",
+      "Web · Windows · Android",
+      "Simplified Chinese answers, with official sources"
+    ],
+    "scroll": "Scroll to explore",
+    "mascotSay": "Between two places, all day",
+    "floats": ["Top Talent Pass", "MPF", "Startup subsidy", "DSE pathway", "Corporate account"]
+  },
+  "demo": {
+    "live": "Interface preview",
+    "q1": "What documents do I need to renew a Top Talent Pass in Hong Kong?",
+    "a1Title": "Renewal takes three steps; prepare documents within 4 weeks of submission.",
+    "a1Steps": [
+      "Employment proof: contract and MPF records for the last 6 months",
+      "Income proof: salary tax assessment or bank statements",
+      "Address proof: lease or utility bill matching your declared address"
+    ],
+    "srcOrg": "Source · Hong Kong Immigration Department",
+    "srcDate": "Updated September 2026",
+    "routeCap": "ROUTE · Multimodal planning",
+    "routeFrom": "Jinan",
+    "routeFromSub": "JINAN · SHANDONG",
+    "routeTo": "Hong Kong",
+    "routeToSub": "HONG KONG",
+    "routeMeta": ["High-speed rail + flight", "About 9 h 20 min", "1 transfer"],
+    "docTitle": "Document checklist · First application",
+    "docCount": "4 / 4 checked",
+    "docRows": [
+      ["Exit-entry permit", "Valid for 6+ months"],
+      ["Hong Kong endorsement", "Individual visit / other"],
+      ["Hong Kong address proof", "Lease or bill"],
+      ["Bank deposit proof", "Per application category"]
+    ],
+    "note": "Illustration · Every real answer cites official sources"
+  },
+  "login": {
+    "title": "Log in to Lugang Connect",
+    "sub": "Continue your cross-border consultation; history syncs automatically."
+  },
+  "download": {
+    "title": "Download the app",
+    "winName": "Windows desktop",
+    "winVer": "v0.9.2 · Document generation & reading",
+    "androidName": "Android app",
+    "androidVer": "v0.2.4 · Lightweight chat client",
+    "arrow": "Download",
+    "note": "One account works across web and apps, with chat history synced."
+  },
+  "stats": {
+    "items": [
+      { "suffix": "policy areas", "label": "Talent / Education / Healthcare / Tax / Transport / Startup" },
+      { "suffix": "+", "label": "Official policy entries, continuously collected" },
+      { "suffix": "s", "label": "Multimodal route planning response" },
+      { "suffix": "h", "label": "Ticket response, same standard on every plan" }
+    ]
+  },
+  "marquee": [
+    "Top Talent Pass",
+    "Quality Migrant",
+    "Specialist visa",
+    "MPF",
+    "Salaries tax",
+    "HK endorsement",
+    "Company registry",
+    "Corporate account",
+    "DSE pathway",
+    "Startup subsidy",
+    "Talent housing",
+    "Cross-border care"
+  ],
+  "personas": {
+    "kicker": "One question, different paths",
+    "titleA": "Wherever you are,",
+    "titleB": "the answer starts there.",
+    "sub": "Ask \"how do I move to Hong Kong\" as a student, an employee, a founder or a family, and the path differs. State your situation first so every step fits.",
+    "askLabel": "You might ask",
+    "answerLabel": "How Lugang Connect breaks it down",
+    "tabs": ["Study", "Work", "Startup", "Family"],
+    "items": [
+      {
+        "question": "After finishing an associate degree, how do credits transfer to a Hong Kong university?",
+        "asker": "— A Shandong student studying in Hong Kong",
+        "answer": "Check the qualification level first, then the university's credit-transfer rules.",
+        "points": [
+          "Compare QF Levels to confirm the courses are at the same level.",
+          "Check the target university's credit-transfer cap, eligible subjects and deadlines.",
+          "Confirm student visa renewal and accommodation so admission doesn't stall at the visa."
+        ],
+        "sources": [
+          "Hong Kong Education Bureau · QF",
+          "Target university registry",
+          "Immigration Department · Student visa"
+        ]
+      },
+      {
+        "question": "After my Top Talent Pass is approved, can my spouse and children come too?",
+        "asker": "— A Jinan engineer preparing to work in Hong Kong",
+        "answer": "Yes, via dependant visas, but documents differ by relationship.",
+        "points": [
+          "Submit the main applicant and dependants together with relationship proof and a Hong Kong address.",
+          "Check the spouse's work and residence arrangements separately under dependant status.",
+          "For children's schooling, check school nets and application windows; secure a place before moving."
+        ],
+        "sources": [
+          "Immigration Department · Dependant visa",
+          "Education Bureau · School places",
+          "GovHK"
+        ]
+      },
+      {
+        "question": "I registered a company in Shandong and want a Hong Kong corporate account. What comes first?",
+        "asker": "— A Qingdao founder in cross-border trade",
+        "answer": "Build the business-proof chain first, then book a bank appointment.",
+        "points": [
+          "Prepare mainland entity, shareholding structure and beneficial-owner documents.",
+          "Organise Hong Kong contracts, invoices and transaction records to prove real operations.",
+          "Prepare address proof per the bank's pre-check, then book the interview."
+        ],
+        "sources": [
+          "HK Companies Registry",
+          "Target bank account guide",
+          "Shandong market regulator"
+        ]
+      },
+      {
+        "question": "My child has Hong Kong status. Should they return to the mainland or stay for DSE?",
+        "asker": "— A Shandong family living between both places",
+        "answer": "Confirm status and school records first, then compare the two timelines.",
+        "points": [
+          "Check whether Hong Kong status, the Home Return Permit and mainland school records connect.",
+          "Compare DSE and mainland gaokao subjects, registration dates and admission rules.",
+          "Plan school nets, commute time and exam registration around where the family lives."
+        ],
+        "sources": [
+          "Education Bureau · Student records",
+          "HKEAA · DSE",
+          "Mainland admission platform"
+        ]
+      }
+    ]
+  },
+  "flow": {
+    "kicker": "A complete application",
+    "titleA": "One sentence,",
+    "titleB": "all the way through.",
+    "sub": "Not a pile of links — \"ask clearly, find the source, prepare everything, finish it\" broken into steps you can start today.",
+    "steps": [
+      {
+        "no": "01",
+        "label": "Ask clearly",
+        "title": "Turn a vague wish into three answerable questions.",
+        "body": "\"I want to develop there\" is not a question. Identity, timing and budget are. State your situation so search and documents stay on track.",
+        "tags": ["Identity & stage", "Timeline", "Budget & scope"]
+      },
+      {
+        "no": "02",
+        "label": "Find the source",
+        "title": "Search official sources only, and show update dates.",
+        "body": "For policy questions, check government sites and official datasets first; keep the issuing body, source link and effective date in the answer. If there is no reliable source, we say so.",
+        "tags": ["Government sites", "Official datasets", "Update dates"]
+      },
+      {
+        "no": "03",
+        "label": "Prepare everything",
+        "title": "Documents, forms and booking links in one checklist.",
+        "body": "List every requirement in application order so gaps are obvious. For forms, get field guidance and common rejection reasons in advance.",
+        "tags": ["Document checklist", "Form fields", "Booking links"]
+      },
+      {
+        "no": "04",
+        "label": "Finish it",
+        "title": "On desktop, AI opens the official site and fills forms; you confirm each step.",
+        "body": "AI browser errands and document generation run on your computer. You confirm every click, entry and submission. Files stay local and are never uploaded.",
+        "tags": ["Advanced plan and above", "Step-by-step confirmation", "Files stay local"]
+      }
+    ],
+    "mini": {
+      "ask": "I want to develop there, but I don't know where to start.",
+      "queries": ["What status?", "When are you going?", "What budget?", "Work or start a business?"],
+      "source": "HK Immigration Department · Official page",
+      "verified": "Verified",
+      "docTitle": "Top Talent Pass · Renewal requirements",
+      "docBody": "Employed by a Hong Kong company or running a business there; pay and benefits must be at market level. Check the latest document list before submission.",
+      "checks": [
+        { "text": "Employment contract & MPF records", "state": "Ready" },
+        { "text": "Salary tax assessment", "state": "Ready" },
+        { "text": "Hong Kong address proof", "state": "To add" },
+        { "text": "Exit-entry permit & endorsement", "state": "Ready" }
+      ],
+      "confirm": "Confirm each item before submission"
+    }
+  },
+  "agent": {
+    "kicker": "What it's doing",
+    "titleA": "It isn't on the page,",
+    "titleB": "it's between two places.",
+    "sub": "Every search, check, official-site visit and generated file happens in a real conversation. That little blue face is the one running errands for you.",
+    "feedHead": "Recent activity",
+    "note": "Illustration · Real conversations are anonymised",
+    "orbits": ["Jinan", "Hong Kong", "Government sites", "Your files"],
+    "feed": [
+      {
+        "time": "15:42",
+        "text": "Checked the latest document requirements on the HK Immigration \"Top Talent Pass renewal\" page",
+        "state": "Verified"
+      },
+      {
+        "time": "15:37",
+        "text": "Turned a Shandong startup subsidy document into 6 actionable points",
+        "state": "Generated"
+      },
+      {
+        "time": "15:29",
+        "text": "Opened the HK Companies Registry and compared the guidance for 2 forms",
+        "state": "Done"
+      },
+      {
+        "time": "15:12",
+        "text": "Prepared an MPF transfer checklist for a Jinan user",
+        "state": "Archived"
+      }
+    ]
+  },
+  "pricing": {
+    "kicker": "Pricing",
+    "titleA": "Features are tiered,",
+    "titleB": "speed isn't.",
+    "sub": "Metered in Credits, valid across all platforms. Plans differ only in available features, never in response speed.",
+    "month": "Monthly",
+    "year": "Yearly",
+    "yearSave": "2 months free",
+    "priceUnit": { "permanent": "forever", "month": "mo", "year": "yr" },
+    "plans": [
+      {
+        "name": "Free",
+        "desc": "Take a look",
+        "credits": "300 Credits",
+        "cta": "Start free",
+        "feats": [
+          { "text": "Policy Q&A with official sources" },
+          { "text": "Basic transport routes (bus · MTR)" },
+          { "text": "Works on web and apps" },
+          { "text": "Ticket support (within 24 h)" },
+          { "text": "No AI browser errands or file generation", "off": true }
+        ]
+      },
+      {
+        "name": "Starter",
+        "desc": "Now and then",
+        "credits": "1,000 Credits",
+        "cta": "Choose Starter",
+        "feats": [
+          { "text": "All transport modes (minibus · ferry · tram)" },
+          { "text": "Document reading & image recognition" },
+          { "text": "Agent memory" },
+          { "text": "Ticket support (within 24 h)" },
+          { "text": "No AI browser errands or file generation", "off": true }
+        ]
+      },
+      {
+        "name": "Advanced",
+        "desc": "Frequent cross-border",
+        "credits": "6,900 Credits",
+        "badge": "Most popular",
+        "cta": "Choose Advanced",
+        "feats": [
+          { "text": "AI browser errands" },
+          { "text": "Document generation & editing" },
+          { "text": "Everything in Starter" },
+          { "text": "Ticket support (within 24 h)" },
+          { "text": "Early access to new features" }
+        ]
+      },
+      {
+        "name": "Pro",
+        "desc": "High volume & teams",
+        "credits": "9,800 Credits",
+        "cta": "Choose Pro",
+        "feats": [
+          { "text": "Everything in Advanced" },
+          { "text": "Early access to new features" },
+          { "text": "Ticket support (within 24 h)" }
+        ]
+      }
+    ],
+    "serviceNote": [
+      "Tickets answered within 24 hours, every plan",
+      "Chat history kept with your account — never a plan difference",
+      "Credits work across web and apps"
+    ],
+    "tableHint": "Swipe to compare plans",
+    "tableHead": ["Feature", "Free", "Starter", "Advanced", "Pro"],
+    "tableRows": [
+      { "label": "Policy Q&A · official sources", "cells": ["✓", "✓", "✓", "✓"] },
+      { "label": "Government site verification", "cells": ["Basic", "✓", "✓", "✓"] },
+      { "label": "Transport route planning", "cells": ["Bus · MTR", "All modes", "All modes", "All modes"] },
+      { "label": "Document reading & image recognition", "cells": ["—", "✓", "✓", "✓"] },
+      { "label": "Agent memory", "cells": ["—", "✓", "✓", "✓"] },
+      { "label": "AI browser errands (PC)", "cells": ["—", "—", "✓", "✓"] },
+      { "label": "Document generation & editing (PC)", "cells": ["—", "—", "✓", "✓"] },
+      { "label": "Ticket support (within 24 h)", "cells": ["✓", "✓", "✓", "✓"] },
+      { "label": "Early access to new features", "cells": ["—", "—", "✓", "✓"] }
+    ],
+    "enterprise": {
+      "title": "Enterprise",
+      "body": "Private knowledge base, dedicated models and usage-based billing, tailored to your team size and data needs.",
+      "cta": "Contact sales"
+    },
+    "notes": [
+      "Yearly price is 10× the monthly price — two months free.",
+      "Credits work everywhere and can be topped up anytime.",
+      "Custom plans require a service agreement."
+    ]
+  },
+  "faq": {
+    "kicker": "FAQ",
+    "title": "Let's make the differences clear.",
+    "items": [
+      {
+        "q": "How far can I go on the Free plan?",
+        "a": "Policy Q&A, basic transport routes and both web and apps are included. AI browser errands and document generation start at Advanced."
+      },
+      {
+        "q": "Why don't Free and Starter include AI browser control?",
+        "a": "Errands open official sites, fill forms and touch local files, which needs more resources and safety controls — so it starts at Advanced. Every action runs with your step-by-step confirmation."
+      },
+      {
+        "q": "How does transport differ between plans?",
+        "a": "Free covers basic bus and MTR routes; Starter and above add minibus, ferry and tram combinations with transfers."
+      },
+      {
+        "q": "How fast are tickets answered?",
+        "a": "All plans are answered within 24 hours. There is no priority tier or faster paid queue."
+      },
+      {
+        "q": "When does an upgrade take effect?",
+        "a": "Immediately after payment. Credits and feature access update together; no need to log in again."
+      },
+      {
+        "q": "How long is chat history kept?",
+        "a": "Chat history is kept with your account on every plan — it is not a plan difference. You can manage it from your account page."
+      }
+    ]
+  },
+  "footer": {
+    "tagline": "The answer between Shandong and Hong Kong. Policy, errands and routes, settled in one ask.",
+    "columns": [
+      {
+        "title": "Product",
+        "links": ["Home", "Capabilities", "Pricing", "Download app"]
+      },
+      {
+        "title": "Learn",
+        "links": ["About Lugang Connect", "Information reliability", "What it's doing"]
+      },
+      {
+        "title": "Contact",
+        "links": ["business@airscend.com", "Help center"]
+      }
+    ],
+    "bottom": [
+      "© 2026 Lugang Connect Airscend",
+      "Policy data from Hong Kong government open data · Requirements follow official sources"
+    ]
+  }
+}

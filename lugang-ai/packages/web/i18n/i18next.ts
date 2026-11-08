@@ -18,6 +18,7 @@ import type workflow from './zh-CN/workflow.json';
 import type user from './zh-CN/user.json';
 import type chat from './zh-CN/chat.json';
 import type login from './zh-CN/login.json';
+import type home from './zh-CN/home.json';
 import type config from './zh-CN/config.json';
 import type config_model from './zh-CN/config_model.json';
 import type marketplace from './zh-CN/marketplace.json';
@@ -40,6 +41,7 @@ export interface I18nNamespaces {
   user: typeof user;
   chat: typeof chat;
   login: typeof login;
+  home: typeof home;
   account_info: typeof account_info;
   account_usage: typeof account_usage;
   account_bill: typeof account_bill;

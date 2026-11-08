@@ -105,7 +105,7 @@ export async function getServerSideProps(context: any) {
     props: {
       // 鲁港通 - 注入默认 AI 助手应用 ID，供普通用户登录后直达
       defaultAppId: process.env.DEFAULT_APP_ID || '',
-      ...(await serviceSideProps(context, ['app', 'user', 'login']))
+      ...(await serviceSideProps(context, ['app', 'user', 'login', 'home']))
     }
   };
 }
