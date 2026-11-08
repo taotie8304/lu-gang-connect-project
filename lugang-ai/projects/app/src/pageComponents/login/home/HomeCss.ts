@@ -216,11 +216,11 @@ export const HOME_CSS = `
   }
   .h5-eyes { position: absolute; inset: 0; pointer-events: none; }
   .h5-eye {
-    position: absolute; width: 6.3%; height: 7.4%;
+    position: absolute; width: 6.3%; height: 8.1%;
     border-radius: 50%; background: #fff;
     box-shadow:
-      inset -2px -3px 0 rgba(140, 212, 245, 0.55),
-      inset 0 0 0 1.5px rgba(46, 150, 209, 0.35),
+      inset -2px -3px 0 rgba(170, 224, 250, 0.5),
+      inset 0 0 0 1.5px rgba(36, 148, 208, 0.8),
       0 2px 5px rgba(34, 120, 180, 0.14);
     transform: translate(-50%, -50%);
     transition:
@@ -228,14 +228,14 @@ export const HOME_CSS = `
       transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
     will-change: transform, height;
   }
-  .h5-eye.left { left: 38.3%; top: 47.4%; }
-  .h5-eye.right { left: 62.1%; top: 46.9%; }
+  .h5-eye.left { left: 38.28%; top: 47.69%; }
+  .h5-eye.right { left: 62.19%; top: 47.59%; }
   .h5-eyes[data-face='blink'] .h5-eye {
     height: 1.4%; border-radius: 999px;
-    box-shadow: inset 0 0 0 1.5px rgba(46, 150, 209, 0.28);
+    box-shadow: inset 0 0 0 1.5px rgba(36, 148, 208, 0.6);
   }
   .h5-eyes[data-face='squint'] .h5-eye { height: 2.4%; width: 6.7%; border-radius: 999px; }
-  .h5-eyes[data-face='wide'] .h5-eye { height: 8.8%; width: 6.9%; }
+  .h5-eyes[data-face='wide'] .h5-eye { height: 9.4%; width: 7%; }
   .h5-eyes[data-face='left'] .h5-eye { transform: translate(calc(-50% - 26%), -50%); }
   .h5-eyes[data-face='right'] .h5-eye { transform: translate(calc(-50% + 26%), -50%); }
   @keyframes h5-bob {
