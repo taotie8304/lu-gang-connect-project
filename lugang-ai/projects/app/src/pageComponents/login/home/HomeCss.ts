@@ -210,7 +210,6 @@ export const HOME_CSS = `
   .h5-mascot-figure { position: relative; display: block; width: 100%; }
   .h5-mascot-img {
     display: block; width: 100%; height: auto;
-    mix-blend-mode: multiply;
     filter: drop-shadow(0 22px 34px rgba(30, 123, 255, 0.22));
     user-select: none; -webkit-user-drag: none;
   }
@@ -296,7 +295,7 @@ export const HOME_CSS = `
     position: absolute; top: -52px; right: 30px; width: 86px; z-index: 3;
     pointer-events: none; animation: h5-bob 5.6s ease-in-out infinite;
   }
-  .h5-peek img { display: block; width: 100%; mix-blend-mode: multiply; filter: drop-shadow(0 12px 20px rgba(30, 123, 255, 0.22)); }
+  .h5-peek img { display: block; width: 100%; filter: drop-shadow(0 12px 20px rgba(30, 123, 255, 0.22)); }
   .h5-demo {
     display: flex; flex-direction: column; height: 100%;
     background: var(--card);
@@ -602,7 +601,7 @@ export const HOME_CSS = `
     background: var(--blue); box-shadow: 0 0 0 5px rgba(30, 123, 255, 0.1);
   }
   .h5-agent-mascot { position: relative; z-index: 2; width: clamp(200px, 24vw, 300px); will-change: transform; }
-  .h5-agent-mascot img { display: block; width: 100%; mix-blend-mode: multiply; filter: drop-shadow(0 30px 50px rgba(30, 123, 255, 0.24)); }
+  .h5-agent-mascot img { display: block; width: 100%; filter: drop-shadow(0 30px 50px rgba(30, 123, 255, 0.24)); }
   .h5-orbit {
     position: absolute; z-index: 3;
     padding: 7px 12px; border-radius: 999px;
