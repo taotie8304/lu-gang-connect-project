@@ -220,8 +220,7 @@ export const HOME_CSS = `
     border-radius: 50%; background: #fff;
     box-shadow:
       inset -2px -3px 0 rgba(170, 224, 250, 0.5),
-      inset 0 0 0 1.5px rgba(36, 148, 208, 0.8),
-      0 2px 5px rgba(34, 120, 180, 0.14);
+      inset 0 0 0 1.5px rgba(36, 148, 208, 0.8);
     transform: translate(-50%, -50%);
     transition:
       height 0.16s ease, width 0.18s ease, border-radius 0.16s ease,
