@@ -1,0 +1,153 @@
+{
+  "content": {
+    "nav": {
+      "brandAria": "魯港通關於我們",
+      "brandName": "魯港通",
+      "brandSub": "LUGANG CONNECT",
+      "caps": "能做什麼",
+      "cities": "兩座城",
+      "tech": "技術與信任",
+      "cta": "開始使用",
+      "langAria": "切換語言"
+    },
+    "hero": {
+      "eyebrow": "關於魯港通 · ABOUT",
+      "titleLead": "山海之間，",
+      "titleAccent": "有一條更近的路。",
+      "ledeLead": "從泉城到維港，從政策原文到辦事窗口，魯港通把兩地之間最費時的那一段路，做成一個",
+      "ledeStrong": "隨時能問、能帶你辦完",
+      "ledeTail": "的 AI 助手。",
+      "ctaTalk": "開始第一次對話",
+      "ctaExplore": "看看我們做什麼",
+      "meta": ["香港 + 山東官方數據", "答案可回到原文", "網頁 / 桌面 / 安卓同源"],
+      "painting": "元 · 趙孟頫《鵲華秋色圖》",
+      "scroll": "SCROLL"
+    },
+    "manifesto": {
+      "no": "01 — 我們相信",
+      "titleLead": "技術不該讓人多跑一趟。",
+      "titleDim": "它應該替你把路走通。",
+      "sub": "跨境生活的難，往往不在「不知道」，而在「知道了還要跑很多趟」。魯港通把政策、辦事和出行放進同一條對話裡，先替你查清楚，再陪你做到底。",
+      "stats": [
+        {
+          "count": 6,
+          "suffix": "",
+          "unit": "大官方數據領域",
+          "desc": "香港民生、教育、金融、交通，與山東政策"
+        },
+        {
+          "count": 1200,
+          "suffix": "+",
+          "unit": "條政策條目",
+          "desc": "持續從政府官網採集、清洗、更新"
+        },
+        {
+          "value": "<3",
+          "unit": "秒",
+          "desc": "多模式交通路線規劃響應"
+        }
+      ]
+    },
+    "caps": {
+      "no": "02 — 能做什麼",
+      "title": "三件事，做得更深。",
+      "items": [
+        {
+          "no": "01",
+          "title": "看得懂政策",
+          "text": "按你的身份、城市和人生階段，把官方原文翻譯成能執行的中文答案，並保留每一個出處。",
+          "tags": ["官方原文出處", "生效日期提醒", "簡體中文答案"]
+        },
+        {
+          "no": "02",
+          "title": "辦得成事情",
+          "text": "不只告訴你去哪辦，還替你打開網頁、對齊材料、填好表，在提交前讓你逐項確認。",
+          "tags": ["內置辦事瀏覽器", "材料清單核對", "提交前確認"]
+        },
+        {
+          "no": "03",
+          "title": "走得通兩地",
+          "text": "從濟南到香港，從維港回齊魯：交通、教育、開戶、創業，用一條對話串起兩座城。",
+          "tags": ["多模式路線", "實時換乘", "雙城生活清單"]
+        }
+      ],
+      "policy": {
+        "head": "HONG KONG · IMMIGRATION",
+        "tag": "官方原文",
+        "docTitle": "高端人才通行證計劃續簽安排",
+        "source": "來源 · 香港入境事務處",
+        "updated": "2026 年 9 月更新"
+      },
+      "browser": {
+        "formTitle": "ONLINE APPLICATION",
+        "fields": [
+          { "label": "姓名 NAME", "value": "ZHANG WEI" },
+          { "label": "證件號碼 ID NO.", "value": "A123456(7)" },
+          { "label": "申請類別 TYPE", "value": "人才通行證 · 續簽" }
+        ],
+        "submit": "下一步 · NEXT"
+      },
+      "route": {
+        "labels": ["濟南 JINAN", "換乘 TRANSFER", "香港 HONG KONG"]
+      }
+    },
+    "cities": {
+      "no": "03 — 兩座城，一條線",
+      "titleLead": "南下，是機會。",
+      "titleAccent": "北上，也是。",
+      "sub": "我們把兩地之間最常見的選擇，整理成可以一步步執行的路徑——不是資訊堆砌，而是一條能走完的線。",
+      "routeLeft": { "name": "濟南 · 齊魯", "sub": "JINAN · SHANDONG" },
+      "routeRight": { "name": "香港 · 維港", "sub": "HONG KONG" },
+      "cards": [
+        {
+          "dir": "SOUTHBOUND · 南下",
+          "title": "去香港",
+          "text": "讀書、工作、開戶、創業。從簽證與身份，到學校與銀行，再到第一份租約，把落地香港的每一步說清楚。",
+          "tags": ["人才計劃", "升學擇校", "銀行開戶", "公司註冊"]
+        },
+        {
+          "dir": "NORTHBOUND · 北上",
+          "title": "回山東",
+          "text": "投資、落戶、找政策、對接園區。把山東的產業機會、人才補貼與扶持政策，整理成可對接的清單。",
+          "tags": ["外商投資", "人才補貼", "園區落地", "創業扶持"]
+        }
+      ]
+    },
+    "tech": {
+      "no": "04 — 技術與信任",
+      "titleLead": "會思考，",
+      "titleAccent": "也會查證。",
+      "p": "大模型負責理解你，政府官網負責回答你。魯港通在兩者之間保留了一條清晰的證據鏈：每條結論都能回到原文，每次更新都有時間標記。",
+      "chips": ["data.gov.hk", "香港政府一站通", "山東省人民政府", "實時聯網檢索"],
+      "bubbleLead": "我先查一下",
+      "bubbleStrong": "官方原文",
+      "bubbleTail": "，再給你可執行的步驟。",
+      "srcLeft": "SOURCE · 入境事務處",
+      "srcRight": "已核對 · 2026.09"
+    },
+    "proof": {
+      "no": "05 — 被驗證的答案",
+      "titleLead": "每一條結論，",
+      "titleAccent": "都能回到原文。",
+      "quote": "“讓在香港的山東人，和想在山東發展的香港人，都能少走一步彎路。”",
+      "quoteBy": "金暉 · 魯港通創始人",
+      "rows": [
+        { "label": "政府官網實時聯網", "value": "政策變化當天可查" },
+        { "label": "雙城官方數據源", "value": "香港 + 山東" },
+        { "label": "答案保留出處", "value": "可點開原文核對" },
+        { "label": "同一賬號全端同步", "value": "網頁 · 桌面 · 安卓" }
+      ]
+    },
+    "contact": {
+      "no": "06 — 開始",
+      "titleLead": "把第一個問題，",
+      "titleAccent": "交給魯港通。",
+      "p": "不用先想清楚要問什麼。用你習慣的方式說出來，剩下的我們一步步來。",
+      "cta": "開始對話",
+      "addrLine": "香港九龍彌敦道 333 號金順商業中心 6 樓",
+      "addrEn": "6/F, Gamsun Commercial Centre, 333 Nathan Road, Kowloon, Hong Kong",
+      "footLeft": "魯港通 · 跨境 AI 服務平台",
+      "footRight": "© 2026 魯港通 LUGANG CONNECT"
+    }
+  }
+}

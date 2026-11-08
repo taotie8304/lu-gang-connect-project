@@ -1,5 +1,5 @@
 // 鲁港通 - 首页顶部导航：滚动变实、移动端抽屉菜单、语言切换入口
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import I18nLngSelector from '@/components/Select/I18nLngSelector';
 import { HomeNavBrand } from './HomeBrand';
@@ -30,12 +30,16 @@ const SmartLink = ({
 const HomeNav = ({ copy }: { copy: HomeNavCopy }) => {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const navRef = useRef<HTMLElement>(null);
 
+  // 鲁港通 - 首页自身是滚动容器，滚动状态取自 .lg-home 而不是 window
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    window.addEventListener('scroll', onScroll, { passive: true });
+    const scroller = navRef.current?.closest<HTMLElement>('.lg-home');
+    if (!scroller) return;
+    const onScroll = () => setScrolled(scroller.scrollTop > 8);
+    scroller.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => scroller.removeEventListener('scroll', onScroll);
   }, []);
 
   useEffect(() => {
@@ -57,7 +61,10 @@ const HomeNav = ({ copy }: { copy: HomeNavCopy }) => {
   const closeMenu = useCallback(() => setMenuOpen(false), []);
 
   return (
-    <header className={`h5-nav${scrolled ? ' is-scrolled' : ''}${menuOpen ? ' is-menu' : ''}`}>
+    <header
+      ref={navRef}
+      className={`h5-nav${scrolled ? ' is-scrolled' : ''}${menuOpen ? ' is-menu' : ''}`}
+    >
       <div className="h5-nav-in">
         <HomeNavBrand sub={copy.brandSub} ariaLabel={copy.brandAria} />
         <nav className="h5-links" aria-label={copy.mainAria}>

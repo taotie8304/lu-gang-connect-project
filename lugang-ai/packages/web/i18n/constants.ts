@@ -9,6 +9,7 @@ export const I18N_NAMESPACES = [
   'chat',
   'login',
   'home',
+  'about3',
   'account_info',
   'account_usage',
   'account_bill',

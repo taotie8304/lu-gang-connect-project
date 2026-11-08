@@ -20,14 +20,20 @@ export const HOME_CSS = `
     --shadow-m: 0 2px 6px rgba(30, 29, 26, 0.05), 0 18px 48px rgba(30, 29, 26, 0.09);
     --shadow-l: 0 4px 12px rgba(30, 29, 26, 0.06), 0 32px 80px rgba(30, 29, 26, 0.12);
     position: relative;
-    min-height: 100vh;
+    height: 100%;
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
     font-size: 15px;
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
-    overflow-x: clip;
+    overflow-x: hidden;
+    overflow-y: auto;
+    scroll-behavior: smooth;
+    scroll-padding-top: 84px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-gutter: stable;
   }
   .lg-home *, .lg-home *::before, .lg-home *::after { box-sizing: border-box; }
   .lg-home a { color: inherit; text-decoration: none; }
@@ -35,7 +41,6 @@ export const HOME_CSS = `
   .lg-home :focus-visible { outline: 2px solid var(--blue); outline-offset: 3px; border-radius: 6px; }
   .lg-home :where(h1, h2, h3, h4, p) { margin: 0; }
   .lg-home .h5-wrap { max-width: 1200px; margin: 0 auto; padding: 0 32px; }
-  .lg-home section { scroll-margin-top: 84px; }
   .h5-sr {
     position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
     overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
@@ -43,7 +48,7 @@ export const HOME_CSS = `
 
   /* ---------- progress + nav ---------- */
   .h5-progress {
-    position: fixed; top: 0; left: 0; z-index: 90;
+    position: fixed; top: var(--lugang-titlebar-height, 0px); left: 0; z-index: 90;
     height: 2px; width: 0;
     background: linear-gradient(90deg, var(--blue), var(--jade));
     transition: width 0.08s linear;
@@ -199,13 +204,40 @@ export const HOME_CSS = `
     position: absolute; right: max(1.6vw, 18px); top: 12%;
     width: clamp(132px, 14vw, 204px); z-index: 1;
     will-change: transform;
+    transition: transform 0.55s cubic-bezier(0.22, 1.35, 0.36, 1);
   }
   .h5-mascot-bob { animation: h5-bob 6.5s ease-in-out infinite; }
+  .h5-mascot-figure { position: relative; display: block; width: 100%; }
   .h5-mascot-img {
     display: block; width: 100%; height: auto;
     mix-blend-mode: multiply;
     filter: drop-shadow(0 22px 34px rgba(30, 123, 255, 0.22));
+    user-select: none; -webkit-user-drag: none;
   }
+  .h5-eyes { position: absolute; inset: 0; pointer-events: none; }
+  .h5-eye {
+    position: absolute; width: 6.3%; height: 7.4%;
+    border-radius: 50%; background: #fff;
+    box-shadow:
+      inset -2px -3px 0 rgba(140, 212, 245, 0.55),
+      inset 0 0 0 1.5px rgba(46, 150, 209, 0.35),
+      0 2px 5px rgba(34, 120, 180, 0.14);
+    transform: translate(-50%, -50%);
+    transition:
+      height 0.16s ease, width 0.18s ease, border-radius 0.16s ease,
+      transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.16s ease;
+    will-change: transform, height;
+  }
+  .h5-eye.left { left: 38.3%; top: 47.4%; }
+  .h5-eye.right { left: 62.1%; top: 46.9%; }
+  .h5-eyes[data-face='blink'] .h5-eye {
+    height: 1.4%; border-radius: 999px;
+    box-shadow: inset 0 0 0 1.5px rgba(46, 150, 209, 0.28);
+  }
+  .h5-eyes[data-face='squint'] .h5-eye { height: 2.4%; width: 6.7%; border-radius: 999px; }
+  .h5-eyes[data-face='wide'] .h5-eye { height: 8.8%; width: 6.9%; }
+  .h5-eyes[data-face='left'] .h5-eye { transform: translate(calc(-50% - 26%), -50%); }
+  .h5-eyes[data-face='right'] .h5-eye { transform: translate(calc(-50% + 26%), -50%); }
   @keyframes h5-bob {
     0%, 100% { transform: translateY(0) rotate(-1.2deg); }
     50% { transform: translateY(-14px) rotate(1.4deg); }
@@ -400,9 +432,9 @@ export const HOME_CSS = `
   .h5-dl { border: 1px solid var(--line-2); border-radius: 18px; padding: 16px 18px; background: rgba(255, 253, 248, 0.5); }
   .h5-dl-title { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 0.14em; color: var(--faint); }
   .h5-dl-title::after { content: ''; flex: 1; height: 1px; background: var(--line); }
-  .h5-dl-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; transition: opacity 0.2s ease; }
+  .h5-dl-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-radius: 10px; transition: background 0.2s ease; }
   .h5-dl-row + .h5-dl-row { border-top: 1px solid var(--line); }
-  .h5-dl-row:hover { opacity: 0.72; }
+  .h5-dl-row:hover { background: rgba(30, 29, 26, 0.04); }
   .h5-dl-ico { width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
   .h5-dl-ico.win { background: rgba(30, 123, 255, 0.09); color: var(--blue); }
   .h5-dl-ico.android { background: rgba(63, 156, 140, 0.12); color: #2f8578; }

@@ -1,0 +1,153 @@
+{
+  "content": {
+    "nav": {
+      "brandAria": "About Lugang Connect",
+      "brandName": "Lugang",
+      "brandSub": "LUGANG CONNECT",
+      "caps": "What we do",
+      "cities": "Two cities",
+      "tech": "Technology & trust",
+      "cta": "Get started",
+      "langAria": "Switch language"
+    },
+    "hero": {
+      "eyebrow": "ABOUT LUGANG CONNECT",
+      "titleLead": "Between mountains and sea,",
+      "titleAccent": "there is a shorter way.",
+      "ledeLead": "From Quancheng to Victoria Harbour, from official documents to service counters, Lugang Connect turns the most time-consuming stretch between the two places into an",
+      "ledeStrong": "AI assistant you can ask anytime and that walks you through to the end",
+      "ledeTail": ".",
+      "ctaTalk": "Start your first conversation",
+      "ctaExplore": "See what we do",
+      "meta": ["Hong Kong + Shandong official data", "Answers traceable to the source", "Web / desktop / Android, one account"],
+      "painting": "Yuan dynasty · Zhao Mengfu, Autumn Colors on the Qiao and Hua Mountains",
+      "scroll": "SCROLL"
+    },
+    "manifesto": {
+      "no": "01 — WHAT WE BELIEVE",
+      "titleLead": "Technology should not make people travel one more time.",
+      "titleDim": "It should clear the way for you.",
+      "sub": "The hard part of cross-border life is rarely “not knowing” — it is “knowing, and still having to make many trips.” Lugang Connect puts policy, paperwork and travel into one conversation: we find out first, then stay with you to the end.",
+      "stats": [
+        {
+          "count": 6,
+          "suffix": "",
+          "unit": "official data domains",
+          "desc": "Hong Kong livelihood, education, finance and transport, plus Shandong policy"
+        },
+        {
+          "count": 1200,
+          "suffix": "+",
+          "unit": "policy entries",
+          "desc": "Continuously collected, cleaned and updated from government websites"
+        },
+        {
+          "value": "<3",
+          "unit": "seconds",
+          "desc": "Multi-modal transport route planning response"
+        }
+      ]
+    },
+    "caps": {
+      "no": "02 — WHAT WE DO",
+      "title": "Three things, done deeper.",
+      "items": [
+        {
+          "no": "01",
+          "title": "Understand policy",
+          "text": "Based on your status, city and stage of life, we translate official documents into actionable Chinese answers and keep every source.",
+          "tags": ["Official source links", "Effective-date alerts", "Plain Chinese answers"]
+        },
+        {
+          "no": "02",
+          "title": "Get things done",
+          "text": "We do more than tell you where to go: we open the page, line up the documents, fill in the forms, and ask you to confirm each item before submission.",
+          "tags": ["Built-in task browser", "Document checklist", "Pre-submission review"]
+        },
+        {
+          "no": "03",
+          "title": "Connect both places",
+          "text": "From Jinan to Hong Kong and from Victoria Harbour back to Qilu: transport, education, banking and starting a business, connected in one conversation.",
+          "tags": ["Multi-modal routes", "Real-time transfers", "Two-city checklist"]
+        }
+      ],
+      "policy": {
+        "head": "HONG KONG · IMMIGRATION",
+        "tag": "Official document",
+        "docTitle": "Top Talent Pass Scheme renewal arrangements",
+        "source": "Source · Hong Kong Immigration Department",
+        "updated": "Updated September 2026"
+      },
+      "browser": {
+        "formTitle": "ONLINE APPLICATION",
+        "fields": [
+          { "label": "Name NAME", "value": "ZHANG WEI" },
+          { "label": "ID NO.", "value": "A123456(7)" },
+          { "label": "Application type TYPE", "value": "Top Talent Pass · Renewal" }
+        ],
+        "submit": "Next · NEXT"
+      },
+      "route": {
+        "labels": ["Jinan JINAN", "Transfer TRANSFER", "Hong Kong HONG KONG"]
+      }
+    },
+    "cities": {
+      "no": "03 — TWO CITIES, ONE LINE",
+      "titleLead": "Southbound is an opportunity.",
+      "titleAccent": "So is northbound.",
+      "sub": "We turn the most common choices between the two places into step-by-step routes — not a pile of information, but a line you can actually walk to the end.",
+      "routeLeft": { "name": "Jinan · Qilu", "sub": "JINAN · SHANDONG" },
+      "routeRight": { "name": "Hong Kong · Victoria Harbour", "sub": "HONG KONG" },
+      "cards": [
+        {
+          "dir": "SOUTHBOUND · TO HONG KONG",
+          "title": "Go to Hong Kong",
+          "text": "Study, work, open an account, start a business. From visas and identity to schools and banks, then your first lease — every step of landing in Hong Kong, made clear.",
+          "tags": ["Talent schemes", "School admissions", "Bank accounts", "Company setup"]
+        },
+        {
+          "dir": "NORTHBOUND · TO SHANDONG",
+          "title": "Return to Shandong",
+          "text": "Invest, settle, find policies, connect with industrial parks. Shandong's industry opportunities, talent subsidies and support policies, organised into a checklist you can act on.",
+          "tags": ["Foreign investment", "Talent subsidies", "Park entry", "Startup support"]
+        }
+      ]
+    },
+    "tech": {
+      "no": "04 — TECHNOLOGY & TRUST",
+      "titleLead": "It thinks.",
+      "titleAccent": "It also verifies.",
+      "p": "The model understands you; government websites answer you. Lugang Connect keeps a clear chain of evidence between the two: every conclusion can return to the source, and every update carries a timestamp.",
+      "chips": ["data.gov.hk", "GovHK one-stop portal", "People's Government of Shandong", "Live web search"],
+      "bubbleLead": "Let me check the ",
+      "bubbleStrong": "official document",
+      "bubbleTail": " first, then I'll give you steps you can follow.",
+      "srcLeft": "SOURCE · Immigration Department",
+      "srcRight": "Verified · 2026.09"
+    },
+    "proof": {
+      "no": "05 — VERIFIED ANSWERS",
+      "titleLead": "Every conclusion",
+      "titleAccent": "returns to the source.",
+      "quote": "“I want Shandong people in Hong Kong — and Hong Kong people building their future in Shandong — to each take one less detour.”",
+      "quoteBy": "Jinhui · Founder of Lugang Connect",
+      "rows": [
+        { "label": "Government sites, live search", "value": "Policy changes checked the same day" },
+        { "label": "Official data from both cities", "value": "Hong Kong + Shandong" },
+        { "label": "Sources kept with every answer", "value": "Open the original to verify" },
+        { "label": "One account across devices", "value": "Web · desktop · Android" }
+      ]
+    },
+    "contact": {
+      "no": "06 — BEGIN",
+      "titleLead": "Give your first question",
+      "titleAccent": "to Lugang Connect.",
+      "p": "You don't need to know exactly what to ask. Say it the way you normally would — we'll take it one step at a time.",
+      "cta": "Start a conversation",
+      "addrLine": "6/F, Gamsun Commercial Centre, 333 Nathan Road, Kowloon, Hong Kong",
+      "addrEn": "6/F, Gamsun Commercial Centre, 333 Nathan Road, Kowloon, Hong Kong",
+      "footLeft": "Lugang Connect · Cross-border AI services",
+      "footRight": "© 2026 LUGANG CONNECT"
+    }
+  }
+}

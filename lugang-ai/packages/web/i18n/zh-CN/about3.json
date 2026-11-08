@@ -1,0 +1,153 @@
+{
+  "content": {
+    "nav": {
+      "brandAria": "鲁港通关于我们",
+      "brandName": "鲁港通",
+      "brandSub": "LUGANG CONNECT",
+      "caps": "能做什么",
+      "cities": "两座城",
+      "tech": "技术与信任",
+      "cta": "开始使用",
+      "langAria": "切换语言"
+    },
+    "hero": {
+      "eyebrow": "关于鲁港通 · ABOUT",
+      "titleLead": "山海之间，",
+      "titleAccent": "有一条更近的路。",
+      "ledeLead": "从泉城到维港，从政策原文到办事窗口，鲁港通把两地之间最费时的那一段路，做成一个",
+      "ledeStrong": "随时能问、能带你办完",
+      "ledeTail": "的 AI 助手。",
+      "ctaTalk": "开始第一次对话",
+      "ctaExplore": "看看我们做什么",
+      "meta": ["香港 + 山东官方数据", "答案可回到原文", "网页 / 桌面 / 安卓同源"],
+      "painting": "元 · 赵孟頫《鹊华秋色图》",
+      "scroll": "SCROLL"
+    },
+    "manifesto": {
+      "no": "01 — 我们相信",
+      "titleLead": "技术不该让人多跑一趟。",
+      "titleDim": "它应该替你把路走通。",
+      "sub": "跨境生活的难，往往不在“不知道”，而在“知道了还要跑很多趟”。鲁港通把政策、办事和出行放进同一条对话里，先替你查清楚，再陪你做到底。",
+      "stats": [
+        {
+          "count": 6,
+          "suffix": "",
+          "unit": "大官方数据领域",
+          "desc": "香港民生、教育、金融、交通，与山东政策"
+        },
+        {
+          "count": 1200,
+          "suffix": "+",
+          "unit": "条政策条目",
+          "desc": "持续从政府官网采集、清洗、更新"
+        },
+        {
+          "value": "<3",
+          "unit": "秒",
+          "desc": "多模式交通路线规划响应"
+        }
+      ]
+    },
+    "caps": {
+      "no": "02 — 能做什么",
+      "title": "三件事，做得更深。",
+      "items": [
+        {
+          "no": "01",
+          "title": "看得懂政策",
+          "text": "按你的身份、城市和人生阶段，把官方原文翻译成能执行的中文答案，并保留每一个出处。",
+          "tags": ["官方原文出处", "生效日期提醒", "简体中文答案"]
+        },
+        {
+          "no": "02",
+          "title": "办得成事情",
+          "text": "不只告诉你去哪办，还替你打开网页、对齐材料、填好表，在提交前让你逐项确认。",
+          "tags": ["内置办事浏览器", "材料清单核对", "提交前确认"]
+        },
+        {
+          "no": "03",
+          "title": "走得通两地",
+          "text": "从济南到香港，从维港回齐鲁：交通、教育、开户、创业，用一条对话串起两座城。",
+          "tags": ["多模式路线", "实时换乘", "双城生活清单"]
+        }
+      ],
+      "policy": {
+        "head": "HONG KONG · IMMIGRATION",
+        "tag": "官方原文",
+        "docTitle": "高端人才通行证计划续签安排",
+        "source": "来源 · 香港入境事务处",
+        "updated": "2026 年 9 月更新"
+      },
+      "browser": {
+        "formTitle": "ONLINE APPLICATION",
+        "fields": [
+          { "label": "姓名 NAME", "value": "ZHANG WEI" },
+          { "label": "证件号码 ID NO.", "value": "A123456(7)" },
+          { "label": "申请类别 TYPE", "value": "人才通行证 · 续签" }
+        ],
+        "submit": "下一步 · NEXT"
+      },
+      "route": {
+        "labels": ["济南 JINAN", "换乘 TRANSFER", "香港 HONG KONG"]
+      }
+    },
+    "cities": {
+      "no": "03 — 两座城，一条线",
+      "titleLead": "南下，是机会。",
+      "titleAccent": "北上，也是。",
+      "sub": "我们把两地之间最常见的选择，整理成可以一步步执行的路径——不是资讯堆砌，而是一条能走完的线。",
+      "routeLeft": { "name": "济南 · 齐鲁", "sub": "JINAN · SHANDONG" },
+      "routeRight": { "name": "香港 · 维港", "sub": "HONG KONG" },
+      "cards": [
+        {
+          "dir": "SOUTHBOUND · 南下",
+          "title": "去香港",
+          "text": "读书、工作、开户、创业。从签证与身份，到学校与银行，再到第一份租约，把落地香港的每一步说清楚。",
+          "tags": ["人才计划", "升学择校", "银行开户", "公司注册"]
+        },
+        {
+          "dir": "NORTHBOUND · 北上",
+          "title": "回山东",
+          "text": "投资、落户、找政策、对接园区。把山东的产业机会、人才补贴与扶持政策，整理成可对接的清单。",
+          "tags": ["外商投资", "人才补贴", "园区落地", "创业扶持"]
+        }
+      ]
+    },
+    "tech": {
+      "no": "04 — 技术与信任",
+      "titleLead": "会思考，",
+      "titleAccent": "也会查证。",
+      "p": "大模型负责理解你，政府官网负责回答你。鲁港通在两者之间保留了一条清晰的证据链：每条结论都能回到原文，每次更新都有时间标记。",
+      "chips": ["data.gov.hk", "香港政府一站通", "山东省人民政府", "实时联网检索"],
+      "bubbleLead": "我先查一下",
+      "bubbleStrong": "官方原文",
+      "bubbleTail": "，再给你可执行的步骤。",
+      "srcLeft": "SOURCE · 入境事务处",
+      "srcRight": "已核对 · 2026.09"
+    },
+    "proof": {
+      "no": "05 — 被验证的答案",
+      "titleLead": "每一条结论，",
+      "titleAccent": "都能回到原文。",
+      "quote": "“让在香港的山东人，和想在山东发展的香港人，都能少走一步弯路。”",
+      "quoteBy": "金晖 · 鲁港通创始人",
+      "rows": [
+        { "label": "政府官网实时联网", "value": "政策变化当天可查" },
+        { "label": "双城官方数据源", "value": "香港 + 山东" },
+        { "label": "答案保留出处", "value": "可点开原文核对" },
+        { "label": "同一账号全端同步", "value": "网页 · 桌面 · 安卓" }
+      ]
+    },
+    "contact": {
+      "no": "06 — 开始",
+      "titleLead": "把第一个问题，",
+      "titleAccent": "交给鲁港通。",
+      "p": "不用先想清楚要问什么。用你习惯的方式说出来，剩下的我们一步步来。",
+      "cta": "开始对话",
+      "addrLine": "香港九龙弥敦道 333 号金顺商业中心 6 楼",
+      "addrEn": "6/F, Gamsun Commercial Centre, 333 Nathan Road, Kowloon, Hong Kong",
+      "footLeft": "鲁港通 · 跨境 AI 服务平台",
+      "footRight": "© 2026 鲁港通 LUGANG CONNECT"
+    }
+  }
+}

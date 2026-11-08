@@ -1,5 +1,6 @@
 // 鲁港通 - 首页首屏：大标题居中 + 指针视差吉祥物 + 漂浮政策词
 import React from 'react';
+import HomeMascot from './HomeMascot';
 import type { HomeHeroCopy } from './homeData';
 import { HOME_ANCHORS } from './homeData';
 
@@ -27,7 +28,7 @@ const HomeHero = ({ copy }: { copy: HomeHeroCopy }) => (
     <div className="h5-hero-mascot" id="home-hero-mascot" aria-hidden="true">
       <div className="h5-mascot-say">{copy.mascotSay}</div>
       <div className="h5-mascot-bob">
-        <img className="h5-mascot-img" src="/imgs/home-mascot.webp" alt="" />
+        <HomeMascot />
       </div>
     </div>
 

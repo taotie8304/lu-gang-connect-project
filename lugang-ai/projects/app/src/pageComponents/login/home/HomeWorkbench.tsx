@@ -3,6 +3,7 @@ import React from 'react';
 import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 import { LoginContainer } from '../index';
 import HomeDemo from './HomeDemo';
+import HomeMascot from './HomeMascot';
 import type { HomeDemoCopy, HomeDownloadCopy, HomeLoginCopy } from './homeData';
 import { HOME_ANCHORS, HOME_DOWNLOADS } from './homeData';
 
@@ -23,7 +24,7 @@ const HomeWorkbench = ({
         <div className="h5-work-grid">
           <div className="h5-demo-wrap">
             <div className="h5-peek" aria-hidden="true">
-              <img src="/imgs/home-mascot.webp" alt="" />
+              <HomeMascot />
             </div>
             <HomeDemo copy={demo} />
           </div>
