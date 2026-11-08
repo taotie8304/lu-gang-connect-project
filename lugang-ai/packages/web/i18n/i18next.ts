@@ -34,6 +34,8 @@ import type { I18N_NAMESPACES } from './constants';
 
 // 鲁港通 - home 命名空间使用对象分节文案，若按原始类型注册会把全站动态 key 的 t() 返回类型放宽为联合类型
 type HomeNamespace = { [K in keyof typeof home]: string };
+// 鲁港通 - about3 同为对象分节文案（content 为整段对象），同样按字符串化注册，避免污染全局 t() 返回类型
+type About3Namespace = { [K in keyof typeof about3]: string };
 
 export interface I18nNamespaces {
   common: typeof common;
@@ -46,7 +48,7 @@ export interface I18nNamespaces {
   chat: typeof chat;
   login: typeof login;
   home: HomeNamespace;
-  about3: typeof about3;
+  about3: About3Namespace;
   account_info: typeof account_info;
   account_usage: typeof account_usage;
   account_bill: typeof account_bill;
