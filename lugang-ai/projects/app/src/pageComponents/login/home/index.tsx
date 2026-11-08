@@ -63,7 +63,7 @@ const HomePage = ({
           download={copy.download}
           onSuccess={onSuccess}
         />
-        <HomeStats copy={copy.stats} marquee={copy.marquee} />
+        <HomeStats copy={copy.stats} marquee={copy.marquee.items} />
         <HomePersonas copy={copy.personas} />
         <HomeFlow copy={copy.flow} />
         <HomeAgent copy={copy.agent} />

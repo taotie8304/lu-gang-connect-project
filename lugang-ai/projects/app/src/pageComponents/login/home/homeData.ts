@@ -227,7 +227,7 @@ export type HomeCopy = {
   login: HomeLoginCopy;
   download: HomeDownloadCopy;
   stats: HomeStatsCopy;
-  marquee: string[];
+  marquee: { items: string[] };
   personas: HomePersonasCopy;
   flow: HomeFlowCopy;
   agent: HomeAgentCopy;

@@ -31,6 +31,9 @@ import type price from './zh-CN/price.json';
 import type ticket from './zh-CN/ticket.json';
 import type { I18N_NAMESPACES } from './constants';
 
+// 鲁港通 - home 命名空间使用对象分节文案，若按原始类型注册会把全站动态 key 的 t() 返回类型放宽为联合类型
+type HomeNamespace = { [K in keyof typeof home]: string };
+
 export interface I18nNamespaces {
   common: typeof common;
   dataset: typeof dataset;
@@ -41,7 +44,7 @@ export interface I18nNamespaces {
   user: typeof user;
   chat: typeof chat;
   login: typeof login;
-  home: typeof home;
+  home: HomeNamespace;
   account_info: typeof account_info;
   account_usage: typeof account_usage;
   account_bill: typeof account_bill;
