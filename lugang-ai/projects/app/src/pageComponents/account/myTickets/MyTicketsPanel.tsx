@@ -10,10 +10,13 @@ import TicketListPane from './TicketListPane';
 import TicketCreatePane from './TicketCreatePane';
 import TicketDetailPane from './TicketDetailPane';
 import {
+  accountContentFlowStyles,
   accountContentScrollStyles,
+  accountPageFlowRootStyles,
   accountPageRootStyles,
   accountTitleTextStyles
 } from '../styles';
+import { useAccountFlow } from '../AccountFlowContext';
 
 enum MyTicketViewEnum {
   list = 'list',
@@ -24,6 +27,7 @@ enum MyTicketViewEnum {
 /** 我的工单：列表 / 提交 / 详情三视图单页切换。账号页与客户端设置弹窗共用，弹窗态多一个「关闭」。 */
 const MyTicketsPanel = ({ onClose }: { onClose?: () => void }) => {
   const { t } = useClientTranslation('ticket');
+  const isFlow = useAccountFlow();
 
   const [view, setView] = useState<MyTicketViewEnum>(MyTicketViewEnum.list);
   const [statusFilter, setStatusFilter] = useState<TicketStatusEnum>();
@@ -70,7 +74,10 @@ const MyTicketsPanel = ({ onClose }: { onClose?: () => void }) => {
   }, [refresh]);
 
   return (
-    <Flex {...accountPageRootStyles} flexDirection={'column'}>
+    <Flex
+      {...(isFlow ? accountPageFlowRootStyles : accountPageRootStyles)}
+      flexDirection={'column'}
+    >
       <Flex
         h={['56px', '64px']}
         flexShrink={0}
@@ -99,7 +106,12 @@ const MyTicketsPanel = ({ onClose }: { onClose?: () => void }) => {
         )}
       </Flex>
 
-      <Box px={[4, 6]} pt={[4, 6]} pb={[4, 6]} {...accountContentScrollStyles}>
+      <Box
+        px={[4, 6]}
+        pt={[4, 6]}
+        pb={[4, 6]}
+        {...(isFlow ? accountContentFlowStyles : accountContentScrollStyles)}
+      >
         {view === MyTicketViewEnum.list && (
           <TicketListPane
             list={list}

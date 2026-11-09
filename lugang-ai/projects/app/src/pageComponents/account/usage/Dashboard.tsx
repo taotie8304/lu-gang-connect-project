@@ -6,7 +6,11 @@ import React, { useMemo } from 'react';
 import { type UsageFilterParams } from './type';
 import dayjs from 'dayjs';
 import dynamic from 'next/dynamic';
-import { accountContentScrollStyles } from '@/pageComponents/account/styles';
+import {
+  accountContentFlowStyles,
+  accountContentScrollStyles
+} from '@/pageComponents/account/styles';
+import { useAccountFlow } from '@/pageComponents/account/AccountFlowContext';
 
 const DashboardChart = dynamic(() => import('./DashboardChart'), {
   ssr: false
@@ -23,6 +27,7 @@ const UsageDashboard = ({
 }) => {
   const { dateRange, selectTmbIds, usageSources, unit, isSelectAllSource, isSelectAllTmb } =
     filterParams;
+  const isFlow = useAccountFlow();
 
   const { data: totalPoints = [], loading: totalPointsLoading } = useRequest(
     () =>
@@ -66,7 +71,11 @@ const UsageDashboard = ({
           {Selectors}
         </Box>
       </Flex>
-      <MyBox {...accountContentScrollStyles} px={[3, 6]} isLoading={totalPointsLoading}>
+      <MyBox
+        {...(isFlow ? accountContentFlowStyles : accountContentScrollStyles)}
+        px={[3, 6]}
+        isLoading={totalPointsLoading}
+      >
         <DashboardChart totalPoints={totalPoints} totalUsage={totalUsage} />
       </MyBox>
     </>

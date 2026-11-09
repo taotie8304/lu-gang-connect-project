@@ -27,7 +27,13 @@ import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { downloadFetch } from '@/web/common/system/utils';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import { i18nT } from '@fastgpt/global/common/i18n/utils';
-import { accountContentScrollStyles, accountPageRootStyles } from '@/pageComponents/account/styles';
+import {
+  accountContentFlowStyles,
+  accountContentScrollStyles,
+  accountPageFlowRootStyles,
+  accountPageRootStyles
+} from '@/pageComponents/account/styles';
+import { useAccountFlow } from '@/pageComponents/account/AccountFlowContext';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 const UsageDetail = dynamic(() => import('./UsageDetail'));
@@ -43,6 +49,7 @@ const UsageTableList = ({
 }) => {
   const { t } = useClientTranslation('account_usage');
   const { isPc } = useSystem();
+  const isFlow = useAccountFlow();
 
   const { dateRange, selectTmbIds, isSelectAllTmb, usageSources, isSelectAllSource, projectName } =
     filterParams;
@@ -118,7 +125,7 @@ const UsageTableList = ({
 
   return (
     <MyBox
-      {...accountPageRootStyles}
+      {...(isFlow ? accountPageFlowRootStyles : accountPageRootStyles)}
       display={'flex'}
       flexDirection={'column'}
       isLoading={isLoading}
@@ -167,7 +174,12 @@ const UsageTableList = ({
         />
       </Flex>
       {isPc ? (
-        <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} mt={3} px={[3, 6]}>
+        <TableContainer
+          ref={scrollContainerRef}
+          {...(isFlow ? accountContentFlowStyles : accountContentScrollStyles)}
+          mt={3}
+          px={[3, 6]}
+        >
           <Table>
             <Thead>
               <Tr>

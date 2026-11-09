@@ -6,7 +6,12 @@ import FillRowTabs from '@fastgpt/web/components/common/Tabs/FillRowTabs';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import ApplyInvoiceModal from './ApplyInvoiceModal';
 import { InvoiceTabEnum, resolveBillActiveTab } from './utils';
-import { accountPageRootStyles, accountTitleTextStyles } from '../styles';
+import {
+  accountPageFlowRootStyles,
+  accountPageRootStyles,
+  accountTitleTextStyles
+} from '../styles';
+import { useAccountFlow } from '../AccountFlowContext';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 
 const BillTable = dynamic(() => import('./BillTable'));
@@ -24,6 +29,7 @@ const BillPanel = ({
   onClose?: () => void;
 }) => {
   const { t } = useClientTranslation(['account_bill', 'account']);
+  const isFlow = useAccountFlow();
   const { feConfigs } = useSystemStore();
 
   // 鲁港通 - N4：未接入商业版/开票服务，隐藏发票页签与申请入口，避免点击后请求报错
@@ -34,7 +40,10 @@ const BillPanel = ({
   const [recordsRefreshKey, setRecordsRefreshKey] = useState(0);
 
   return (
-    <Flex {...accountPageRootStyles} flexDirection={'column'}>
+    <Flex
+      {...(isFlow ? accountPageFlowRootStyles : accountPageRootStyles)}
+      flexDirection={'column'}
+    >
       <Flex
         display={onClose ? 'flex' : ['none', 'flex']}
         h={'64px'}
@@ -58,7 +67,12 @@ const BillPanel = ({
           </Button>
         )}
       </Flex>
-      <Flex flex={['0 0 auto', '1 0 0']} minH={0} flexDirection={'column'} py={[2, 6]}>
+      <Flex
+        flex={isFlow ? '0 0 auto' : ['0 0 auto', '1 0 0']}
+        minH={0}
+        flexDirection={'column'}
+        py={[2, 6]}
+      >
         <Flex
           px={[2, 6]}
           justifyContent={'space-between'}
@@ -107,7 +121,12 @@ const BillPanel = ({
             </Flex>
           )}
         </Flex>
-        <Box flex={['0 0 auto', '1 0 0']} h={['auto', 0]} minH={0} overflow={['visible', 'hidden']}>
+        <Box
+          flex={isFlow ? '0 0 auto' : ['0 0 auto', '1 0 0']}
+          h={isFlow ? 'auto' : ['auto', 0]}
+          minH={0}
+          overflow={isFlow ? 'visible' : ['visible', 'hidden']}
+        >
           {activeTab === InvoiceTabEnum.bill && <BillTable key={recordsRefreshKey} />}
           {activeTab === InvoiceTabEnum.invoice && <InvoiceTable key={recordsRefreshKey} />}
           {activeTab === InvoiceTabEnum.invoiceHeader && <InvoiceHeaderForm />}

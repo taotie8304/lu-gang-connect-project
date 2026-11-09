@@ -17,10 +17,13 @@ import MultipleSelect, {
 } from '@fastgpt/web/components/common/MySelect/MultipleSelect';
 import dynamic from 'next/dynamic';
 import {
+  accountContentFlowStyles,
   accountContentScrollStyles,
+  accountPageFlowRootStyles,
   accountPageRootStyles,
   accountTitleTextStyles
 } from '@/pageComponents/account/styles';
+import { useAccountFlow } from '@/pageComponents/account/AccountFlowContext';
 
 import UsageTableList from './UsageTable';
 import { type UnitType } from './type';
@@ -39,6 +42,7 @@ const UsagePanel = ({
   onClose?: () => void;
 }) => {
   const { t } = useClientTranslation(['account_usage', 'account']);
+  const isFlow = useAccountFlow();
   const { userInfo } = useUserStore();
   const {
     isOpen: isOpenUsageRecharge,
@@ -227,7 +231,10 @@ const UsagePanel = ({
   );
 
   return (
-    <Flex {...accountPageRootStyles} flexDirection={'column'}>
+    <Flex
+      {...(isFlow ? accountPageFlowRootStyles : accountPageRootStyles)}
+      flexDirection={'column'}
+    >
       <Flex
         display={onClose ? 'flex' : ['none', 'flex']}
         h={'64px'}
@@ -257,7 +264,7 @@ const UsagePanel = ({
       <Box
         pt={[3, 6]}
         pb={[0, 6]}
-        {...accountContentScrollStyles}
+        {...(isFlow ? accountContentFlowStyles : accountContentScrollStyles)}
         overflowX={'hidden'}
         display={'flex'}
         flexDirection={'column'}

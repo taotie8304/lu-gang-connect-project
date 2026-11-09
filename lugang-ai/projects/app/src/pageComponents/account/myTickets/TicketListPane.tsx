@@ -13,6 +13,7 @@ import {
 } from '@fastgpt/global/support/ticket/constants';
 import type { TicketItemSchemaType } from '@fastgpt/global/openapi/support/ticket/api';
 import { formatTicketTime, ticketStatusColorMap } from '@/web/support/ticket/utils';
+import { useAccountFlow } from '../AccountFlowContext';
 
 export const TicketStatusFilterAll = 'all';
 
@@ -30,6 +31,7 @@ const TicketListPane = ({
   onOpenDetail: (ticket: TicketItemSchemaType) => void;
 }) => {
   const { t } = useClientTranslation('ticket');
+  const isFlow = useAccountFlow();
 
   const filterList = [
     { label: t('ticket:filter_all'), value: TicketStatusFilterAll },
@@ -40,7 +42,7 @@ const TicketListPane = ({
   ];
 
   return (
-    <Flex flexDirection={'column'} h={'100%'}>
+    <Flex flexDirection={'column'} h={isFlow ? 'auto' : '100%'}>
       <FillRowTabs
         w={['100%', 'auto']}
         alignSelf={['stretch', 'flex-start']}
@@ -53,7 +55,13 @@ const TicketListPane = ({
         }
       />
 
-      <MyBox isLoading={loading} mt={4} flex={['0 0 auto', '1 0 0']} minH={0} overflowY={['visible', 'auto']}>
+      <MyBox
+        isLoading={loading}
+        mt={4}
+        flex={isFlow ? '0 0 auto' : ['0 0 auto', '1 0 0']}
+        minH={0}
+        overflowY={isFlow ? 'visible' : ['visible', 'auto']}
+      >
         {list.length === 0 && !loading ? (
           <EmptyTip text={t('ticket:empty_filtered')} />
         ) : (
@@ -70,7 +78,10 @@ const TicketListPane = ({
                   border={'1px solid'}
                   borderColor={'myGray.200'}
                   bg={'white'}
-                  _hover={{ borderColor: 'primary.300', boxShadow: '1px 1px 4px rgba(51,112,255,0.08)' }}
+                  _hover={{
+                    borderColor: 'primary.300',
+                    boxShadow: '1px 1px 4px rgba(51,112,255,0.08)'
+                  }}
                   onClick={() => onOpenDetail(item)}
                 >
                   <Box flex={1} minW={0}>
@@ -89,13 +100,7 @@ const TicketListPane = ({
                         {item.ticketNo}
                       </Box>
                     </Flex>
-                    <Box
-                      mt={2}
-                      fontSize={'sm'}
-                      fontWeight={500}
-                      color={'myGray.900'}
-                      noOfLines={1}
-                    >
+                    <Box mt={2} fontSize={'sm'} fontWeight={500} color={'myGray.900'} noOfLines={1}>
                       {item.title}
                     </Box>
                     <Flex mt={1.5} fontSize={'xs'} color={'myGray.500'} gap={3}>

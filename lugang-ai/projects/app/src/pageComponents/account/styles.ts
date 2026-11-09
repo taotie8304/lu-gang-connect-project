@@ -22,3 +22,17 @@ export const accountContentScrollStyles = {
   minH: 0,
   overflowY: ['visible', 'auto']
 } satisfies BoxProps;
+
+/** 鲁港通 - 账号中心为文档流外壳（高度由内容撑开），面板在此场景不使用定高内滚动。 */
+export const accountPageFlowRootStyles = {
+  h: 'auto',
+  minH: 0
+} satisfies BoxProps;
+
+/** 鲁港通 - 文档流外壳内的面板内容区：自然撑开，滚动交给整页。 */
+export const accountContentFlowStyles = {
+  flex: '0 0 auto',
+  h: 'auto',
+  minH: 0,
+  overflowY: 'visible'
+} satisfies BoxProps;

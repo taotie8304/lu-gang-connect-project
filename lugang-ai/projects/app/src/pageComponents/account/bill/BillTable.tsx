@@ -36,13 +36,20 @@ import { usePagination } from '@fastgpt/web/hooks/usePagination';
 import QRCodePayModal, { type QRPayProps } from '@/components/support/wallet/QRCodePayModal';
 import PopoverConfirm from '@fastgpt/web/components/common/MyPopover/PopoverConfirm';
 import BillDetailModal from './BillDetailModal';
-import { accountContentScrollStyles, accountPageRootStyles } from '@/pageComponents/account/styles';
+import {
+  accountContentFlowStyles,
+  accountContentScrollStyles,
+  accountPageFlowRootStyles,
+  accountPageRootStyles
+} from '@/pageComponents/account/styles';
+import { useAccountFlow } from '@/pageComponents/account/AccountFlowContext';
 import type { BillItemType } from '@fastgpt/global/openapi/support/wallet/bill/api';
 import { useSystem } from '@fastgpt/web/hooks/useSystem';
 
 const BillTable = () => {
   const { t } = useClientTranslation('account_bill');
   const { isPc } = useSystem();
+  const isFlow = useAccountFlow();
   const { toast } = useToast();
   const [billType, setBillType] = useState<BillTypeEnum | undefined>(undefined);
   const [billDetailId, setBillDetailId] = useState<string>();
@@ -186,9 +193,18 @@ const BillTable = () => {
     ) : null;
 
   return (
-    <MyBox {...accountPageRootStyles} isLoading={isLoading} display={'flex'} flexDir={'column'}>
+    <MyBox
+      {...(isFlow ? accountPageFlowRootStyles : accountPageRootStyles)}
+      isLoading={isLoading}
+      display={'flex'}
+      flexDir={'column'}
+    >
       {isPc ? (
-        <TableContainer ref={scrollContainerRef} {...accountContentScrollStyles} px={[2, 6]}>
+        <TableContainer
+          ref={scrollContainerRef}
+          {...(isFlow ? accountContentFlowStyles : accountContentScrollStyles)}
+          px={[2, 6]}
+        >
           <Table>
             <Thead>
               <Tr>
@@ -220,7 +236,9 @@ const BillTable = () => {
                   </Td>
                   <Td>{t('account_bill:yuan', { amount: formatStorePrice2Read(item.price) })}</Td>
                   <Td>{t(billStatusMap[item.status]?.label as any)}</Td>
-                  <Td display={'flex'} justifyContent={'end'}>{renderActions(item)}</Td>
+                  <Td display={'flex'} justifyContent={'end'}>
+                    {renderActions(item)}
+                  </Td>
                 </Tr>
               ))}
             </Tbody>

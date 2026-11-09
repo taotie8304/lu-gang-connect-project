@@ -14,6 +14,7 @@ import {
   ticketTypeMap
 } from '@fastgpt/global/support/ticket/constants';
 import { formatTicketTime, ticketStatusColorMap } from '@/web/support/ticket/utils';
+import { useAccountFlow } from '../AccountFlowContext';
 
 /** 工单详情：对话流 + 补充回复 + 关闭工单（打开即清未读，由服务端处理） */
 const TicketDetailPane = ({
@@ -28,6 +29,7 @@ const TicketDetailPane = ({
   onUpdated: () => void;
 }) => {
   const { t } = useClientTranslation('ticket');
+  const isFlow = useAccountFlow();
 
   const { data, loading, refresh } = useRequest(() => getTicketDetail(ticketId), {
     manual: false,
@@ -84,9 +86,15 @@ const TicketDetailPane = ({
   const statusColor = ticket ? ticketStatusColorMap[ticket.status] : undefined;
 
   return (
-    <Flex flexDirection={'column'} h={'100%'} minH={0}>
+    <Flex flexDirection={'column'} h={isFlow ? 'auto' : '100%'} minH={0}>
       {/* 头部：返回 + 单号 + 状态 + 关闭入口 */}
-      <Flex alignItems={'center'} gap={2} pb={3} borderBottom={'1px solid'} borderColor={'myGray.150'}>
+      <Flex
+        alignItems={'center'}
+        gap={2}
+        pb={3}
+        borderBottom={'1px solid'}
+        borderColor={'myGray.150'}
+      >
         <Flex
           cursor={'pointer'}
           alignItems={'center'}
@@ -127,7 +135,14 @@ const TicketDetailPane = ({
         )}
       </Flex>
 
-      <Flex mt={2} alignItems={'center'} gap={3} fontSize={'xs'} color={'myGray.500'} flexWrap={'wrap'}>
+      <Flex
+        mt={2}
+        alignItems={'center'}
+        gap={3}
+        fontSize={'xs'}
+        color={'myGray.500'}
+        flexWrap={'wrap'}
+      >
         {ticket && (
           <>
             <Box>
@@ -142,7 +157,13 @@ const TicketDetailPane = ({
       </Flex>
 
       {/* 对话流 */}
-      <MyBox isLoading={loading} flex={['0 0 auto', '1 0 0']} minH={0} overflowY={['visible', 'auto']} mt={3}>
+      <MyBox
+        isLoading={loading}
+        flex={isFlow ? '0 0 auto' : ['0 0 auto', '1 0 0']}
+        minH={0}
+        overflowY={isFlow ? 'visible' : ['visible', 'auto']}
+        mt={3}
+      >
         <Flex flexDirection={'column'} gap={4} pb={4} pr={[0, 2]}>
           {messages.map((message, index) => {
             const isMine = message.role === TicketRoleEnum.user;

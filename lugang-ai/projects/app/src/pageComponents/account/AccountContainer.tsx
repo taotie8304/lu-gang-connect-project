@@ -10,6 +10,7 @@ import { clearToken } from '@/web/support/user/auth';
 import { performLogout } from '@/web/support/user/logout';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
 import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
+import { AccountFlowContext } from './AccountFlowContext';
 
 export enum TabEnum {
   'info' = 'info',
@@ -269,15 +270,17 @@ const AccountContainer = ({
               </Flex>
             </Flex>
 
-            <Box mt={['14px', '20px']}>
-              {isLoading ? (
-                <Flex align={'center'} justify={'center'} py={16}>
-                  <Spinner size={'lg'} color={'#3370FF'} />
-                </Flex>
-              ) : (
-                children
-              )}
-            </Box>
+            <AccountFlowContext.Provider value={true}>
+              <Box mt={['14px', '20px']}>
+                {isLoading ? (
+                  <Flex align={'center'} justify={'center'} py={16}>
+                    <Spinner size={'lg'} color={'#3370FF'} />
+                  </Flex>
+                ) : (
+                  children
+                )}
+              </Box>
+            </AccountFlowContext.Provider>
 
             <Flex alignItems={'center'} gap={'6px'} mt={['16px', '18px']}>
               <Box

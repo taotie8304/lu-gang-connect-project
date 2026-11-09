@@ -46,9 +46,11 @@ import MySelect from '@fastgpt/web/components/common/MySelect';
 import TagDisplayList, { type ApiKeyDisplayTag } from './TagDisplayList';
 import {
   accountContentScrollStyles,
+  accountPageFlowRootStyles,
   accountPageRootStyles,
   accountTitleTextStyles
 } from '@/pageComponents/account/styles';
+import { useAccountFlow } from '@/pageComponents/account/AccountFlowContext';
 import TagMultiSelect from './TagMultiSelect';
 import TagManageModal from './TagManageModal';
 import { useDebounce } from 'ahooks';
@@ -192,6 +194,7 @@ const ApiKeyTable = ({ mode = 'account', appId }: ApiKeyTableProps) => {
   const { copyData } = useCopyData();
   const { feConfigs } = useSystemStore();
   const isPublishMode = mode === 'publish';
+  const isFlow = useAccountFlow();
   const hasUsagePlan = !!feConfigs?.isPlus;
   const baseUrl =
     feConfigs?.customApiDomain || (typeof location !== 'undefined' ? `${location.origin}/api` : '');
@@ -456,7 +459,7 @@ const ApiKeyTable = ({ mode = 'account', appId }: ApiKeyTableProps) => {
       isLoading={isGetting}
       display={'flex'}
       flexDirection={'column'}
-      h={isPublishMode ? '100%' : accountPageRootStyles.h}
+      h={isPublishMode ? '100%' : isFlow ? accountPageFlowRootStyles.h : accountPageRootStyles.h}
       minH={0}
       position={'relative'}
       p={isPublishMode ? 6 : 0}
@@ -636,10 +639,12 @@ const ApiKeyTable = ({ mode = 'account', appId }: ApiKeyTableProps) => {
         px={isPublishMode ? 0 : [4, 6]}
         pb={isPublishMode ? 0 : 6}
         position={'relative'}
-        flex={isPublishMode ? '1 0 0' : accountContentScrollStyles.flex}
-        h={isPublishMode ? 0 : accountContentScrollStyles.h}
+        flex={isPublishMode ? '1 0 0' : isFlow ? '0 0 auto' : accountContentScrollStyles.flex}
+        h={isPublishMode ? 0 : isFlow ? 'auto' : accountContentScrollStyles.h}
         minH={0}
-        overflowY={isPublishMode ? 'auto' : accountContentScrollStyles.overflowY}
+        overflowY={
+          isPublishMode ? 'auto' : isFlow ? 'visible' : accountContentScrollStyles.overflowY
+        }
       >
         <Table sx={{ tableLayout: 'fixed' }}>
           <Thead>
