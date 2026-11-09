@@ -132,9 +132,10 @@ const Layout = ({ children }: { children: JSX.Element }) => {
   const syncDefaultLanguage =
     router.pathname === '/chat/share' ? setShareDefaultLng : setUserDefaultLng;
 
+  // 鲁港通 - 只在路由切换时重同步默认语言；回调已稳定，语言变化本身不再触发反向切换。
   useEffect(() => {
     void syncDefaultLanguage();
-  }, [syncDefaultLanguage]);
+  }, [syncDefaultLanguage, router.asPath]);
 
   // Check model invalid
   useDebounceEffect(

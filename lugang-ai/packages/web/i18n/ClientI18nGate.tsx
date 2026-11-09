@@ -1,5 +1,5 @@
 import { useTranslation } from 'next-i18next';
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import ClientI18nErrorFallback from './ClientI18nErrorFallback';
 import {
   getClientLanguagePreference,
@@ -9,6 +9,7 @@ import {
 } from './utils';
 import { changeLanguageAtomically } from './atomicLanguageChange';
 import { I18N_NAMESPACES } from './constants';
+import { resolveClientI18nGateReady } from './clientI18nGateState';
 
 type ClientI18nGateProps = {
   defaultLanguage: string;
@@ -24,51 +25,71 @@ const ClientI18nGate = ({
   children
 }: ClientI18nGateProps) => {
   const { i18n } = useTranslation();
-  const language = getLangMapping(getClientLanguagePreference(storageKey) || defaultLanguage);
-  const requiredLanguages = useMemo(() => getRequiredI18nLanguages(language), [language]);
-  const ready =
-    i18n.language === language &&
-    requiredLanguages.every((requiredLanguage) =>
-      I18N_NAMESPACES.every((namespace) => i18n.hasResourceBundle(requiredLanguage, namespace))
-    );
-  const [, setLoadedLanguage] = useState<string>();
+  // 鲁港通 - 目标语言只在挂载时解析一次：用户切换期间存储晚于 i18n.language 提交，
+  // 若每次渲染都重新读存储，会把刚切走的语言再反向切回来，形成乒乓卡死。
+  const initialLanguage = useMemo(
+    () => getLangMapping(getClientLanguagePreference(storageKey) || defaultLanguage),
+    [storageKey, defaultLanguage]
+  );
+  const [settledLanguage, setSettledLanguage] = useState<string>();
+  const settled = settledLanguage !== undefined;
+
+  const hasCompleteBundle = useCallback(
+    (language: string) =>
+      getRequiredI18nLanguages(getLangMapping(language)).every((requiredLanguage) =>
+        I18N_NAMESPACES.every((namespace) => i18n.hasResourceBundle(requiredLanguage, namespace))
+      ),
+    [i18n]
+  );
+
+  const ready = resolveClientI18nGateReady({
+    i18nLanguage: i18n.language || '',
+    initialLanguage,
+    settled,
+    hasCompleteBundle
+  });
+
   const [loadError, setLoadError] = useState<{ language: string; error: unknown }>();
 
   useEffect(() => {
+    if (settled) return;
+
     let active = true;
 
     if (ready) {
       // SSR 已经提供完整资源时无需再次切换，但仍要把首次访问语言提交到权威存储。
       Promise.resolve()
-        .then(() => persistLanguagePreference(language, storageKey))
+        .then(() => persistLanguagePreference(initialLanguage, storageKey))
+        .then(() => {
+          if (active) setSettledLanguage(initialLanguage);
+        })
         .catch((error) => {
-          if (active) setLoadError({ language, error });
+          if (active) setLoadError({ language: initialLanguage, error });
         });
-      return;
+      return () => {
+        active = false;
+      };
     }
 
     changeLanguageAtomically({
       i18n,
-      language,
+      language: initialLanguage,
       storageKey
     })
       .then(() => {
-        if (!active) return;
-        // changeLanguage 通常会触发重渲染；额外记录完成语言以兼容未派发事件的实现。
-        setLoadedLanguage(language);
+        if (active) setSettledLanguage(initialLanguage);
       })
       .catch((error) => {
-        if (!active) return;
-        setLoadError({ language, error });
+        if (active) setLoadError({ language: initialLanguage, error });
       });
 
     return () => {
       active = false;
     };
-  }, [i18n, language, ready, requiredLanguages, storageKey]);
+  }, [i18n, initialLanguage, ready, settled, storageKey]);
 
-  if (loadError?.language === language) {
-    return <ClientI18nErrorFallback language={language} error={loadError.error} />;
+  if (loadError?.language === initialLanguage) {
+    return <ClientI18nErrorFallback language={initialLanguage} error={loadError.error} />;
   }
   if (ready) return children;
   return fallback;

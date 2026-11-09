@@ -6,7 +6,10 @@ import {
   SHARE_LANG_KEY
 } from '../i18n/utils';
 import { useTranslation } from 'next-i18next';
-import { changeLanguageAtomically } from '../i18n/atomicLanguageChange';
+import {
+  changeLanguageAtomically,
+  hasPendingLanguageChange
+} from '../i18n/atomicLanguageChange';
 import { useCallback } from 'react';
 
 type ChangeLngOptions = {
@@ -50,6 +53,8 @@ export const useI18nLng = () => {
 
   const setUserDefaultLng = useCallback(() => {
     if (typeof navigator === 'undefined') return;
+    // 鲁港通 - 用户切换进行中时存储尚未提交，此时读存储会把语言反向拉回，必须避让。
+    if (hasPendingLanguageChange()) return;
 
     const preferredLanguage = getLangMapping(
       getClientLanguagePreference(LANG_KEY) || navigator.language
@@ -59,13 +64,14 @@ export const useI18nLng = () => {
     if (getLangMapping(i18n?.language || '') === preferredLanguage) return;
 
     return onChangeLng(preferredLanguage);
-  }, [i18n?.language, onChangeLng]);
+  }, [i18n, onChangeLng]);
 
   /**
    * 分享页使用独立语言 Cookie；首次没有分享页偏好时，继承 NEXT_LOCALE 作为初始值。
    */
   const setShareDefaultLng = useCallback(() => {
     if (typeof navigator === 'undefined') return;
+    if (hasPendingLanguageChange()) return;
 
     const preferredLanguage = getLangMapping(
       getClientLanguagePreference(SHARE_LANG_KEY, LANG_KEY) || navigator.language
@@ -75,7 +81,7 @@ export const useI18nLng = () => {
     return onChangeLng(preferredLanguage, {
       storageKey: SHARE_LANG_KEY
     });
-  }, [i18n?.language, onChangeLng]);
+  }, [i18n, onChangeLng]);
 
   return {
     onChangeLng,

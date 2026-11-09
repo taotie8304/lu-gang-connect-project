@@ -50,8 +50,12 @@ export type AtomicLanguageChangeOptions = {
 };
 
 let languageChangeQueue = Promise.resolve();
+let pendingLanguageChanges = 0;
 const LANGUAGE_BUNDLE_NAMESPACES = I18N_NAMESPACES as I18nNsType;
 const LANGUAGE_CHANGE_TIMEOUT = 24000;
+
+/** 鲁港通 - 是否仍有语言切换在排队或执行，供自动恢复逻辑避让切换窗口。 */
+export const hasPendingLanguageChange = () => pendingLanguageChanges > 0;
 
 type StaleGuard = { isStale: () => boolean };
 
@@ -207,10 +211,15 @@ const runWithWatchdog = (options: AtomicLanguageChangeOptions) => {
  * 以串行队列执行语言切换：资源、i18next 当前语言和权威存储要么一起成功，要么恢复旧状态。
  */
 export const changeLanguageAtomically = (options: AtomicLanguageChangeOptions) => {
+  pendingLanguageChanges += 1;
+  const settle = () => {
+    pendingLanguageChanges -= 1;
+  };
   const next = languageChangeQueue.then(() => runWithWatchdog(options));
   languageChangeQueue = next.then(
     () => undefined,
     () => undefined
   );
+  next.then(settle, settle);
   return next;
 };

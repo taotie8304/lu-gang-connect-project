@@ -6,7 +6,10 @@ const { loadLanguageBundleWithRetry } = vi.hoisted(() => ({
 
 vi.mock('@fastgpt/web/i18n/resourceLoaders', () => ({ loadLanguageBundleWithRetry }));
 
-import { changeLanguageAtomically } from '@fastgpt/web/i18n/atomicLanguageChange';
+import {
+  changeLanguageAtomically,
+  hasPendingLanguageChange
+} from '@fastgpt/web/i18n/atomicLanguageChange';
 import { LangEnum } from '@fastgpt/global/common/i18n/type';
 import { I18N_NAMESPACES } from '@fastgpt/web/i18n/constants';
 
@@ -198,5 +201,51 @@ describe('changeLanguageAtomically', () => {
 
     expect(i18n.language).toBe(LangEnum.zh_Hant);
     expect(localStorage.getItem('queued-language')).toBe(LangEnum.zh_Hant);
+  });
+
+  it('pending 标记在排队期间为真，全部完成后归零', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    loadLanguageBundleWithRetry.mockImplementation(async (language: string) => {
+      await gate;
+      return createLanguageBundle(language);
+    });
+    const i18n = createI18n();
+
+    const first = changeLanguageAtomically({
+      i18n,
+      language: LangEnum.zh_CN,
+      storageKey: 'pending-language'
+    });
+    const second = changeLanguageAtomically({
+      i18n,
+      language: LangEnum.zh_Hant,
+      storageKey: 'pending-language'
+    });
+
+    expect(hasPendingLanguageChange()).toBe(true);
+
+    release();
+    await Promise.all([first, second]);
+
+    expect(hasPendingLanguageChange()).toBe(false);
+    expect(i18n.language).toBe(LangEnum.zh_Hant);
+  });
+
+  it('pending 标记在切换失败后同样归零', async () => {
+    loadLanguageBundleWithRetry.mockRejectedValue(new Error('chunk unavailable'));
+    const i18n = createI18n();
+
+    await expect(
+      changeLanguageAtomically({
+        i18n,
+        language: LangEnum.zh_CN,
+        storageKey: 'pending-failed-language'
+      })
+    ).rejects.toThrow('chunk unavailable');
+
+    expect(hasPendingLanguageChange()).toBe(false);
   });
 });
