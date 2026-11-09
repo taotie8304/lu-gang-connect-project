@@ -74,24 +74,6 @@ export const HOME_CSS = `
     width: 32px; height: 32px; display: block;
     border-radius: 8px; box-shadow: 0 3px 10px rgba(78, 128, 178, 0.26);
   }
-  .h5-brand-face {
-    position: relative; display: block; width: 40px; height: 40px; flex: none;
-    border-radius: 50%; overflow: hidden; background: #fff;
-    box-shadow: 0 0 0 1px rgba(30, 29, 26, 0.08), 0 6px 14px rgba(30, 123, 255, 0.18);
-  }
-  .h5-brand-face img {
-    position: absolute; left: -25%; top: -25%; width: 150%; height: 150%;
-    user-select: none; -webkit-user-drag: none;
-  }
-  .h5-brand-eyes { position: absolute; inset: 0; transform-origin: 50% 48%; animation: h5-brand-blink 5.5s infinite; }
-  .h5-brand-eye {
-    position: absolute; width: 13%; height: 17%; border-radius: 50%; background: #fff;
-    transform: translate(-50%, -50%);
-    box-shadow: inset -1px -1px 0 rgba(170, 224, 250, 0.45), inset 0 0 0 0.6px rgba(36, 148, 208, 0.9);
-  }
-  .h5-brand-eye.left { left: 32.4%; top: 46.5%; }
-  .h5-brand-eye.right { left: 68.3%; top: 46.4%; }
-  @keyframes h5-brand-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
   .h5-brand-name { font-size: 17px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); }
   .h5-brand-name small { display: block; font-size: 8.5px; font-weight: 400; letter-spacing: 0.26em; color: var(--faint); margin-top: 1px; }
   .h5-links { display: flex; align-items: center; gap: 19px; margin-left: 6px; }

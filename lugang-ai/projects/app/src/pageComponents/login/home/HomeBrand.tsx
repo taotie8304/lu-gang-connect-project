@@ -1,17 +1,11 @@
-// 鲁港通 - 首页品牌标识：导航用史莱姆小头像（保留眨眼），页脚沿用思考小圆脸
+// 鲁港通 - 首页品牌标识：导航与页脚统一使用企业 icon（思考小圆脸）；蓝色史莱姆动漫形象仅用于品牌插画位
 import React from 'react';
 import ThinkingFace from '@/components/common/ThinkingFace';
 import { HOME_ANCHORS, HOME_BRAND_NAME } from './homeData';
 
 export const HomeNavBrand = ({ sub, ariaLabel }: { sub: string; ariaLabel: string }) => (
   <a className="h5-brand" href={`#${HOME_ANCHORS.top}`} aria-label={ariaLabel}>
-    <span className="h5-brand-face" aria-hidden="true">
-      <img src="/imgs/home-mascot-base.webp" alt="" draggable={false} />
-      <span className="h5-brand-eyes">
-        <i className="h5-brand-eye left" />
-        <i className="h5-brand-eye right" />
-      </span>
-    </span>
+    <ThinkingFace size={32} />
     <span className="h5-brand-name">
       {HOME_BRAND_NAME}
       <small>{sub}</small>

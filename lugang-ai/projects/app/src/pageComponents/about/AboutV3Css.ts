@@ -59,7 +59,7 @@ export const ABOUT_V3_CSS = `
 }
 .lg-a3 .brand { display: flex; align-items: center; gap: 11px; }
 .lg-a3 .brand svg { width: 32px; height: 32px; border-radius: 9px; box-shadow: 0 8px 22px rgba(30, 123, 255, .28); flex: none; }
-.lg-a3 .brand b { font-family: var(--serif); font-size: 18px; letter-spacing: .16em; font-weight: 600; }
+.lg-a3 .brand b { font-family: var(--sans); font-size: 18px; letter-spacing: .16em; font-weight: 600; }
 .lg-a3 .brand small { display: block; font-family: var(--sans); font-size: 9px; letter-spacing: .26em; color: var(--muted); margin-top: 1px; }
 .lg-a3 .nav-right { display: flex; align-items: center; gap: clamp(14px, 2vw, 26px); }
 .lg-a3 .links { display: flex; align-items: center; gap: clamp(16px, 2.4vw, 32px); font-size: 13px; color: var(--ink-2); }
