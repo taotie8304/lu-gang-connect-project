@@ -110,6 +110,44 @@ export const grantUserPlan = async ({
   );
 };
 
+/**
+ * 管理员调整 Credits：正数增加（累计获得与余额同步递增），负数扣减（只动余额，条件更新保证不超扣）。
+ * 扣减失败即余额不足，返回可操作提示；账户未初始化时先按免费档建户再调整。
+ */
+export const adjustUserPointsByAdmin = async ({
+  teamId,
+  tmbId,
+  delta
+}: {
+  teamId: string;
+  tmbId: string;
+  /** 调整量：正数增加、负数扣减（非零整数） */
+  delta: number;
+}) => {
+  if (!Number.isInteger(delta) || delta === 0) {
+    throw new Error('Credits 调整数量必须为非零整数');
+  }
+
+  await getOrInitUserPoints({ teamId, tmbId });
+
+  if (delta > 0) {
+    await MongoUserPoints.updateOne(
+      { tmbId },
+      { $inc: { totalPoints: delta, surplusPoints: delta } }
+    );
+    return;
+  }
+
+  const deduct = -delta;
+  const updated = await MongoUserPoints.updateOne(
+    { tmbId, surplusPoints: { $gte: deduct } },
+    { $inc: { surplusPoints: -deduct } }
+  );
+  if (updated.modifiedCount !== 1) {
+    throw new Error('扣减数量不能超过用户当前 Credits 余额，请调整后重试');
+  }
+};
+
 /** 对话按次扣费（允许透支为负，下次发起对话前由门槛拦截） */
 export const deductUserPoints = async ({
   tmbId,

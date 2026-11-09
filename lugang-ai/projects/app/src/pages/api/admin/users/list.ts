@@ -13,6 +13,7 @@ import { authCert } from '@fastgpt/service/support/permission/auth/common';
 import { MongoUser } from '@fastgpt/service/support/user/schema';
 import { MongoTeamMember } from '@fastgpt/service/support/user/team/teamMemberSchema';
 import { MongoTeam } from '@fastgpt/service/support/user/team/teamSchema';
+import { MongoUserPoints } from '@fastgpt/service/support/wallet/points/schema';
 
 export type AdminUsersListQuery = {
   page?: string;
@@ -20,7 +21,7 @@ export type AdminUsersListQuery = {
   search?: string;
 };
 
-export type AdminUsersListBody = {};
+export type AdminUsersListBody = Record<string, never>;
 
 export interface AdminUserItem {
   _id: string;
@@ -31,6 +32,8 @@ export interface AdminUserItem {
   lastLoginTmbId?: string;
   teamName?: string;
   memberName?: string;
+  /** 当前 Credits 余额；root 账号不展示（null） */
+  creditsSurplus?: number | null;
 }
 
 export type AdminUsersListResponse = {
@@ -85,11 +88,21 @@ async function handler(
     .select('_id name')
     .lean();
 
+  // 鲁港通 - 用户列表展示当前 Credits 余额（按团队成员账户读取，未初始化按 0 展示）
+  const pointsList = await MongoUserPoints.find({
+    tmbId: { $in: teamMembers.map((tm) => tm._id) }
+  })
+    .select('tmbId surplusPoints')
+    .lean();
+  const pointsMap = new Map(pointsList.map((p) => [p.tmbId.toString(), p.surplusPoints]));
+
   const teamMap = new Map(teams.map((t) => [t._id.toString(), t.name]));
+  const memberById = new Map(teamMembers.map((tm) => [tm._id.toString(), tm]));
   const memberMap = new Map(
     teamMembers.map((tm) => [
       tm.userId.toString(),
       {
+        tmbId: tm._id.toString(),
         teamName: teamMap.get(tm.teamId.toString()),
         memberName: tm.name,
         avatar: tm.avatar
@@ -99,6 +112,9 @@ async function handler(
 
   // 组装返回数据
   const list: AdminUserItem[] = users.map((user) => {
+    const member =
+      (user.lastLoginTmbId ? memberById.get(user.lastLoginTmbId.toString()) : undefined) ??
+      undefined;
     const memberInfo = memberMap.get(user._id.toString());
     return {
       _id: user._id.toString(),
@@ -109,7 +125,11 @@ async function handler(
       createTime: new Date(user.createTime),
       lastLoginTmbId: user.lastLoginTmbId?.toString(),
       teamName: memberInfo?.teamName,
-      memberName: memberInfo?.memberName
+      memberName: memberInfo?.memberName,
+      creditsSurplus:
+        user.username === 'root'
+          ? null
+          : pointsMap.get(member?._id.toString() ?? memberInfo?.tmbId ?? '') ?? 0
     };
   });
 

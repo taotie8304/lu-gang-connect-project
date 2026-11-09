@@ -161,7 +161,7 @@ const AdminUsersPage = () => {
     if (isAdmin) {
       fetchUsers(1, '');
     }
-  }, [userInfo]);
+  }, [userInfo, isAdmin, fetchUsers]);
 
   // 打开删除确认框
   const handleDeleteClick = useCallback(
@@ -252,6 +252,7 @@ const AdminUsersPage = () => {
               <Th>{t('common:admin_user.col_user')}</Th>
               <Th>{t('common:admin_user.col_username')}</Th>
               <Th>{t('common:admin_user.col_team')}</Th>
+              <Th>{t('common:admin_user.col_credits')}</Th>
               <Th>{t('common:admin_user.status')}</Th>
               <Th>{t('common:admin_user.create_time')}</Th>
               <Th>{t('common:admin_user.col_actions')}</Th>
@@ -273,6 +274,11 @@ const AdminUsersPage = () => {
                 </Td>
                 <Td color="myGray.600">{user.username}</Td>
                 <Td color="myGray.600">{user.teamName || '-'}</Td>
+                <Td fontWeight="medium">
+                  {user.creditsSurplus == null
+                    ? '—'
+                    : user.creditsSurplus.toLocaleString('zh-CN')}
+                </Td>
                 <Td>
                   <Badge
                     colorScheme={user.status === 'active' ? 'green' : 'red'}

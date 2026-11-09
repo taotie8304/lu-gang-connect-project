@@ -33,6 +33,28 @@ export const adminAuditLogMap = {
       requestId?: string;
     }
   },
+  [AdminAuditEventEnum.ADMIN_ADJUST_USER_POINTS]: {
+    content: i18nT('account_team:log_admin_adjust_user_points'),
+    typeLabel: i18nT('account_team:admin_adjust_user_points'),
+    params: {} as {
+      name?: string;
+      userName: string;
+      /** 调整量：正数增加、负数扣减 */
+      delta: number;
+      reason: string;
+    }
+  },
+  [AdminAuditEventEnum.ADMIN_ISSUE_USER_VOUCHER]: {
+    content: i18nT('account_team:log_admin_issue_user_voucher'),
+    typeLabel: i18nT('account_team:admin_issue_user_voucher'),
+    params: {} as {
+      name?: string;
+      userName: string;
+      /** 面额（元） */
+      amountYuan: number;
+      note?: string;
+    }
+  },
   [AdminAuditEventEnum.ADMIN_UPDATE_TEAM]: {
     content: i18nT('account_team:log_admin_update_team'),
     typeLabel: i18nT('account_team:admin_update_team'),
