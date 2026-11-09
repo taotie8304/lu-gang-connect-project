@@ -34,10 +34,14 @@ export const useChatLanguageSwitch = (mode: ChatLanguageSelectorMode) => {
   const onChangeLanguage = useCallback(
     async (lng: localeType, onSelected?: () => void) => {
       try {
+        // 偏好同步设上限且不阻断切换：网络慢时不能拖住页面刷新
         if (mode === 'account' && username) {
-          await updateUserInfo({
-            language: lng
-          });
+          await Promise.race([
+            updateUserInfo({ language: lng }).catch((error) => {
+              console.error('同步语言偏好失败', error);
+            }),
+            new Promise<void>((resolve) => setTimeout(resolve, 3000))
+          ]);
         }
 
         await onChangeLng(lng, {

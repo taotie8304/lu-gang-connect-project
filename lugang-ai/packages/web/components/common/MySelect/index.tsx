@@ -337,6 +337,7 @@ const MySelect = <T = any,>(
                       {
                         <Box
                           noOfLines={1}
+                          whiteSpace={'nowrap'}
                           {...(!selectItem
                             ? {
                                 color: 'myGray.500'

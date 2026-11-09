@@ -15,7 +15,7 @@ import { errorLogger } from '@/web/common/utils/errorLogger';
 import { appClientEnv } from '@/web/common/system/env';
 import ClientI18nBoundary from '@fastgpt/web/i18n/ClientI18nBoundary';
 import ClientI18nGate from '@fastgpt/web/i18n/ClientI18nGate';
-import { LANG_KEY } from '@fastgpt/web/i18n/utils';
+import { LANG_KEY, getLangMapping } from '@fastgpt/web/i18n/utils';
 import DesktopTitleBar from '@/components/Layout/DesktopTitleBar';
 
 type NextPageWithLayout = NextPage & {
@@ -34,7 +34,7 @@ const routesWithoutLayout = openAPIReferenceRoutes;
 /** 渲染依赖 common 翻译资源的 Head、应用初始化、Layout 和页面内容。 */
 const AppContent = ({ Component, pageProps, renderPage }: AppPropsWithLayout) => {
   const { feConfigs, scripts, title } = useInitApp();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   useEffect(() => {
     document.addEventListener(
@@ -46,6 +46,13 @@ const AppContent = ({ Component, pageProps, renderPage }: AppPropsWithLayout) =>
     );
     errorLogger.init();
   }, []);
+
+  // 鲁港通 - 将当前语言暴露到 html[lang]/data-lang，供按语言区分的排版样式使用
+  useEffect(() => {
+    const language = getLangMapping(i18n.language);
+    document.documentElement.lang = language;
+    document.documentElement.dataset.lang = language;
+  }, [i18n.language]);
 
   const setLayout = Component.setLayout || ((page) => <>{page}</>);
   const router = useRouter();

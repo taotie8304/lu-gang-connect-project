@@ -11,6 +11,7 @@ const resourceStatus = new Map<string, ResourceStatus>();
 const resourceErrors = new Map<string, unknown>();
 const pendingLanguageBundles = new Map<localeType, Promise<LanguageBundle>>();
 const RESOURCE_RETRY_DELAYS = [300, 1000, 3000] as const;
+const RESOURCE_LOAD_TIMEOUT = 5000;
 const LANGUAGE_BUNDLE_NAMESPACES = I18N_NAMESPACES as I18nNsType;
 
 const getResourceKey = (language: localeType, namespace: I18nNsType[number]) =>
@@ -45,6 +46,25 @@ const waitForRetry = (delay: number) =>
     setTimeout(resolve, delay);
   });
 
+// 鲁港通 - 弱网下动态 import 可能长期挂起，超时转成可重试的失败，避免语言切换无限等待
+const withLoadTimeout = <T>(loading: Promise<T>, label: string) =>
+  new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`加载语言资源超时（${label}），请检查网络后重试`));
+    }, RESOURCE_LOAD_TIMEOUT);
+
+    loading.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+
 /** 动态加载单个语言 namespace，并记录资源状态供客户端门禁和错误态读取。 */
 export const loadLocaleResource = async (language: localeType, namespace: I18nNsType[number]) => {
   const loader = generatedLoaders[language]?.[namespace];
@@ -57,7 +77,7 @@ export const loadLocaleResource = async (language: localeType, namespace: I18nNs
       throw new Error(`Simulated i18n resource load failure: ${language}/${namespace}`);
     }
 
-    const resource = (await loader()).default;
+    const resource = (await withLoadTimeout(loader(), key)).default;
     resourceStatus.set(key, 'loaded');
     resourceErrors.delete(key);
     return resource;
@@ -88,7 +108,9 @@ export const loadLanguageBundle = async (language: localeType) => {
       }
       return Promise.all(
         LANGUAGE_BUNDLE_NAMESPACES.map(async (namespace) => {
-          const resource = (await loaders[namespace]()).default;
+          const resource = (
+            await withLoadTimeout(loaders[namespace](), getResourceKey(language, namespace))
+          ).default;
           return [namespace, resource] as const;
         })
       ).then((resources) => Object.fromEntries(resources) as LanguageBundle);

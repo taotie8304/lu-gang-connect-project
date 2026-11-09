@@ -67,39 +67,61 @@ export const HOME_CSS = `
   }
   .h5-nav-in {
     max-width: 1200px; margin: 0 auto; padding: 0 32px;
-    height: 66px; display: flex; align-items: center; gap: 26px;
+    height: 72px; display: flex; align-items: center; gap: 16px;
   }
   .h5-brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .h5-brand svg {
     width: 32px; height: 32px; display: block;
     border-radius: 8px; box-shadow: 0 3px 10px rgba(78, 128, 178, 0.26);
   }
-  .h5-brand-name { font-size: 16px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); }
+  .h5-brand-face {
+    position: relative; display: block; width: 40px; height: 40px; flex: none;
+    border-radius: 50%; overflow: hidden; background: #fff;
+    box-shadow: 0 0 0 1px rgba(30, 29, 26, 0.08), 0 6px 14px rgba(30, 123, 255, 0.18);
+  }
+  .h5-brand-face img {
+    position: absolute; left: -25%; top: -25%; width: 150%; height: 150%;
+    user-select: none; -webkit-user-drag: none;
+  }
+  .h5-brand-eyes { position: absolute; inset: 0; transform-origin: 50% 48%; animation: h5-brand-blink 5.5s infinite; }
+  .h5-brand-eye {
+    position: absolute; width: 13%; height: 17%; border-radius: 50%; background: #fff;
+    transform: translate(-50%, -50%);
+    box-shadow: inset -1px -1px 0 rgba(170, 224, 250, 0.45), inset 0 0 0 0.6px rgba(36, 148, 208, 0.9);
+  }
+  .h5-brand-eye.left { left: 32.4%; top: 46.5%; }
+  .h5-brand-eye.right { left: 68.3%; top: 46.4%; }
+  @keyframes h5-brand-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.08); } }
+  .h5-brand-name { font-size: 17px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); }
   .h5-brand-name small { display: block; font-size: 8.5px; font-weight: 400; letter-spacing: 0.26em; color: var(--faint); margin-top: 1px; }
-  .h5-links { display: flex; align-items: center; gap: 26px; margin-left: 12px; }
+  .h5-links { display: flex; align-items: center; gap: 19px; margin-left: 6px; }
   .h5-link {
-    position: relative; font-size: 13.5px; color: var(--muted);
-    padding: 6px 2px; letter-spacing: 0.03em; transition: color 0.2s ease;
+    position: relative; display: inline-flex; align-items: center; height: 40px;
+    font-size: 15px; color: var(--ink-2);
+    padding: 0 2px; letter-spacing: 0.02em; transition: color 0.2s ease;
   }
   .h5-link::after {
-    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+    content: ''; position: absolute; left: 0; right: 0; bottom: 9px; height: 1px;
     background: var(--ink); transform: scaleX(0); transform-origin: left;
     transition: transform 0.25s ease;
   }
   .h5-link:hover { color: var(--ink); }
   .h5-link:hover::after { transform: scaleX(1); }
-  .h5-nav-right { margin-left: auto; display: flex; align-items: center; gap: 20px; }
-  .h5-nav-lang { width: 124px; flex-shrink: 0; }
+  .h5-nav-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .h5-nav-lang { width: auto; min-width: 148px; flex-shrink: 0; display: flex; align-items: center; }
   .h5-nav-lang button {
-    height: 34px; padding: 0 10px; border-radius: 999px;
+    width: auto; min-width: 148px; height: 40px; padding: 0 14px; border-radius: 999px;
     background: transparent; border-color: var(--line-2);
-    font-size: 12px; color: var(--muted); box-shadow: none;
+    font-size: 13.5px; color: var(--ink-2); white-space: nowrap; box-shadow: none;
   }
   .h5-nav-lang button:hover { background: rgba(30, 29, 26, 0.04); border-color: var(--line-2); }
-  .h5-nav-lang img, .h5-nav-lang svg { width: 14px; height: 14px; }
-  .h5-nav-dl { font-size: 13.5px; color: var(--muted); transition: color 0.2s ease; }
+  .h5-nav-lang img, .h5-nav-lang svg { width: 16px; height: 16px; }
+  .h5-nav-dl, .h5-nav-login {
+    display: inline-flex; align-items: center; height: 40px;
+    font-size: 15px; color: var(--ink-2); transition: color 0.2s ease;
+  }
   .h5-nav-dl:hover { color: var(--ink); }
-  .h5-nav-login { font-size: 13.5px; color: var(--ink); }
+  .h5-nav .h5-btn { height: 40px; padding: 0 21px; font-size: 14px; }
   .h5-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     height: 42px; padding: 0 22px; border-radius: 999px;
@@ -887,4 +909,27 @@ export const HOME_CSS = `
     .h5-reveal { opacity: 1; transform: none; }
     .h5-work-stage { transform: none !important; }
   }
+
+  /* 鲁港通 - 英文排版：方正无衬线字体栈 + 导航字距按英文重排 */
+  html[data-lang="en"] .lg-home {
+    --serif: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    --sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  html[data-lang="en"] .lg-home .h5-brand-name { letter-spacing: .02em; }
+  html[data-lang="en"] .lg-home .h5-link,
+  html[data-lang="en"] .lg-home .h5-nav-dl,
+  html[data-lang="en"] .lg-home .h5-nav-login,
+  html[data-lang="en"] .lg-home .h5-nav-lang button { letter-spacing: 0; }
+
+  /* 鲁港通 - 韩文排版：Malgun Gothic + keep-all，避免韩文词内断行 */
+  html[data-lang="ko-KR"] .lg-home {
+    --serif: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Microsoft YaHei", sans-serif;
+    --sans: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Microsoft YaHei", sans-serif;
+  }
+  html[data-lang="ko-KR"] .lg-home .h5-brand-name { letter-spacing: .04em; }
+  html[data-lang="ko-KR"] .lg-home .h5-link,
+  html[data-lang="ko-KR"] .lg-home .h5-nav-dl,
+  html[data-lang="ko-KR"] .lg-home .h5-nav-login,
+  html[data-lang="ko-KR"] .lg-home .h5-nav-lang button { letter-spacing: -.01em; }
+  html[data-lang="ko-KR"] .lg-home :is(p, li, summary, h1, h2, h3) { word-break: keep-all; }
 `;

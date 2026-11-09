@@ -174,11 +174,12 @@ export const ABOUT_V3_CSS = `
 }
 .lg-a3 .statement .dim { color: rgba(30,29,26,.34); }
 .lg-a3 .statement-sub { margin-top: 34px; max-width: 640px; font-size: 15px; line-height: 2; color: var(--muted); }
-.lg-a3 .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; margin-top: 64px; }
+.lg-a3 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 64px; }
 .lg-a3 .stat { border-top: 1px solid var(--line); padding-top: 22px; }
-.lg-a3 .stat b { display: block; font-family: var(--serif); font-size: clamp(32px, 3.6vw, 48px); font-weight: 600; letter-spacing: -.01em; }
-.lg-a3 .stat b small { font-size: 14px; font-family: var(--sans); color: var(--muted); margin-left: 6px; letter-spacing: .06em; }
-.lg-a3 .stat span { display: block; margin-top: 8px; font-size: 12.5px; color: var(--muted); letter-spacing: .04em; }
+.lg-a3 .stat b { display: flex; align-items: baseline; flex-wrap: wrap; font-family: var(--serif); font-size: clamp(32px, 3.6vw, 48px); font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.lg-a3 .stat b > span { display: inline; margin-top: 0; font-size: inherit; font-family: inherit; color: inherit; letter-spacing: inherit; }
+.lg-a3 .stat b small { align-self: baseline; font-size: 14px; font-family: var(--sans); color: var(--muted); margin-left: 6px; letter-spacing: .06em; }
+.lg-a3 .stat > span { display: block; margin-top: 8px; font-size: 12.5px; line-height: 1.65; color: var(--muted); letter-spacing: .04em; }
 
 .lg-a3 .capabilities { padding: clamp(80px, 10vw, 140px) 0; background: var(--paper-2); }
 .lg-a3 .capabilities h2, .lg-a3 .twocities h2 {
@@ -434,4 +435,57 @@ export const ABOUT_V3_CSS = `
   .lg-a3 *, .lg-a3 *::before, .lg-a3 *::after { animation: none !important; transition: none !important; }
   .lg-a3 .reveal { opacity: 1; transform: none; }
 }
+
+/* 鲁港通 - 英文排版：方正无衬线 + 英文正文重排 */
+html[data-lang="en"] .lg-a3 {
+  --serif: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+}
+html[data-lang="en"] .lg-a3 .brand b { font-size: 17px; letter-spacing: .02em; }
+html[data-lang="en"] .lg-a3 .brand small { letter-spacing: .18em; }
+html[data-lang="en"] .lg-a3 .links { font-size: 14px; letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .links .cta { font-size: 13px; letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .eyebrow { letter-spacing: .2em; }
+html[data-lang="en"] .lg-a3 .hero h1 { font-size: clamp(40px, 5.4vw, 74px); line-height: 1.06; letter-spacing: -.025em; }
+html[data-lang="en"] .lg-a3 .hero .lede { max-width: 640px; font-size: 17px; line-height: 1.75; letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .hero-meta { font-size: 12px; letter-spacing: .01em; }
+html[data-lang="en"] .lg-a3 .btn { letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .section-no { letter-spacing: .14em; }
+html[data-lang="en"] .lg-a3 .statement { max-width: 960px; font-size: clamp(32px, 4.2vw, 56px); line-height: 1.14; letter-spacing: -.02em; }
+html[data-lang="en"] .lg-a3 .statement-sub { max-width: 680px; font-size: 16px; line-height: 1.78; letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 h2 { line-height: 1.12; letter-spacing: -.02em; }
+html[data-lang="en"] .lg-a3 .stat b { font-size: clamp(34px, 3.4vw, 46px); letter-spacing: -.02em; }
+html[data-lang="en"] .lg-a3 .stat b small { letter-spacing: .02em; }
+html[data-lang="en"] .lg-a3 .stat > span { font-size: 13px; line-height: 1.6; letter-spacing: .01em; }
+html[data-lang="en"] .lg-a3 .cap h3,
+html[data-lang="en"] .lg-a3 .rcard h3,
+html[data-lang="en"] .lg-a3 .doc h4 { letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .cap p,
+html[data-lang="en"] .lg-a3 .rcard p { letter-spacing: 0; line-height: 1.75; }
+html[data-lang="en"] .lg-a3 .proof blockquote { line-height: 1.55; letter-spacing: 0; }
+html[data-lang="en"] .lg-a3 .route-labels { letter-spacing: .02em; }
+html[data-lang="en"] .lg-a3 .lang button { letter-spacing: 0; }
+
+/* 鲁港通 - 韩文排版：Malgun Gothic + keep-all 防断词 */
+html[data-lang="ko-KR"] .lg-a3 {
+  --serif: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Microsoft YaHei", sans-serif;
+  --sans: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Microsoft YaHei", sans-serif;
+}
+html[data-lang="ko-KR"] .lg-a3 .brand b { font-size: 17px; letter-spacing: .01em; }
+html[data-lang="ko-KR"] .lg-a3 .links { font-size: 13.5px; letter-spacing: 0; }
+html[data-lang="ko-KR"] .lg-a3 .btn { letter-spacing: 0; }
+html[data-lang="ko-KR"] .lg-a3 .section-no { letter-spacing: .1em; }
+html[data-lang="ko-KR"] .lg-a3 .hero h1 { font-size: clamp(38px, 5vw, 68px); line-height: 1.28; letter-spacing: -.02em; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .hero .lede { max-width: 620px; font-size: 16.5px; line-height: 1.95; letter-spacing: 0; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .statement { max-width: 900px; font-size: clamp(30px, 4vw, 52px); line-height: 1.42; letter-spacing: -.01em; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .statement-sub { font-size: 15.5px; line-height: 1.95; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 h2 { line-height: 1.32; letter-spacing: -.01em; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .stat b small { letter-spacing: 0; }
+html[data-lang="ko-KR"] .lg-a3 .stat > span { font-size: 13px; line-height: 1.7; letter-spacing: 0; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .proof blockquote { line-height: 1.8; letter-spacing: 0; word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .cap p,
+html[data-lang="ko-KR"] .lg-a3 .rcard p,
+html[data-lang="ko-KR"] .lg-a3 .trust-row,
+html[data-lang="ko-KR"] .lg-a3 .contact p { word-break: keep-all; }
+html[data-lang="ko-KR"] .lg-a3 .lang button { letter-spacing: 0; }
 `;

@@ -51,6 +51,9 @@ export type AtomicLanguageChangeOptions = {
 
 let languageChangeQueue = Promise.resolve();
 const LANGUAGE_BUNDLE_NAMESPACES = I18N_NAMESPACES as I18nNsType;
+const LANGUAGE_CHANGE_TIMEOUT = 24000;
+
+type StaleGuard = { isStale: () => boolean };
 
 const preloadResources = async (languages: localeType[], i18n: I18nLike) => {
   const languagesToLoad = languages.filter(
@@ -119,11 +122,10 @@ const restorePreference = (snapshot: LanguagePreferenceSnapshot) => {
   }
 };
 
-const runAtomicLanguageChange = async ({
-  i18n,
-  language: rawLanguage,
-  storageKey
-}: AtomicLanguageChangeOptions) => {
+const runAtomicLanguageChange = async (
+  { i18n, language: rawLanguage, storageKey }: AtomicLanguageChangeOptions,
+  guard: StaleGuard
+) => {
   const language = getLangMapping(rawLanguage);
   const previousLanguage = getLangMapping(i18n.language || language);
   const requiredLanguages = getRequiredI18nLanguages(language);
@@ -150,11 +152,15 @@ const runAtomicLanguageChange = async ({
   try {
     // Prepare：先直接加载完整语言链，避免把 changeLanguage 的 resolve 当作成功信号。
     stagedResources = await preloadResources(requiredLanguages, i18n);
+    if (guard.isStale()) return;
+
     addResources(i18n, stagedResources);
+    if (guard.isStale()) return;
 
     i18n.on('failedLoading', onFailedLoading);
     await i18n.changeLanguage(language);
     i18n.off('failedLoading', onFailedLoading);
+    if (guard.isStale()) return;
 
     // Commit 前同时检查实际语言、资源完整性和 failedLoading 事件。
     if (
@@ -169,18 +175,39 @@ const runAtomicLanguageChange = async ({
     persistLanguagePreference(language, storageKey, storageKind);
   } catch (error) {
     i18n.off('failedLoading', onFailedLoading);
-    await restoreLanguage(i18n, previousLanguage);
-    removeNewResources(i18n, stagedResources);
-    restorePreference(storageSnapshot);
+    // 看门狗判定超时后，队列可能已开始新的切换，此时回滚会覆盖更新的状态
+    if (!guard.isStale()) {
+      await restoreLanguage(i18n, previousLanguage);
+      removeNewResources(i18n, stagedResources);
+      restorePreference(storageSnapshot);
+    }
     throw error;
   }
+};
+
+/** 整次切换设置硬上限：超时后标记过期并让队列继续，避免一次挂起卡死后续所有切换。 */
+const runWithWatchdog = (options: AtomicLanguageChangeOptions) => {
+  let stale = false;
+  const guard: StaleGuard = { isStale: () => stale };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      stale = true;
+      reject(new Error('语言切换超时，请刷新页面后重试'));
+    }, LANGUAGE_CHANGE_TIMEOUT);
+  });
+
+  return Promise.race([runAtomicLanguageChange(options, guard), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 };
 
 /**
  * 以串行队列执行语言切换：资源、i18next 当前语言和权威存储要么一起成功，要么恢复旧状态。
  */
 export const changeLanguageAtomically = (options: AtomicLanguageChangeOptions) => {
-  const next = languageChangeQueue.then(() => runAtomicLanguageChange(options));
+  const next = languageChangeQueue.then(() => runWithWatchdog(options));
   languageChangeQueue = next.then(
     () => undefined,
     () => undefined

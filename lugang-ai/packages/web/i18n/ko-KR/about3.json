@@ -14,7 +14,7 @@
       "eyebrow": "루강통 소개 · ABOUT",
       "titleLead": "산과 바다 사이,",
       "titleAccent": "더 가까운 길이 있습니다.",
-      "ledeLead": "취안청에서 빅토리아 하버까지, 공식 원문에서 처리 창구까지. 루강통은 두 지역 사이에서 가장 오래 걸리는 그 길을",
+      "ledeLead": "지난에서 빅토리아 하버까지, 공식 원문에서 처리 창구까지. 루강통은 두 지역 사이에서 가장 오래 걸리는 그 길을",
       "ledeStrong": "언제든 묻고 끝까지 함께 처리하는",
       "ledeTail": " AI 어시스턴트로 만듭니다.",
       "ctaTalk": "첫 대화 시작하기",
@@ -37,7 +37,7 @@
         },
         {
           "count": 1200,
-          "suffix": "+",
+          "suffix": "여",
           "unit": "개 정책 항목",
           "desc": "정부 웹사이트에서 지속 수집·정제·갱신"
         },
@@ -74,7 +74,7 @@
       "policy": {
         "head": "HONG KONG · IMMIGRATION",
         "tag": "공식 원문",
-        "docTitle": "고급 인재 패스 프로그램 연장 절차",
+        "docTitle": "톱 탤런트 패스 제도 연장 절차",
         "source": "출처 · 홍콩 입경사무처",
         "updated": "2026년 9월 업데이트"
       },
@@ -83,7 +83,7 @@
         "fields": [
           { "label": "이름 NAME", "value": "ZHANG WEI" },
           { "label": "증명서 번호 ID NO.", "value": "A123456(7)" },
-          { "label": "신청 유형 TYPE", "value": "인재 패스 · 연장" }
+          { "label": "신청 유형 TYPE", "value": "톱 탤런트 패스 · 연장" }
         ],
         "submit": "다음 · NEXT"
       },
