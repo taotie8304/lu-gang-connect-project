@@ -1,12 +1,12 @@
 {
   "api_key": "API 密钥",
-  "bills_and_invoices": "账单与发票",
+  "bills_and_invoices": "订单与发票",
   "custom_domain": "自定义域名",
   "confirm_logout": "确认退出登录?",
-  "language": "语言与时区",
-  "logout": "登出",
+  "language": "语言",
+  "logout": "退出登录",
   "my_tickets": "我的工单",
-  "memories": "我的记忆",
+  "memories": "智能体记忆",
   "memory_add_button": "添加记忆",
   "memory_added": "记忆已添加",
   "memory_auto_extract_switch": "自动记住",
@@ -45,7 +45,7 @@
   "personal_information": "个人信息",
   "team": "团队管理",
   "third_party": "第三方账号",
-  "usage_records": "使用记录",
+  "usage_records": "用量明细",
   "app_registration_count": "应用备案数",
   "audit_log_store_duration": "审计日志时长",
   "bill_detail": "账单详情",
@@ -76,5 +76,8 @@
   "yes": "是",
   "no": "否",
   "yuan": "{{amount}}元",
-  "bill.not_need_invoice": "余额支付，无法开票"
+  "bill.not_need_invoice": "余额支付，无法开票",
+  "account_center": "账号中心",
+  "back_to_chat": "返回对话",
+  "service_running": "服务运行正常"
 }

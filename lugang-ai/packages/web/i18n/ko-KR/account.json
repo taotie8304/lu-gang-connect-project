@@ -76,5 +76,8 @@
   "yes": "예",
   "no": "아니오",
   "yuan": "¥{{amount}}",
-  "bill.not_need_invoice": "잔액 결제이므로 세금계산서를 발행할 수 없습니다"
+  "bill.not_need_invoice": "잔액 결제이므로 세금계산서를 발행할 수 없습니다",
+  "account_center": "계정 센터",
+  "back_to_chat": "대화로 돌아가기",
+  "service_running": "서비스 정상 운영 중"
 }

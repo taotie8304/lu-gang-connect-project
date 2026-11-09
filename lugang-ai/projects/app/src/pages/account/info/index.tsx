@@ -1,116 +1,95 @@
 'use client';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  Box,
-  Flex,
-  Button,
-  useDisclosure,
-  useTheme,
-  Input,
-  Link,
-  Grid,
-  type BoxProps
-} from '@chakra-ui/react';
-import { useForm } from 'react-hook-form';
-import { type UserUpdateParams } from '@/types/user';
-import { useToast } from '@fastgpt/web/hooks/useToast';
-import { useUserStore } from '@/web/support/user/useUserStore';
-import type { UserType } from '@fastgpt/global/support/user/type';
+import { Box, Flex, Text, useDisclosure } from '@chakra-ui/react';
 import dynamic from 'next/dynamic';
-import { useSystemStore } from '@/web/common/system/useSystemStore';
+import { useRouter } from 'next/router';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
+import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import Avatar from '@fastgpt/web/components/common/Avatar';
 import MyIcon from '@fastgpt/web/components/common/Icon';
-import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
-import { formatStorePrice2Read } from '@fastgpt/global/support/wallet/usage/tools';
-import { putUpdateMemberName } from '@/web/support/user/team/api';
+import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { getDocPath } from '@/web/common/system/doc';
+import { getIsMemberSyncMode } from '@/web/common/system/utils';
+import { getUserPointsDetail } from '@/web/support/wallet/points/api';
+import { getWorkorderURL } from '@/web/common/workorder/api';
+import { getAccountCancellationStatus } from '@/web/support/user/account/cancellation/api';
+import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
+import { i18nT } from '@fastgpt/global/common/i18n/utils';
 import {
   StandardSubLevelEnum,
   standardSubLevelMap
 } from '@fastgpt/global/support/wallet/sub/constants';
-import { formatTime2YMD } from '@fastgpt/global/common/string/time';
-import { getExtraPlanCardRoute } from '@/web/support/wallet/sub/constants';
-import StandardPlanContentList from '@/components/support/wallet/StandardPlanContentList';
-import QuestionTip from '@fastgpt/web/components/common/MyTooltip/QuestionTip';
-import { useSystem } from '@fastgpt/web/hooks/useSystem';
-import { getWebReqUrl } from '@fastgpt/web/common/system/utils';
+import { formatNumber } from '@fastgpt/global/common/math/tools';
+import { DEFAULT_USER_AVATAR } from '@fastgpt/global/common/system/constants';
+import type { UserPointsDetailType } from '@fastgpt/global/support/wallet/points/type';
 import AccountContainer from '@/pageComponents/account/AccountContainer';
-import { useRouter } from 'next/router';
-import TeamSelector from '@/pageComponents/account/TeamSelector';
 import UserPointsCard from '@/pageComponents/account/info/UserPointsCard';
 import DailyCheckinCard from '@/pageComponents/account/info/DailyCheckinCard';
-import { getWorkorderURL } from '@/web/common/workorder/api';
-import { useRequest } from '@fastgpt/web/hooks/useRequest';
-import MyDivider from '@fastgpt/web/components/common/MyDivider';
-import { useUploadAvatar } from '@fastgpt/web/common/file/hooks/useUploadAvatar';
-import { getUploadAvatarPresignedUrl } from '@/web/common/file/api';
-import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
-import { i18nT } from '@fastgpt/global/common/i18n/utils';
-import { getIsMemberSyncMode } from '@/web/common/system/utils';
-import { accountPageRootStyles, accountTitleTextStyles } from '@/pageComponents/account/styles';
-import { getAccountCancellationStatus } from '@/web/support/user/account/cancellation/api';
+import EditProfileModal from '@/pageComponents/account/info/EditProfileModal';
 import { AccountCancellationConfirmModal } from '@/pageComponents/account/cancel/AccountCancellationConfirmModal';
 
-const RedeemCouponModal = dynamic(() => import('@/pageComponents/account/info/RedeemCouponModal'), {
-  ssr: false
-});
-const DiscountCouponsModal = dynamic(
-  () => import('@/pageComponents/account/info/DiscountCouponsModal'),
-  { ssr: false }
-);
 const StandDetailModal = dynamic(
   () => import('@/pageComponents/account/info/standardDetailModal'),
-  { ssr: false }
+  {
+    ssr: false
+  }
 );
-const ConversionModal = dynamic(() => import('@/pageComponents/account/info/ConversionModal'));
-const UpdatePswModal = dynamic(() => import('@/pageComponents/account/info/UpdatePswModal'));
-const UpdateContact = dynamic(() => import('@/components/support/user/inform/UpdateContactModal'));
-const CommunityModal = dynamic(() => import('@/components/CommunityModal'));
-const EnterpriseAuthStatusRowHeight = '32px';
+const UpdatePswModal = dynamic(() => import('@/pageComponents/account/info/UpdatePswModal'), {
+  ssr: false
+});
+const CommunityModal = dynamic(() => import('@/components/CommunityModal'), { ssr: false });
 const EnterpriseAuthStatusRow = dynamic(
   () => import('@/pageComponents/account/team/EnterpriseAuth'),
   {
     ssr: false,
-    loading: () => <Box mt={4} h={EnterpriseAuthStatusRowHeight} />
+    loading: () => <Box mt={4} h={'32px'} />
   }
 );
 
+// 鲁港通 - 账号中心卡片统一样式
+const cardStyles = {
+  bg: '#fff',
+  border: '1px solid',
+  borderColor: '#E7EEF9',
+  borderRadius: ['16px', '18px'],
+  boxShadow: '0 10px 30px rgba(36,80,181,.06)',
+  px: ['16px', '24px'],
+  py: ['17px', '22px']
+};
+
+const badgeStyles = {
+  fontSize: '11px',
+  px: '9px',
+  py: '4px',
+  borderRadius: '999px',
+  lineHeight: 1
+} as const;
+
 const Info = () => {
-  const { isPc } = useSystem();
-  const { teamPlanStatus } = useUserStore();
-  const standardPlan = teamPlanStatus?.standard;
+  const { data: pointsDetail, runAsync: refreshPoints } = useRequest(getUserPointsDetail, {
+    manual: false
+  });
   const { isOpen: isOpenContact, onClose: onCloseContact, onOpen: onOpenContact } = useDisclosure();
 
   return (
     <AccountContainer>
-      <Box {...accountPageRootStyles} overflowY={['visible', 'auto']} py={[3, 6]} px={[5, 6]}>
-        {isPc ? (
-          <Flex w={'100%'} alignItems={'flex-start'}>
-            <Box flex={'0 0 330px'}>
-              <MyInfo onOpenContact={onOpenContact} />
-              <Box>
-                <Other onOpenContact={onOpenContact} />
-              </Box>
-            </Box>
-            <Box ml={'45px'} flex={'1 0 0'} minW={0}>
-              <Box maxW={'805px'}>
-                <UserPointsCard />
-                <DailyCheckinCard />
-                {!!standardPlan && <PlanUsage />}
-              </Box>
-            </Box>
-          </Flex>
-        ) : (
-          <>
-            <MyInfo onOpenContact={onOpenContact} />
-            <UserPointsCard />
-            <DailyCheckinCard />
-            {standardPlan && <PlanUsage />}
-            <Other onOpenContact={onOpenContact} />
-          </>
-        )}
-      </Box>
+      <Flex direction={['column', 'row']} gap={['14px', '22px']} alignItems={'flex-start'}>
+        <Box w={['100%', '306px']} flexShrink={0}>
+          <ProfileCard pointsDetail={pointsDetail} />
+        </Box>
+        <Flex flex={'1 1 auto'} minW={0} w={'100%'} direction={'column'} gap={['12px', '18px']}>
+          <UserPointsCard pointsDetail={pointsDetail} />
+          <DailyCheckinCard
+            onCheckedIn={() => {
+              refreshPoints().catch(() => undefined);
+            }}
+          />
+          <PlanUsage pointsDetail={pointsDetail} />
+          <QuickActions onOpenContact={onOpenContact} />
+        </Flex>
+      </Flex>
       {isOpenContact && <CommunityModal onClose={onCloseContact} />}
     </AccountContainer>
   );
@@ -118,67 +97,56 @@ const Info = () => {
 
 export default React.memo(Info);
 
-const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
-  const theme = useTheme();
-  const { feConfigs, initd } = useSystemStore();
-  const { t } = useClientTranslation('account_info');
-  const { userInfo, updateUserInfo, teamPlanStatus, initUserInfo } = useUserStore();
-  const { reset } = useForm<UserUpdateParams>({
-    defaultValues: {
-      avatar: userInfo?.avatar ?? undefined,
-      timezone: userInfo?.timezone
-    }
-  });
-  const standardPlan = teamPlanStatus?.standard;
-  const { isPc } = useSystem();
-  const { toast } = useToast();
-  const [autoOpenEnterpriseAuth, setAutoOpenEnterpriseAuth] = useState(false);
-  const showEnterpriseAuth = feConfigs?.show_enterprise_auth;
+const FactRow = ({ label, value, warn }: { label: string; value: string; warn?: boolean }) => (
+  <Flex align={'flex-start'} justify={'space-between'} gap={'12px'}>
+    <Text flexShrink={0} fontSize={'12.5px'} color={'#8C99AE'}>
+      {label}
+    </Text>
+    <Text
+      fontSize={'13px'}
+      fontWeight={500}
+      color={warn ? '#D4553F' : '#3C4A63'}
+      textAlign={'right'}
+      wordBreak={'break-all'}
+    >
+      {value}
+    </Text>
+  </Flex>
+);
 
+const ProfileCard = ({ pointsDetail }: { pointsDetail?: UserPointsDetailType }) => {
+  const { t } = useClientTranslation('account_info');
+  const { feConfigs, initd, subPlans } = useSystemStore();
+  const { userInfo } = useUserStore();
   const {
-    isOpen: isOpenConversionModal,
-    onClose: onCloseConversionModal,
-    onOpen: onOpenConversionModal
+    isOpen: isOpenEditProfile,
+    onOpen: onOpenEditProfile,
+    onClose: onCloseEditProfile
   } = useDisclosure();
   const {
     isOpen: isOpenUpdatePsw,
-    onClose: onCloseUpdatePsw,
-    onOpen: onOpenUpdatePsw
+    onOpen: onOpenUpdatePsw,
+    onClose: onCloseUpdatePsw
   } = useDisclosure();
-  const {
-    isOpen: isOpenUpdateContact,
-    onClose: onCloseUpdateContact,
-    onOpen: onOpenUpdateContact
-  } = useDisclosure();
+  const [autoOpenEnterpriseAuth, setAutoOpenEnterpriseAuth] = useState(false);
+  const showEnterpriseAuth = feConfigs?.show_enterprise_auth;
+  const isSyncMember = getIsMemberSyncMode(feConfigs);
 
-  const onClickSave = useCallback(
-    async (data: UserType) => {
-      await updateUserInfo({
-        avatar: data.avatar ?? undefined,
-        timezone: data.timezone
-      });
-      reset({
-        avatar: data.avatar ?? undefined,
-        timezone: data.timezone
-      });
-      toast({
-        title: t('account_info:update_success_tip'),
-        status: 'success'
-      });
-    },
-    [reset, t, toast, updateUserInfo]
-  );
+  const hasCustomAvatar = !!userInfo?.avatar && userInfo.avatar !== DEFAULT_USER_AVATAR;
+  const displayName = userInfo?.team?.memberName || userInfo?.username || '';
+  const avatarLetter = (displayName || 'U').charAt(0).toUpperCase();
 
-  const afterUploadAvatar = useCallback(
-    (avatar: string) => {
-      if (!userInfo) return;
-      onClickSave({ ...userInfo, avatar });
-    },
-    [onClickSave, userInfo]
-  );
+  const planName = useMemo(() => {
+    const level = pointsDetail?.currentSubLevel;
+    if (!level) return '';
+    if (userInfo?.team?.isWecomTeam && level === StandardSubLevelEnum.free) {
+      return i18nT('common:support.wallet.subscription.standardSubLevel.trial');
+    }
+    return subPlans?.standard?.[level]?.name || standardSubLevelMap[level]?.label || '';
+  }, [pointsDetail?.currentSubLevel, subPlans, userInfo?.team?.isWecomTeam]);
 
   /**
-   * 清除 URL 中的 #certification hash，避免刷新页面或重新进入时重复触发企业认证弹窗
+   * 鲁港通 - 清除 URL 中的 #certification hash，避免刷新页面或重新进入时重复触发企业认证弹窗
    */
   const clearCertificationHash = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -186,7 +154,7 @@ const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
   }, []);
 
   /**
-   * 监听 URL hash 变化，当 hash 为 #certification 且系统初始化完成、开启企业认证功能时，
+   * 鲁港通 - 监听 URL hash 变化，当 hash 为 #certification 且系统初始化完成、开启企业认证功能时，
    * 延迟设置 autoOpenEnterpriseAuth 为 true，以触发企业认证弹窗。
    * 若未开启企业认证功能，则直接清除 hash。
    */
@@ -200,563 +168,459 @@ const MyInfo = ({ onOpenContact }: { onOpenContact: () => void }) => {
       return;
     }
 
-    // 使用 setTimeout 确保在 React 渲染周期后执行，避免状态更新冲突
     window.setTimeout(() => {
       setAutoOpenEnterpriseAuth(true);
     }, 0);
   }, [clearCertificationHash, initd, showEnterpriseAuth]);
 
   useEffect(() => {
-    // 组件挂载时检查一次 hash
     triggerEnterpriseAuthFromHash();
-    // 监听 hash 变化事件
     window.addEventListener('hashchange', triggerEnterpriseAuthFromHash);
 
     return () => {
       window.removeEventListener('hashchange', triggerEnterpriseAuthFromHash);
     };
   }, [triggerEnterpriseAuthFromHash]);
-  const { Component: AvatarUploader, handleFileSelectorOpen } = useUploadAvatar(
-    getUploadAvatarPresignedUrl,
-    {
-      onSuccess: afterUploadAvatar
-    }
-  );
 
-  const labelStyles: BoxProps = {
-    flex: '0 0 80px',
-    color: 'var(--light-general-on-surface-lowest, var(--Gray-Modern-500, #667085))',
-    fontFamily: '"PingFang SC"',
-    fontSize: '14px',
-    fontStyle: 'normal',
-    fontWeight: 400,
-    lineHeight: '20px',
-    letterSpacing: '0.25px'
-  };
-
-  const actionButtonStyles = {
-    size: 'sm',
-    minW: '52px'
-  } as const;
-
-  const isSyncMember = getIsMemberSyncMode(feConfigs);
   return (
-    <Box>
-      {/* user info */}
-      {isPc && (
-        <Flex as={'h2'} alignItems={'center'} h={'30px'} {...accountTitleTextStyles}>
-          {t('account_info:general_info')}
-        </Flex>
-      )}
+    <Box {...cardStyles} px={0} py={0} overflow={'hidden'}>
+      <Box
+        position={'relative'}
+        h={['66px', '82px']}
+        bg={'linear-gradient(135deg,#DCE9FF 0%,#EEF5FF 45%,#F9FBFF 100%)'}
+        overflow={'hidden'}
+      >
+        <Box
+          position={'absolute'}
+          right={'-18px'}
+          top={'-36px'}
+          w={'120px'}
+          h={'120px'}
+          borderRadius={'50%'}
+          bg={'rgba(94,143,255,.16)'}
+        />
+        <Box
+          position={'absolute'}
+          left={'38%'}
+          bottom={'-30px'}
+          w={'86px'}
+          h={'86px'}
+          borderRadius={'50%'}
+          bg={'rgba(120,200,255,.14)'}
+        />
+        <Box
+          position={'absolute'}
+          inset={0}
+          backgroundImage={'radial-gradient(rgba(51,112,255,.10) 1px, transparent 1px)'}
+          backgroundSize={'10px 10px'}
+          opacity={0.5}
+        />
+      </Box>
 
-      <Box mt={[0, 6]} fontSize={'sm'}>
-        <Flex alignItems={'center'}>
-          <Box {...labelStyles}>{t('account_info:user_account')}&nbsp;</Box>
-          <Box flex={1}>{userInfo?.username}</Box>
-        </Flex>
-        {feConfigs?.isPlus && (
-          <Flex mt={4} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:password')}&nbsp;</Box>
-            <Box flex={1}>*****</Box>
-            <Button {...actionButtonStyles} variant={'whitePrimary'} onClick={onOpenUpdatePsw}>
-              {t('account_info:change')}
-            </Button>
-          </Flex>
-        )}
-        {feConfigs?.isPlus && (
-          <Flex mt={4} alignItems={'center'}>
-            <Box {...labelStyles}>{t('common:contact_way')}&nbsp;</Box>
-            <Box flex={1} {...(!userInfo?.contact ? { color: 'red.600' } : {})}>
-              {userInfo?.contact ? userInfo?.contact : t('account_info:please_bind_contact')}
-            </Box>
-
-            <Button {...actionButtonStyles} variant={'whitePrimary'} onClick={onOpenUpdateContact}>
-              {t('account_info:change')}
-            </Button>
-          </Flex>
-        )}
-
-        <MyDivider my={6} />
-
-        {isPc && (
-          <Flex as={'h2'} alignItems={'center'} h={'30px'} {...accountTitleTextStyles}>
-            {t('account_info:team_info')}
-          </Flex>
-        )}
-
-        {feConfigs.isPlus && (
-          <Flex mt={6} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:user_team_team_name')}&nbsp;</Box>
-            <Flex flex={'1 0 0'} w={0} align={'center'}>
-              <TeamSelector height={'34px'} w={'100%'} showManage />
-            </Flex>
-          </Flex>
-        )}
-
-        <AvatarUploader />
-        {isPc ? (
-          <Flex mt={4} alignItems={'center'} cursor={'pointer'}>
-            <Box {...labelStyles}>{t('account_info:avatar')}&nbsp;</Box>
-
-            <MyTooltip label={t('account_info:select_avatar')}>
-              <Box
-                w={['22px', '32px']}
-                h={['22px', '32px']}
-                borderRadius={'50%'}
-                border={theme.borders.base}
-                overflow={'hidden'}
-                boxShadow={'0 0 5px rgba(0,0,0,0.1)'}
-                onClick={handleFileSelectorOpen}
+      <Box px={['16px', '20px']} pb={['16px', '20px']}>
+        <Box
+          position={'relative'}
+          w={['66px', '78px']}
+          h={['66px', '78px']}
+          mt={['-32px', '-38px']}
+        >
+          <Flex
+            as={'button'}
+            type={'button'}
+            w={'100%'}
+            h={'100%'}
+            flexShrink={0}
+            border={'4px solid #fff'}
+            borderRadius={['20px', '24px']}
+            overflow={'hidden'}
+            bg={'#fff'}
+            boxShadow={'0 10px 24px rgba(36,80,181,.16)'}
+            transition={'0.18s'}
+            _hover={{ transform: 'translateY(-1px)' }}
+            onClick={onOpenEditProfile}
+          >
+            {hasCustomAvatar ? (
+              <Avatar
+                src={userInfo?.avatar}
+                w={'100%'}
+                h={'100%'}
+                borderRadius={['16px', '20px']}
+              />
+            ) : (
+              <Flex
+                w={'100%'}
+                h={'100%'}
+                align={'center'}
+                justify={'center'}
+                borderRadius={['16px', '20px']}
+                bg={'linear-gradient(150deg,#9FC2FF,#5E8FFF 55%,#3370FF)'}
+                color={'#fff'}
+                fontSize={['25px', '30px']}
+                fontWeight={600}
               >
-                <Avatar src={userInfo?.avatar} borderRadius={'50%'} w={'100%'} h={'100%'} />
-              </Box>
-            </MyTooltip>
-          </Flex>
-        ) : (
-          <Flex mt={4} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:avatar')}&nbsp;</Box>
-            <Flex
-              flex={'1 0 0'}
-              w={0}
-              alignItems={'center'}
-              gap={2}
-              cursor={'pointer'}
-              onClick={handleFileSelectorOpen}
-            >
-              <MyTooltip label={t('account_info:choose_avatar')}>
-                <Box
-                  w={'40px'}
-                  h={'40px'}
-                  borderRadius={'50%'}
-                  border={'1px solid'}
-                  borderColor={'borderColor.base'}
-                  overflow={'hidden'}
-                  p={'2px'}
-                  bg={'white'}
-                >
-                  <Avatar src={userInfo?.avatar} borderRadius={'50%'} w={'100%'} h={'100%'} />
-                </Box>
-              </MyTooltip>
-
-              <Flex alignItems={'center'} fontSize={'sm'} color={'myGray.600'}>
-                <MyIcon mr={1} name={'edit'} w={'14px'} />
-                {t('account_info:change')}
+                {avatarLetter}
               </Flex>
-            </Flex>
+            )}
           </Flex>
-        )}
+          <Flex
+            position={'absolute'}
+            right={'-2px'}
+            bottom={'-2px'}
+            w={'24px'}
+            h={'24px'}
+            borderRadius={'50%'}
+            bg={'#fff'}
+            border={'1px solid #E7EEF9'}
+            boxShadow={'0 4px 10px rgba(36,80,181,.16)'}
+            align={'center'}
+            justify={'center'}
+            color={'#3370FF'}
+            pointerEvents={'none'}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.2l1-1.4A1.5 1.5 0 0 1 9.9 4h4.2c.47 0 .91.22 1.2.6l1 1.4h1.2A2.5 2.5 0 0 1 20 8.5v8A2.5 2.5 0 0 1 17.5 19h-11A2.5 2.5 0 0 1 4 16.5v-8Z"
+                stroke="currentColor"
+                strokeWidth="1.7"
+              />
+              <circle cx="12" cy="12.2" r="3.1" stroke="currentColor" strokeWidth="1.7" />
+            </svg>
+          </Flex>
+        </Box>
 
-        {feConfigs?.isPlus && (
-          <Flex mt={[4, 4]} alignItems={'center'}>
-            <Box {...labelStyles}>{t('account_info:member_name')}&nbsp;</Box>
-            <Input
-              flex={'1 0 0'}
-              disabled={isSyncMember}
-              defaultValue={userInfo?.team?.memberName || 'Member'}
-              title={t('account_info:click_modify_nickname')}
-              borderColor={'transparent'}
-              h={'36px'}
-              transform={['none', 'translateX(-11px)']}
-              maxLength={100}
-              onBlur={async (e) => {
-                const val = e.target.value;
-                if (val === userInfo?.team?.memberName) return;
-                try {
-                  await putUpdateMemberName(val);
-                  initUserInfo();
-                } catch {}
+        <Text
+          mt={'10px'}
+          fontSize={['17px', '19px']}
+          fontWeight={600}
+          lineHeight={'26px'}
+          color={'#182234'}
+          noOfLines={1}
+        >
+          {displayName}
+        </Text>
+        <Text mt={'2px'} fontSize={'12.5px'} color={'#8C99AE'} noOfLines={1}>
+          {userInfo?.contact || userInfo?.username}
+        </Text>
+
+        <Flex mt={'10px'} gap={'6px'} flexWrap={'wrap'}>
+          {!!planName && (
+            <Box {...badgeStyles} bg={'#E7EFFF'} color={'#2450B5'}>
+              {t(planName as any)}
+            </Box>
+          )}
+          <Box {...badgeStyles} bg={'#F1F4FA'} color={'#66758F'}>
+            Credits {pointsDetail ? formatNumber(pointsDetail.surplusPoints) : '-'}
+          </Box>
+        </Flex>
+
+        <Box
+          mt={'14px'}
+          pt={'14px'}
+          borderTop={'1px dashed #E7EEF9'}
+          display={'flex'}
+          flexDirection={'column'}
+          gap={'11px'}
+        >
+          <FactRow label={t('account_info:user_account')} value={userInfo?.username ?? '-'} />
+          <FactRow
+            label={t('account_info:member_name')}
+            value={userInfo?.team?.memberName || '-'}
+          />
+          <FactRow
+            label={t('common:contact_way')}
+            value={userInfo?.contact || t('account_info:contact_not_bound')}
+            warn={!userInfo?.contact}
+          />
+        </Box>
+
+        {showEnterpriseAuth && (
+          <Box mt={'10px'}>
+            <EnterpriseAuthStatusRow
+              labelStyles={{ color: '#8C99AE', fontSize: '12.5px', flex: '0 0 auto' }}
+              buttonProps={{ size: 'sm', minW: '52px' }}
+              autoOpen={autoOpenEnterpriseAuth}
+              onAutoOpenFinish={() => {
+                clearCertificationHash();
+                setAutoOpenEnterpriseAuth(false);
               }}
             />
-          </Flex>
-        )}
-        {feConfigs?.isPlus && (userInfo?.team?.balance ?? 0) > 0 && (
-          <Box mt={4} whiteSpace={'nowrap'}>
-            <Flex alignItems={'center'}>
-              <Box {...labelStyles}>{t('account_info:team_balance')}&nbsp;</Box>
-              <Box flex={1}>
-                <strong>{formatStorePrice2Read(userInfo?.team?.balance).toFixed(3)}</strong>{' '}
-                {t('account_info:yuan')}
-              </Box>
-
-              {userInfo?.permission.hasManagePer && !!standardPlan && (
-                <Button
-                  {...actionButtonStyles}
-                  variant={'primary'}
-                  ml={5}
-                  onClick={onOpenConversionModal}
-                >
-                  {t('account_info:exchange')}
-                </Button>
-              )}
-            </Flex>
           </Box>
         )}
 
-        {showEnterpriseAuth && (
-          <EnterpriseAuthStatusRow
-            labelStyles={labelStyles}
-            buttonProps={actionButtonStyles}
-            autoOpen={autoOpenEnterpriseAuth}
-            onAutoOpenFinish={() => {
-              clearCertificationHash();
-              setAutoOpenEnterpriseAuth(false);
-            }}
-          />
+        {isSyncMember && (
+          <Text mt={'10px'} fontSize={'11px'} color={'#8C99AE'} lineHeight={'16px'}>
+            {t('account_info:nickname_sync_tip')}
+          </Text>
         )}
 
-        <MyDivider my={6} />
+        <Box
+          mt={'16px'}
+          display={'grid'}
+          gridTemplateColumns={feConfigs?.isPlus ? 'repeat(2, minmax(0, 1fr))' : '1fr'}
+          gap={'8px'}
+        >
+          <Flex
+            as={'button'}
+            type={'button'}
+            align={'center'}
+            justify={'center'}
+            h={'34px'}
+            borderRadius={'10px'}
+            bg={'#E7EFFF'}
+            fontSize={'12.5px'}
+            fontWeight={500}
+            color={'#2450B5'}
+            transition={'0.18s'}
+            _hover={{ bg: '#DCE8FF' }}
+            onClick={onOpenEditProfile}
+          >
+            {t('account_info:edit_profile')}
+          </Flex>
+          {feConfigs?.isPlus && (
+            <Flex
+              as={'button'}
+              type={'button'}
+              align={'center'}
+              justify={'center'}
+              h={'34px'}
+              borderRadius={'10px'}
+              border={'1px solid'}
+              borderColor={'#E7EEF9'}
+              bg={'#fff'}
+              fontSize={'12.5px'}
+              color={'#66758F'}
+              transition={'0.18s'}
+              _hover={{ borderColor: '#CBDCFB', bg: '#F2F6FF', color: '#2450B5' }}
+              onClick={onOpenUpdatePsw}
+            >
+              {t('account_info:update_password')}
+            </Flex>
+          )}
+        </Box>
       </Box>
-      {isOpenConversionModal && (
-        <ConversionModal onClose={onCloseConversionModal} onOpenContact={onOpenContact} />
-      )}
+
+      {isOpenEditProfile && <EditProfileModal onClose={onCloseEditProfile} />}
       {isOpenUpdatePsw && <UpdatePswModal onClose={onCloseUpdatePsw} />}
-      {isOpenUpdateContact && <UpdateContact onClose={onCloseUpdateContact} mode="contact" />}
     </Box>
   );
 };
 
-const PlanUsage = () => {
+const PlanUsage = ({ pointsDetail }: { pointsDetail?: UserPointsDetailType }) => {
   const router = useRouter();
   const { t } = useClientTranslation('account_info');
-  const { userInfo, teamPlanStatus, initTeamPlanStatus } = useUserStore();
-  const { subPlans, feConfigs } = useSystemStore();
-
-  // Check if it's a wecom team
-  const isWecomTeam = !!userInfo?.team?.isWecomTeam;
+  const { subPlans } = useSystemStore();
+  const { userInfo } = useUserStore();
   const {
     isOpen: isOpenStandardModal,
     onClose: onCloseStandardModal,
     onOpen: onOpenStandardModal
   } = useDisclosure();
 
-  const {
-    isOpen: isOpenRedeemCouponModal,
-    onClose: onCloseRedeemCouponModal,
-    onOpen: onOpenRedeemCouponModal
-  } = useDisclosure();
-
-  const {
-    isOpen: isOpenDiscountCouponsModal,
-    onClose: onCloseDiscountCouponsModal,
-    onOpen: onOpenDiscountCouponsModal
-  } = useDisclosure();
-
+  const level = pointsDetail?.currentSubLevel;
   const planName = useMemo(() => {
-    if (!teamPlanStatus?.standard?.currentSubLevel) return '';
-    if (isWecomTeam && teamPlanStatus.standard.currentSubLevel === StandardSubLevelEnum.free)
+    if (!level) return '';
+    if (userInfo?.team?.isWecomTeam && level === StandardSubLevelEnum.free) {
       return i18nT('common:support.wallet.subscription.standardSubLevel.trial');
-
-    return (
-      subPlans?.standard?.[teamPlanStatus.standard.currentSubLevel]?.name ||
-      standardSubLevelMap[teamPlanStatus.standard.currentSubLevel].label
-    );
-  }, [teamPlanStatus?.standard?.currentSubLevel, isWecomTeam, subPlans]);
-  const standardPlan = teamPlanStatus?.standard;
-
-  const isFreeTeam = useMemo(() => {
-    if (!teamPlanStatus || !teamPlanStatus?.standard) return false;
-    const hasExtraDatasetSize =
-      teamPlanStatus.datasetMaxSize !== null &&
-      teamPlanStatus.datasetMaxSize > teamPlanStatus.standard.maxDatasetSize;
-    const hasExtraPoints =
-      teamPlanStatus.totalPoints !== null &&
-      teamPlanStatus.standard.totalPoints !== null &&
-      teamPlanStatus.totalPoints > teamPlanStatus.standard.totalPoints;
-    if (
-      teamPlanStatus?.standard?.currentSubLevel === StandardSubLevelEnum.free &&
-      !hasExtraDatasetSize &&
-      !hasExtraPoints
-    ) {
-      return true;
     }
-    return false;
-  }, [teamPlanStatus]);
+    return subPlans?.standard?.[level]?.name || standardSubLevelMap[level]?.label || '';
+  }, [level, subPlans, userInfo?.team?.isWecomTeam]);
 
-  const aiPointsUsageMap = useMemo(() => {
-    if (!teamPlanStatus) {
-      return {
-        total: t('account_info:unlimited'),
-        rate: 0
-      };
-    }
+  const totalPoints = pointsDetail?.totalPoints ?? 0;
+  const surplusPoints = pointsDetail?.surplusPoints ?? 0;
+  const usedPoints = Math.max(totalPoints - surplusPoints, 0);
+  const usedRate = totalPoints > 0 ? Math.min((usedPoints / totalPoints) * 100, 100) : 0;
 
-    const rate =
-      teamPlanStatus.totalPoints && teamPlanStatus.usedPoints !== null
-        ? (teamPlanStatus.usedPoints / teamPlanStatus.totalPoints) * 100
-        : 0;
+  const isFreeTeam = level === StandardSubLevelEnum.free;
 
-    return {
-      total: teamPlanStatus.totalPoints ?? t('account_info:unlimited'),
-      rate
-    };
-  }, [t, teamPlanStatus]);
+  if (!level) return null;
 
-  const limitData = useMemo(() => {
-    if (!teamPlanStatus) {
-      return [];
-    }
-
-    const data = [
-      {
-        label: t('account_info:member_amount'),
-        value: teamPlanStatus.usedMember,
-        max: teamPlanStatus?.standard?.maxTeamMember ?? t('account_info:unlimited'),
-        rate: (teamPlanStatus.usedMember / (teamPlanStatus?.standard?.maxTeamMember || 1)) * 100
-      },
-      {
-        label: t('account_info:app_amount'),
-        value: teamPlanStatus.usedAppAmount,
-        max: teamPlanStatus?.standard?.maxAppAmount ?? t('account_info:unlimited'),
-        rate: (teamPlanStatus.usedAppAmount / (teamPlanStatus?.standard?.maxAppAmount || 1)) * 100
-      },
-      {
-        label: t('account_info:dataset_amount'),
-        value: teamPlanStatus.usedDatasetSize,
-        max: teamPlanStatus?.standard?.maxDatasetAmount ?? t('account_info:unlimited'),
-        rate:
-          (teamPlanStatus.usedDatasetSize / (teamPlanStatus?.standard?.maxDatasetAmount || 1)) * 100
-      }
-    ];
-
-    if (teamPlanStatus?.standard?.appRegistrationCount) {
-      data.push({
-        label: t('account_info:app_registration_count'),
-        value: teamPlanStatus.usedRegistrationCount || 0,
-        max: teamPlanStatus.standard.appRegistrationCount,
-        rate:
-          ((teamPlanStatus.usedRegistrationCount || 0) /
-            teamPlanStatus.standard.appRegistrationCount) *
-          100
-      });
-    }
-
-    return data;
-  }, [t, teamPlanStatus]);
-
-  return standardPlan ? (
-    <Box mt={6}>
-      <Flex h={['auto', '30px']} flexDirection={['column', 'row']}>
-        <Flex as={'h2'} alignItems={'center'} {...accountTitleTextStyles}>
-          {t('account_info:package_and_usage')}
-        </Flex>
-        <Flex mt={[3, 0]} flexWrap={'wrap'} gap={[2, 0]}>
-          <Button ml={[0, 3]} variant={'whitePrimary'} size={'sm'} onClick={onOpenStandardModal}>
-            {t('account_info:package_details')}
-          </Button>
-          {userInfo?.permission.isOwner && feConfigs?.show_coupon && (
-            <Button
-              ml={[0, 3]}
-              variant={'whitePrimary'}
-              size={'sm'}
-              onClick={onOpenRedeemCouponModal}
-            >
-              {t('account_info:redeem_coupon')}
-            </Button>
-          )}
-          {userInfo?.permission.isOwner && feConfigs?.show_discount_coupon && (
-            <Button
-              ml={[0, 3]}
-              variant={'whitePrimary'}
-              size={'sm'}
-              onClick={onOpenDiscountCouponsModal}
-            >
-              {t('account_info:discount_coupon')}
-            </Button>
-          )}
-        </Flex>
-      </Flex>
-      <Box
-        mt={[3, 6]}
-        bg={'white'}
-        borderWidth={'1px'}
-        borderColor={'borderColor.low'}
-        borderRadius={'md'}
+  return (
+    <Box {...cardStyles}>
+      <Flex
+        align={['stretch', 'center']}
+        justify={'space-between'}
+        direction={['column', 'row']}
+        gap={['12px', '16px']}
       >
-        <Flex px={[5, 7]} pt={[3, 6]}>
-          <Box flex={'1 0 0'}>
-            <Box color={'myGray.600'} fontSize="sm">
-              {t('account_info:current_package')}
-            </Box>
-            <Box fontWeight={'bold'} fontSize="lg">
-              {t(planName as any)}
-            </Box>
-          </Box>
-          <Button
+        <Box>
+          <Text fontSize={'15.5px'} fontWeight={600} letterSpacing={'0.2px'} color={'#182234'}>
+            {t('account_info:package_and_usage')}
+          </Text>
+          <Text mt={'5px'} fontSize={'12px'} color={'#8C99AE'}>
+            {t(planName as any)} · {t('account_info:plan_refresh_30d')}
+          </Text>
+        </Box>
+        <Flex gap={'8px'} w={['100%', 'auto']} flexShrink={0}>
+          <Flex
+            as={'button'}
+            type={'button'}
+            flex={['1 1 0', 'initial']}
+            align={'center'}
+            justify={'center'}
+            h={'34px'}
+            px={'14px'}
+            borderRadius={'10px'}
+            border={'1px solid'}
+            borderColor={'#E7EEF9'}
+            bg={'#fff'}
+            fontSize={'12.5px'}
+            color={'#66758F'}
+            whiteSpace={'nowrap'}
+            transition={'0.18s'}
+            _hover={{ borderColor: '#CBDCFB', bg: '#F2F6FF', color: '#2450B5' }}
+            onClick={onOpenStandardModal}
+          >
+            {t('account_info:package_details')}
+          </Flex>
+          <Flex
+            as={'button'}
+            type={'button'}
+            flex={['1 1 0', 'initial']}
+            align={'center'}
+            justify={'center'}
+            h={'34px'}
+            px={'14px'}
+            borderRadius={'10px'}
+            bg={'linear-gradient(135deg,#4F86FF,#3370FF)'}
+            color={'#fff'}
+            fontSize={'12.5px'}
+            fontWeight={500}
+            whiteSpace={'nowrap'}
+            boxShadow={'0 8px 18px rgba(51,112,255,.24)'}
+            transition={'0.18s'}
+            _hover={{ bgImage: 'linear-gradient(135deg,#3E77F2,#2450B5)' }}
             onClick={() => {
               router.push(
                 subPlans?.planDescriptionUrl ? getDocPath(subPlans.planDescriptionUrl) : '/price'
               );
             }}
-            w={'8rem'}
-            size="sm"
           >
             {t('account_info:upgrade_package')}
-          </Button>
+          </Flex>
         </Flex>
-        <Box px={[5, 7]} pb={[3, 6]}>
-          {isFreeTeam && (
-            <Box mt="2" color={'#485264'} fontSize="sm">
-              {t('account_info:account_knowledge_base_cleanup_warning')}
-            </Box>
-          )}
-          {(standardPlan.currentSubLevel !== StandardSubLevelEnum.free || isWecomTeam) && (
-            <Flex mt="2" color={'#485264'} fontSize="xs">
-              <Box>{t('account_info:package_expiry_time')}:</Box>
-              <Box ml={2}>{formatTime2YMD(standardPlan?.expiredTime)}</Box>
-            </Flex>
-          )}
-        </Box>
+      </Flex>
 
-        <Box py={3} borderTopWidth={'1px'} borderTopColor={'borderColor.base'}>
-          <Box py={[0, 3]} px={[5, 7]} overflow={'auto'}>
-            <StandardPlanContentList
-              level={standardPlan?.currentSubLevel}
-              mode={'month'}
-              standplan={standardPlan}
-            />
-          </Box>
+      {isFreeTeam && (
+        <Text mt={'10px'} fontSize={'11.5px'} color={'#D4553F'} lineHeight={'17px'}>
+          {t('account_info:account_knowledge_base_cleanup_warning')}
+        </Text>
+      )}
+
+      <Box mt={'16px'}>
+        <Flex justify={'space-between'} align={'center'} mb={'8px'}>
+          <Text fontSize={'12.5px'} color={'#66758F'}>
+            {t('account_info:plan_period_usage')}
+          </Text>
+          <Text
+            fontSize={'12.5px'}
+            fontWeight={500}
+            color={'#3C4A63'}
+            css={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {formatNumber(usedPoints)} / {formatNumber(totalPoints)}
+          </Text>
+        </Flex>
+        <Box h={'8px'} borderRadius={'999px'} bg={'#EDF2FC'} overflow={'hidden'}>
+          <Box
+            h={'100%'}
+            w={`${usedRate}%`}
+            borderRadius={'999px'}
+            bg={'linear-gradient(90deg,#5E8FFF,#3370FF)'}
+            transition={'0.3s'}
+          />
         </Box>
       </Box>
-      {/* 鲁港通 - 资源用量为团队管理视角（配额消耗与追加购买入口），仅管理者可见 */}
-      {userInfo?.permission.hasManagePer && (
-        <Box
-          mt={6}
-          bg={'white'}
-          borderWidth={'1px'}
-          borderColor={'borderColor.low'}
-          borderRadius={'md'}
-          px={[5, 10]}
-          pt={4}
-          pb={[4, 7]}
-        >
-          <Flex>
-            <Flex flex={'1 0 0'} alignItems={'flex-end'}>
-              <Box fontSize={'md'} fontWeight={'bold'} color={'myGray.900'}>
-                {t('account_info:resource_usage')}
-              </Box>
-              <Box ml={1} display={['none', 'block']} fontSize={'xs'} color={'myGray.500'}>
-                {t('account_info:standard_package_and_extra_resource_package')}
-              </Box>
-            </Flex>
-            <Link
-              href={getWebReqUrl(getExtraPlanCardRoute())}
-              transform={'translateX(15px)'}
-              display={'flex'}
-              alignItems={'center'}
-              color={'primary.600'}
-              cursor={'pointer'}
-              fontSize={'sm'}
-            >
-              {t('account_info:purchase_extra_package')}
-              <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
-            </Link>
-          </Flex>
-          <Box width={'100%'} mt={5} fontSize={'sm'}>
-            <Flex alignItems={'center'} mb={2}>
-              <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'} mr={1}>
-                {t('common:support.wallet.subscription.AI points usage')}
-              </Box>
-              <QuestionTip label={t('account_info:ai_points_usage_tip')} />
-              <Box ml={4} fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-                {teamPlanStatus?.usedPoints === null
-                  ? t('account_info:unlimited')
-                  : Math.round(teamPlanStatus?.usedPoints ?? 0)}{' '}
-                / {aiPointsUsageMap.total}
-              </Box>
-            </Flex>
-            <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-              <Box
-                borderRadius={'sm'}
-                transition="width 0.3s"
-                w={`${aiPointsUsageMap.rate}%`}
-                bg={`${aiPointsUsageMap.rate < 50 ? 'primary' : aiPointsUsageMap.rate < 80 ? 'yellow' : 'red'}.500`}
-              />
-            </Flex>
-          </Box>
 
-          {/* 鲁港通 - 去「知识库容量」：资源用量区仅保留 Credits 使用量，不再展示容量进度 */}
-          <MyDivider />
-
-          {limitData.map((item) => {
-            const isAppRegistration = item.label === t('account_info:app_registration_count');
-
-            return (
-              <Box
-                key={item.label}
-                _notFirst={{
-                  mt: 6
-                }}
-                width={'100%'}
-                fontSize={'sm'}
-              >
-                <Flex gap={4} alignItems={'center'} mb={2}>
-                  <Box fontSize={'16px'} fontWeight={'medium'} color={'myGray.900'}>
-                    {item.label}
-                  </Box>
-                  <Box fontSize={'14px'} fontWeight={'medium'} color={'myGray.600'}>
-                    {item.value}/{item.max}
-                  </Box>
-                  {isAppRegistration && subPlans?.appRegistrationUrl && (
-                    <Link
-                      href={subPlans?.appRegistrationUrl}
-                      target="_blank"
-                      ml={'auto'}
-                      display={'flex'}
-                      alignItems={'center'}
-                      color={'primary.600'}
-                      cursor={'pointer'}
-                      fontSize={'sm'}
-                    >
-                      {t('account_info:apply_app_registration')}
-                      <MyIcon ml={1} name={'common/rightArrowLight'} w={'12px'} />
-                    </Link>
-                  )}
-                </Flex>
-                <Flex h={2} w={'full'} p={0.5} bg={'primary.50'} borderRadius={'md'}>
-                  <Box
-                    borderRadius={'sm'}
-                    transition="width 0.3s"
-                    w={`${item.rate}%`}
-                    bg={`${item.rate < 50 ? 'green' : item.rate < 80 ? 'yellow' : 'red'}.500`}
-                  />
-                </Flex>
-              </Box>
-            );
-          })}
-        </Box>
-      )}
       {isOpenStandardModal && <StandDetailModal onClose={onCloseStandardModal} />}
-      {isOpenRedeemCouponModal && (
-        <RedeemCouponModal
-          onClose={onCloseRedeemCouponModal}
-          onSuccess={() => initTeamPlanStatus()}
-        />
-      )}
-      {isOpenDiscountCouponsModal && <DiscountCouponsModal onClose={onCloseDiscountCouponsModal} />}
     </Box>
-  ) : null;
+  );
 };
 
-const ButtonStyles = {
-  bg: 'white',
-  px: 6,
-  h: '40px',
-  borderWidth: '1.5px',
-  borderColor: 'borderColor.low',
-  borderRadius: 'md',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 2,
-  cursor: 'pointer',
-  userSelect: 'none' as any,
-  fontSize: 'sm'
+const QuickActionItem = ({
+  icon,
+  label,
+  href,
+  danger,
+  onClick
+}: {
+  icon: IconNameType;
+  label: string;
+  href?: string;
+  danger?: boolean;
+  onClick?: () => void;
+}) => {
+  const content = (
+    <>
+      <Flex
+        w={['28px', '32px']}
+        h={['28px', '32px']}
+        flexShrink={0}
+        align={'center'}
+        justify={'center'}
+        borderRadius={['9px', '10px']}
+        bg={danger ? 'rgba(212,85,63,.08)' : '#F2F6FF'}
+        color={danger ? '#D4553F' : '#3370FF'}
+      >
+        <MyIcon name={icon} w={'16px'} h={'16px'} fill={'none'} />
+      </Flex>
+      <Text
+        fontSize={'12.5px'}
+        color={'#3C4A63'}
+        whiteSpace={'nowrap'}
+        overflow={'hidden'}
+        textOverflow={'ellipsis'}
+      >
+        {label}
+      </Text>
+    </>
+  );
+
+  const commonProps = {
+    display: 'flex',
+    alignItems: 'center',
+    gap: ['8px', '9px'],
+    h: ['44px', '48px'],
+    px: ['10px', '14px'],
+    py: ['11px', '14px'],
+    bg: '#fff',
+    border: '1px solid',
+    borderColor: '#E7EEF9',
+    borderRadius: '14px',
+    textAlign: 'left' as const,
+    transition: '0.18s',
+    cursor: 'pointer',
+    _hover: danger
+      ? { borderColor: '#F0CFC8', bg: '#FFF8F6', transform: 'translateY(-1px)' }
+      : { borderColor: '#CBDCFB', bg: '#F2F6FF', transform: 'translateY(-1px)' }
+  };
+
+  if (href) {
+    return (
+      <Flex
+        as={'a'}
+        href={href}
+        target={'_blank'}
+        rel={'noreferrer'}
+        textDecoration={'none !important'}
+        {...commonProps}
+      >
+        {content}
+      </Flex>
+    );
+  }
+
+  return (
+    <Flex as={'button'} type={'button'} onClick={onClick} {...commonProps}>
+      {content}
+    </Flex>
+  );
 };
-const Other = ({ onOpenContact }: { onOpenContact: () => void }) => {
+
+const QuickActions = ({ onOpenContact }: { onOpenContact: () => void }) => {
+  const { t } = useClientTranslation('account_info');
+  const router = useRouter();
   const { feConfigs, setNotSufficientModalType, subPlans } = useSystemStore();
   const { teamPlanStatus, userInfo } = useUserStore();
-  const { t } = useClientTranslation('account_info');
-  const { isPc } = useSystem();
-  const router = useRouter();
   const {
     isOpen: isCancellationConfirmOpen,
     onOpen: onOpenCancellationConfirm,
@@ -775,8 +639,7 @@ const Other = ({ onOpenContact }: { onOpenContact: () => void }) => {
 
       const ticketResponseTime =
         teamPlanStatus?.standard?.ticketResponseTime ?? plan?.ticketResponseTime;
-      const hasTicketAccess = !!ticketResponseTime;
-      if (!hasTicketAccess) {
+      if (!ticketResponseTime) {
         setNotSufficientModalType(TeamErrEnum.ticketNotAvailable);
         return;
       }
@@ -791,86 +654,55 @@ const Other = ({ onOpenContact }: { onOpenContact: () => void }) => {
     }
   );
 
-  return (
-    <Box mt={[6, 0]}>
-      <Grid rowGap="16px" columnGap={4}>
-        {feConfigs?.docUrl && (
-          <Link
-            href={getDocPath('/guide/getting-started')}
-            target="_blank"
-            textDecoration={'none !important'}
-            {...ButtonStyles}
-          >
-            <MyIcon
-              name={'common/quickActionBook'}
-              w={'18px'}
-              h={'18px'}
-              color={'myGray.600'}
-              flexShrink={0}
-            />
-            <Box flex={1}>{t('account_info:help_document')}</Box>
-          </Link>
-        )}
+  const showCancellation =
+    accountCancellationStatus?.status === 'pending' ||
+    (accountCancellationStatus?.status === 'none' &&
+      accountCancellationStatus.canRequestCancellation);
 
-        {!isPc &&
-          feConfigs?.navbarItems
-            ?.filter((item) => item.isActive)
-            .map((item) => (
-              <Flex key={item.id} {...ButtonStyles} onClick={() => window.open(item.url, '_blank')}>
-                <Avatar src={item.avatar} w={'18px'} h={'18px'} flexShrink={0} />
-                <Box flex={1}>{item.name}</Box>
-              </Flex>
-            ))}
-        {feConfigs?.concatMd && (
-          <Flex onClick={onOpenContact} {...ButtonStyles}>
-            <MyIcon
-              name={'common/quickActionPhone'}
-              w={'18px'}
-              h={'18px'}
-              color={'myGray.600'}
-              fill={'none'}
-              flexShrink={0}
-            />
-            <Box flex={1}>{t('account_info:contact_us')}</Box>
-          </Flex>
+  return (
+    <Box>
+      <Box
+        display={'grid'}
+        gridTemplateColumns={['repeat(2, minmax(0, 1fr))', 'repeat(4, minmax(0, 1fr))']}
+        gap={['8px', '12px']}
+      >
+        {!!feConfigs?.docUrl && (
+          <QuickActionItem
+            icon={'common/quickActionBook'}
+            label={t('account_info:help_document')}
+            href={getDocPath('/guide/getting-started')}
+          />
         )}
-        {feConfigs?.show_workorder && (
-          <Flex onClick={onFeedback} {...ButtonStyles}>
-            <MyIcon
-              name={'common/quickActionFeedback'}
-              w={'18px'}
-              h={'18px'}
-              color={'myGray.600'}
-              flexShrink={0}
-            />
-            <Box flex={1}>{t('common:question_feedback')}</Box>
-          </Flex>
+        {!!feConfigs?.concatMd && (
+          <QuickActionItem
+            icon={'common/quickActionPhone'}
+            label={t('account_info:contact_us')}
+            onClick={onOpenContact}
+          />
         )}
-        {(accountCancellationStatus?.status === 'pending' ||
-          (accountCancellationStatus?.status === 'none' &&
-            accountCancellationStatus.canRequestCancellation)) && (
-          <Flex
-            {...ButtonStyles}
+        {!!feConfigs?.show_workorder && (
+          <QuickActionItem
+            icon={'common/quickActionFeedback'}
+            label={t('common:question_feedback')}
+            onClick={() => void onFeedback()}
+          />
+        )}
+        {showCancellation && (
+          <QuickActionItem
+            icon={'common/quickActionUserX'}
+            label={t('account_info:account_cancellation')}
+            danger
             onClick={() => {
-              if (accountCancellationStatus.status === 'pending') {
+              if (accountCancellationStatus?.status === 'pending') {
                 void router.push('/account/cancel');
                 return;
               }
               onOpenCancellationConfirm();
             }}
-          >
-            <MyIcon
-              name={'common/quickActionUserX'}
-              w={'18px'}
-              h={'18px'}
-              color={'myGray.600'}
-              fill={'none'}
-              flexShrink={0}
-            />
-            <Box flex={1}>{t('account_info:account_cancellation', '账号注销')}</Box>
-          </Flex>
+          />
         )}
-      </Grid>
+      </Box>
+
       {accountCancellationStatus?.status === 'none' &&
         accountCancellationStatus.canRequestCancellation && (
           <AccountCancellationConfirmModal

@@ -76,5 +76,8 @@
   "yes": "Yes",
   "no": "No",
   "yuan": "¥{{amount}}",
-  "bill.not_need_invoice": "Balance payments are not eligible for invoices"
+  "bill.not_need_invoice": "Balance payments are not eligible for invoices",
+  "account_center": "Account center",
+  "back_to_chat": "Back to chat",
+  "service_running": "Service running normally"
 }

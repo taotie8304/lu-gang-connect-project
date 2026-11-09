@@ -112,7 +112,12 @@ const Layout = ({ children }: { children: JSX.Element }) => {
     () => router.pathname === '/chat' && Object.values(router.query).join('').length !== 0,
     [router.pathname, router.query]
   );
-  const isHideNavbar = !!pcUnShowLayoutRoute[router.pathname];
+  // 鲁港通 - 账号中心自带完整外壳（顶栏/返回对话/页签），不再叠加全局导航
+  const isAccountPage = useMemo(
+    () => router.pathname === '/account' || router.pathname.startsWith('/account/'),
+    [router.pathname]
+  );
+  const isHideNavbar = !!pcUnShowLayoutRoute[router.pathname] || isAccountPage;
 
   // System hook
   const { data, refetch: refetchUnRead } = useQuery(['getUnreadCount'], getUnreadCount, {
@@ -210,7 +215,7 @@ const Layout = ({ children }: { children: JSX.Element }) => {
         )}
         {isPc === false && (
           <>
-            {phoneUnShowLayoutRoute[router.pathname] || isChatPage ? (
+            {phoneUnShowLayoutRoute[router.pathname] || isAccountPage || isChatPage ? (
               <Auth>{children}</Auth>
             ) : (
               <Auth>

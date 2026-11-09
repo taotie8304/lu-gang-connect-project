@@ -1,13 +1,15 @@
-import React, { useCallback, useEffect, useMemo } from 'react';
-import { Box, Flex } from '@chakra-ui/react';
+import React, { useCallback, useMemo } from 'react';
+import { Box, Flex, Spinner, Text } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRouter } from 'next/router';
 import { useUserStore } from '@/web/support/user/useUserStore';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
-import SecondaryNavigationContainer from '@/pageComponents/common/SecondaryNavigationContainer';
-import { decideShowAdminFeatures } from '@/components/Layout/adminFeatures';
-import { decideAccountAccess } from './accountAccess';
+import MyIcon from '@fastgpt/web/components/common/Icon';
+import { clearToken } from '@/web/support/user/auth';
+import { performLogout } from '@/web/support/user/logout';
+import { useChatStore } from '@/web/core/chat/context/useChatStore';
+import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
 
 export enum TabEnum {
   'info' = 'info',
@@ -36,23 +38,9 @@ const AccountContainer = ({
   const { t } = useClientTranslation('account');
   const { userInfo, setUserInfo } = useUserStore();
   const { feConfigs, systemVersion } = useSystemStore();
+  const { resetChatCache } = useChatStore();
   const router = useRouter();
-
-  // 鲁港通 - 账号页是 FastGPT 后台风格页：纯聊天模式下的普通用户即使手敲网址也不进入，统一弹回聊天
-  const showAdminFeatures = decideShowAdminFeatures({
-    isOwner: !!userInfo?.team?.permission?.isOwner,
-    enableUserChatOnly: !!feConfigs?.enableUserChatOnly
-  });
-  const accountAccess = decideAccountAccess({
-    isUserInfoLoaded: !!userInfo,
-    showAdminFeatures,
-    fallbackHref: '/chat'
-  });
-  const redirectHref = accountAccess.type === 'redirect' ? accountAccess.href : undefined;
-  useEffect(() => {
-    if (!redirectHref) return;
-    void router.replace(redirectHref);
-  }, [redirectHref, router]);
+  const isDesktop = isDesktopBridgeAvailable();
 
   const showThirdPartyTab =
     feConfigs?.show_openai_account === true ||
@@ -62,154 +50,252 @@ const AccountContainer = ({
     return router.pathname.split('/').pop() as TabEnum;
   }, [router.pathname]);
 
-  const tabList = [
-    {
-      icon: 'support/user/userLight',
-      label: t('account:personal_information'),
-      value: TabEnum.info
-    },
-    ...(feConfigs?.isPlus
-      ? [
-          {
-            icon: 'support/user/usersLight',
-            label: t('account:team'),
-            value: TabEnum.team
-          }
-        ]
-      : []),
-    // 鲁港通 - N4：本部署未接入商业版（isPlus=false）但已开放「用量明细」，
-    // 与个人面板入口保持一致，避免从面板进入后左侧导航无当前项
-    ...(feConfigs?.isPlus || feConfigs?.show_pay
-      ? [
-          {
-            icon: 'support/usage/usageRecordLight',
-            label: t('account:usage_records'),
-            value: TabEnum.usage
-          }
-        ]
-      : []),
-    // 鲁港通 - N4：订单对所有团队成员可见（个人面板提供「我的订单」直达入口）
-    ...(feConfigs?.show_pay
-      ? [
-          {
-            icon: 'support/bill/payRecordLight',
-            label: t('account:bills_and_invoices'),
-            value: TabEnum.bill
-          }
-        ]
-      : []),
-    // 鲁港通 - 工单系统：所有登录用户可见（与价格页免费版「工单反馈」权益口径一致）
-    {
-      icon: 'common/quickActionFeedback',
-      label: t('account:my_tickets'),
-      value: TabEnum.myTickets
-    },
-    // 鲁港通 - 智能体记忆：所有登录用户可查看/编辑自己的记忆
-    {
-      icon: 'core/chat/deepThinking',
-      label: t('account:memories'),
-      value: TabEnum.memories
-    },
-    ...(showThirdPartyTab
-      ? [
-          {
-            icon: 'common/thirdParty',
-            label: t('account:third_party'),
-            value: TabEnum.thirdParty
-          }
-        ]
-      : []),
-    ...(feConfigs.isPlus && feConfigs.customDomain?.enable
-      ? [
-          {
-            icon: 'common/globalLine',
-            label: t('account:custom_domain'),
-            value: TabEnum.customDomain
-          }
-        ]
-      : []),
-    ...(feConfigs.isPlus
-      ? [
-          {
-            icon: 'common/model',
-            label: t('common:model.provider_title'),
-            value: TabEnum.model
-          }
-        ]
-      : []),
-    ...(userInfo?.team?.permission.hasApikeyCreatePer
-      ? [
-          {
-            icon: 'key',
-            label: t('account:api_key'),
-            value: TabEnum.apikey
-          }
-        ]
-      : []),
-
-    ...(feConfigs.isPlus
-      ? [
-          {
-            icon: 'support/user/informLight',
-            label: t('account:notifications'),
-            value: TabEnum.inform
-          }
-        ]
-      : []),
-    {
-      icon: 'support/usage/usageRecordLight',
-      label: t('account:language'),
-      value: TabEnum.setting
-    },
-    {
-      icon: 'support/account/loginoutLight',
-      label: t('account:logout'),
-      value: TabEnum.loginout
+  const tabList = useMemo(() => {
+    const tabs: { label: string; value: TabEnum }[] = [
+      {
+        label: t('account:personal_information'),
+        value: TabEnum.info
+      }
+    ];
+    if (feConfigs?.isPlus) {
+      tabs.push({ label: t('account:team'), value: TabEnum.team });
     }
-  ];
+    // 鲁港通 - N4：本部署未接入商业版（isPlus=false）但已开放「用量明细」
+    if (feConfigs?.isPlus || feConfigs?.show_pay) {
+      tabs.push({ label: t('account:usage_records'), value: TabEnum.usage });
+    }
+    // 鲁港通 - N4：订单对所有团队成员可见
+    if (feConfigs?.show_pay) {
+      tabs.push({ label: t('account:bills_and_invoices'), value: TabEnum.bill });
+    }
+    tabs.push({ label: t('account:my_tickets'), value: TabEnum.myTickets });
+    tabs.push({ label: t('account:memories'), value: TabEnum.memories });
+    if (showThirdPartyTab) {
+      tabs.push({ label: t('account:third_party'), value: TabEnum.thirdParty });
+    }
+    if (feConfigs.isPlus && feConfigs.customDomain?.enable) {
+      tabs.push({ label: t('account:custom_domain'), value: TabEnum.customDomain });
+    }
+    if (feConfigs.isPlus) {
+      tabs.push({ label: t('common:model.provider_title'), value: TabEnum.model });
+    }
+    if (userInfo?.team?.permission.hasApikeyCreatePer) {
+      tabs.push({ label: t('account:api_key'), value: TabEnum.apikey });
+    }
+    if (feConfigs.isPlus) {
+      tabs.push({ label: t('account:notifications'), value: TabEnum.inform });
+    }
+    tabs.push({ label: t('account:language'), value: TabEnum.setting });
+    return tabs;
+  }, [feConfigs, showThirdPartyTab, t, userInfo?.team?.permission.hasApikeyCreatePer]);
 
   const { openConfirm, ConfirmModal } = useConfirm({
-    content: t('account:confirm_logout')
+    content: isDesktop ? t('common:confirm_logout_desktop') : t('account:confirm_logout')
   });
+
+  // 鲁港通 - 走全站统一登出：清 Cookie 与聊天缓存，桌面客户端额外关内置浏览器并撤销设备注册
+  const handleLogout = useCallback(() => {
+    openConfirm({
+      onConfirm: () => {
+        performLogout({
+          closeBrowserPanel: isDesktop ? () => window.lugangDesktop?.closePanel() : undefined,
+          clearDesktopSession: isDesktop
+            ? () => window.lugangDesktop?.session?.logout()
+            : undefined,
+          resetChatCache,
+          clearUserInfo: () => setUserInfo(null),
+          clearToken,
+          redirectToLogin: () => router.replace('/login')
+        });
+      }
+    })();
+  }, [isDesktop, openConfirm, resetChatCache, router, setUserInfo]);
 
   const setCurrentTab = useCallback(
     (tab: string) => {
-      if (tab === TabEnum.loginout) {
-        openConfirm({
-          onConfirm: () => {
-            setUserInfo(null);
-            router.replace('/login');
-          }
-        })();
-      } else {
-        router.replace('/account/' + tab);
-      }
+      router.replace('/account/' + tab);
     },
-    [openConfirm, router, setUserInfo]
+    [router]
   );
 
-  // 鲁港通 - 普通用户被弹回聊天期间不渲染后台风格布局，避免闪现
-  if (redirectHref) return null;
-
   return (
-    <SecondaryNavigationContainer
-      isLoading={isLoading}
-      tabs={tabList}
-      value={currentTab}
-      onChange={setCurrentTab}
-      mobileScrollPositionKey={'account-mobile-navigation'}
-      footer={
-        <Flex alignItems={'center'} px={'11px'} pb={5} pt={3}>
-          <Box w={'8px'} h={'8px'} borderRadius={'50%'} bg={'#67c13b'} />
-          <Box fontSize={'md'} ml={2}>
-            V{systemVersion}
-          </Box>
-        </Flex>
+    <Flex
+      direction={'column'}
+      minH={'100%'}
+      w={'100%'}
+      bg={'#F2F6FC'}
+      bgImage={
+        'radial-gradient(900px 420px at 12% -8%, rgba(95,148,255,.10), transparent 62%), radial-gradient(760px 380px at 92% 0%, rgba(120,200,255,.10), transparent 60%)'
       }
+      bgRepeat={'no-repeat'}
     >
-      {children}
+      <Box
+        w={'100%'}
+        maxW={'1280px'}
+        mx={'auto'}
+        px={['12px', '18px']}
+        pt={['12px', '22px']}
+        pb={['24px', '40px']}
+        flex={'1 0 auto'}
+      >
+        <Box
+          bg={'linear-gradient(180deg,#FBFDFF 0%,#F7FAFF 100%)'}
+          border={'1px solid'}
+          borderColor={'#E7EEF9'}
+          borderRadius={['18px', '22px']}
+          boxShadow={'0 18px 50px rgba(36,80,181,.08)'}
+          overflow={'hidden'}
+        >
+          {/* 鲁港通 - 账号中心顶栏：品牌位 + 返回对话 */}
+          <Flex
+            h={['56px', '64px']}
+            px={['14px', '26px']}
+            align={'center'}
+            justify={'space-between'}
+            bg={'rgba(255,255,255,.82)'}
+            backdropFilter={'blur(10px)'}
+            borderBottom={'1px solid'}
+            borderColor={'#EEF3FC'}
+          >
+            <Flex align={'center'} gap={'10px'} minW={0}>
+              <Flex
+                w={'32px'}
+                h={'32px'}
+                flexShrink={0}
+                borderRadius={'10px'}
+                bg={'linear-gradient(150deg,#8BB8FF 0%,#4F86FF 55%,#3370FF 100%)'}
+                boxShadow={'0 6px 14px rgba(51,112,255,.26)'}
+                align={'center'}
+                justify={'center'}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <circle cx="7" cy="8.6" r="1.5" fill="#fff" />
+                  <circle cx="13" cy="8.6" r="1.5" fill="#fff" />
+                  <path
+                    d="M6.6 12.2c.9 1.25 2.1 1.9 3.4 1.9s2.5-.65 3.4-1.9"
+                    stroke="#fff"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              </Flex>
+              <Text fontSize={'15px'} fontWeight={600} letterSpacing={'0.3px'} color={'#182234'}>
+                鲁港通
+              </Text>
+              <Box display={['none', 'block']} w={'1px'} h={'14px'} bg={'#E7EEF9'} mx={'2px'} />
+              <Text display={['none', 'block']} fontSize={'13px'} color={'#66758F'}>
+                {t('account:account_center')}
+              </Text>
+            </Flex>
+            <Flex
+              as={'button'}
+              type={'button'}
+              alignItems={'center'}
+              gap={'6px'}
+              h={['30px', '34px']}
+              px={['11px', '14px']}
+              borderRadius={'999px'}
+              border={'1px solid'}
+              borderColor={'#E7EEF9'}
+              bg={'#fff'}
+              color={'#66758F'}
+              fontSize={['11.5px', '12.5px']}
+              transition={'0.18s'}
+              flexShrink={0}
+              _hover={{ color: '#2450B5', borderColor: '#CBDCFB', bg: '#F2F6FF' }}
+              onClick={() => router.push('/chat')}
+            >
+              {t('account:back_to_chat')}
+              <MyIcon name={'core/chat/chevronRight'} w={'13px'} color={'currentColor'} />
+            </Flex>
+          </Flex>
+
+          <Box px={['13px', '26px']} pt={['14px', '20px']} pb={['10px', '14px']}>
+            {/* 鲁港通 - 胶囊页签：移动端横滚，桌面端右侧固定退出登录 */}
+            <Flex
+              alignItems={'center'}
+              gap={'4px'}
+              flexWrap={['nowrap', 'wrap']}
+              bg={'#fff'}
+              border={'1px solid'}
+              borderColor={'#E7EEF9'}
+              borderRadius={['14px', '999px']}
+              p={['4px', '5px']}
+              boxShadow={'0 10px 26px rgba(28,63,128,.06)'}
+              overflowX={['auto', 'visible']}
+              css={{ '&::-webkit-scrollbar': { display: 'none' }, scrollbarWidth: 'none' }}
+            >
+              {tabList.map((item) => {
+                const isActive = currentTab === item.value;
+                return (
+                  <Flex
+                    as={'button'}
+                    type={'button'}
+                    key={item.value}
+                    alignItems={'center'}
+                    flex={['0 0 auto', 'initial']}
+                    h={['32px', '34px']}
+                    px={['12px', '15px']}
+                    borderRadius={'999px'}
+                    fontSize={['12px', '13px']}
+                    whiteSpace={'nowrap'}
+                    color={isActive ? '#fff' : '#66758F'}
+                    bg={isActive ? '#3370FF' : 'transparent'}
+                    boxShadow={isActive ? '0 6px 16px rgba(51,112,255,.26)' : 'none'}
+                    transition={'0.18s'}
+                    _hover={isActive ? undefined : { color: '#3C4A63', bg: '#F2F6FF' }}
+                    onClick={() => setCurrentTab(item.value)}
+                  >
+                    {item.label}
+                  </Flex>
+                );
+              })}
+              <Box flex={'1'} display={['none', 'block']} />
+              <Flex
+                as={'button'}
+                type={'button'}
+                display={['none', 'flex']}
+                alignItems={'center'}
+                h={'34px'}
+                px={'12px'}
+                borderRadius={'999px'}
+                fontSize={'12.5px'}
+                color={'#8C99AE'}
+                transition={'0.18s'}
+                _hover={{ color: '#D4553F', bg: 'rgba(212,85,63,.06)' }}
+                onClick={handleLogout}
+              >
+                {t('account:logout')}
+              </Flex>
+            </Flex>
+
+            <Box mt={['14px', '20px']}>
+              {isLoading ? (
+                <Flex align={'center'} justify={'center'} py={16}>
+                  <Spinner size={'lg'} color={'#3370FF'} />
+                </Flex>
+              ) : (
+                children
+              )}
+            </Box>
+
+            <Flex alignItems={'center'} gap={'6px'} mt={['16px', '18px']}>
+              <Box
+                w={'7px'}
+                h={'7px'}
+                borderRadius={'50%'}
+                bg={'#4CC38A'}
+                boxShadow={'0 0 0 3px rgba(76,195,138,.16)'}
+              />
+              <Text fontSize={'11.5px'} color={'#8C99AE'}>
+                {t('account:service_running')} · V{systemVersion}
+              </Text>
+            </Flex>
+          </Box>
+        </Box>
+      </Box>
       <ConfirmModal />
-    </SecondaryNavigationContainer>
+    </Flex>
   );
 };
 
