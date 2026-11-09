@@ -375,7 +375,7 @@ const AboutPage = () => {
             {manifesto.stats.map((stat, index) => (
               <div
                 className={`stat reveal${index === 1 ? ' d1' : index === 2 ? ' d2' : ''}`}
-                key={stat.unit}
+                key={index}
               >
                 <b>
                   {typeof stat.count === 'number' ? (
@@ -549,7 +549,7 @@ const AboutPage = () => {
             </div>
             <div className="route-cards">
               {cities.cards.map((card, index) => (
-                <article className={`rcard reveal${index === 1 ? ' d1' : ''}`} key={card.dir}>
+                <article className={`rcard reveal${index === 1 ? ' d1' : ''}`} key={index}>
                   <div className="dir">{card.dir}</div>
                   <h3>{card.title}</h3>
                   <p>{card.text}</p>
