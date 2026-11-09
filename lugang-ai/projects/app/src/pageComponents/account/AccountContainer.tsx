@@ -6,6 +6,7 @@ import { useUserStore } from '@/web/support/user/useUserStore';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import MyIcon from '@fastgpt/web/components/common/Icon';
+import ThinkingFace from '@/components/common/ThinkingFace';
 import { clearToken } from '@/web/support/user/auth';
 import { performLogout } from '@/web/support/user/logout';
 import { useChatStore } from '@/web/core/chat/context/useChatStore';
@@ -159,27 +160,8 @@ const AccountContainer = ({
             borderColor={'#EEF3FC'}
           >
             <Flex align={'center'} gap={'10px'} minW={0}>
-              <Flex
-                w={'32px'}
-                h={'32px'}
-                flexShrink={0}
-                borderRadius={'10px'}
-                bg={'linear-gradient(150deg,#8BB8FF 0%,#4F86FF 55%,#3370FF 100%)'}
-                boxShadow={'0 6px 14px rgba(51,112,255,.26)'}
-                align={'center'}
-                justify={'center'}
-              >
-                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
-                  <circle cx="7" cy="8.6" r="1.5" fill="#fff" />
-                  <circle cx="13" cy="8.6" r="1.5" fill="#fff" />
-                  <path
-                    d="M6.6 12.2c.9 1.25 2.1 1.9 3.4 1.9s2.5-.65 3.4-1.9"
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </Flex>
+              {/* 鲁港通 - 品牌位统一使用企业 icon（思考小圆脸），不用史莱姆动漫形象 */}
+              <ThinkingFace size={32} />
               <Text fontSize={'15px'} fontWeight={600} letterSpacing={'0.3px'} color={'#182234'}>
                 鲁港通
               </Text>
