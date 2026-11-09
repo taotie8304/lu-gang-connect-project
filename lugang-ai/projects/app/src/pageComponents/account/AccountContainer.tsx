@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { Box, Flex, Spinner, Text } from '@chakra-ui/react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
 import { useRouter } from 'next/router';
@@ -120,11 +120,19 @@ const AccountContainer = ({
     [router]
   );
 
+  // 鲁港通 - 全局 html/body 为 overflow:hidden，账号页需自持滚动容器，否则长页内容无法滚动查看
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [router.pathname]);
+
   return (
     <Flex
+      ref={scrollRef}
       direction={'column'}
-      minH={'100%'}
+      h={'100%'}
       w={'100%'}
+      overflowY={'auto'}
       bg={'#F2F6FC'}
       bgImage={
         'radial-gradient(900px 420px at 12% -8%, rgba(95,148,255,.10), transparent 62%), radial-gradient(760px 380px at 92% 0%, rgba(120,200,255,.10), transparent 60%)'
