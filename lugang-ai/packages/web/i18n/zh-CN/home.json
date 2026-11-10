@@ -63,7 +63,7 @@
   "download": {
     "title": "客户端下载",
     "winName": "Windows 桌面版",
-    "winVer": "v0.9.2 · 支持文档生成与阅读",
+    "winVer": "v0.9.3 · 支持文档生成与阅读",
     "androidName": "Android 客户端",
     "androidVer": "v0.2.4 · 轻量聊天客户端",
     "arrow": "下载",

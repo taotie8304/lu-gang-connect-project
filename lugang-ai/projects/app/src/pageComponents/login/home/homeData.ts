@@ -37,7 +37,7 @@ export const HOME_FOOTER_LINKS = [
 ];
 
 export const HOME_DOWNLOADS = {
-  windows: 'https://www.airscend.com/desktop/updates/lugang-desktop-0.9.2-setup.exe',
+  windows: 'https://www.airscend.com/desktop/updates/lugang-desktop-0.9.3-setup.exe',
   android: 'https://www.airscend.com/android/updates/lugang-android-0.2.4-204.apk'
 };
 
