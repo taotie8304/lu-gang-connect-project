@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import type { HomePricingCopy } from './homeData';
 import {
   HOME_ANCHORS,
-  HOME_BUSINESS_MAIL,
+  HOME_SERVICE_MAIL,
   HOME_FEATURED_PLAN,
   HOME_PLAN_PRICES
 } from './homeData';
@@ -132,7 +132,7 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
             <h3>{copy.enterprise.title}</h3>
             <p>{copy.enterprise.body}</p>
           </div>
-          <a className="h5-btn h5-btn-line" href={`mailto:${HOME_BUSINESS_MAIL}`}>
+          <a className="h5-btn h5-btn-line" href={`mailto:${HOME_SERVICE_MAIL}`}>
             {copy.enterprise.cta}
           </a>
         </div>

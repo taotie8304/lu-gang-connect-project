@@ -291,7 +291,6 @@ export const ACCOUNT_ARTICLES: HelpArticle[] = [
         type: 'ul',
         items: [
           '服务与售后：**service@airscend.com**；',
-          '商务与合作：**business@airscend.com**；',
           '开票申请请注明订单号、发票抬头与接收邮箱。'
         ]
       },

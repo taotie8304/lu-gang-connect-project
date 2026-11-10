@@ -159,7 +159,7 @@ export const BILLING_ARTICLES: HelpArticle[] = [
       },
       {
         type: 'p',
-        text: '企业定制采用年费制（人民币 3,000 元/年起，具体以商务洽谈为准），可提供多席位统一管理、对公转账结算、发票开具与专属支持。可发邮件至 business@airscend.com 联系商务。'
+        text: '企业定制采用年费制（人民币 3,000 元/年起，具体以商务洽谈为准），可提供多席位统一管理、对公转账结算、发票开具与专属支持。可发邮件至 service@airscend.com 联系我们。'
       }
     ],
     faq: [

@@ -2,7 +2,7 @@
 
 export const HOME_BRAND_NAME = '鲁港通';
 export const HOME_BRAND_SUB = 'LUGANG CONNECT';
-export const HOME_BUSINESS_MAIL = 'business@airscend.com';
+export const HOME_SERVICE_MAIL = 'service@airscend.com';
 
 export const HOME_ANCHORS = {
   top: 'home-top',
@@ -33,7 +33,7 @@ export const HOME_FOOTER_LINKS = [
     { href: `#${HOME_ANCHORS.download}` }
   ],
   [{ href: '/about' }, { href: `#${HOME_ANCHORS.faq}` }, { href: `#${HOME_ANCHORS.agent}` }],
-  [{ href: `mailto:${HOME_BUSINESS_MAIL}` }, { href: '/help' }]
+  [{ href: `mailto:${HOME_SERVICE_MAIL}` }, { href: '/help' }]
 ];
 
 export const HOME_DOWNLOADS = {
