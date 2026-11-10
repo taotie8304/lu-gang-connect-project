@@ -121,7 +121,7 @@
       "chips": ["data.gov.hk", "홍콩 정부 원스톱 포털", "산둥성 인민정부", "실시간 웹 검색"],
       "bubbleLead": "먼저 ",
       "bubbleStrong": "공식 원문",
-      "bubbleTail": "을 확인한 뒤 실행 가능한 절차를 알려 드릴게요.",
+      "bubbleTail": "을 확인한 뒤 실행 가능한 절차를 안내해 드리겠습니다.",
       "srcLeft": "SOURCE · 입경사무처",
       "srcRight": "확인 완료 · 2026.09"
     },
@@ -141,8 +141,8 @@
     "contact": {
       "no": "06 — 시작",
       "titleLead": "첫 번째 질문을,",
-      "titleAccent": "루강통에 맡기세요.",
-      "p": "무엇을 물을지 미리 정하지 않아도 됩니다. 편한 방식으로 말씀해 주세요. 나머지는 한 단계씩 함께 하겠습니다.",
+      "titleAccent": "루강통에 맡기십시오.",
+      "p": "무엇을 물을지 미리 정하지 않아도 됩니다. 편한 방식으로 말씀해 주십시오. 나머지는 한 단계씩 함께 하겠습니다.",
       "cta": "대화 시작하기",
       "addrLine": "홍콩 가우룽 네이선 로드 333호 감순 커머셜 센터 6층",
       "addrEn": "6/F, Gamsun Commercial Centre, 333 Nathan Road, Kowloon, Hong Kong",
