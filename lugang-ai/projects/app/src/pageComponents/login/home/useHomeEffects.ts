@@ -8,6 +8,7 @@ import {
   formatCount,
   shouldRevealImmediately
 } from './homeFx';
+import { hasStatsAnimated, markStatsAnimated } from './homeRuntime';
 
 const SCENE_INTERVAL = 6400;
 const COUNT_DURATION = 1200;
@@ -193,13 +194,20 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
       startScenes();
     }
 
-    /* 统计数字滚动 */
+    /* 统计数字滚动：同一页面生命周期内只播放一次，语言切换重挂载后直接显示终值 */
     const counters = Array.from(root.querySelectorAll<HTMLElement>('[data-count]'));
-    let counted = false;
     let countFrame = 0;
-    const animateCounters = () => {
-      if (counted) return;
-      counted = true;
+    const finishCounters = () => {
+      counters.forEach((el) => {
+        el.textContent = formatCount(Number.parseInt(el.dataset.count || '0', 10) || 0);
+      });
+    };
+    const runCounters = () => {
+      if (hasStatsAnimated()) {
+        finishCounters();
+        return;
+      }
+      markStatsAnimated();
       counters.forEach((el) => {
         const target = Number.parseInt(el.dataset.count || '0', 10) || 0;
         const start = performance.now();
@@ -212,51 +220,52 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
       });
     };
     cleanups.push(() => cancelAnimationFrame(countFrame));
+    if (hasStatsAnimated()) finishCounters();
 
-    /* 渐入：首屏直接显示，其余进入视口后再出现；观察根为首页滚动容器 */
+    /* 渐入与统计触发：按首页滚动容器位置判定。
+       旧版 IntersectionObserver 在快速滚动或语言切换重挂载时会漏掉回调，导致元素永久隐藏 */
     const reveals = Array.from(root.querySelectorAll<HTMLElement>('.h5-reveal'));
-    if (!reduceMotion && 'IntersectionObserver' in window) {
+    const statsGrid = root.querySelector<HTMLElement>('.h5-stats-grid');
+    if (!reduceMotion) {
+      const pending = new Set<HTMLElement>();
       const rootTop = root.getBoundingClientRect().top;
       const viewportHeight = root.clientHeight;
-      const pending: HTMLElement[] = [];
       reveals.forEach((el) => {
         if (shouldRevealImmediately(el.getBoundingClientRect().top - rootTop, viewportHeight)) {
           el.classList.add('is-in');
         } else {
-          pending.push(el);
+          pending.add(el);
         }
       });
-      const revealObserver = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            (entry.target as HTMLElement).classList.add('is-in');
-            revealObserver.unobserve(entry.target);
-          });
-        },
-        { root, rootMargin: '0px 0px -8% 0px', threshold: 0.08 }
-      );
-      pending.forEach((el) => revealObserver.observe(el));
-      cleanups.push(() => revealObserver.disconnect());
-
-      const statsGrid = root.querySelector('.h5-stats-grid');
-      if (statsGrid) {
-        const statsObserver = new IntersectionObserver(
-          (entries) => {
-            if (!entries.some((entry) => entry.isIntersecting)) return;
-            animateCounters();
-            statsObserver.disconnect();
-          },
-          { root, threshold: 0.3 }
-        );
-        statsObserver.observe(statsGrid);
-        cleanups.push(() => statsObserver.disconnect());
-      }
+      let statsPending = Boolean(statsGrid);
+      const syncIndicators = () => {
+        if (!pending.size && !statsPending) return;
+        const top = root.getBoundingClientRect().top;
+        const viewport = root.clientHeight;
+        const revealLine = top + viewport * 0.92;
+        pending.forEach((el) => {
+          if (el.getBoundingClientRect().top < revealLine) {
+            el.classList.add('is-in');
+            pending.delete(el);
+          }
+        });
+        if (statsPending && statsGrid) {
+          const rect = statsGrid.getBoundingClientRect();
+          // 已滚到统计带上方时也直接落终值，避免锚点直达深层页面时数字停留在 0
+          if (rect.top < top + viewport) {
+            statsPending = false;
+            runCounters();
+          }
+        }
+      };
+      listen(root, 'scroll', syncIndicators, { passive: true });
+      listen(window, 'resize', syncIndicators, { passive: true });
+      syncIndicators();
+      const syncFrame = requestAnimationFrame(syncIndicators);
+      cleanups.push(() => cancelAnimationFrame(syncFrame));
     } else {
       reveals.forEach((el) => el.classList.add('is-in'));
-      counters.forEach((el) => {
-        el.textContent = formatCount(Number.parseInt(el.dataset.count || '0', 10) || 0);
-      });
+      finishCounters();
     }
 
     return () => cleanups.forEach((cleanup) => cleanup());

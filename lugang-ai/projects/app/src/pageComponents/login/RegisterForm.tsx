@@ -273,7 +273,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             />
             <InputRightElement>
               <IconButton
-                aria-label={showPassword ? '隐藏密码' : '显示密码'}
+                aria-label={showPassword ? t('login:hide_password') : t('login:show_password')}
                 variant="ghost"
                 size="sm"
                 icon={<MyIcon name={showPassword ? 'visible' : 'invisible'} w="18px" />}
@@ -308,7 +308,7 @@ const RegisterForm = ({ setPageType, loginSuccess }: Props) => {
             />
             <InputRightElement>
               <IconButton
-                aria-label={showPassword2 ? '隐藏密码' : '显示密码'}
+                aria-label={showPassword2 ? t('login:hide_password') : t('login:show_password')}
                 variant="ghost"
                 size="sm"
                 icon={<MyIcon name={showPassword2 ? 'visible' : 'invisible'} w="18px" />}

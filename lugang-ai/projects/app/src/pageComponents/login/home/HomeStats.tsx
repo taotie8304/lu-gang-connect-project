@@ -2,6 +2,8 @@
 import React from 'react';
 import type { HomeStatsCopy } from './homeData';
 import { HOME_STAT_COUNTS, HOME_STAT_PREFIXES } from './homeData';
+import { formatCount } from './homeFx';
+import { hasStatsAnimated } from './homeRuntime';
 
 const REVEAL_DELAYS = ['', ' d1', ' d2', ' d3'];
 
@@ -13,7 +15,7 @@ const HomeStats = ({ copy, marquee }: { copy: HomeStatsCopy; marquee: string[] }
           <div key={item.label} className={`h5-stat h5-reveal${REVEAL_DELAYS[index]}`}>
             <b>
               {HOME_STAT_PREFIXES[index]}
-              <span data-count={HOME_STAT_COUNTS[index]}>0</span>
+              <span data-count={HOME_STAT_COUNTS[index]}>{hasStatsAnimated() ? formatCount(HOME_STAT_COUNTS[index]) : '0'}</span>
               <small>{item.suffix}</small>
             </b>
             <span>{item.label}</span>

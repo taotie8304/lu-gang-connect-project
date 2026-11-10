@@ -60,12 +60,14 @@ const AppContent = ({ Component, pageProps, renderPage }: AppPropsWithLayout) =>
   const shouldUseLayout = !router?.pathname || !routesWithoutLayout.includes(router.pathname);
   const headDesc = appClientEnv.systemDescription || t('common:system_intro', { title });
   const headIcon = getWebReqUrl(feConfigs?.favicon || appClientEnv.systemFavicon);
+  // 鲁港通 - 浏览器标签标题跟随界面语言：系统标题为中文品牌时按当前语言展示品牌名
+  const pageTitle = title === '鲁港通' ? t('common:brand_name') : title;
   const page = setLayout(renderPage ? renderPage() : <Component {...pageProps} />);
 
   if (openAPIReferenceRoutes.includes(router.pathname)) {
     return (
       <>
-        {showHead && <NextHead title={title} desc={headDesc} icon={headIcon} />}
+        {showHead && <NextHead title={pageTitle} desc={headDesc} icon={headIcon} />}
         {page}
       </>
     );
@@ -73,7 +75,7 @@ const AppContent = ({ Component, pageProps, renderPage }: AppPropsWithLayout) =>
 
   return (
     <>
-      {showHead && <NextHead title={title} desc={headDesc} icon={headIcon} />}
+      {showHead && <NextHead title={pageTitle} desc={headDesc} icon={headIcon} />}
       {/* 鲁港通 - 桌面客户端自绘标题栏；浏览器与老客户端内部不渲染 */}
       <DesktopTitleBar />
       {scripts?.map((item, i) => (

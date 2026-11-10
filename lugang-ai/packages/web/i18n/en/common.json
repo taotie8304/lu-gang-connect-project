@@ -1415,6 +1415,7 @@
   "system_content.privacy_policy": "Privacy Policy",
   "system_content.terms_of_use": "Terms of Use",
   "system_intro": "{{title}} is an AI App orchestration platform with ready-to-use data processing and model calling capabilities. Build Datasets quickly and create visual Workflows for complex Dataset use cases.\n",
+  "brand_name": "LuGangTong",
   "system_tools": "system tools",
   "tag_list": "Tag List",
   "templateTags.Image_generation": "Image generation",

@@ -45,7 +45,7 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
               aria-pressed={billing === 'year'}
               onClick={() => setBilling('year')}
             >
-              {copy.year}
+              {copy.year}{' '}
               <small>{copy.yearSave}</small>
             </button>
           </div>
