@@ -33,7 +33,7 @@ export const HOME_FOOTER_LINKS = [
     { href: `#${HOME_ANCHORS.download}` }
   ],
   [{ href: '/about' }, { href: `#${HOME_ANCHORS.faq}` }, { href: `#${HOME_ANCHORS.agent}` }],
-  [{ href: `mailto:${HOME_BUSINESS_MAIL}` }, { href: `#${HOME_ANCHORS.faq}` }]
+  [{ href: `mailto:${HOME_BUSINESS_MAIL}` }, { href: '/help' }]
 ];
 
 export const HOME_DOWNLOADS = {
@@ -211,6 +211,8 @@ export type HomePricingCopy = {
 export type HomeFaqCopy = {
   kicker: string;
   title: string;
+  /** 列表底部的「查看完整帮助中心」入口文案 */
+  more: string;
   items: { q: string; a: string }[];
 };
 

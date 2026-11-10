@@ -666,13 +666,12 @@ const QuickActions = ({ onOpenContact }: { onOpenContact: () => void }) => {
         gridTemplateColumns={['repeat(2, minmax(0, 1fr))', 'repeat(4, minmax(0, 1fr))']}
         gap={['8px', '12px']}
       >
-        {!!feConfigs?.docUrl && (
-          <QuickActionItem
-            icon={'common/quickActionBook'}
-            label={t('account_info:help_document')}
-            href={getDocPath('/guide/getting-started')}
-          />
-        )}
+        {/* 鲁港通 - 帮助文档改为站内帮助中心，不再指向 FastGPT 官方文档站 */}
+        <QuickActionItem
+          icon={'common/quickActionBook'}
+          label={t('account_info:help_document')}
+          onClick={() => router.push('/help')}
+        />
         {!!feConfigs?.concatMd && (
           <QuickActionItem
             icon={'common/quickActionPhone'}

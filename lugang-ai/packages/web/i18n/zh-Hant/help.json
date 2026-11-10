@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "homeTitle": "幫助中心 - 魯港通",
+    "homeDescription": "從第一次提問到充值與客戶端設定，魯港通使用手冊。",
+    "articleTitle": "{{title}} - 魯港通幫助中心",
+    "legalTitle": "法律與免責 - 魯港通幫助中心"
+  },
+  "brandSub": "幫助中心",
+  "nav": {
+    "home": "首頁",
+    "guide": "使用指南",
+    "credits": "充值與 Credits",
+    "legal": "法律與免責",
+    "backHome": "返回官網",
+    "start": "開始使用",
+    "aria": "幫助中心導航"
+  },
+  "langNotice": "本幫助中心暫以簡體中文提供，其餘語言版本正在準備中。",
+  "notFound": "未找到該文章，已返回幫助中心首頁。",
+  "search": {
+    "placeholder": "搜尋問題，例如：Credits、發票、代金券",
+    "aria": "搜尋幫助內容",
+    "hotLabel": "常用：",
+    "empty": "沒有找到「{{query}}」相關內容。",
+    "emptyHint": "換個說法，或提交工單聯絡我們。",
+    "resultsAria": "搜尋結果"
+  },
+  "home": {
+    "eyebrow": "使用手冊 · 第一版",
+    "title": "幫助中心",
+    "sub": "從第一次提問，到充值與客戶端設定，把每一步寫清楚。",
+    "categoriesTitle": "按主題瀏覽",
+    "categoriesSub": "6 大類，17 篇文章，按使用順序排列。",
+    "categoriesNote": "從淺入深",
+    "articleCount": "{{count}} 篇",
+    "legalCount": "6 份文件",
+    "popularTitle": "熱門問題",
+    "popularSub": "被問得最多的 8 個問題。",
+    "legalBandTitle": "法律與免責",
+    "legalBandSub": "5 份現有法律文件 + 新增《AI 輸出與信息時效免責聲明》。正文複用現有內容源，不在幫助中心重複維護。",
+    "contactTitle": "沒有找到答案？",
+    "contactSub": "提交工單，所有套餐統一 24 小時內響應。",
+    "ticket": "提交工單",
+    "footerData": "政策資料來自香港政府官方開放資料 · 辦理要求以官方為準",
+    "quick": [
+      {
+        "title": "第一次使用",
+        "sub": "註冊、介面與第一個問題"
+      },
+      {
+        "title": "Credits 與充值",
+        "sub": "套餐、打卡、代金券與發票"
+      },
+      {
+        "title": "下載客戶端",
+        "sub": "Windows 與 Android 安裝、更新"
+      }
+    ]
+  },
+  "article": {
+    "crumbHome": "幫助中心",
+    "toc": "本頁目錄",
+    "updated": "最後更新：{{date}}",
+    "read": "閱讀約 {{count}} 分鐘",
+    "lead": "本章要點",
+    "faq": "常見問題",
+    "calloutTip": "提示",
+    "calloutNote": "注意",
+    "calloutOfficial": "官方口徑",
+    "tableHint": "左右滑動查看完整表格",
+    "helpful": "這頁對你有幫助嗎？",
+    "helpfulYes": "有幫助",
+    "helpfulNo": "還需要改進",
+    "helpfulThanks": "謝謝回饋，我們會繼續保持。",
+    "helpfulRecorded": "已記錄，我們會檢查這一篇。",
+    "related": "相關文章",
+    "prev": "上一篇",
+    "next": "下一篇",
+    "none": "—",
+    "contact": "仍未解決？",
+    "contactSub": "提交工單，所有套餐統一 24 小時內響應。"
+  },
+  "legal": {
+    "crumb": "法律與免責",
+    "tag": "法律",
+    "title": "法律與免責",
+    "sub": "5 份現有法律文件 + 新增《AI 輸出與信息時效免責聲明》。正文複用現有內容源，不在幫助中心重複維護。",
+    "new": "新增",
+    "view": "查看",
+    "reuse": "複用現有內容",
+    "updated": "更新於 {{date}}",
+    "draftMeta": "草案 v0.1 · 待法務覆核",
+    "footerNote": "以上文件以正式發布版本為準",
+    "desc": {
+      "terms_of_use": "服務規則、內容權屬、責任限制與爭議解決",
+      "privacy_policy": "個人資訊的收集、使用、存儲與共享",
+      "data_collection": "收集目的、用途與當事人的權利",
+      "paid_service_agreement": "套餐、Credits、退款、發票與企業定製",
+      "payment_privacy_policy": "支付環節的資訊處理與第三方支付機構",
+      "ai_output_disclaimer": "AI 生成內容的性質、來源時效、用戶責任與回饋渠道"
+    }
+  }
+}

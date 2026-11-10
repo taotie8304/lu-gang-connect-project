@@ -30,12 +30,15 @@ import type admin_plugin from './zh-CN/admin_plugin.json';
 import type skill from './zh-CN/skill.json';
 import type price from './zh-CN/price.json';
 import type ticket from './zh-CN/ticket.json';
+import type help from './zh-CN/help.json';
 import type { I18N_NAMESPACES } from './constants';
 
 // 鲁港通 - home 命名空间使用对象分节文案，若按原始类型注册会把全站动态 key 的 t() 返回类型放宽为联合类型
 type HomeNamespace = { [K in keyof typeof home]: string };
 // 鲁港通 - about3 同为对象分节文案（content 为整段对象），同样按字符串化注册，避免污染全局 t() 返回类型
 type About3Namespace = { [K in keyof typeof about3]: string };
+// 鲁港通 - help 同为对象分节文案（home.quick 为数组），同样按字符串化注册
+type HelpNamespace = { [K in keyof typeof help]: string };
 
 export interface I18nNamespaces {
   common: typeof common;
@@ -69,6 +72,7 @@ export interface I18nNamespaces {
   skill: typeof skill;
   price: typeof price;
   ticket: typeof ticket;
+  help: HelpNamespace;
 }
 
 export type I18nNsType = (keyof I18nNamespaces)[];

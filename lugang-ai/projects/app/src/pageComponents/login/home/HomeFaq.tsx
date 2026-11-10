@@ -1,5 +1,6 @@
 // 鲁港通 - 常见问题：原生 details 折叠，保持轻量与可访问
 import React from 'react';
+import Link from 'next/link';
 import type { HomeFaqCopy } from './homeData';
 import { HOME_ANCHORS } from './homeData';
 
@@ -17,6 +18,9 @@ const HomeFaq = ({ copy }: { copy: HomeFaqCopy }) => (
             <p className="h5-faq-a">{item.a}</p>
           </details>
         ))}
+      </div>
+      <div className="h5-faq-more h5-reveal d2">
+        <Link href="/help">{copy.more} →</Link>
       </div>
     </div>
   </section>

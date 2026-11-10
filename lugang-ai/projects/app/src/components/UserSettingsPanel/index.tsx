@@ -329,6 +329,16 @@ const UserSettingsPanel = ({ isOpen, onClose }: UserSettingsPanelProps) => {
       label: t('common:user_settings.accessibility'),
       onClick: () => setIsAccessibilityModalOpen(true)
     },
+    // 鲁港通 - 帮助中心入口：公开页面，内含使用手册与法律文件
+    {
+      key: 'helpCenter',
+      icon: 'book',
+      label: t('common:user_settings.help_center'),
+      onClick: () => {
+        onClose();
+        router.push('/help');
+      }
+    },
     // 鲁港通 - D11 系统内容（法律条款）三项，点击打开 SystemContentModal
     {
       key: 'termsOfUse',

@@ -88,8 +88,8 @@ describe('resolveSystemContentKey - locale→key 映射与回退', () => {
 });
 
 describe('systemContentKeyMap / 派生映射完整性契约', () => {
-  it('枚举共 15 个 key（5 类内容 × 繁/简/英）', () => {
-    expect(allEnumValues).toHaveLength(15);
+  it('枚举共 18 个 key（6 类内容 × 繁/简/英）', () => {
+    expect(allEnumValues).toHaveLength(18);
   });
 
   it('每个枚举 key 要么在 map 有自有默认，要么登记为 zh-CN 派生（二者必居其一）', () => {
@@ -106,6 +106,13 @@ describe('systemContentKeyMap / 派生映射完整性契约', () => {
     );
     // 派生 key 不内嵌简体大 blob（避免重复维护 ~270 行法律文本）
     expect(SystemContentKeyEnum.termsOfUseZhCN in systemContentKeyMap).toBe(false);
+  });
+
+  it('AI 输出免责声明 _zh-CN 变体登记为派生，基准指向繁体', () => {
+    expect(systemContentZhCNBaseMap[SystemContentKeyEnum.aiOutputDisclaimerZhCN]).toBe(
+      SystemContentKeyEnum.aiOutputDisclaimer
+    );
+    expect(SystemContentKeyEnum.aiOutputDisclaimerZhCN in systemContentKeyMap).toBe(false);
   });
 
   it('支付法律文档的 _zh-CN 变体同样登记为派生：基准指向繁体且不内嵌简体 blob', () => {
@@ -157,6 +164,16 @@ describe('默认内容：真实法律文本 vs 占位符', () => {
     expect(isPlaceholder(privacy)).toBe(false);
     expect(privacy).toContain('支付寶');
     expect(privacy).toContain('銀行卡號');
+  });
+
+  it('AI 输出免责声明繁体/英文为真实草案内容（含来源时效与反馈渠道要素）', () => {
+    const hant = systemContentKeyMap[SystemContentKeyEnum.aiOutputDisclaimer].defaultContent;
+    const en = systemContentKeyMap[SystemContentKeyEnum.aiOutputDisclaimerEn].defaultContent;
+    expect(isPlaceholder(hant)).toBe(false);
+    expect(isPlaceholder(en)).toBe(false);
+    expect(hant).toContain('service@airscend.com');
+    expect(hant).toContain('信息來源與時效');
+    expect(en).toContain('service@airscend.com');
   });
 
   it('付费服务协议/支付隐私政策英文版为占位符（待管理员配置）', () => {

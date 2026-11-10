@@ -16,7 +16,11 @@ const unAuthPage: { [key: string]: boolean } = {
   '/tools/price': true,
   '/price': true,
   // 鲁港通 - 关于页是公开介绍页，未登录也必须可看；漏配白名单会被重定向回登录页（表现为点击「关于」没反应）
-  '/about': true
+  '/about': true,
+  // 鲁港通 - 帮助中心（首页 / 文章 / 法律）为公开页面，未登录可访问
+  '/help': true,
+  '/help/[slug]': true,
+  '/help/legal': true
 };
 
 const Auth = ({ children }: { children: JSX.Element | React.ReactNode }) => {

@@ -65,6 +65,10 @@ const pcUnShowLayoutRoute: Record<string, boolean> = {
   '/tools/price': true,
   '/price': true,
   '/about': true,
+  // 鲁港通 - 帮助中心自带完整导航与页脚，不叠加全局布局
+  '/help': true,
+  '/help/[slug]': true,
+  '/help/legal': true,
   '/skill/detail': true,
   '/config/plugin/marketplace': true,
   '/dashboard/tool/marketplace': true
@@ -80,6 +84,10 @@ const phoneUnShowLayoutRoute: Record<string, boolean> = {
   '/tools/price': true,
   '/price': true,
   '/about': true,
+  // 鲁港通 - 帮助中心自带完整导航与页脚，不叠加全局布局
+  '/help': true,
+  '/help/[slug]': true,
+  '/help/legal': true,
   '/skill/detail': true,
   '/config/plugin/marketplace': true,
   '/dashboard/tool/marketplace': true

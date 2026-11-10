@@ -1,0 +1,103 @@
+{
+  "meta": {
+    "homeTitle": "Help Center - LuGangTong",
+    "homeDescription": "LuGangTong user guide: from your first question to top-ups and desktop setup.",
+    "articleTitle": "{{title}} - LuGangTong Help Center",
+    "legalTitle": "Legal & Disclaimer - LuGangTong Help Center"
+  },
+  "brandSub": "Help Center",
+  "nav": {
+    "home": "Home",
+    "guide": "User Guide",
+    "credits": "Top-ups & Credits",
+    "legal": "Legal & Disclaimer",
+    "backHome": "Back to Website",
+    "start": "Get Started",
+    "aria": "Help center navigation"
+  },
+  "langNotice": "This help center is currently available in Simplified Chinese. Other language versions are in preparation.",
+  "notFound": "Article not found. You have been returned to the Help Center home page.",
+  "search": {
+    "placeholder": "Search help, e.g. Credits, invoice, voucher",
+    "aria": "Search help content",
+    "hotLabel": "Popular:",
+    "empty": "No results for \"{{query}}\".",
+    "emptyHint": "Try different wording, or submit a ticket to contact us.",
+    "resultsAria": "Search results"
+  },
+  "home": {
+    "eyebrow": "User Manual · First Edition",
+    "title": "Help Center",
+    "sub": "From your first question to top-ups and desktop setup, every step explained.",
+    "categoriesTitle": "Browse by topic",
+    "categoriesSub": "6 categories, 17 articles, arranged in order of use.",
+    "categoriesNote": "From basic to advanced",
+    "articleCount": "{{count}} articles",
+    "legalCount": "6 documents",
+    "popularTitle": "Popular questions",
+    "popularSub": "The 8 most frequently asked questions.",
+    "legalBandTitle": "Legal & Disclaimer",
+    "legalBandSub": "5 existing legal documents plus the new AI Output and Information Currency Disclaimer. The text reuses the existing content source and is not duplicated here.",
+    "contactTitle": "Didn't find an answer?",
+    "contactSub": "Submit a ticket. All plans receive a response within 24 hours.",
+    "ticket": "Submit a ticket",
+    "footerData": "Policy data comes from official Hong Kong government open data · Requirements are subject to official announcements",
+    "quick": [
+      {
+        "title": "Getting started",
+        "sub": "Registration, interface and your first question"
+      },
+      {
+        "title": "Credits & top-ups",
+        "sub": "Plans, check-in, vouchers and invoices"
+      },
+      {
+        "title": "Download the app",
+        "sub": "Windows and Android installation and updates"
+      }
+    ]
+  },
+  "article": {
+    "crumbHome": "Help Center",
+    "toc": "On this page",
+    "updated": "Last updated: {{date}}",
+    "read": "About {{count}} min read",
+    "lead": "Key points",
+    "faq": "FAQ",
+    "calloutTip": "Tip",
+    "calloutNote": "Note",
+    "calloutOfficial": "Official position",
+    "tableHint": "Scroll horizontally to see the full table",
+    "helpful": "Was this page helpful?",
+    "helpfulYes": "Yes",
+    "helpfulNo": "Needs improvement",
+    "helpfulThanks": "Thanks for your feedback. We will keep it up.",
+    "helpfulRecorded": "Noted. We will review this article.",
+    "related": "Related articles",
+    "prev": "Previous",
+    "next": "Next",
+    "none": "—",
+    "contact": "Still not resolved?",
+    "contactSub": "Submit a ticket. All plans receive a response within 24 hours."
+  },
+  "legal": {
+    "crumb": "Legal & Disclaimer",
+    "tag": "Legal",
+    "title": "Legal & Disclaimer",
+    "sub": "5 existing legal documents plus the new AI Output and Information Currency Disclaimer. The text reuses the existing content source and is not duplicated here.",
+    "new": "New",
+    "view": "View",
+    "reuse": "Reuses existing content",
+    "updated": "Updated {{date}}",
+    "draftMeta": "Draft v0.1 · Pending legal review",
+    "footerNote": "The officially published versions prevail.",
+    "desc": {
+      "terms_of_use": "Service rules, content ownership, liability limits and dispute resolution",
+      "privacy_policy": "Collection, use, storage and sharing of personal information",
+      "data_collection": "Purpose of collection, use and the rights of data subjects",
+      "paid_service_agreement": "Plans, Credits, refunds, invoices and enterprise customization",
+      "payment_privacy_policy": "Information handling in payments and third-party payment providers",
+      "ai_output_disclaimer": "Nature of AI-generated content, source currency, user responsibilities and feedback channels"
+    }
+  }
+}

@@ -29,7 +29,8 @@ export const I18N_NAMESPACES = [
   'admin_plugin',
   'skill',
   'price',
-  'ticket'
+  'ticket',
+  'help'
 ];
 
 export const I18N_NAMESPACES_MAP = I18N_NAMESPACES.reduce(

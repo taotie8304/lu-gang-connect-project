@@ -738,6 +738,9 @@ export const HOME_CSS = `
   }
   .h5-faq-item[open] summary::after { transform: rotate(45deg); }
   .h5-faq-a { padding: 0 2px 22px; font-size: 13px; line-height: 1.95; color: var(--muted); max-width: 700px; }
+  .h5-faq-more { text-align: center; margin-top: 28px; }
+  .h5-faq-more a { font-size: 13px; color: var(--blue); letter-spacing: 0.02em; border-bottom: 1px solid rgba(30, 123, 255, 0.25); padding-bottom: 2px; transition: opacity 0.2s ease; }
+  .h5-faq-more a:hover { opacity: 0.75; }
 
   /* ---------- footer ---------- */
   .h5-foot { background: #1f1e1c; color: rgba(247, 244, 236, 0.78); padding: 64px 0 34px; }

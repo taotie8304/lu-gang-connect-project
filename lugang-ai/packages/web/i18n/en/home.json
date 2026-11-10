@@ -340,6 +340,7 @@
   "faq": {
     "kicker": "FAQ",
     "title": "Let's make the differences clear.",
+    "more": "Browse the full help center",
     "items": [
       {
         "q": "How far can I go on the Free plan?",
