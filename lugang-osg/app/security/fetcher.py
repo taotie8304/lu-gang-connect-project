@@ -9,6 +9,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 
 from app.config import Settings
+from app.security import dns_fallback
 from app.security.url_validator import (
     DomainRule,
     RejectReason,
@@ -135,14 +136,52 @@ def fetch_url(
     elif local_addr is not None:
         client_kwargs["transport"] = httpx.HTTPTransport(local_address=local_addr)
 
+    # 鲁港通 - 已知可达节点直接复用：同轮后续请求不必再吃一次握手超时
+    pinned: dict[str, str] = {}
+    if transport is None and settings.smart_dns and current.scheme == "https":
+        cached = dns_fallback.cached_pin(current.hostname)
+        if cached:
+            pinned[current.hostname] = cached
+
+    def _new_client() -> httpx.Client:
+        kwargs = dict(client_kwargs)
+        if transport is not None:
+            kwargs["transport"] = transport
+        elif pinned or local_addr is not None:
+            pinned_transport = httpx.HTTPTransport(local_address=local_addr)
+            if pinned:
+                dns_fallback.pin_transport(pinned_transport, pinned)
+            kwargs["transport"] = pinned_transport
+        return httpx.Client(**kwargs)
+
     chain: list[str] = [current.url]
     redirects = 0
+    pin_retried = False
 
-    with httpx.Client(**client_kwargs) as client:
+    client = _new_client()
+    try:
         while True:
             # 鲁港通 - method 可配 POST（济南文件库 do-search 只接受 POST，GET 返 500）；
             # 逐跳重定向复用同一 method（实测 do-search 无重定向，详情走默认 GET）。
-            response = client.request(method, current.url)
+            try:
+                response = client.request(method, current.url)
+            except (httpx.ConnectTimeout, httpx.ConnectError):
+                # 鲁港通 - 部分政务 CDN 节点 TCP 可建连但 TLS 握手被静默丢弃，系统解析器
+                # 又只返回这一组坏节点；用 DoH 全量候选探测可达节点后重试一次
+                if pin_retried or not settings.smart_dns or current.scheme != "https":
+                    raise
+                pin_retried = True
+                pin = dns_fallback.resolve_reachable_ip(
+                    current.hostname,
+                    ttl_s=settings.smart_dns_ttl_s,
+                    probe_timeout_s=settings.smart_dns_probe_timeout_s,
+                )
+                if not pin:
+                    raise
+                pinned[current.hostname] = pin
+                client.close()
+                client = _new_client()
+                response = client.request(method, current.url)
             if response.status_code in _REDIRECT_STATUSES:
                 location = response.headers.get("location", "")
                 response.close()
@@ -163,6 +202,11 @@ def fetch_url(
                         RejectReason.REDIRECT_OUT_OF_ALLOWLIST, str(exc)
                     ) from exc
                 chain.append(current.url)
+                # 鲁港通 - 跳转到另一台政务域时同样先查已有钉点（后端持有同一字典引用）
+                if pinned and current.scheme == "https" and current.hostname not in pinned:
+                    cached = dns_fallback.cached_pin(current.hostname)
+                    if cached:
+                        pinned[current.hostname] = cached
                 continue
 
             if response.status_code in _BLOCKED_STATUSES:
@@ -217,3 +261,5 @@ def fetch_url(
                 content=bytes(buf),
                 redirect_chain=tuple(chain),
             )
+    finally:
+        client.close()

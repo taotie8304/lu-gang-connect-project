@@ -287,3 +287,69 @@ class TestFetcherLimits:
         assert seen["method"] == "POST"
         assert result.http_status == 200
         assert result.content == b'{"success":true}'
+
+    def test_smart_dns_retries_once_when_tls_handshake_stalls(self, monkeypatch):
+        """鲁港通 - 政务 CDN 部分节点 TCP 可建连但 TLS 握手被静默丢弃：钉住可达节点重试一次。"""
+        import httpx
+
+        from app.security import dns_fallback
+
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(str(request.url))
+            if len(calls) == 1:
+                raise httpx.ConnectTimeout("_ssl.c:993: The handshake operation timed out", request=request)
+            return httpx.Response(200, headers={"content-type": "text/html"}, content=b"<html>ok</html>")
+
+        monkeypatch.setattr(dns_fallback, "resolve_reachable_ip", lambda host, **kwargs: "117.149.202.32")
+        result = fetch_url(
+            "https://www.news.gov.hk/a.html",
+            RULES,
+            self._settings(),
+            transport=httpx.MockTransport(handler),
+            resolver=fake_resolver,
+        )
+        assert result.content == b"<html>ok</html>"
+        assert len(calls) == 2
+
+    def test_smart_dns_disabled_keeps_single_attempt(self, monkeypatch):
+        import httpx
+
+        from app.security import dns_fallback
+
+        calls: list[str] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            calls.append(str(request.url))
+            raise httpx.ConnectTimeout("tls handshake timed out", request=request)
+
+        monkeypatch.setattr(dns_fallback, "resolve_reachable_ip", lambda host, **kwargs: "117.149.202.32")
+        settings = self._settings().model_copy(update={"smart_dns": False})
+        with pytest.raises(httpx.ConnectTimeout):
+            fetch_url(
+                "https://www.news.gov.hk/a.html",
+                RULES,
+                settings,
+                transport=httpx.MockTransport(handler),
+                resolver=fake_resolver,
+            )
+        assert len(calls) == 1
+
+    def test_smart_dns_no_reachable_candidate_reraises(self, monkeypatch):
+        import httpx
+
+        from app.security import dns_fallback
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            raise httpx.ConnectTimeout("tls handshake timed out", request=request)
+
+        monkeypatch.setattr(dns_fallback, "resolve_reachable_ip", lambda host, **kwargs: None)
+        with pytest.raises(httpx.ConnectTimeout):
+            fetch_url(
+                "https://www.news.gov.hk/a.html",
+                RULES,
+                self._settings(),
+                transport=httpx.MockTransport(handler),
+                resolver=fake_resolver,
+            )

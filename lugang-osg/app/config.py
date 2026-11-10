@@ -69,6 +69,13 @@ class Settings(BaseSettings):
     # 鲁港通 - 采集节点网络（境外服务器访问大陆政务网站需强制 IPv4，Phase 0 实测结论）
     force_ipv4: bool = True
 
+    # 鲁港通 - 政务 CDN 多节点兜底（2026-11-10）：济南 *.jinan.gov.cn 境外解析到的
+    # 103.41.1.x 节点 TLS 握手被静默丢弃，而同一域名的大陆节点可达；连接失败时经 DoH
+    # 取全量 A 记录并 TLS 探测，把该域名钉到可达节点（SNI/证书仍按原域名校验）
+    smart_dns: bool = True
+    smart_dns_ttl_s: float = 900.0
+    smart_dns_probe_timeout_s: float = 4.0
+
     # 鲁港通 - FastGPT 导入链路（design.md §7.3；API Key 由服务器 .env 注入，禁止硬编码）
     fastgpt_base_url: str = "http://172.17.0.1:3210"
     fastgpt_api_key: str = ""
