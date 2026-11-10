@@ -21,7 +21,7 @@ import {
   type PricePurchaseIntent
 } from '@/pageComponents/price/purchaseIntent';
 import { decideShowAdminFeatures } from '@/components/Layout/adminFeatures';
-import { decidePriceFallback } from '@/pageComponents/price/priceFallback';
+import { decidePriceBackAction } from '@/pageComponents/price/priceFallback';
 
 const PriceBox = () => {
   const { initUserInfo } = useUserStore();
@@ -138,11 +138,23 @@ const PriceBox = () => {
     enableUserChatOnly: !!feConfigs?.enableUserChatOnly
   });
 
+  // 鲁港通 - #684：新开页点「返回」不能只看 history.length（新标签页自带空白历史），
+  // 优先用 Navigation API 的 index 判断是否存在同源真实历史
   const handleBack = useCallback(() => {
-    if (window.history.length > 1) {
+    const navigation = (
+      window as Window & { navigation?: { currentEntry?: { index?: number } } }
+    ).navigation;
+    const action = decidePriceBackAction({
+      navigationIndex: navigation?.currentEntry?.index,
+      historyLength: window.history.length,
+      referrer: document.referrer,
+      showAdminFeatures
+    });
+
+    if (action.type === 'back') {
       router.back();
     } else {
-      router.push(decidePriceFallback({ showAdminFeatures }));
+      router.push(action.path);
     }
   }, [router, showAdminFeatures]);
 
