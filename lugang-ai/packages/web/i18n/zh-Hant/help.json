@@ -89,7 +89,7 @@
     "view": "查看",
     "reuse": "複用現有內容",
     "updated": "更新於 {{date}}",
-    "draftMeta": "草案 v0.1 · 待法務覆核",
+    "releaseMeta": "2026-11-10 發佈",
     "footerNote": "以上文件以正式發布版本為準",
     "desc": {
       "terms_of_use": "服務規則、內容權屬、責任限制與爭議解決",

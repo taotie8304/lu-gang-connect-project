@@ -52,7 +52,7 @@ const HelpLegal = () => {
                   </h2>
                   <p>{t(`legal.desc.${row.copyKey}`)}</p>
                 </div>
-                <span className="hp-legal-meta">{row.isNew ? t('legal.draftMeta') : t('legal.reuse')}</span>
+                <span className="hp-legal-meta">{row.isNew ? t('legal.releaseMeta') : t('legal.reuse')}</span>
                 <button type="button" className="hp-btn hp-btn-ghost hp-btn-sm" onClick={() => setActiveKey(row.key)}>
                   {t('legal.view')}
                 </button>

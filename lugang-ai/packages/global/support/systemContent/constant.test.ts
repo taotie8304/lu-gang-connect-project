@@ -166,14 +166,16 @@ describe('默认内容：真实法律文本 vs 占位符', () => {
     expect(privacy).toContain('銀行卡號');
   });
 
-  it('AI 输出免责声明繁体/英文为真实草案内容（含来源时效与反馈渠道要素）', () => {
+  it('AI 输出免责声明繁体/英文为正式内容（含来源时效、标识与反馈渠道要素）', () => {
     const hant = systemContentKeyMap[SystemContentKeyEnum.aiOutputDisclaimer].defaultContent;
     const en = systemContentKeyMap[SystemContentKeyEnum.aiOutputDisclaimerEn].defaultContent;
     expect(isPlaceholder(hant)).toBe(false);
     expect(isPlaceholder(en)).toBe(false);
     expect(hant).toContain('service@airscend.com');
     expect(hant).toContain('信息來源與時效');
+    expect(hant).toContain('人工智能生成合成內容標識辦法');
     expect(en).toContain('service@airscend.com');
+    expect(en).toContain('Measures for the Labeling of AI-Generated Synthetic Content');
   });
 
   it('付费服务协议/支付隐私政策英文版为占位符（待管理员配置）', () => {

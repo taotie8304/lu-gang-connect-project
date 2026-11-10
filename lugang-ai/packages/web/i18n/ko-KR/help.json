@@ -89,7 +89,7 @@
     "view": "View",
     "reuse": "Reuses existing content",
     "updated": "Updated {{date}}",
-    "draftMeta": "Draft v0.1 · Pending legal review",
+    "releaseMeta": "Published 10 Nov 2026",
     "footerNote": "The officially published versions prevail.",
     "desc": {
       "terms_of_use": "Service rules, content ownership, liability limits and dispute resolution",

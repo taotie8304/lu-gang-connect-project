@@ -20,7 +20,7 @@ export enum SystemContentKeyEnum {
   paymentPrivacyPolicy = 'payment_privacy_policy',
   paymentPrivacyPolicyZhCN = 'payment_privacy_policy_zh-CN',
   paymentPrivacyPolicyEn = 'payment_privacy_policy_en',
-  // 鲁港通 - 帮助中心新增《AI 输出与信息时效免责声明》（2026-11-10，草案待法务复核）
+  // 鲁港通 - 帮助中心新增《AI 输出与信息时效免责声明》（2026-11-10 定稿，已按现行法规复核）
   aiOutputDisclaimer = 'ai_output_disclaimer',
   aiOutputDisclaimerZhCN = 'ai_output_disclaimer_zh-CN',
   aiOutputDisclaimerEn = 'ai_output_disclaimer_en'
@@ -821,7 +821,7 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 **最後更新：2026年11月10日**
 
-本聲明適用於鲁港通（LuGangTong）透過網頁、桌面客戶端及移動客戶端提供的全部人工智能生成內容（下稱「**輸出內容**」）。本聲明是《鲁港通使用條款》的補充文件；如本聲明與《使用條款》不一致，就 AI 輸出與信息時效事項，以本聲明為準。
+本聲明適用於鲁港通（LuGangTong）透過網頁、桌面客戶端及移動客戶端提供的全部人工智能生成內容（下稱「**輸出內容**」）。本聲明是《鲁港通使用條款》的補充文件；如本聲明與《使用條款》不一致，就 AI 輸出與信息時效事項，以本聲明為準。本聲明的訂立、效力、解釋與爭議解決適用《使用條款》第 14 條的約定。
 
 ---
 
@@ -832,6 +832,10 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 1.2 輸出內容不構成法律、財務、投資、稅務、醫療、教育錄取或其他專業建議，不應作為作出決定的唯一依據。
 
 1.3 輸出內容不代表 Airscend 的立場。涉及第三方政策、費用、材料與辦理要求的，以相關政府或機構最新公佈為準。
+
+1.4 我們依照《生成式人工智能服務管理暫行辦法》《互聯網信息服務深度合成管理規定》及《人工智能生成合成內容標識辦法》等規定，對輸出內容添加人工智能生成標識。用戶不得惡意刪除、篡改、偽造或隱匿該等標識，亦不得利用輸出內容製作、複製、發布、傳播法律法規禁止的信息。
+
+1.5 Airscend 依法承擔網絡信息內容生產者責任，持續對輸出內容進行安全治理；如發現法律法規禁止的信息，將依法採取停止生成、停止傳輸、消除等處置措施，並按規定保存有關記錄、向主管部門報告。
 
 ---
 
@@ -845,6 +849,8 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 2.4 交通路線、班次、票價與耗時受運營方安排、天氣與路況影響，出行前請以運營方公佈為準。
 
+2.5 輸出內容如涉及第三方網站或服務，其內容與可用性由該第三方負責；我們不對第三方網站的準確性、完整性或持續可用性作出保證。
+
 ---
 
 ## 3. 用戶責任
@@ -853,7 +859,11 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 3.2 用戶對基於輸出內容作出的決定與行為自行承擔責任。
 
-3.3 用戶不得將輸出內容用於違法用途，或冒充官方文件、官方結論對外提供。
+3.3 用戶不得將輸出內容用於違法用途、虛假或引人誤解的商業宣傳，或冒充官方文件、官方結論對外提供。
+
+3.4 用戶不得在輸入內容中提交未經合法授權的他人個人信息、商業秘密或其他受法律保護的信息，亦不得利用輸出內容侵害他人的名譽權、隱私權、個人信息權益、知識產權或其他合法權益。
+
+3.5 未成年人應在監護人指導下使用本服務，監護人應履行相應監護職責。
 
 ---
 
@@ -861,13 +871,15 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 4.1 在適用法律允許的最大範圍內，Airscend 不對因使用或依賴輸出內容產生的間接、附帶或後果性損失承擔責任；責任限制適用《使用條款》第 8 條。
 
-4.2 本聲明不排除或限制依適用法律不得排除或限制的責任。
+4.2 本聲明不排除或限制依適用法律不得排除或限制的責任，亦不影響用戶依法享有的權利。
+
+4.3 本聲明中的免責與責任限制條款已以合理方式提請用戶注意；用戶如對上述條款有疑問，可通過第 5 條的方式要求我們說明。
 
 ---
 
 ## 5. 反饋與更正
 
-如發現錯誤、過期信息或不當內容，請通過「我的工單」或 **service@airscend.com** 告知我們。我們會在核實後更正或下架相關內容。`
+如發現錯誤、過期信息或不當內容，請通過「我的工單」或 **service@airscend.com** 告知我們。我們將及時受理，在核實後更正或下架相關內容，並在合理期限內反饋處理結果。對違法或不良信息，我們將依法處置並可按要求向主管部門報告。`
   },
   [SystemContentKeyEnum.aiOutputDisclaimerEn]: {
     label: 'AI Output and Information Currency Disclaimer',
@@ -876,7 +888,7 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 **Last Updated: 10 November 2026**
 
-This Disclaimer applies to all AI-generated content (the "**Output Content**") provided through the LuGangTong (鲁港通) website, desktop client and mobile client. This Disclaimer is a supplementary document to the LuGangTong Terms of Use. If there is any inconsistency between this Disclaimer and the Terms of Use, this Disclaimer prevails with respect to AI output and information currency matters.
+This Disclaimer applies to all AI-generated content (the "**Output Content**") provided through the LuGangTong (鲁港通) website, desktop client and mobile client. This Disclaimer is a supplementary document to the LuGangTong Terms of Use. If there is any inconsistency between this Disclaimer and the Terms of Use, this Disclaimer prevails with respect to AI output and information currency matters. The formation, validity, interpretation and dispute resolution of this Disclaimer are governed by Clause 14 of the Terms of Use.
 
 ---
 
@@ -887,6 +899,10 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 1.2 Output Content does not constitute legal, financial, investment, tax, medical, education admission or other professional advice, and should not be the sole basis for any decision.
 
 1.3 Output Content does not represent the position of Airscend. Where third-party policies, fees, documents or application requirements are involved, the latest announcements of the relevant government or organisation shall prevail.
+
+1.4 In accordance with the Interim Measures for the Administration of Generative Artificial Intelligence Services, the Provisions on the Administration of Deep Synthesis of Internet Information Services and the Measures for the Labeling of AI-Generated Synthetic Content, we label Output Content as AI-generated. Users must not maliciously delete, tamper with, forge or conceal such labels, nor use Output Content to create, reproduce, publish or disseminate information prohibited by laws and regulations.
+
+1.5 Airscend assumes the responsibilities of a network information content producer in accordance with law and continuously governs the safety of Output Content. Where information prohibited by laws and regulations is identified, we will take measures such as ceasing generation, ceasing transmission and removal in accordance with law, keep relevant records as required and report to the competent authorities.
 
 ---
 
@@ -900,6 +916,8 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 
 2.4 Transport routes, schedules, fares and journey times are subject to operator arrangements, weather and traffic conditions. Before travelling, please refer to the operator's latest announcements.
 
+2.5 Where Output Content involves third-party websites or services, their content and availability are the responsibility of such third parties; we make no warranty as to their accuracy, completeness or continued availability.
+
 ---
 
 ## 3. User Responsibilities
@@ -908,7 +926,11 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 
 3.2 Users are responsible for their own decisions and actions based on Output Content.
 
-3.3 Users must not use Output Content for unlawful purposes or present it as official documents or official conclusions.
+3.3 Users must not use Output Content for unlawful purposes or false or misleading commercial promotion, or present it as official documents or official conclusions.
+
+3.4 Users must not submit the personal information, trade secrets or other legally protected information of others without lawful authorisation, nor use Output Content to infringe the reputation, privacy, personal information rights, intellectual property rights or other lawful rights and interests of others.
+
+3.5 Minors should use the Service under the guidance of their guardians, and guardians should perform their corresponding guardianship duties.
 
 ---
 
@@ -916,13 +938,15 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 
 4.1 To the maximum extent permitted by applicable law, Airscend shall not be liable for any indirect, incidental or consequential loss arising from the use of or reliance on Output Content; the limitation of liability is governed by Clause 8 of the Terms of Use.
 
-4.2 Nothing in this Disclaimer excludes or limits any liability that cannot be excluded or limited under applicable law.
+4.2 Nothing in this Disclaimer excludes or limits any liability that cannot be excluded or limited under applicable law, nor affects any rights users enjoy under applicable law.
+
+4.3 The disclaimers and limitation of liability clauses in this Disclaimer have been brought to users' attention in a reasonable manner; if users have any questions about such clauses, they may request an explanation from us through the means set out in Section 5.
 
 ---
 
 ## 5. Feedback and Corrections
 
-If you find errors, outdated information or inappropriate content, please let us know through "My Tickets" or **service@airscend.com**. We will correct or remove the relevant content after verification.`
+If you find errors, outdated information or inappropriate content, please let us know through "My Tickets" or **service@airscend.com**. We will accept and handle your report promptly, correct or remove the relevant content after verification, and respond within a reasonable period. We will handle illegal or harmful information in accordance with law and may report to the competent authorities as required.`
   }
 };
 
