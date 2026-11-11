@@ -55,7 +55,7 @@ export const HOME_PLAN_PRICES = [
 export const HOME_FEATURED_PLAN = 2;
 
 /** 与文案 personas.items / flow.steps 的下标一一对应 */
-export const HOME_PERSONA_COUNT = 4;
+export const HOME_PERSONA_COUNT = 5;
 export const HOME_FLOW_COUNT = 4;
 /** 材料清单第 3 项为待补状态（0 基） */
 export const HOME_FLOW_MISSING_CHECK = 2;

@@ -16,7 +16,7 @@
     "eyebrow": "Shandong × Hong Kong · Cross-border policy & errand assistant",
     "titleTop": "Between two places,",
     "titleAccent": "just ask.",
-    "lede": "From Hong Kong visas, MPF and bank accounts to Shandong startup subsidies, school admission and travel routes — ask once and get answers with official sources.",
+    "lede": "From Hong Kong visas, MPF and bank accounts to Shandong startup subsidies, school admission and travel routes — for overseas Chinese and Hong Kong, Macao and Taiwan compatriots coming to Shandong, ask once and get answers with official sources.",
     "ctaPrimary": "Start for free",
     "ctaSecondary": "Download app",
     "meta": [
@@ -90,17 +90,21 @@
       "DSE pathway",
       "Startup subsidy",
       "Talent housing",
-      "Cross-border care"
+      "Cross-border care",
+      "Returning to Settle",
+      "HK/Macao/Taiwan Compatriots",
+      "Shandong Startup",
+      "School Enrollment"
     ]
   },
   "personas": {
     "kicker": "One question, different paths",
     "titleA": "Wherever you are,",
     "titleB": "the answer starts there.",
-    "sub": "Ask \"how do I move to Hong Kong\" as a student, an employee, a founder or a family, and the path differs. State your situation first so every step fits.",
+    "sub": "Ask \"how do I move to Hong Kong\" as a student, an employee, a founder or a family — or how to settle in Shandong as an overseas Chinese — and the path differs. State your situation first so every step fits.",
     "askLabel": "You might ask",
     "answerLabel": "How Lugang Connect breaks it down",
-    "tabs": ["Study", "Work", "Startup", "Family"],
+    "tabs": ["Study", "Work", "Startup", "Family", "Return"],
     "items": [
       {
         "question": "After finishing an associate degree, how do credits transfer to a Hong Kong university?",
@@ -160,6 +164,21 @@
           "Education Bureau · Student records",
           "HKEAA · DSE",
           "Mainland admission platform"
+        ]
+      },
+      {
+        "question": "I am an overseas Chinese returning to settle in China. I want to start a business in Shandong and enroll my child in school — where should I start?",
+        "asker": "— An overseas Chinese family planning to return",
+        "answer": "Complete your settlement and household registration first, then match talent and startup policies one by one.",
+        "points": [
+          "Check the requirements and household-registration documents for overseas Chinese returning to settle; connect your identity and address first.",
+          "Compare startup subsidies, talent housing and tax incentives in your destination city, including application rules and windows.",
+          "Confirm the documents, application dates and school-district arrangements for overseas Chinese children's enrollment so you don't miss them."
+        ],
+        "sources": [
+          "Shandong Provincial Overseas Chinese Affairs Office · Returning to settle",
+          "Shandong Human Resources and Social Security Department · Startup subsidies",
+          "Local education bureau · Enrollment for overseas Chinese children"
         ]
       }
     ]

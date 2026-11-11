@@ -1,4 +1,4 @@
-// 鲁港通 - 能力区：按处境切换（求学 / 就业 / 创业 / 安家），同一问题的不同拆法
+// 鲁港通 - 能力区：按处境切换（求学 / 就业 / 创业 / 安家 / 来鲁），同一问题的不同拆法
 import React, { useState } from 'react';
 import type { HomePersonasCopy } from './homeData';
 import { HOME_ANCHORS, HOME_PERSONA_COUNT } from './homeData';
