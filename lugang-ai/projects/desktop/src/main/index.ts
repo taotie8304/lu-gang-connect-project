@@ -183,6 +183,8 @@ if (!gotLock) {
         rendererDir,
         permissionStorePath: join(userDataDir, 'permissions.json'),
         zoomStorePath: join(userDataDir, 'browser-zoom.json'),
+        // 鲁港通 - 站点 AI 偏好单独落盘，不随清除浏览数据重置
+        siteAiPrefsStorePath: join(userDataDir, 'browser-ai-site-prefs.json'),
         events: {
           onTabClosed: (event) => {
             void aiController?.handleTabClosed(event).catch((error) => {

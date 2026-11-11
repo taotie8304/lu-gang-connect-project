@@ -21,8 +21,14 @@ import {
   type DesktopDownloadItem,
   type DesktopDownloadStatus,
   type DesktopFindResult,
-  type DesktopPanelCommand
+  type DesktopPanelCommand,
+  type DesktopSiteAiMode
 } from '../../shared/ipc';
+import type { AiFailureHighlight } from '../ai/executor';
+import {
+  buildAiClearFailureHighlightExpression,
+  buildAiFailureHighlightExpression
+} from '../ai/failureHighlightScript';
 import type { CssRect } from '../../shared/geometry';
 import { isManualBrowserNavigationAllowed, parseManualBrowserUrl } from '../navigation';
 import { installNavigationGuard } from '../navigationGuard';
@@ -49,6 +55,11 @@ import {
   saveZoomStore,
   stepZoomPercent
 } from './zoom';
+import {
+  loadSiteAiPrefStore,
+  normalizeSiteOrigin,
+  saveSiteAiPrefStore
+} from './siteAiPrefs';
 import { resolveBrowserShortcut } from './shortcuts';
 
 type TabEntry = {
@@ -78,6 +89,7 @@ export type BrowserManagerOptions = {
   rendererDir: string;
   permissionStorePath: string;
   zoomStorePath: string;
+  siteAiPrefsStorePath: string;
   partition?: string;
   events?: BrowserManagerEvents;
 };
@@ -132,11 +144,13 @@ export class BrowserManager {
   private readonly rendererDir: string;
   private readonly permissionStorePath: string;
   private readonly zoomStorePath: string;
+  private readonly siteAiPrefsStorePath: string;
   private readonly events: BrowserManagerEvents;
   private readonly tabs = new Map<number, TabEntry>();
   private readonly permissions: Record<string, PermissionDecision>;
   private readonly permissionPrompts = new Set<string>();
   private readonly zoomStore: Record<string, number>;
+  private readonly siteAiPrefs: Record<string, DesktopSiteAiMode>;
   private readonly downloads = new Map<string, DownloadRecord>();
   private order: TabOrderState = { order: [], activeId: null };
   private bounds: DipRect = { x: 0, y: 0, width: 0, height: 0 };
@@ -156,9 +170,11 @@ export class BrowserManager {
     this.rendererDir = options.rendererDir;
     this.permissionStorePath = options.permissionStorePath;
     this.zoomStorePath = options.zoomStorePath;
+    this.siteAiPrefsStorePath = options.siteAiPrefsStorePath;
     this.events = options.events ?? {};
     this.permissions = loadPermissionStore(options.permissionStorePath);
     this.zoomStore = loadZoomStore(options.zoomStorePath);
+    this.siteAiPrefs = loadSiteAiPrefStore(options.siteAiPrefsStorePath);
 
     const browserSession = session.fromPartition(this.partition);
     browserSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
@@ -291,6 +307,52 @@ export class BrowserManager {
     if (this.aiLockedTabId === id) return;
     this.aiLockedTabId = id;
     this.emitState();
+  };
+
+  // 鲁港通 - 失败标注只注入页面视图，随页面导航自然消失，也可被下次操作主动清除
+  showFailureHighlight = (tabId: number, highlight: AiFailureHighlight): void => {
+    const entry = this.tabs.get(tabId);
+    if (!entry || entry.failedUrl) return;
+    const contents = entry.view.webContents;
+    if (contents.isDestroyed()) return;
+    void contents
+      .executeJavaScript(buildAiFailureHighlightExpression(highlight), false)
+      .catch(() => undefined);
+  };
+
+  clearFailureHighlight = (tabId: number): void => {
+    const entry = this.tabs.get(tabId);
+    if (!entry) return;
+    const contents = entry.view.webContents;
+    if (contents.isDestroyed()) return;
+    void contents
+      .executeJavaScript(buildAiClearFailureHighlightExpression(), false)
+      .catch(() => undefined);
+  };
+
+  // 鲁港通 - 站点 AI 偏好按 origin 生效；allow 即删除记录，文件里只留收紧的站点
+  getSiteAiMode = (origin?: string | null): DesktopSiteAiMode => {
+    const key =
+      origin === undefined || origin === null ? this.getActiveOrigin() : normalizeSiteOrigin(origin);
+    if (!key) return 'allow';
+    return this.siteAiPrefs[key] ?? 'allow';
+  };
+
+  setSiteAiMode = (origin: string, mode: DesktopSiteAiMode): DesktopSiteAiMode => {
+    const key = normalizeSiteOrigin(origin);
+    if (!key) return 'allow';
+    if (mode === 'allow') delete this.siteAiPrefs[key];
+    else this.siteAiPrefs[key] = mode;
+    saveSiteAiPrefStore(this.siteAiPrefsStorePath, this.siteAiPrefs);
+    this.send(IPC_CHANNELS.siteAiPrefChanged, { origin: key, mode });
+    this.emitState();
+    return mode;
+  };
+
+  // 鲁港通 - 地址栏盾牌徽标点击时直接弹出同一组权限选项
+  showSiteAiMenu = () => {
+    if (!this.getActiveEntry()) return;
+    Menu.buildFromTemplate(this.buildSiteAiMenu()).popup({ window: this.window });
   };
 
   navigate = (rawUrl: string): boolean => {
@@ -449,6 +511,7 @@ export class BrowserManager {
         click: () => this.resetZoom()
       },
       { type: 'separator' },
+      { label: '本站点 AI 权限', submenu: this.buildSiteAiMenu() },
       { label: '本次操作记录', click: () => this.sendPanelCommand('timeline') },
       { label: '清除浏览数据…', click: () => this.sendPanelCommand('clear-data') },
       { label: '键盘快捷键', click: () => this.sendPanelCommand('shortcuts') }
@@ -561,7 +624,8 @@ export class BrowserManager {
         this.order.activeId !== null && !!this.tabs.get(this.order.activeId)?.loading,
       canGoBack,
       canGoForward,
-      zoomPercent: this.getActiveZoomPercent()
+      zoomPercent: this.getActiveZoomPercent(),
+      siteAiMode: this.getSiteAiMode()
     };
   };
 
@@ -600,6 +664,50 @@ export class BrowserManager {
 
   private getActiveEntry = (): TabEntry | null =>
     this.order.activeId === null ? null : this.tabs.get(this.order.activeId) ?? null;
+
+  private getActiveOrigin(): string | null {
+    const entry = this.getActiveEntry();
+    // 鲁港通 - 只有 http(s) 网页才有站点 AI 权限，内置错误页/空白页不显示徽标也不记忆
+    return entry?.url ? normalizeSiteOrigin(entry.url) : null;
+  }
+
+  // 鲁港通 - 三档单选 + 恢复默认；没有可识别站点时整组禁用
+  private buildSiteAiMenu(): Electron.MenuItemConstructorOptions[] {
+    const origin = this.getActiveOrigin();
+    const mode = this.getSiteAiMode(origin);
+    const choose = (next: DesktopSiteAiMode) => () => {
+      if (origin) this.setSiteAiMode(origin, next);
+    };
+    return [
+      {
+        label: '允许操作（默认）',
+        type: 'radio',
+        checked: mode === 'allow',
+        enabled: Boolean(origin),
+        click: choose('allow')
+      },
+      {
+        label: '仅读取',
+        type: 'radio',
+        checked: mode === 'read_only',
+        enabled: Boolean(origin),
+        click: choose('read_only')
+      },
+      {
+        label: '禁止 AI',
+        type: 'radio',
+        checked: mode === 'blocked',
+        enabled: Boolean(origin),
+        click: choose('blocked')
+      },
+      { type: 'separator' },
+      {
+        label: '恢复默认（允许操作）',
+        enabled: Boolean(origin) && mode !== 'allow',
+        click: choose('allow')
+      }
+    ];
+  }
 
   private getActivePageUrl(): string | null {
     const entry = this.getActiveEntry();

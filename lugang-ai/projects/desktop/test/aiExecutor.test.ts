@@ -47,7 +47,12 @@ type DriverOptions = {
   fileStateAfterSet?: AiFileInputState;
   setFilesResult?: boolean;
   uploadSnapshot?: AiPageSnapshot;
-  coveredBy?: { tag?: string; role?: string; name?: string };
+  coveredBy?: {
+    tag?: string;
+    role?: string;
+    name?: string;
+    rect?: { x: number; y: number; width: number; height: number };
+  };
 };
 
 const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
@@ -193,7 +198,14 @@ describe('AI 页面执行器', () => {
   it('目标被页面遮挡层挡住时不下发点击，并明确指出遮挡元素', async () => {
     const { driver, calls } = createDriver(
       makeSnapshot([makeElement({ ref: 'e1', name: '注册', text: '注册' })]),
-      { coveredBy: { tag: 'div', role: 'dialog', name: '隐私提示' } }
+      {
+        coveredBy: {
+          tag: 'div',
+          role: 'dialog',
+          name: '隐私提示',
+          rect: { x: 0, y: 0, width: 1280, height: 720 }
+        }
+      }
     );
     const result = await createExecutor(driver).execute({ action: 'click', ref: 'e1' });
 
@@ -202,7 +214,29 @@ describe('AI 页面执行器', () => {
     expect(result.message).toContain('注册');
     expect(result.message).toContain('隐私提示');
     expect(result.message).toContain('遮挡');
+    expect(result.highlight).toEqual({
+      kind: 'covered',
+      target: { x: 10, y: 20, width: 100, height: 40 },
+      cover: { x: 0, y: 0, width: 1280, height: 720 },
+      coverName: '隐私提示',
+      message: expect.stringContaining('遮挡')
+    });
     expect(calls.clickAt).toHaveLength(0);
+  });
+
+  it('遮挡层没有坐标时只标目标，不画错误的遮挡框', async () => {
+    const { driver } = createDriver(
+      makeSnapshot([makeElement({ ref: 'e1', name: '注册', text: '注册' })]),
+      { coveredBy: { tag: 'div', name: '隐私提示' } }
+    );
+    const result = await createExecutor(driver).execute({ action: 'click', ref: 'e1' });
+
+    expect(result.highlight).toMatchObject({
+      kind: 'covered',
+      target: { x: 10, y: 20, width: 100, height: 40 },
+      coverName: '隐私提示'
+    });
+    expect(result.highlight?.cover).toBeUndefined();
   });
 
   it('目标不存在时补读一次页面，再失败才返回可操作提示', async () => {
@@ -216,6 +250,8 @@ describe('AI 页面执行器', () => {
     expect(result.code).toBe('not_found');
     expect(result.message).toContain('登录按钮');
     expect(result.message).toContain('重新读取');
+    expect(result.highlight).toMatchObject({ kind: 'page' });
+    expect(result.highlight?.target).toBeUndefined();
     expect(calls.snapshots).toHaveLength(2);
     expect(calls.clickAt).toHaveLength(0);
   });
@@ -235,6 +271,7 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('ambiguous');
     expect(result.message).toContain('多个');
+    expect(result.highlight).toMatchObject({ kind: 'page' });
     expect(calls.clickAt).toHaveLength(0);
   });
 
@@ -291,6 +328,7 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('sensitive_blocked');
     expect(result.message).toContain('亲自');
+    expect(result.highlight).toBeUndefined();
     expect(calls.insertText).toHaveLength(0);
     expect(calls.clickAt).toHaveLength(0);
   });
@@ -304,6 +342,7 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('high_risk_blocked');
     expect(result.message).toContain('本人完成');
+    expect(result.highlight).toBeUndefined();
     expect(calls.clickAt).toHaveLength(0);
   });
 
@@ -325,6 +364,10 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('verification_failed');
     expect(result.message).toContain('已进入第二步');
+    expect(result.highlight).toMatchObject({
+      kind: 'target',
+      target: { x: 10, y: 20, width: 100, height: 40 }
+    });
     expect(calls.clickAt).toHaveLength(1);
   });
 
@@ -375,6 +418,10 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('verification_failed');
     expect(result.message).toContain('没有生效');
+    expect(result.highlight).toMatchObject({
+      kind: 'target',
+      target: { x: 10, y: 20, width: 100, height: 40 }
+    });
   });
 
   it('不可输入的按钮不能作为输入目标', async () => {
@@ -391,6 +438,10 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('not_editable');
     expect(result.message).toContain('不是可输入');
+    expect(result.highlight).toMatchObject({
+      kind: 'target',
+      target: { x: 10, y: 20, width: 100, height: 40 }
+    });
     expect(calls.insertText).toHaveLength(0);
   });
 
@@ -432,6 +483,10 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(false);
     expect(result.code).toBe('option_not_found');
     expect(result.message).toContain('香港岛');
+    expect(result.highlight).toMatchObject({
+      kind: 'target',
+      target: { x: 10, y: 20, width: 100, height: 40 }
+    });
   });
 
   it('滚动页面并返回是否发生变化', async () => {

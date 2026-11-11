@@ -220,10 +220,18 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
           hit = null;
         }
         if (hit && hit.nodeType === 1 && hit !== el && !el.contains(hit) && !hit.contains(el)) {
+          // 鲁港通 - 遮挡层坐标一并上报，桌面端才能在页面上标出被挡住的圈层
+          var hitRect = hit.getBoundingClientRect();
           result.covered = {
             tag: hit.tagName ? hit.tagName.toLowerCase() : '',
             role: roleOf(hit),
-            name: clip(labelOf(hit), 60)
+            name: clip(labelOf(hit), 60),
+            rect: {
+              x: Math.round(hitRect.left),
+              y: Math.round(hitRect.top),
+              width: Math.round(hitRect.width),
+              height: Math.round(hitRect.height)
+            }
           };
         }
       }

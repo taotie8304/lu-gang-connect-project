@@ -10,6 +10,14 @@ export type DesktopTab = {
   locked?: boolean;
 };
 
+/** 鲁港通 - 站点级 AI 权限三档：允许操作 / 仅读取 / 禁止 AI */
+export type DesktopSiteAiMode = 'allow' | 'read_only' | 'blocked';
+
+export type DesktopSiteAiPrefChange = {
+  origin: string;
+  mode: DesktopSiteAiMode;
+};
+
 export type DesktopBrowserState = {
   panelOpen: boolean;
   activeTabId: number | null;
@@ -18,6 +26,7 @@ export type DesktopBrowserState = {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  siteAiMode?: DesktopSiteAiMode;
 };
 
 /** 鲁港通 - 地址栏导航状态：与 projects/desktop/src/shared/ipc.ts 对应 */
@@ -25,6 +34,7 @@ export type DesktopBrowserNavState = {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  siteAiMode: DesktopSiteAiMode;
 };
 
 export type DesktopFindResult = {
@@ -89,6 +99,14 @@ export type DesktopBrowserControls = {
   openMenu(): Promise<void>;
   clearData(options: DesktopClearBrowsingDataOptions): Promise<boolean>;
   onCommand(callback: (command: DesktopPanelCommand) => void): () => void;
+};
+
+/** 鲁港通 - 站点级 AI 权限：0.12.0 起提供，老客户端没有这个对象 */
+export type DesktopSiteAiControls = {
+  get(origin: string): Promise<DesktopSiteAiMode>;
+  set(origin: string, mode: DesktopSiteAiMode): Promise<DesktopSiteAiMode>;
+  openMenu(): Promise<void>;
+  onChanged(callback: (change: DesktopSiteAiPrefChange) => void): () => void;
 };
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
@@ -349,6 +367,8 @@ export type DesktopBridge = {
   goForward(): Promise<boolean>;
   /** 0.10.0 起提供：后退/前进、页内查找、缩放、下载与页面动作 */
   browser?: DesktopBrowserControls;
+  /** 0.12.0 起提供：本站点 AI 权限查询、设置与原生菜单入口 */
+  siteAi?: DesktopSiteAiControls;
   documents?: DesktopDocuments;
   tabs: {
     create(url?: string): Promise<DesktopBrowserState>;

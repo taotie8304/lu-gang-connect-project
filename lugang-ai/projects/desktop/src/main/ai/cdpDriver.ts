@@ -77,10 +77,12 @@ const normalizeCovered = (raw: unknown): AiResolvedElement['coveredBy'] => {
   const role = text(record.role);
   const name = text(record.name);
   if (!tag && !role && !name) return undefined;
+  const rect = normalizeRect(record.rect);
   return {
     ...(tag ? { tag } : {}),
     ...(role ? { role } : {}),
-    ...(name ? { name } : {})
+    ...(name ? { name } : {}),
+    ...(rect ? { rect } : {})
   };
 };
 

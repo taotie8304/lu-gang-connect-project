@@ -46,6 +46,8 @@ export type AiActionErrorCode =
   | 'not_editable'
   | 'option_not_found'
   | 'element_covered'
+  | 'site_read_only'
+  | 'site_blocked'
   | 'verification_failed'
   | 'file_generation_failed'
   | 'cancelled_by_user'
@@ -210,6 +212,17 @@ export type AiFileInputState = {
   names?: string[];
 };
 
+export type AiRect = { x: number; y: number; width: number; height: number };
+
+/** 鲁港通 - 失败可视化标注：只给桌面端画框，上行给服务端与模型前必须剔除 */
+export type AiFailureHighlight = {
+  kind: 'covered' | 'target' | 'page';
+  target?: AiRect;
+  cover?: AiRect;
+  coverName?: string;
+  message: string;
+};
+
 export type AiConfirmationDecision = 'allow' | 'handoff' | 'cancel' | 'timeout' | 'page_closed';
 
 export type AiConfirmCancelReason = 'cancel' | 'page_closed';
@@ -247,13 +260,15 @@ export type AiCommandResult = {
   document?: AiDocumentInfo;
   documentToken?: string;
   edit?: AiDocumentEditInfo;
+  /** 鲁港通 - 仅桌面端展示用，进入审计与上行结果前剔除 */
+  highlight?: AiFailureHighlight;
 };
 
 export type AiResolvedElement = {
   found: boolean;
   visible?: boolean;
-  rect?: { x: number; y: number; width: number; height: number };
-  coveredBy?: { tag?: string; role?: string; name?: string };
+  rect?: AiRect;
+  coveredBy?: { tag?: string; role?: string; name?: string; rect?: AiRect };
   value?: string;
   checked?: boolean;
 };
@@ -321,22 +336,39 @@ const actionLabel = (element: AiPageElement): string => {
   return [...new Set(parts)].join(' ');
 };
 
-const notFound = (request: { ref?: string; target?: string }, snapshot?: AiPageSnapshot) => ({
-  ok: false as const,
-  code: 'not_found' as const,
-  message: `页面上没有找到「${targetLabel(request)}」。页面可能已更新或被用户操作改变，我会重新读取页面后再试。`,
-  ...(snapshot ? { snapshot } : {})
-});
+const notFound = (request: { ref?: string; target?: string }, snapshot?: AiPageSnapshot) => {
+  const message = `页面上没有找到「${targetLabel(request)}」。页面可能已更新或被用户操作改变，我会重新读取页面后再试。`;
+  return {
+    ok: false as const,
+    code: 'not_found' as const,
+    message,
+    highlight: { kind: 'page' as const, message },
+    ...(snapshot ? { snapshot } : {})
+  };
+};
 
 const ambiguous = (
   request: { ref?: string; target?: string },
   snapshot?: AiPageSnapshot
-) => ({
-  ok: false as const,
-  code: 'ambiguous' as const,
-  message: `页面上有多个「${targetLabel(request)}」，无法确定要操作哪一个。请改用更具体的名称。`,
-  ...(snapshot ? { snapshot } : {})
-});
+) => {
+  const message = `页面上有多个「${targetLabel(request)}」，无法确定要操作哪一个。请改用更具体的名称。`;
+  return {
+    ok: false as const,
+    code: 'ambiguous' as const,
+    message,
+    highlight: { kind: 'page' as const, message },
+    ...(snapshot ? { snapshot } : {})
+  };
+};
+
+// 鲁港通 - 目标元素有可用坐标就画红框，否则退回顶部说明条
+const targetHighlight = (
+  rect: AiRect | undefined,
+  message: string
+): AiFailureHighlight =>
+  rect && rect.width > 0 && rect.height > 0
+    ? { kind: 'target', target: rect, message }
+    : { kind: 'page', message };
 
 // 鲁港通 - 密码、验证码与银行卡类字段永久禁止自动填写
 const FORM_BLOCKED_LABEL = /密码|验证码|动态码|银行卡|卡号|信用卡|cvv|安全码/i;
@@ -428,13 +460,16 @@ export class AiExecutor {
         return {
           ok: false,
           code: error.timeout ? 'timeout' : 'page_error',
-          message: error.message
+          message: error.message,
+          highlight: { kind: 'page', message: error.message }
         };
       }
+      const message = '无法读取当前页面，请确认页面已经打开并且加载完成。';
       return {
         ok: false,
         code: 'page_error',
-        message: '无法读取当前页面，请确认页面已经打开并且加载完成。'
+        message,
+        highlight: { kind: 'page', message }
       };
     }
   }
@@ -489,11 +524,19 @@ export class AiExecutor {
       if (cover) {
         const coverName =
           cover.name?.trim() || cover.role?.trim() || cover.tag?.trim() || '页面上的其他元素';
+        const message = `「${label.trim() || element.name || element.ref}」被页面上的「${coverName}」挡住了，点击没有发出。请先关闭或避开这个遮挡层（例如点掉提示条、弹窗或浮层上的关闭按钮），再重新读取页面后定位点击。`;
         return {
           ok: false,
           code: 'element_covered',
-          message: `「${label.trim() || element.name || element.ref}」被页面上的「${coverName}」挡住了，点击没有发出。请先关闭或避开这个遮挡层（例如点掉提示条、弹窗或浮层上的关闭按钮），再重新读取页面后定位点击。`,
-          snapshot: located.snapshot
+          message,
+          snapshot: located.snapshot,
+          highlight: {
+            kind: 'covered',
+            ...(resolved.rect ? { target: resolved.rect } : {}),
+            ...(cover.rect ? { cover: cover.rect } : {}),
+            coverName,
+            message
+          }
         };
       }
       if (isConfirmableActionLabel(label)) {
@@ -1283,12 +1326,14 @@ export class AiExecutor {
     if ('result' in after) return after.result;
     const changed = snapshotChanged(before, after.snapshot);
     if (command.expect && !snapshotContains(after.snapshot, command.expect)) {
+      const message = `操作已执行，但没有在页面上看到预期结果「${command.expect}」。我会重新读取页面后再判断。`;
       return {
         ok: false,
         code: 'verification_failed',
-        message: `操作已执行，但没有在页面上看到预期结果「${command.expect}」。我会重新读取页面后再判断。`,
+        message,
         changed,
-        snapshot: after.snapshot
+        snapshot: after.snapshot,
+        highlight: targetHighlight(resolved.rect, message)
       };
     }
     return { ok: true, changed, snapshot: after.snapshot };
@@ -1303,11 +1348,14 @@ export class AiExecutor {
     const prepared = await this.driver.prepareInput(element.ref);
     if (!prepared.ok) {
       if (prepared.reason === 'not_editable') {
+        const message = `「${element.name || element.ref}」不是可输入的文字框，请改用点击或选择操作。`;
+        const located = await this.driver.resolve(element.ref).catch(() => null);
         return {
           ok: false,
           code: 'not_editable',
-          message: `「${element.name || element.ref}」不是可输入的文字框，请改用点击或选择操作。`,
-          snapshot: before
+          message,
+          snapshot: before,
+          highlight: targetHighlight(located?.rect, message)
         };
       }
       return notFound({ ref: element.ref, target: element.name }, before);
@@ -1324,19 +1372,23 @@ export class AiExecutor {
       typeof verified.value === 'string' &&
       verified.value.trim() !== text.trim()
     ) {
+      const message = '输入没有生效，页面上仍然是原来的内容。我会重新定位输入框后再试。';
       return {
         ok: false,
         code: 'verification_failed',
-        message: '输入没有生效，页面上仍然是原来的内容。我会重新定位输入框后再试。',
-        snapshot: after.snapshot
+        message,
+        snapshot: after.snapshot,
+        highlight: targetHighlight(verified.rect, message)
       };
     }
     if (expect && !snapshotContains(after.snapshot, expect)) {
+      const message = `输入后没有在页面上看到预期结果「${expect}」。我会重新读取页面后再判断。`;
       return {
         ok: false,
         code: 'verification_failed',
-        message: `输入后没有在页面上看到预期结果「${expect}」。我会重新读取页面后再判断。`,
-        snapshot: after.snapshot
+        message,
+        snapshot: after.snapshot,
+        highlight: targetHighlight(verified?.rect, message)
       };
     }
     return {
@@ -1353,20 +1405,25 @@ export class AiExecutor {
   ): Promise<AiCommandResult> {
     const selected = await this.driver.selectOption(element.ref, option);
     if (!selected.ok) {
+      const located = await this.driver.resolve(element.ref).catch(() => null);
       if (selected.reason === 'option_not_found') {
         const options = (selected.options ?? []).slice(0, 8).join('、');
+        const message = `「${element.name || element.ref}」中没有选项「${option}」。可选值：${options || '页面未提供'}`;
         return {
           ok: false,
           code: 'option_not_found',
-          message: `「${element.name || element.ref}」中没有选项「${option}」。可选值：${options || '页面未提供'}`,
-          snapshot: before
+          message,
+          snapshot: before,
+          highlight: targetHighlight(located?.rect, message)
         };
       }
+      const message = `「${element.name || element.ref}」不是下拉选择框，请改用其他操作。`;
       return {
         ok: false,
         code: 'not_editable',
-        message: `「${element.name || element.ref}」不是下拉选择框，请改用其他操作。`,
-        snapshot: before
+        message,
+        snapshot: before,
+        highlight: targetHighlight(located?.rect, message)
       };
     }
 

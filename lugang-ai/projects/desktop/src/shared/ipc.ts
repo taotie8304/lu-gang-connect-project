@@ -37,6 +37,10 @@ export const IPC_CHANNELS = {
   pageCopyLink: 'lugang:page-copy-link',
   pageOpenExternal: 'lugang:page-open-external',
   pageMenu: 'lugang:page-menu',
+  siteAiMenu: 'lugang:site-ai-menu',
+  siteAiPrefGet: 'lugang:site-ai-pref-get',
+  siteAiPrefSet: 'lugang:site-ai-pref-set',
+  siteAiPrefChanged: 'lugang:site-ai-pref-changed',
   clearBrowsingData: 'lugang:clear-browsing-data',
   panelCommand: 'lugang:panel-command',
   retryLoad: 'lugang:retry-load',
@@ -84,6 +88,14 @@ export type DesktopTab = {
   locked?: boolean;
 };
 
+/** 鲁港通 - 站点级 AI 权限：默认允许，仅由用户在本机主动收紧 */
+export type DesktopSiteAiMode = 'allow' | 'read_only' | 'blocked';
+
+export type DesktopSiteAiPrefChange = {
+  origin: string;
+  mode: DesktopSiteAiMode;
+};
+
 export type DesktopBrowserState = {
   panelOpen: boolean;
   activeTabId: number | null;
@@ -92,13 +104,16 @@ export type DesktopBrowserState = {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  /** 鲁港通 - 当前活动站点生效的 AI 权限；旧版客户端可能不返回 */
+  siteAiMode?: DesktopSiteAiMode;
 };
 
-/** 鲁港通 - 地址栏导航状态：后退/前进可用态与当前站点缩放档位 */
+/** 鲁港通 - 地址栏导航状态：后退/前进可用态、当前站点缩放档位与 AI 权限 */
 export type DesktopBrowserNavState = {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
+  siteAiMode: DesktopSiteAiMode;
 };
 
 /** 鲁港通 - 页内查找命中：activeMatchOrdinal 从 1 起，matches 为 0 表示无结果 */

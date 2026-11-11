@@ -20,6 +20,8 @@ import {
   findNextSchema,
   findQuerySchema,
   navigateUrlSchema,
+  siteAiPrefGetSchema,
+  siteAiPrefSetSchema,
   tabIdSchema,
   zoomSetSchema
 } from './ipcSchemas';
@@ -183,6 +185,22 @@ export const registerIpc = ({
   handle(IPC_CHANNELS.pageCopyLink, () => browser.copyLink());
   handle(IPC_CHANNELS.pageOpenExternal, () => browser.openExternal());
   handle(IPC_CHANNELS.pageMenu, () => browser.showPageMenu());
+
+  // 鲁港通 - 站点 AI 偏好：盾牌徽标弹菜单、读取与设置（origin 由网页端按当前标签提供）
+  handle(IPC_CHANNELS.siteAiMenu, () => browser.showSiteAiMenu());
+  handle(
+    IPC_CHANNELS.siteAiPrefGet,
+    (payload) => browser.getSiteAiMode((payload as { origin: string }).origin),
+    siteAiPrefGetSchema
+  );
+  handle(
+    IPC_CHANNELS.siteAiPrefSet,
+    (payload) => {
+      const { origin, mode } = payload as { origin: string; mode: 'allow' | 'read_only' | 'blocked' };
+      return browser.setSiteAiMode(origin, mode);
+    },
+    siteAiPrefSetSchema
+  );
 
   // 鲁港通 - 清除浏览数据仅作用于内置浏览器分区，至少选择一项
   handle(

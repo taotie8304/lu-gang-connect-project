@@ -34,6 +34,16 @@ export const findNextSchema = z.object({ direction: z.enum(['next', 'previous'])
 
 export const zoomSetSchema = z.object({ percent: z.number().int().min(50).max(200) });
 
+// 鲁港通 - 站点 AI 偏好：origin 限长，档位只接受三档枚举
+export const siteAiPrefGetSchema = z.object({
+  origin: z.string().trim().min(1).max(2048)
+});
+
+export const siteAiPrefSetSchema = z.object({
+  origin: z.string().trim().min(1).max(2048),
+  mode: z.enum(['allow', 'read_only', 'blocked'])
+});
+
 export const downloadIdSchema = z.object({ id: z.string().trim().min(1).max(64) });
 
 // 鲁港通 - 清除浏览数据至少选择一项，禁止空请求

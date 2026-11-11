@@ -12,6 +12,8 @@ import {
   findNextSchema,
   findQuerySchema,
   navigateUrlSchema,
+  siteAiPrefGetSchema,
+  siteAiPrefSetSchema,
   tabIdSchema,
   zoomSetSchema
 } from '../src/main/ipcSchemas';
@@ -65,6 +67,29 @@ describe('booleanSchema', () => {
   it('只接受布尔值', () => {
     expect(booleanSchema.parse(true)).toBe(true);
     expect(booleanSchema.safeParse('true').success).toBe(false);
+  });
+});
+
+describe('siteAiPref 相关 schema', () => {
+  it('站点读取去掉首尾空白，拒绝空串', () => {
+    expect(siteAiPrefGetSchema.parse({ origin: '  https://www.gov.hk  ' })).toEqual({
+      origin: 'https://www.gov.hk'
+    });
+    expect(siteAiPrefGetSchema.safeParse({ origin: '   ' }).success).toBe(false);
+  });
+
+  it('设置只接受三档合法取值', () => {
+    expect(siteAiPrefSetSchema.parse({ origin: 'https://a.com', mode: 'read_only' })).toEqual({
+      origin: 'https://a.com',
+      mode: 'read_only'
+    });
+    expect(
+      siteAiPrefSetSchema.safeParse({ origin: 'https://a.com', mode: 'blocked' }).success
+    ).toBe(true);
+    expect(
+      siteAiPrefSetSchema.safeParse({ origin: 'https://a.com', mode: 'unknown' }).success
+    ).toBe(false);
+    expect(siteAiPrefSetSchema.safeParse({ origin: '', mode: 'allow' }).success).toBe(false);
   });
 });
 

@@ -247,6 +247,10 @@ describe('AI 页面脚本', () => {
     const overlay = document.createElement('div');
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-label', '隐私提示');
+    Object.defineProperty(overlay, 'getBoundingClientRect', {
+      configurable: true,
+      value: () => ({ x: 0, y: 0, left: 0, top: 0, width: 1024, height: 800, right: 1024, bottom: 800 })
+    });
     document.body.appendChild(overlay);
 
     const elementFromPoint = vi.fn(() => overlay as Element);
@@ -257,10 +261,20 @@ describe('AI 页面脚本', () => {
 
     const covered = evalInPage<{
       found: boolean;
-      covered?: { tag: string; role: string; name: string };
+      covered?: {
+        tag: string;
+        role: string;
+        name: string;
+        rect?: { x: number; y: number; width: number; height: number };
+      };
     }>(buildAiResolveExpression(next.ref, { scrollIntoView: true }));
     expect(covered.found).toBe(true);
-    expect(covered.covered).toMatchObject({ tag: 'div', role: 'dialog', name: '隐私提示' });
+    expect(covered.covered).toMatchObject({
+      tag: 'div',
+      role: 'dialog',
+      name: '隐私提示',
+      rect: { x: 0, y: 0, width: 1024, height: 800 }
+    });
     expect(elementFromPoint).toHaveBeenCalledWith(70, 116);
 
     elementFromPoint.mockReturnValue(document.getElementById('next')!);

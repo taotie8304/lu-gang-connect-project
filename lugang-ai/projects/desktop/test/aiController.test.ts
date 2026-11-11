@@ -7,6 +7,7 @@ import {
 import type {
   AiConfirmationDecision,
   AiConfirmer,
+  AiFailureHighlight,
   AiFileGenerator,
   AiFormConfirmer,
   AiFormFiller,
@@ -16,7 +17,7 @@ import type {
 import type { AiAuditRecord } from '../src/main/ai/audit';
 import type { ParsedForm } from '../src/main/ai/form/types';
 import type { AiPageElement, AiPageSnapshot } from '../src/main/ai/snapshot';
-import type { DesktopBrowserState } from '../src/shared/ipc';
+import type { DesktopBrowserState, DesktopSiteAiMode } from '../src/shared/ipc';
 
 const PAGE_URL = 'https://www.gov.hk/en/residents/form';
 
@@ -46,12 +47,16 @@ const textField = (name: string, extra: Partial<AiPageElement> = {}): Partial<Ai
   ...extra
 });
 
-const createBrowser = (): AiControllerBrowser & {
+const createBrowser = (
+  siteAiModes: Record<string, DesktopSiteAiMode> = {}
+): AiControllerBrowser & {
   state: DesktopBrowserState;
   openPanel: ReturnType<typeof vi.fn>;
   navigate: ReturnType<typeof vi.fn>;
   activateTab: ReturnType<typeof vi.fn>;
   setAiLockedTab: ReturnType<typeof vi.fn>;
+  showFailureHighlight: ReturnType<typeof vi.fn>;
+  clearFailureHighlight: ReturnType<typeof vi.fn>;
   selectTab: (id: number) => void;
 } => {
   const state: DesktopBrowserState = {
@@ -85,18 +90,34 @@ const createBrowser = (): AiControllerBrowser & {
       return state;
     }),
     setAiLockedTab: vi.fn((_id: number | null) => undefined),
+    // 鲁港通 - 站点 AI 权限按 origin 查表，未设置的站点默认允许
+    getSiteAiMode: vi.fn((origin: string) => siteAiModes[origin] ?? 'allow'),
+    showFailureHighlight: vi.fn((_tabId: number, _highlight: AiFailureHighlight) => undefined),
+    clearFailureHighlight: vi.fn((_tabId: number) => undefined),
     selectTab
   };
 };
 
-const createDriver = (initial: AiPageSnapshot, options: { afterClick?: AiPageSnapshot } = {}) => {
+const createDriver = (
+  initial: AiPageSnapshot,
+  options: {
+    afterClick?: AiPageSnapshot;
+    coveredBy?: {
+      tag?: string;
+      role?: string;
+      name?: string;
+      rect?: { x: number; y: number; width: number; height: number };
+    };
+  } = {}
+) => {
   let current = initial;
   const driver: AiPageDriver = {
     snapshot: vi.fn(async () => current),
     resolve: vi.fn(async () => ({
       found: true,
       visible: true,
-      rect: { x: 10, y: 10, width: 100, height: 24 }
+      rect: { x: 10, y: 10, width: 100, height: 24 },
+      ...(options.coveredBy ? { coveredBy: options.coveredBy } : {})
     })),
     prepareInput: vi.fn(async () => ({ ok: true })),
     selectOption: vi.fn(async () => ({ ok: true })),
@@ -140,11 +161,19 @@ const createController = (
     fillForm?: AiFormFiller;
     confirmForm?: AiFormConfirmer;
     afterClick?: AiPageSnapshot;
+    siteAiModes?: Record<string, DesktopSiteAiMode>;
+    coveredBy?: {
+      tag?: string;
+      role?: string;
+      name?: string;
+      rect?: { x: number; y: number; width: number; height: number };
+    };
   } = {}
 ) => {
-  const browser = createBrowser();
+  const browser = createBrowser(options.siteAiModes);
   const harness = createDriver(makeSnapshot(options.elements ?? []), {
-    afterClick: options.afterClick
+    afterClick: options.afterClick,
+    coveredBy: options.coveredBy
   });
   const controller = new AiController({
     browser,
@@ -1098,5 +1127,232 @@ describe('AI 桌面控制器 · 本次操作时间线', () => {
 
     await controller.execute({ action: 'read' }, { resume: true });
     expect(controller.getState().steps.map((step) => step.action)).toEqual(['read']);
+  });
+});
+
+const PAGE_ORIGIN = 'https://www.gov.hk';
+
+describe('AI 桌面控制器 · 站点级 AI 权限', () => {
+  it('仅读取站点拒绝点击，给出改回入口且不消耗失败次数', async () => {
+    const { controller, driver, snapshotCalls } = createController({
+      elements: [{ role: 'button', name: '下一步', tag: 'button' }],
+      siteAiModes: { [PAGE_ORIGIN]: 'read_only' }
+    });
+
+    const rejected = await controller.execute({ action: 'click', target: '下一步' });
+
+    expect(rejected.ok).toBe(false);
+    expect(rejected.code).toBe('site_read_only');
+    expect(rejected.message).toContain('仅读取');
+    expect(rejected.message).toContain('允许操作');
+    expect(rejected.stopped).toBeFalsy();
+    expect(driver.clickAt).not.toHaveBeenCalled();
+    expect(snapshotCalls()).toBe(0);
+
+    const again = await controller.execute({ action: 'click', target: '下一步' });
+    expect(again.code).toBe('site_read_only');
+
+    // 连续两次被拒不累计；随后第一次真实失败仍只是第一次，不应直接停止
+    const firstFailure = await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(firstFailure.ok).toBe(false);
+    expect(firstFailure.stopped).toBeFalsy();
+    expect(controller.getState().status).toBe('running');
+
+    const state = controller.getState();
+    expect(state.steps[0]).toMatchObject({
+      action: 'click',
+      status: 'failed',
+      code: 'site_read_only'
+    });
+  });
+
+  it('仅读取站点放行读取与滚动', async () => {
+    const { controller } = createController({
+      siteAiModes: { [PAGE_ORIGIN]: 'read_only' }
+    });
+
+    const read = await controller.execute({ action: 'read' });
+    expect(read.ok).toBe(true);
+
+    const scroll = await controller.execute({ action: 'scroll', direction: 'down' });
+    expect(scroll.ok).toBe(true);
+  });
+
+  it('禁止 AI 站点拒绝读取与导航，改回允许后恢复', async () => {
+    const siteAiModes: Record<string, DesktopSiteAiMode> = {
+      'https://blocked.example': 'blocked'
+    };
+    const { controller, browser, driver } = createController({ siteAiModes });
+    browser.state.tabs = [
+      { id: 1, title: '受限站点', url: 'https://blocked.example/home', current: true }
+    ];
+
+    const read = await controller.execute({ action: 'read' });
+    expect(read.ok).toBe(false);
+    expect(read.code).toBe('site_blocked');
+    expect(read.message).toContain('禁止 AI');
+    expect(read.message).toContain('允许操作');
+
+    const blockedNav = await controller.execute({
+      action: 'navigate',
+      url: 'https://blocked.example/next'
+    });
+    expect(blockedNav.code).toBe('site_blocked');
+    expect(browser.navigate).not.toHaveBeenCalled();
+    expect(driver.navigate).not.toHaveBeenCalled();
+
+    // 离开受限站点不受限制：navigate 按目标站点判定
+    const escape = await controller.execute({ action: 'navigate', url: PAGE_URL });
+    expect(escape.ok).toBe(true);
+    expect(driver.navigate).toHaveBeenCalledWith(PAGE_URL);
+
+    siteAiModes['https://blocked.example'] = 'allow';
+    const restored = await controller.execute({ action: 'navigate', url: 'https://blocked.example/' });
+    expect(restored.ok).toBe(true);
+  });
+
+  it('禁止 AI 站点仍允许停止会话', async () => {
+    const { controller } = createController({
+      siteAiModes: { [PAGE_ORIGIN]: 'blocked' }
+    });
+
+    const result = await controller.execute({ action: 'stop' });
+
+    expect(result.ok).toBe(true);
+    expect(result.stopped).toBe(true);
+  });
+
+  it('站点被禁时本机文件类动作不受影响', async () => {
+    const generateFile = vi.fn(async () => ({
+      name: '说明.docx',
+      format: 'docx' as const,
+      folder: '鲁港通生成文件',
+      path: 'C:\\下载\\鲁港通生成文件\\说明.docx'
+    }));
+    const { controller } = createController({
+      siteAiModes: { [PAGE_ORIGIN]: 'blocked' },
+      generateFile
+    });
+
+    const result = await controller.execute({
+      action: 'generate_file',
+      format: 'docx',
+      fileName: '说明',
+      content: '正文'
+    });
+
+    expect(result.ok).toBe(true);
+    expect(generateFile).toHaveBeenCalledTimes(1);
+  });
+
+  it('站点拒绝写入审计但不进入聊天错误计数', async () => {
+    const records: AiAuditRecord[] = [];
+    const { controller } = createController({
+      elements: [{ role: 'button', name: '下一步', tag: 'button' }],
+      siteAiModes: { [PAGE_ORIGIN]: 'read_only' },
+      audit: (record) => {
+        records.push(record);
+      }
+    });
+
+    await controller.execute({ action: 'click', target: '下一步' }, { commandId: 'cmd-site' });
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      commandId: 'cmd-site',
+      action: 'click',
+      outcome: 'failed',
+      errorCode: 'site_read_only'
+    });
+  });
+});
+
+describe('AI 桌面控制器 · 失败可视化', () => {
+  it('定位失败时画页面说明条，返回给上行的结果不含本机标注', async () => {
+    const { controller, browser } = createController();
+
+    const result = await controller.execute({ action: 'click', target: '不存在的按钮' });
+
+    expect(result.ok).toBe(false);
+    expect(result.highlight).toBeUndefined();
+    expect(browser.showFailureHighlight).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ kind: 'page', message: expect.stringContaining('重新读取') })
+    );
+  });
+
+  it('目标被遮挡时上报目标与遮挡层坐标', async () => {
+    const { controller, browser } = createController({
+      elements: [{ role: 'button', name: '注册', tag: 'button' }],
+      coveredBy: {
+        role: 'dialog',
+        name: '隐私提示',
+        rect: { x: 0, y: 0, width: 1280, height: 720 }
+      }
+    });
+
+    const result = await controller.execute({ action: 'click', target: '注册' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('element_covered');
+    expect(result.highlight).toBeUndefined();
+    expect(browser.showFailureHighlight).toHaveBeenCalledWith(1, {
+      kind: 'covered',
+      target: { x: 10, y: 10, width: 100, height: 24 },
+      cover: { x: 0, y: 0, width: 1280, height: 720 },
+      coverName: '隐私提示',
+      message: expect.stringContaining('遮挡')
+    });
+  });
+
+  it('下一次操作前撤掉上一轮标注', async () => {
+    const { controller, browser } = createController({
+      elements: [textField('申请人姓名')]
+    });
+
+    await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(browser.showFailureHighlight).toHaveBeenCalledTimes(1);
+
+    await controller.execute({ action: 'read' });
+    expect(browser.clearFailureHighlight).toHaveBeenCalledTimes(1);
+  });
+
+  it('停止与接管都会立即撤掉标注', async () => {
+    const stopHarness = createController();
+    await stopHarness.controller.execute({ action: 'click', target: '不存在的按钮' });
+    stopHarness.controller.stop();
+    expect(stopHarness.browser.clearFailureHighlight).toHaveBeenCalled();
+
+    const pauseHarness = createController({
+      elements: [textField('申请人姓名')]
+    });
+    await pauseHarness.controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    await pauseHarness.controller.execute({ action: 'click', target: '不存在的按钮' });
+    pauseHarness.controller.pause();
+    expect(pauseHarness.browser.clearFailureHighlight).toHaveBeenCalled();
+  });
+
+  it('页面超时也给出说明条', async () => {
+    const browser = createBrowser();
+    const harness = createDriver(makeSnapshot());
+    (harness.driver.snapshot as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise<AiPageSnapshot>(() => undefined)
+    );
+    const controller = new AiController({
+      browser,
+      driver: harness.driver,
+      actionTimeoutMs: 10,
+      longActionTimeoutMs: 200
+    });
+
+    const result = await controller.execute({ action: 'read' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('timeout');
+    expect(result.highlight).toBeUndefined();
+    expect(browser.showFailureHighlight).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ kind: 'page' })
+    );
   });
 });

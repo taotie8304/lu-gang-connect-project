@@ -79,7 +79,8 @@ const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
 const DEFAULT_NAV_STATE: DesktopBrowserNavState = {
   canGoBack: false,
   canGoForward: false,
-  zoomPercent: 100
+  zoomPercent: 100,
+  siteAiMode: 'allow'
 };
 
 const stepZoomPercent = (current: number, direction: 'in' | 'out') => {
@@ -983,6 +984,28 @@ const BuiltinBrowserPanelBody = ({
     });
   }, [controls, t, toast]);
 
+  // 鲁港通 - 站点 AI 权限切换后轻提示一次，避免用户不知道设置已生效
+  useEffect(() => {
+    const siteAi = window.lugangDesktop?.siteAi;
+    if (!siteAi) return;
+    const keyByMode = {
+      allow: 'common:builtin_browser_site_ai_set_allow',
+      read_only: 'common:builtin_browser_site_ai_set_read_only',
+      blocked: 'common:builtin_browser_site_ai_set_blocked'
+    } as const;
+    return siteAi.onChanged(({ mode }) => {
+      toast({
+        title: t(keyByMode[mode]),
+        status: mode === 'blocked' ? 'warning' : 'info',
+        duration: 2500
+      });
+    });
+  }, [t, toast]);
+
+  const handleSiteAiMenu = useCallback(() => {
+    void window.lugangDesktop?.siteAi?.openMenu().catch(() => undefined);
+  }, []);
+
   const handleGoBack = useCallback(() => {
     if (!controls || !navState.canGoBack) return;
     void controls.goBack().catch(() => undefined);
@@ -1797,6 +1820,38 @@ const BuiltinBrowserPanelBody = ({
             }}
             _placeholder={{ color: '#9DAFC2' }}
           />
+          {controls && navState.siteAiMode !== 'allow' && (
+            <MyTooltip label={t('common:builtin_browser_site_ai_chip_tip')}>
+              <Flex
+                as={'button'}
+                type={'button'}
+                flexShrink={0}
+                alignItems={'center'}
+                gap={'3px'}
+                h={'22px'}
+                px={'5px'}
+                borderRadius={'5px'}
+                fontSize={'10px'}
+                color={navState.siteAiMode === 'blocked' ? '#9E3E33' : '#8A6314'}
+                bg={navState.siteAiMode === 'blocked' ? '#FBEDEA' : '#FBF3DF'}
+                cursor={'pointer'}
+                _hover={{ opacity: 0.82 }}
+                onClick={handleSiteAiMenu}
+              >
+                <MyIcon
+                  name={
+                    navState.siteAiMode === 'blocked' ? 'common/disable' : 'common/viewLight'
+                  }
+                  w={'10px'}
+                  h={'10px'}
+                  color={navState.siteAiMode === 'blocked' ? '#9E3E33' : '#8A6314'}
+                />
+                {navState.siteAiMode === 'blocked'
+                  ? t('common:builtin_browser_site_ai_blocked')
+                  : t('common:builtin_browser_site_ai_read_only')}
+              </Flex>
+            </MyTooltip>
+          )}
           {controls && panelWidth > 360 && (
             <MyTooltip label={t('common:builtin_browser_zoom_reset')}>
               <Text

@@ -16,6 +16,8 @@ import {
   type DesktopDocumentSnapshot,
   type DesktopDocumentSummary,
   type DesktopSessionSyncResponse,
+  type DesktopSiteAiMode,
+  type DesktopSiteAiPrefChange,
   type DesktopUpdateStatus,
   type DesktopVersionInfo,
   type DesktopZoomRestore
@@ -53,7 +55,8 @@ const api = {
       return {
         canGoBack: state.canGoBack ?? false,
         canGoForward: state.canGoForward ?? false,
-        zoomPercent: state.zoomPercent ?? 100
+        zoomPercent: state.zoomPercent ?? 100,
+        siteAiMode: state.siteAiMode ?? 'allow'
       };
     },
     onNavChange: (callback: (state: DesktopBrowserNavState) => void) => {
@@ -61,7 +64,8 @@ const api = {
         callback({
           canGoBack: state.canGoBack ?? false,
           canGoForward: state.canGoForward ?? false,
-          zoomPercent: state.zoomPercent ?? 100
+          zoomPercent: state.zoomPercent ?? 100,
+          siteAiMode: state.siteAiMode ?? 'allow'
         });
       ipcRenderer.on(IPC_CHANNELS.stateChanged, listener);
       return () => {
@@ -132,6 +136,22 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.panelCommand, listener);
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.panelCommand, listener);
+      };
+    }
+  },
+  // 鲁港通 - 站点级 AI 权限：偏好只存本机，网页端只读当前 origin 的三档设置
+  siteAi: {
+    get: (origin: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.siteAiPrefGet, { origin }) as Promise<DesktopSiteAiMode>,
+    set: (origin: string, mode: DesktopSiteAiMode) =>
+      ipcRenderer.invoke(IPC_CHANNELS.siteAiPrefSet, { origin, mode }) as Promise<DesktopSiteAiMode>,
+    openMenu: () => ipcRenderer.invoke(IPC_CHANNELS.siteAiMenu) as Promise<void>,
+    onChanged: (callback: (change: DesktopSiteAiPrefChange) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, change: DesktopSiteAiPrefChange) =>
+        callback(change);
+      ipcRenderer.on(IPC_CHANNELS.siteAiPrefChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.siteAiPrefChanged, listener);
       };
     }
   },

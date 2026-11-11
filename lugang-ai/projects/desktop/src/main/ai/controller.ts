@@ -1,6 +1,16 @@
 // 鲁港通 - AI 桌面控制器：串联执行器与浏览器生命周期，负责自愈、停止与审计
 import { randomUUID } from 'node:crypto';
-import type { DesktopAiState, DesktopAiStep, DesktopAiStepStatus } from '../../shared/ipc';
+import type {
+  DesktopAiState,
+  DesktopAiStep,
+  DesktopAiStepStatus,
+  DesktopSiteAiMode
+} from '../../shared/ipc';
+import {
+  SITE_AI_REJECT_MESSAGES,
+  evaluateSiteAiMode,
+  normalizeSiteOrigin
+} from '../browser/siteAiPrefs';
 import { isAiUrlOperable } from './urlPolicy';
 import { buildAiAuditRecord, type AiAuditRecord } from './audit';
 import {
@@ -12,6 +22,7 @@ import {
   type AiDocumentOpener,
   type AiDocumentPreviewer,
   type AiDocumentReloader,
+  type AiFailureHighlight,
   type AiFileGenerator,
   type AiFilePicker,
   type AiFormConfirmer,
@@ -61,6 +72,11 @@ export type AiControllerBrowser = {
   navigate(url: string): boolean;
   activateTab?(id: number): unknown;
   setAiLockedTab?(id: number | null): unknown;
+  /** 鲁港通 - 失败标注只画在页面视图上，由浏览器管理器注入与清除 */
+  showFailureHighlight?(tabId: number, highlight: AiFailureHighlight): unknown;
+  clearFailureHighlight?(tabId: number): unknown;
+  /** 鲁港通 - 站点级 AI 权限按 origin 读取，默认允许 */
+  getSiteAiMode?(origin: string): DesktopSiteAiMode;
   getState(): {
     panelOpen: boolean;
     activeTabId: number | null;
@@ -171,6 +187,7 @@ export class AiController {
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private reopening = false;
   private pageClosedRecently = false;
+  private highlightTabId: number | undefined;
 
   constructor(options: AiControllerOptions) {
     this.browser = options.browser;
@@ -238,6 +255,7 @@ export class AiController {
       this.executor.cancelConfirmation();
       this.executor.cancelFormConfirmation();
       this.executor.cancelDocumentConfirmation();
+      this.clearFailureHighlight();
       this.guard = recordAiUserStop(this.guard);
       this.paused = false;
       this.activeStep = undefined;
@@ -255,6 +273,9 @@ export class AiController {
     if (this.paused) {
       return { ok: false, code: 'user_handover', message: AI_PAUSED_MESSAGE };
     }
+
+    // 鲁港通 - 进入下一次操作前先撤掉上一轮的失败标注，避免页面残留旧提示
+    this.clearFailureHighlight();
 
     if (this.guard.stopped) {
       if (!options.resume) {
@@ -281,6 +302,17 @@ export class AiController {
       command.action === 'edit_document';
     // 鲁港通 - 右栏打开的是本机文件时直接读文件，不打开面板也不新建空白标签
     const readLocalFile = command.action === 'read' && this.hasActiveDocument();
+    // 鲁港通 - 站点级 AI 权限：仅约束网页动作，本机文件动作与用户手动浏览不受影响
+    if (!localOnly && !readLocalFile) {
+      const rejection = this.siteAiRejection(command);
+      if (rejection) {
+        const step = this.beginStep(command);
+        this.finishStep(step, rejection, false);
+        this.emit();
+        await this.auditCommand(command, commandId, rejection, this.now() - startedAt);
+        return rejection;
+      }
+    }
     if (!localOnly) {
       // 鲁港通 - 右栏没有可读的网页时快速给出可操作指引，避免白等超时
       if (command.action === 'read' && !readLocalFile && !this.hasUsablePage()) {
@@ -311,9 +343,12 @@ export class AiController {
     }
 
     this.capturePageState(result);
-    this.finishStep(step, result, false);
+    if (!result.ok && result.highlight) this.showFailureHighlight(result.highlight);
+    // 鲁港通 - 标注只是本机展示信息，上行给服务端与模型前剔除
+    const upstreamResult = this.stripFailureHighlight(result);
+    this.finishStep(step, upstreamResult, false);
     this.syncLock();
-    const finalResult = this.applyResult(command, result);
+    const finalResult = this.applyResult(command, upstreamResult);
     if (this.guard.stopped) {
       this.clearIdleTimer();
       this.releaseLock();
@@ -327,6 +362,7 @@ export class AiController {
     this.executor.cancelConfirmation();
     this.executor.cancelFormConfirmation();
     this.executor.cancelDocumentConfirmation();
+    this.clearFailureHighlight();
     this.guard = recordAiUserStop(this.guard);
     this.paused = false;
     this.activeStep = undefined;
@@ -345,6 +381,7 @@ export class AiController {
     this.executor.cancelConfirmation('cancel');
     this.executor.cancelFormConfirmation();
     this.executor.cancelDocumentConfirmation();
+    this.clearFailureHighlight();
     this.paused = true;
     this.sessionActiveUntil = this.now() + this.idleMs;
     this.scheduleIdleRelease();
@@ -443,6 +480,51 @@ export class AiController {
     return { ok: false, code: 'page_error', message };
   }
 
+  // 鲁港通 - 导航按目标站点判定，其余动作按当前绑定或活动标签判定
+  private resolveSiteOrigin(command: AiCommand): string | null {
+    if (command.action === 'navigate') return normalizeSiteOrigin(command.url);
+    const state = this.browser.getState();
+    const tab =
+      state.tabs.find((item) => item.current) ??
+      state.tabs.find((item) => item.id === this.sessionTabId);
+    return normalizeSiteOrigin(tab?.url ?? '') ?? normalizeSiteOrigin(this.sessionUrl ?? '');
+  }
+
+  private siteAiRejection(command: AiCommand): AiCommandResult | undefined {
+    if (!this.browser.getSiteAiMode) return undefined;
+    const origin = this.resolveSiteOrigin(command);
+    if (!origin) return undefined;
+    const decision = evaluateSiteAiMode(this.browser.getSiteAiMode(origin), command.action);
+    if (decision.allowed) return undefined;
+    return {
+      ok: false,
+      code: decision.reason === 'blocked' ? 'site_blocked' : 'site_read_only',
+      message: SITE_AI_REJECT_MESSAGES[decision.reason]
+    };
+  }
+
+  // 鲁港通 - 失败标注只在本机页面视图上展示，随时可被下一次操作或停止动作撤掉
+  private showFailureHighlight(highlight: AiFailureHighlight) {
+    const tabId = this.browser.getState().activeTabId ?? this.sessionTabId;
+    if (tabId === undefined) return;
+    this.highlightTabId = tabId;
+    this.browser.showFailureHighlight?.(tabId, highlight);
+  }
+
+  private clearFailureHighlight() {
+    const tabId = this.highlightTabId;
+    this.highlightTabId = undefined;
+    if (tabId === undefined) return;
+    this.browser.clearFailureHighlight?.(tabId);
+  }
+
+  private stripFailureHighlight(result: AiCommandResult): AiCommandResult {
+    if (!result.highlight) return result;
+    const copy = { ...result };
+    delete copy.highlight;
+    return copy;
+  }
+
   // 鲁港通 - 指令看门狗：页面卡死时按时返回失败，避免整条指令通道被永久占住
   private async executeWithTimeout(command: AiCommand): Promise<AiCommandResult> {
     const timeoutMs = LONG_WAIT_ACTIONS.has(command.action)
@@ -457,7 +539,12 @@ export class AiController {
             this.executor.cancelConfirmation('cancel');
             this.executor.cancelFormConfirmation();
             this.executor.cancelDocumentConfirmation();
-            resolve({ ok: false, code: 'timeout', message: AI_ACTION_TIMEOUT_MESSAGE });
+            resolve({
+              ok: false,
+              code: 'timeout',
+              message: AI_ACTION_TIMEOUT_MESSAGE,
+              highlight: { kind: 'page', message: AI_ACTION_TIMEOUT_MESSAGE }
+            });
           }, timeoutMs);
         })
       ]);
@@ -521,6 +608,11 @@ export class AiController {
         code: this.guard.stopReason,
         message: this.guard.stopMessage
       };
+    }
+
+    // 鲁港通 - 站点偏好拦截是用户设置，不是页面故障，不消耗连续失败额度
+    if (result.code === 'site_read_only' || result.code === 'site_blocked') {
+      return result;
     }
 
     // 鲁港通 - 关页引起的读取失败不消耗连续失败额度，避免页面刚重开就误停
