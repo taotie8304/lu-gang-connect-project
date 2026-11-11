@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_TABS,
   addTabToOrder,
+  isAiLockedTab,
   removeTabFromOrder,
   selectTabInOrder
 } from '../src/main/tabs';
@@ -77,5 +78,19 @@ describe('selectTabInOrder', () => {
   it('选中不存在的标签返回原状态', () => {
     const state = { order: [1], activeId: 1 };
     expect(selectTabInOrder(state, 9)).toBe(state);
+  });
+});
+
+describe('isAiLockedTab', () => {
+  it('命中 AI 绑定标签时锁定', () => {
+    expect(isAiLockedTab(3, 3)).toBe(true);
+  });
+
+  it('其他标签不受锁定影响', () => {
+    expect(isAiLockedTab(3, 1)).toBe(false);
+  });
+
+  it('没有 AI 会话时不锁定任何标签', () => {
+    expect(isAiLockedTab(null, 3)).toBe(false);
   });
 });

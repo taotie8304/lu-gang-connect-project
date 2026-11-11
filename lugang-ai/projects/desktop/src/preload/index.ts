@@ -146,6 +146,8 @@ const api = {
   ai: {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.aiStatus) as Promise<DesktopAiState>,
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.aiStop) as Promise<DesktopAiState>,
+    takeover: () => ipcRenderer.invoke(IPC_CHANNELS.aiTakeover) as Promise<DesktopAiState>,
+    resume: () => ipcRenderer.invoke(IPC_CHANNELS.aiResume) as Promise<DesktopAiState>,
     execute: (request: DesktopAiExecuteRequest) =>
       ipcRenderer.invoke(IPC_CHANNELS.aiExecute, request) as Promise<DesktopAiExecuteResponse>,
     onStateChange: (callback: (state: DesktopAiState) => void) => {

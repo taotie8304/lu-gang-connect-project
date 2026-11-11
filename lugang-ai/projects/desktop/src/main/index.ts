@@ -372,6 +372,7 @@ if (!gotLock) {
         executeCommand: (command, { commandId }) =>
           aiController.execute(command, { resume: true, commandId }),
         stopExecution: () => aiController.stop(),
+        pauseExecution: () => aiController.pause(),
         onRegistered: () => {
           void diagnostics.uploadPending();
         },

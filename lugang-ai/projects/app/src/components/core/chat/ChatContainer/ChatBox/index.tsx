@@ -514,6 +514,16 @@ const ChatBox = ({
     isScrollToBottomButtonVisible;
 
   // Add listener
+  // 鲁港通 - 「让 AI 继续」若碰上上一轮仍在生成，先排队，等本轮结束后自动补发
+  const pendingResumeTextRef = useRef<string>();
+  useEffect(() => {
+    if (!canSendPrompt) return;
+    const text = pendingResumeTextRef.current;
+    if (!text) return;
+    pendingResumeTextRef.current = undefined;
+    sendPrompt({ text, interactive: lastInteractive });
+  }, [canSendPrompt, sendPrompt, lastInteractive]);
+
   useEffect(() => {
     const windowMessage = ({ data }: MessageEvent<{ type: 'sendPrompt'; text: string }>) => {
       if (data?.type === 'sendPrompt' && data?.text) {
@@ -525,7 +535,17 @@ const ChatBox = ({
     };
     window.addEventListener('message', windowMessage);
 
-    const fn = ({ focus = false, ...e }: ChatBoxInputType & { focus?: boolean }) => {
+    const fn = ({
+      focus = false,
+      resume = false,
+      ...e
+    }: ChatBoxInputType & { focus?: boolean; resume?: boolean }) => {
+      if (resume && !canSendPrompt) {
+        if (!e.text) return;
+        pendingResumeTextRef.current = e.text;
+        toast({ title: t('common:builtin_browser_ai_resume_waiting'), status: 'info' });
+        return;
+      }
       if (canSendPrompt || focus) {
         sendPrompt({
           ...e,
@@ -544,7 +564,7 @@ const ChatBox = ({
       eventBus.off(EventNameEnum.sendQuestion);
       eventBus.off(EventNameEnum.editQuestion);
     };
-  }, [isReady, resetInputVal, sendPrompt, canSendPrompt, lastInteractive]);
+  }, [isReady, resetInputVal, sendPrompt, canSendPrompt, lastInteractive, t, toast]);
 
   /** 快捷回复点击：直接发送选项文本，并保留输入框原有内容。 */
   const handleQuickReplyClick = useMemoizedFn((text: string) => {

@@ -42,6 +42,8 @@ export const IPC_CHANNELS = {
   retryLoad: 'lugang:retry-load',
   aiStatus: 'lugang:ai-status',
   aiStop: 'lugang:ai-stop',
+  aiTakeover: 'lugang:ai-takeover',
+  aiResume: 'lugang:ai-resume',
   aiExecute: 'lugang:ai-execute',
   aiStatusChanged: 'lugang:ai-status-changed',
   sessionSync: 'lugang:session-sync',
@@ -73,7 +75,14 @@ export const IPC_CHANNELS = {
   diagnosticsExport: 'lugang:diagnostics-export'
 } as const;
 
-export type DesktopTab = { id: number; title: string; url: string; current: boolean };
+export type DesktopTab = {
+  id: number;
+  title: string;
+  url: string;
+  current: boolean;
+  /** 鲁港通 - AI 会话绑定的标签：面板显示锁徽标，关闭入口统一拦截 */
+  locked?: boolean;
+};
 
 export type DesktopBrowserState = {
   panelOpen: boolean;
@@ -122,7 +131,8 @@ export type DesktopPanelCommand =
   | 'close-find'
   | 'focus-url'
   | 'clear-data'
-  | 'shortcuts';
+  | 'shortcuts'
+  | 'timeline';
 
 export type DesktopClearBrowsingDataOptions = {
   cookies: boolean;
@@ -132,7 +142,22 @@ export type DesktopClearBrowsingDataOptions = {
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
 
-export type DesktopAiStatus = 'idle' | 'running' | 'stopped';
+export type DesktopAiStatus = 'idle' | 'running' | 'paused' | 'stopped';
+
+/** 鲁港通 - 时间线步骤状态：运行中 / 成功 / 失败 / 等待确认 / 已接管 */
+export type DesktopAiStepStatus = 'running' | 'ok' | 'failed' | 'confirming' | 'paused';
+
+export type DesktopAiStep = {
+  id: string;
+  at: number;
+  action: string;
+  label: string;
+  /** 鲁港通 - 只放元素描述或域名，输入框内容绝不进入时间线 */
+  target?: string;
+  url?: string;
+  status: DesktopAiStepStatus;
+  code?: string;
+};
 
 export type DesktopAiState = {
   status: DesktopAiStatus;
@@ -140,6 +165,9 @@ export type DesktopAiState = {
   stopReason?: string;
   message?: string;
   sessionUrl?: string;
+  lockedTabId: number | null;
+  /** 鲁港通 - 最近 30 步，正序；完整 50 步只留在主进程内存 */
+  steps: DesktopAiStep[];
 };
 
 export type DesktopAiCommand = {

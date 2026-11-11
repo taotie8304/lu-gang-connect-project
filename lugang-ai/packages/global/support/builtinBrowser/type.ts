@@ -97,6 +97,8 @@ export type BuiltinBrowserTab = {
   title: string;
   url: string;
   current: boolean;
+  /** 鲁港通 - AI 会话绑定的标签：显示锁徽标并拦截关闭入口（仅桌面本地浏览器） */
+  locked?: boolean;
 };
 
 /** 标签列表（GET）/ 新建标签（POST）响应 */

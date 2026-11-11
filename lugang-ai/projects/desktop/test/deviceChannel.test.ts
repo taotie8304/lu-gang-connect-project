@@ -6,8 +6,14 @@ const BASE_URL = 'https://www.airscend.com';
 const DEVICE_ID = '4b8a5f0e-1111-4222-8333-444444444444';
 const COMMAND_ID = '0f0f0f0f-1111-4222-8333-444444444444';
 
-const idleState: DesktopAiState = { status: 'idle', reopens: 0 };
-const stoppedState: DesktopAiState = { status: 'stopped', reopens: 0, stopReason: 'stopped_by_user' };
+const idleState: DesktopAiState = { status: 'idle', reopens: 0, lockedTabId: null, steps: [] };
+const stoppedState: DesktopAiState = {
+  status: 'stopped',
+  reopens: 0,
+  stopReason: 'stopped_by_user',
+  lockedTabId: null,
+  steps: []
+};
 
 type FetchCall = { url: string; init?: RequestInit };
 
@@ -48,6 +54,7 @@ const createChannel = (
     cookie?: string | undefined;
     execute?: (command: unknown, context: { commandId: string }) => Promise<unknown>;
     stopState?: DesktopAiState;
+    pauseState?: DesktopAiState;
     fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
     pollRequestTimeoutMs?: number;
     onRegistered?: (context: { token: string }) => void | Promise<void>;
@@ -79,6 +86,9 @@ const createChannel = (
       }))
   );
   const stopExecution = vi.fn(() => options.stopState ?? stoppedState);
+  const pauseExecution = vi.fn(
+    () => options.pauseState ?? ({ ...stoppedState, status: 'paused' } as DesktopAiState)
+  );
   const sleep = vi.fn(async () => undefined);
 
   const channel = createDeviceChannel({
@@ -90,6 +100,7 @@ const createChannel = (
     getSessionCookie: async () => options.cookie,
     executeCommand,
     stopExecution,
+    pauseExecution,
     fetchImpl: fetchImpl as unknown as typeof fetch,
     sleep,
     pollTimeoutMs: 25_000,
@@ -103,6 +114,7 @@ const createChannel = (
     tokenStore,
     executeCommand,
     stopExecution,
+    pauseExecution,
     sleep,
     fetchImpl
   };
@@ -357,6 +369,67 @@ describe('桌面设备通道 · 用户停止', () => {
     expect(harness.calls).toHaveLength(0);
   });
 
+  it('一键接管在途指令回传 user_handover，并只回传一次', async () => {
+    let settleCommand: (value: unknown) => void = () => undefined;
+    const executing = new Promise((resolve) => {
+      settleCommand = resolve;
+    });
+    const pausedState: DesktopAiState = {
+      status: 'paused',
+      reopens: 0,
+      lockedTabId: 1,
+      steps: []
+    };
+    const harness = createChannel({
+      cookie: 'session-cookie-value',
+      pauseState: pausedState,
+      responses: [
+        apiResponse({ token: 'lgd_device-token', expiresInMs: 1000 }),
+        apiResponse({
+          command: {
+            id: COMMAND_ID,
+            createdAt: 1_700_000_000_000,
+            command: { action: 'read' }
+          }
+        }),
+        apiResponse({ accepted: true }),
+        apiResponse({ command: null })
+      ],
+      execute: () => executing
+    });
+
+    await harness.channel.syncSession();
+    await vi.waitFor(() => expect(harness.executeCommand).toHaveBeenCalledTimes(1));
+
+    await expect(harness.channel.pauseAi()).resolves.toEqual(pausedState);
+    expect(harness.pauseExecution).toHaveBeenCalledTimes(1);
+    expect(harness.stopExecution).not.toHaveBeenCalled();
+
+    await vi.waitFor(() =>
+      expect(harness.calls.some((call) => call.url.endsWith('/api/proApi/desktop/result'))).toBe(
+        true
+      )
+    );
+    const resultCall = harness.calls.find((call) => call.url.endsWith('/desktop/result'))!;
+    expect(JSON.parse(String(resultCall.init?.body))).toEqual({
+      deviceId: DEVICE_ID,
+      commandId: COMMAND_ID,
+      result: expect.objectContaining({
+        ok: false,
+        stopped: true,
+        code: 'user_handover',
+        message: '用户已接管页面，AI 已暂停，页面状态已保留'
+      })
+    });
+
+    settleCommand({ ok: true, changed: true });
+    await flush();
+    const resultCalls = harness.calls.filter((call) => call.url.endsWith('/desktop/result'));
+    expect(resultCalls).toHaveLength(1);
+
+    harness.channel.stop();
+  });
+
   it('reports the client stop reason and message so the server can guide the model', async () => {
     let settleCommand: (value: unknown) => void = () => undefined;
     const executing = new Promise((resolve) => {
@@ -366,7 +439,9 @@ describe('桌面设备通道 · 用户停止', () => {
       status: 'stopped',
       reopens: 1,
       stopReason: 'page_closed_twice',
-      message: '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。'
+      message: '页面被再次关闭，我已停止自动重开。请确认是否还要继续操作这个页面，确认后我再继续。',
+      lockedTabId: null,
+      steps: []
     };
     const harness = createChannel({
       cookie: 'session-cookie-value',

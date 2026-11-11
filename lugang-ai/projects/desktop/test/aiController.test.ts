@@ -50,6 +50,9 @@ const createBrowser = (): AiControllerBrowser & {
   state: DesktopBrowserState;
   openPanel: ReturnType<typeof vi.fn>;
   navigate: ReturnType<typeof vi.fn>;
+  activateTab: ReturnType<typeof vi.fn>;
+  setAiLockedTab: ReturnType<typeof vi.fn>;
+  selectTab: (id: number) => void;
 } => {
   const state: DesktopBrowserState = {
     panelOpen: true,
@@ -59,6 +62,11 @@ const createBrowser = (): AiControllerBrowser & {
     canGoBack: false,
     canGoForward: false,
     zoomPercent: 100
+  };
+  const selectTab = (id: number) => {
+    if (!state.tabs.some((tab) => tab.id === id)) return;
+    state.activeTabId = id;
+    state.tabs = state.tabs.map((tab) => ({ ...tab, current: tab.id === id }));
   };
   return {
     state,
@@ -71,7 +79,13 @@ const createBrowser = (): AiControllerBrowser & {
       state.activeTabId = 1;
       return true;
     }),
-    getState: vi.fn(() => state)
+    getState: vi.fn(() => state),
+    activateTab: vi.fn((id: number) => {
+      selectTab(id);
+      return state;
+    }),
+    setAiLockedTab: vi.fn((_id: number | null) => undefined),
+    selectTab
   };
 };
 
@@ -118,6 +132,7 @@ const createController = (
   options: {
     elements?: Partial<AiPageElement>[];
     now?: () => number;
+    idleMs?: number;
     audit?: (record: AiAuditRecord) => Promise<void> | void;
     confirm?: AiConfirmer;
     generateFile?: AiFileGenerator;
@@ -135,6 +150,7 @@ const createController = (
     browser,
     driver: harness.driver,
     now: options.now,
+    idleMs: options.idleMs,
     audit: options.audit,
     confirm: options.confirm,
     generateFile: options.generateFile,
@@ -837,5 +853,250 @@ describe('AI 桌面控制器 · 卡死自愈与读取边界', () => {
 
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ action: 'read', outcome: 'failed', errorCode: 'timeout' });
+  });
+});
+
+const lastStep = (controller: AiController) => {
+  const steps = controller.getState().steps;
+  return steps[steps.length - 1];
+};
+
+describe('AI 桌面控制器 · 标签锁定与一键接管', () => {
+  it('AI 会话开始后锁定当前标签，停止后解锁', async () => {
+    const { controller, browser } = createController({
+      elements: [textField('申请人姓名')]
+    });
+    expect(controller.getState().lockedTabId).toBeNull();
+    expect(browser.setAiLockedTab).not.toHaveBeenCalled();
+
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+
+    expect(controller.getState().lockedTabId).toBe(1);
+    expect(browser.setAiLockedTab).toHaveBeenLastCalledWith(1);
+
+    controller.stop();
+    expect(controller.getState().lockedTabId).toBeNull();
+    expect(browser.setAiLockedTab).toHaveBeenLastCalledWith(null);
+  });
+
+  it('用户切到其他标签后，下一条指令执行前自动切回锁定标签', async () => {
+    const { controller, browser } = createController({
+      elements: [textField('申请人姓名')]
+    });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+
+    browser.state.tabs.push({
+      id: 2,
+      title: '其他页面',
+      url: 'https://www.gov.hk/other',
+      current: false
+    });
+    browser.selectTab(2);
+    expect(browser.state.activeTabId).toBe(2);
+
+    await controller.execute({ action: 'read' });
+
+    expect(browser.activateTab).toHaveBeenCalledWith(1);
+    expect(browser.state.activeTabId).toBe(1);
+    expect(controller.getState().lockedTabId).toBe(1);
+  });
+
+  it('接管后暂停会话、取消等待中的确认，在途指令回传 user_handover', async () => {
+    let settle: (decision: AiConfirmationDecision) => void = () => undefined;
+    const confirm = Object.assign(
+      vi.fn(
+        () =>
+          new Promise<AiConfirmationDecision>((resolve) => {
+            settle = resolve;
+          })
+      ),
+      {
+        cancel: vi.fn((reason?: 'cancel' | 'page_closed') =>
+          settle(reason === 'page_closed' ? 'page_closed' : 'cancel')
+        )
+      }
+    );
+    const { controller } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm
+    });
+
+    const pending = controller.execute({ action: 'click', target: '提交申请' });
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+
+    const state = controller.pause();
+    expect(state.status).toBe('paused');
+    expect(confirm.cancel).toHaveBeenCalledTimes(1);
+
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('user_handover');
+    expect(controller.getState().status).toBe('paused');
+  });
+
+  it('接管期间的后续指令一律拒绝且不消耗连续失败次数', async () => {
+    const { controller, snapshotCalls } = createController({
+      elements: [textField('申请人姓名')]
+    });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    controller.pause();
+
+    const calls = snapshotCalls();
+    const rejected = await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(rejected.ok).toBe(false);
+    expect(rejected.code).toBe('user_handover');
+    expect(snapshotCalls()).toBe(calls);
+
+    const again = await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(again.code).toBe('user_handover');
+    expect(controller.getState().status).toBe('paused');
+
+    // 继续后第一次失败只累计一次，不会直接触发「连续两次」停止
+    controller.resume();
+    const firstFailure = await controller.execute({ action: 'click', target: '不存在的按钮' });
+    expect(firstFailure.stopped).toBeFalsy();
+    expect(controller.getState().status).toBe('running');
+  });
+
+  it('让 AI 继续后恢复运行并重新锁定原标签', async () => {
+    const { controller, browser } = createController({
+      elements: [textField('申请人姓名')]
+    });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    controller.pause();
+    expect(controller.getState().lockedTabId).toBe(1);
+
+    const resumed = controller.resume();
+    expect(resumed.status).toBe('running');
+    expect(resumed.lockedTabId).toBe(1);
+    expect(browser.setAiLockedTab).toHaveBeenLastCalledWith(1);
+
+    const result = await controller.execute({ action: 'read' });
+    expect(result.ok).toBe(true);
+  });
+
+  it('用户选择自己提交后也可通过继续恢复', async () => {
+    const { controller } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm: async () => 'handoff'
+    });
+    await controller.execute({ action: 'click', target: '提交申请' });
+    expect(controller.getState().stopReason).toBe('handed_over');
+    expect(controller.getState().lockedTabId).toBeNull();
+
+    const resumed = controller.resume();
+    expect(resumed.status).toBe('running');
+    expect(controller.getState().stopReason).toBeUndefined();
+    expect(controller.getState().lockedTabId).toBe(1);
+  });
+
+  it('闲置到期后自动解锁，标签恢复可关闭', async () => {
+    const { controller } = createController({ elements: [textField('申请人姓名')], idleMs: 20 });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    expect(controller.getState().lockedTabId).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(controller.getState().status).toBe('idle');
+    expect(controller.getState().lockedTabId).toBeNull();
+  });
+
+  it('接管后闲置到期同样解锁', async () => {
+    const { controller } = createController({ elements: [textField('申请人姓名')], idleMs: 20 });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    controller.pause();
+    expect(controller.getState().lockedTabId).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(controller.getState().status).toBe('idle');
+    expect(controller.getState().lockedTabId).toBeNull();
+  });
+});
+
+describe('AI 桌面控制器 · 本次操作时间线', () => {
+  it('按执行顺序记录动作与目标，绝不记录输入内容', async () => {
+    const { controller } = createController({ elements: [textField('申请人姓名')] });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三的私密内容' });
+    await controller.execute({ action: 'read' });
+
+    const state = controller.getState();
+    expect(state.steps.map((step) => step.action)).toEqual(['type', 'read']);
+    expect(state.steps[0]).toMatchObject({ target: '申请人姓名', status: 'ok' });
+    expect(JSON.stringify(state.steps)).not.toContain('张三的私密内容');
+  });
+
+  it('打开网页只记录域名，长目标截断到 40 字', async () => {
+    const longTarget = '申'.repeat(60);
+    const { controller } = createController({
+      elements: [{ role: 'textbox', name: longTarget, tag: 'input', type: 'text' }]
+    });
+    await controller.execute({
+      action: 'navigate',
+      url: 'https://www.immd.gov.hk/path?token=abc'
+    });
+    await controller.execute({ action: 'type', target: longTarget, text: 'x' });
+
+    const state = controller.getState();
+    expect(state.steps[0].target).toBe('www.immd.gov.hk');
+    const truncated = state.steps[1].target ?? '';
+    expect(truncated.endsWith('…')).toBe(true);
+    expect(truncated.length).toBe(41);
+  });
+
+  it('等待用户确认时当前步骤标为等待确认，结束后归档为失败', async () => {
+    let settle: (decision: AiConfirmationDecision) => void = () => undefined;
+    const confirm = Object.assign(
+      vi.fn(
+        () =>
+          new Promise<AiConfirmationDecision>((resolve) => {
+            settle = resolve;
+          })
+      ),
+      { cancel: vi.fn(() => settle('cancel')) }
+    );
+    const { controller } = createController({
+      elements: [{ role: 'button', name: '提交申请', tag: 'button' }],
+      confirm
+    });
+
+    const pending = controller.execute({ action: 'click', target: '提交申请' });
+    await vi.waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+    expect(lastStep(controller)?.status).toBe('confirming');
+
+    settle('cancel');
+    await pending;
+    expect(lastStep(controller)?.status).toBe('failed');
+  });
+
+  it('内存保留最近 50 条，面板只取最近 30 条', async () => {
+    const { controller } = createController({ elements: [textField('申请人姓名')] });
+    for (let index = 0; index < 55; index += 1) {
+      await controller.execute({ action: 'read' });
+    }
+
+    expect(controller.getState().steps).toHaveLength(30);
+    expect((controller as unknown as { steps: unknown[] }).steps).toHaveLength(50);
+  });
+
+  it('停止与接管都会留下记录，新会话开始时清空', async () => {
+    const { controller } = createController({ elements: [textField('申请人姓名')] });
+    await controller.execute({ action: 'type', target: '申请人姓名', text: '张三' });
+    controller.pause();
+    expect(controller.getState().steps.map((step) => step.action)).toEqual(['type', 'pause']);
+    controller.resume();
+    expect(controller.getState().steps.map((step) => step.action)).toEqual([
+      'type',
+      'pause',
+      'resume'
+    ]);
+    controller.stop();
+    expect(controller.getState().steps.map((step) => step.action)).toEqual([
+      'type',
+      'pause',
+      'resume',
+      'stop'
+    ]);
+
+    await controller.execute({ action: 'read' }, { resume: true });
+    expect(controller.getState().steps.map((step) => step.action)).toEqual(['read']);
   });
 });

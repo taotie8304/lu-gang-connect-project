@@ -23,3 +23,7 @@ export const removeTabFromOrder = (state: TabOrderState, id: number): TabOrderSt
 
 export const selectTabInOrder = (state: TabOrderState, id: number): TabOrderState =>
   state.order.includes(id) ? { ...state, activeId: id } : state;
+
+// 鲁港通 - AI 锁定标签：关闭入口与状态标记共用同一条判定，避免两处语义漂移
+export const isAiLockedTab = (lockedTabId: number | null, id: number): boolean =>
+  lockedTabId !== null && lockedTabId === id;

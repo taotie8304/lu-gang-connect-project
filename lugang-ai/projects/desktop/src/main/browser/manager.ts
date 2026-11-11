@@ -30,6 +30,7 @@ import { stripElectronFromUserAgent } from '../../shared/ua';
 import {
   MAX_TABS,
   addTabToOrder,
+  isAiLockedTab,
   removeTabFromOrder,
   selectTabInOrder,
   type TabOrderState
@@ -145,6 +146,7 @@ export class BrowserManager {
   private notifyDownloadsTimer: ReturnType<typeof setTimeout> | undefined;
   private findQuery: string | null = null;
   private downloadSeq = 0;
+  private aiLockedTabId: number | null = null;
   private destroyed = false;
 
   constructor(options: BrowserManagerOptions) {
@@ -265,6 +267,8 @@ export class BrowserManager {
   closeTab = (id: number): DesktopBrowserState => {
     const entry = this.tabs.get(id);
     if (!entry) return this.getState();
+    // 鲁港通 - AI 锁定标签硬拦截：关闭按钮/中键/Ctrl+W/菜单最终都走这里
+    if (isAiLockedTab(this.aiLockedTabId, id)) return this.getState();
     const event: BrowserTabClosedEvent = {
       id,
       url: entry.url,
@@ -278,6 +282,15 @@ export class BrowserManager {
     this.runFind(true);
     this.notifyTabClosed(event);
     return this.getState();
+  };
+
+  // 鲁港通 - AI 执行前切回绑定标签；与手工切换共用同一套可见性与广播逻辑
+  activateTab = (id: number): DesktopBrowserState => this.selectTab(id);
+
+  setAiLockedTab = (id: number | null): void => {
+    if (this.aiLockedTabId === id) return;
+    this.aiLockedTabId = id;
+    this.emitState();
   };
 
   navigate = (rawUrl: string): boolean => {
@@ -436,6 +449,7 @@ export class BrowserManager {
         click: () => this.resetZoom()
       },
       { type: 'separator' },
+      { label: '本次操作记录', click: () => this.sendPanelCommand('timeline') },
       { label: '清除浏览数据…', click: () => this.sendPanelCommand('clear-data') },
       { label: '键盘快捷键', click: () => this.sendPanelCommand('shortcuts') }
     ];
@@ -535,7 +549,13 @@ export class BrowserManager {
       activeTabId: this.order.activeId,
       tabs: this.order.order.map((id) => {
         const item = this.tabs.get(id)!;
-        return { id, title: item.title, url: item.url, current: id === this.order.activeId };
+        return {
+          id,
+          title: item.title,
+          url: item.url,
+          current: id === this.order.activeId,
+          ...(isAiLockedTab(this.aiLockedTabId, id) ? { locked: true } : {})
+        };
       }),
       loading:
         this.order.activeId !== null && !!this.tabs.get(this.order.activeId)?.loading,
@@ -866,6 +886,8 @@ export class BrowserManager {
   private closeTabInternal = (id: number) => {
     const entry = this.tabs.get(id);
     if (!entry) return;
+    // 鲁港通 - 标签被外部关闭/面板收起时解除绑定，控制器重开页面后会重新绑定新标签
+    if (id === this.aiLockedTabId) this.aiLockedTabId = null;
     this.order = removeTabFromOrder(this.order, id);
     this.tabs.delete(id);
     try {

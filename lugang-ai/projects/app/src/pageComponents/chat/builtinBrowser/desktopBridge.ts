@@ -1,7 +1,14 @@
 // 鲁港通 - 桌面客户端桥类型：与 projects/desktop/src/shared/ipc.ts 保持结构一致
 export type DesktopCssRect = { x: number; y: number; width: number; height: number };
 
-export type DesktopTab = { id: number; title: string; url: string; current: boolean };
+export type DesktopTab = {
+  id: number;
+  title: string;
+  url: string;
+  current: boolean;
+  /** 鲁港通 - AI 会话绑定的标签：显示锁徽标并拦截关闭入口 */
+  locked?: boolean;
+};
 
 export type DesktopBrowserState = {
   panelOpen: boolean;
@@ -46,7 +53,8 @@ export type DesktopPanelCommand =
   | 'close-find'
   | 'focus-url'
   | 'clear-data'
-  | 'shortcuts';
+  | 'shortcuts'
+  | 'timeline';
 
 export type DesktopClearBrowsingDataOptions = {
   cookies: boolean;
@@ -85,7 +93,22 @@ export type DesktopBrowserControls = {
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
 
-export type DesktopAiStatus = 'idle' | 'running' | 'stopped';
+export type DesktopAiStatus = 'idle' | 'running' | 'paused' | 'stopped';
+
+/** 鲁港通 - 时间线步骤状态：运行中 / 成功 / 失败 / 等待确认 / 已接管 */
+export type DesktopAiStepStatus = 'running' | 'ok' | 'failed' | 'confirming' | 'paused';
+
+export type DesktopAiStep = {
+  id: string;
+  at: number;
+  action: string;
+  label: string;
+  /** 鲁港通 - 只放元素描述或域名，输入框内容绝不进入时间线 */
+  target?: string;
+  url?: string;
+  status: DesktopAiStepStatus;
+  code?: string;
+};
 
 export type DesktopAiState = {
   status: DesktopAiStatus;
@@ -93,6 +116,9 @@ export type DesktopAiState = {
   stopReason?: string;
   message?: string;
   sessionUrl?: string;
+  lockedTabId: number | null;
+  /** 鲁港通 - 最近 30 步，正序；完整 50 步只留在主进程内存 */
+  steps: DesktopAiStep[];
 };
 
 export type DesktopAiCommand = {
@@ -334,6 +360,10 @@ export type DesktopBridge = {
   ai: {
     getState(): Promise<DesktopAiState>;
     stop(): Promise<DesktopAiState>;
+    /** 0.11.0 起提供：一键接管暂停 AI，页面状态保留 */
+    takeover?(): Promise<DesktopAiState>;
+    /** 0.11.0 起提供：让 AI 继续 */
+    resume?(): Promise<DesktopAiState>;
     execute(request: DesktopAiExecuteRequest): Promise<DesktopAiExecuteResponse>;
     onStateChange(callback: (state: DesktopAiState) => void): () => void;
   };

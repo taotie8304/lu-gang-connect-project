@@ -23,6 +23,8 @@ export type DeviceChannelOptions = {
   getSessionCookie: () => Promise<string | undefined>;
   executeCommand: (command: AiCommand, context: { commandId: string }) => Promise<unknown>;
   stopExecution: () => DesktopAiState;
+  /** 鲁港通 - 一键接管：暂停后续指令，页面状态保留，可随时恢复 */
+  pauseExecution: () => DesktopAiState;
   /** 鲁港通 - 注册成功（拿到新设备令牌）后回调，用于补传本地待发的崩溃记录 */
   onRegistered?: (context: { token: string }) => void | Promise<void>;
   fetchImpl?: typeof fetch;
@@ -38,6 +40,7 @@ export type DeviceChannel = {
   startPolling: () => void;
   stop: () => void;
   stopAi: () => Promise<DesktopAiState>;
+  pauseAi: () => Promise<DesktopAiState>;
 };
 
 type ActiveCommand = {
@@ -90,6 +93,7 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
     getSessionCookie,
     executeCommand,
     stopExecution,
+    pauseExecution,
     onRegistered,
     log
   } = options;
@@ -324,11 +328,28 @@ export const createDeviceChannel = (options: DeviceChannelOptions): DeviceChanne
     return state;
   };
 
+  // 鲁港通 - 接管不是停止：在途指令按 user_handover 回传，服务端据此暂停后续调度
+  const pauseAi = async () => {
+    const state = pauseExecution();
+    const current = active;
+    if (current && !current.stopped) {
+      current.stopped = true;
+      await postResult(current.token, current.commandId, {
+        ok: false,
+        stopped: true,
+        code: 'user_handover',
+        message: state.message ?? '用户已接管页面，AI 已暂停，页面状态已保留'
+      });
+    }
+    return state;
+  };
+
   return {
     syncSession,
     clearSession,
     startPolling,
     stop: stopPolling,
-    stopAi
+    stopAi,
+    pauseAi
   };
 };

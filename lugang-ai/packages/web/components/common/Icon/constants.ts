@@ -95,6 +95,7 @@ export const iconPaths = {
   'common/rightArrowFill': () => import('./icons/common/rightArrowFill.svg'),
   'common/rightArrowLight': () => import('./icons/common/rightArrowLight.svg'),
   'common/rocket': () => import('./icons/common/rocket.svg'),
+  'common/robot': () => import('./icons/common/robot.svg'),
   'common/rollback': () => import('./icons/common/rollback.svg'),
   'common/running': () => import('./icons/common/running.svg'),
   'common/searchLight': () => import('./icons/common/searchLight.svg'),

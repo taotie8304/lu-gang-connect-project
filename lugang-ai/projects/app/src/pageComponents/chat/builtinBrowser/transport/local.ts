@@ -20,7 +20,7 @@ export const createLocalTransport = (bridge: DesktopBridge): BuiltinBrowserTrans
     idByIndex.clear();
     return state.tabs.map((tab, index) => {
       idByIndex.set(index, tab.id);
-      return { index, title: tab.title, url: tab.url, current: tab.current };
+      return { index, title: tab.title, url: tab.url, current: tab.current, locked: tab.locked };
     });
   };
 

@@ -1020,6 +1020,9 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
             : '桌面客户端无法弹出提交确认框，本次没有提交。请不要重试，改为让用户自己提交。';
     case 'handed_over':
       return '用户选择了自己提交，页面已交还给你本人，AI 不会重试或再次提交。请不要重试；等用户反馈结果后再继续。';
+    // 鲁港通 - 一键接管：用户只是临时接手页面（如登录、验证码），不是结束任务
+    case 'user_handover':
+      return '用户已接管页面，AI 已暂停；页面状态已保留。请不要继续操作，等用户明确说继续后，先读取当前页面，再从用户停下的位置继续。';
     case 'confirmation_declined':
       return isFormFill
         ? '用户取消了这次填写确认，没有生成副本，原文件也没有变化。请不要重试，也不要再次调用 fill_form；等用户明确要求后再继续。'

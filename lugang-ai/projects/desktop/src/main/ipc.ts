@@ -39,7 +39,7 @@ type RegisterIpcOptions = {
   appVersion: string;
   browser: BrowserManager;
   ai: AiController;
-  deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi'>;
+  deviceChannel: Pick<DeviceChannel, 'syncSession' | 'clearSession' | 'stopAi' | 'pauseAi'>;
   diagnostics: Pick<Diagnostics, 'exportBundle'>;
   documents: Pick<
     DocumentPreviewManager,
@@ -193,6 +193,9 @@ export const registerIpc = ({
 
   handle(IPC_CHANNELS.aiStatus, () => ai.getState());
   handle(IPC_CHANNELS.aiStop, () => deviceChannel.stopAi());
+  // 鲁港通 - 一键接管走设备通道，在途指令按 user_handover 回传后才暂停本地会话
+  handle(IPC_CHANNELS.aiTakeover, () => deviceChannel.pauseAi());
+  handle(IPC_CHANNELS.aiResume, () => ai.resume());
   handle(
     IPC_CHANNELS.aiExecute,
     async (payload) => {

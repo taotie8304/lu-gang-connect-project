@@ -48,6 +48,8 @@ import { usePageOverlayOpen } from './usePageOverlayOpen';
 import { BuiltinBrowserContext, useBuiltinBrowserVisible } from './context';
 import { createTabRefreshScheduler } from './polling';
 import { resolveBuiltinBrowserAiBadge } from './aiStatus';
+import AiTimeline from './aiTimeline';
+import { eventBus, EventNameEnum } from '@/web/common/utils/eventbus';
 import type {
   DesktopAiState,
   DesktopBrowserNavState,
@@ -69,6 +71,8 @@ const VIEWPORT_FOLLOW_DEBOUNCE_MS = 600;
 const LOADING_SLOW_HINT_MS = 5 * 1000;
 // 鲁港通 - 面板窄于该宽度时头部隐藏剩余时间文案（英文/韩文更长，防挤压标题与按钮）
 const HEADER_HIDE_REMAINING_WIDTH = 420;
+// 鲁港通 - 窄面板里 AI 状态条只留圆点与图标按钮，文字靠悬停提示
+const AI_STRIP_NARROW_WIDTH = 340;
 // 鲁港通 - 查找输入防抖：中文输入法组合期结束后再查，避免逐字抖动
 const FIND_DEBOUNCE_MS = 250;
 const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
@@ -129,6 +133,67 @@ const ToolbarIcon = ({
   </MyTooltip>
 );
 
+// 鲁港通 - AI 状态条按钮：窄面板只留图标，悬停给出文字提示
+const AiStripAction = ({
+  label,
+  icon,
+  tone = 'ghost',
+  narrow,
+  loading,
+  onClick
+}: {
+  label: string;
+  icon: IconNameType;
+  tone?: 'ghost' | 'danger' | 'primary';
+  narrow: boolean;
+  loading?: boolean;
+  onClick: () => void;
+}) => {
+  const button = (
+    <Button
+      size={'xs'}
+      h={'22px'}
+      minW={0}
+      w={narrow ? '24px' : undefined}
+      px={narrow ? 0 : '8px'}
+      fontSize={'9.5px'}
+      fontWeight={500}
+      borderRadius={'6px'}
+      border={'1px solid'}
+      borderColor={
+        tone === 'danger'
+          ? 'rgba(200,90,80,0.32)'
+          : tone === 'primary'
+            ? 'transparent'
+            : LG.line
+      }
+      bg={
+        tone === 'danger'
+          ? '#FFF9F8'
+          : tone === 'primary'
+            ? 'linear-gradient(140deg, #8FB4DC, #4F80B4)'
+            : 'white'
+      }
+      color={tone === 'danger' ? '#B4544E' : tone === 'primary' ? 'white' : '#4A5F75'}
+      whiteSpace={'nowrap'}
+      isLoading={loading}
+      onClick={onClick}
+    >
+      {narrow ? (
+        <MyIcon name={icon} w={'12px'} h={'12px'} />
+      ) : (
+        <Flex alignItems={'center'} gap={'4px'}>
+          <MyIcon name={icon} w={'12px'} h={'12px'} />
+          <Text as={'span'} fontSize={'9.5px'}>
+            {label}
+          </Text>
+        </Flex>
+      )}
+    </Button>
+  );
+  return narrow ? <MyTooltip label={label}>{button}</MyTooltip> : button;
+};
+
 // 鲁港通 - 面板宽度本地记忆：读取时非法值回落默认，并按当前窗口宽度收敛
 const readStoredPanelWidth = () => {
   if (typeof window === 'undefined') return BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH;
@@ -171,7 +236,8 @@ const BuiltinBrowserPanelBody = ({
   const [tabs, setTabs] = useState<BuiltinBrowserTab[]>([]);
   const [loadingSlow, setLoadingSlow] = useState(false);
   const [aiState, setAiState] = useState<DesktopAiState>();
-  const [isStoppingAi, setIsStoppingAi] = useState(false);
+  const [aiBusy, setAiBusy] = useState<'takeover' | 'resume' | 'stop'>();
+  const [timelineOpen, setTimelineOpen] = useState(false);
   const [docTabs, setDocTabs] = useState<DesktopDocumentSummary[]>([]);
   const [activeDocToken, setActiveDocToken] = useState<string | null>(null);
   // 鲁港通 - 快照带 token 缓存：切换文件时旧快照自然失效，无需在 effect 里清空
@@ -323,6 +389,11 @@ const BuiltinBrowserPanelBody = ({
     [t, toast]
   );
 
+  // 鲁港通 - 锁定标签的关闭入口统一给出同一句可操作提示
+  const notifyLockedTab = useCallback(() => {
+    toast({ title: t('common:builtin_browser_ai_locked_tab'), status: 'info' });
+  }, [t, toast]);
+
   // 鲁港通 - 标签标题：优先页面标题，空白页给可读占位，无标题时退回域名
   const tabLabel = useCallback(
     (tab: BuiltinBrowserTab) => {
@@ -400,7 +471,7 @@ const BuiltinBrowserPanelBody = ({
     };
   }, [status, transport, applyTabs, refreshTabs]);
 
-  // 鲁港通 - 桌面模式订阅 AI 工作状态：面板头部据此显示「AI 正在操作」与停止按钮
+  // 鲁港通 - 桌面模式订阅 AI 工作状态：面板顶部状态条与时间线据此实时更新
   useEffect(() => {
     if (!isNative || typeof window === 'undefined') return;
     const ai = window.lugangDesktop?.ai;
@@ -420,6 +491,11 @@ const BuiltinBrowserPanelBody = ({
       unsubscribe();
     };
   }, [isNative]);
+
+  // 鲁港通 - 新会话开始时时间线被清空，折叠态复位
+  useEffect(() => {
+    if (!aiState?.steps.length) setTimelineOpen(false);
+  }, [aiState?.steps.length]);
 
   // 鲁港通 - 打开面板补一次设备同步：应用启动时网络未就绪导致注册失败，重开面板即可恢复接收指令
   useEffect(() => {
@@ -529,6 +605,11 @@ const BuiltinBrowserPanelBody = ({
 
   const handleCloseTab = useCallback(
     async (index: number) => {
+      // 鲁港通 - 锁定标签在 UI 层先拦一次，主进程 closeTab 仍会硬拦截兜底
+      if (tabs.some((tab) => tab.index === index && tab.locked)) {
+        notifyLockedTab();
+        return;
+      }
       try {
         const res = await closeTab(index);
         applyTabs(res.tabs);
@@ -539,7 +620,7 @@ const BuiltinBrowserPanelBody = ({
         showTabActionFailed(err);
       }
     },
-    [applyTabs, closeTab, showTabActionFailed]
+    [applyTabs, closeTab, showTabActionFailed, tabs, notifyLockedTab]
   );
 
   // 鲁港通 - 文件标签：关闭后立即移出标签条，未完成的确认按放弃处理
@@ -1040,6 +1121,8 @@ const BuiltinBrowserPanelBody = ({
         urlInputRef.current?.select();
       } else if (command === 'clear-data') setClearOpen(true);
       else if (command === 'shortcuts') setShortcutsOpen(true);
+      // 鲁港通 - 「⋯ → 本次操作记录」与底部时间线芯片等效
+      else if (command === 'timeline') setTimelineOpen(true);
     });
   }, [controls, closeFind]);
 
@@ -1167,11 +1250,11 @@ const BuiltinBrowserPanelBody = ({
 
   // 鲁港通 - 停止 AI：主进程先终止在途动作并立即回传停止结果，用户不必等当前指令跑完
   const handleStopAi = useCallback(async () => {
-    if (isStoppingAi) return;
+    if (aiBusy) return;
     const ai = window.lugangDesktop?.ai;
     if (!ai) return;
 
-    setIsStoppingAi(true);
+    setAiBusy('stop');
     try {
       setAiState(await ai.stop());
     } catch (err) {
@@ -1180,9 +1263,51 @@ const BuiltinBrowserPanelBody = ({
         status: 'warning'
       });
     } finally {
-      setIsStoppingAi(false);
+      setAiBusy(undefined);
     }
-  }, [isStoppingAi, t, toast]);
+  }, [aiBusy, t, toast]);
+
+  // 鲁港通 - 一键接管：只暂停 AI，页面、滚动位置与已填内容全部保留
+  const handleTakeover = useCallback(async () => {
+    if (aiBusy) return;
+    const ai = window.lugangDesktop?.ai;
+    if (!ai?.takeover) return;
+
+    setAiBusy('takeover');
+    try {
+      setAiState(await ai.takeover());
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_ai_takeover_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setAiBusy(undefined);
+    }
+  }, [aiBusy, t, toast]);
+
+  // 鲁港通 - 让 AI 继续：本地恢复会话后，在对话里发一条用户可见的「继续」
+  const handleResumeAi = useCallback(async () => {
+    if (aiBusy) return;
+    const ai = window.lugangDesktop?.ai;
+    if (!ai?.resume) return;
+
+    setAiBusy('resume');
+    try {
+      setAiState(await ai.resume());
+      eventBus.emit(EventNameEnum.sendQuestion, {
+        text: t('common:builtin_browser_ai_continue_message'),
+        resume: true
+      });
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_ai_resume_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setAiBusy(undefined);
+    }
+  }, [aiBusy, t, toast]);
 
   // 鲁港通 - 关闭面板 = 结束本次使用：确认后释放云端会话，防误关与误占用
   const handleClose = useCallback(() => {
@@ -1218,12 +1343,18 @@ const BuiltinBrowserPanelBody = ({
   const isExpiringSoon =
     remainingMs !== undefined && remainingMs <= BUILTIN_BROWSER_REMIND_BEFORE_MINUTES * MINUTE_MS;
   const showRemaining = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
-  // 鲁港通 - 窄面板只留状态圆点，给停止按钮和标题让位（悬停仍可看到完整状态）
-  const showAiBadgeLabel = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
   const frozenScaleX =
     frozenFrame && frozenFrame.panelWidth > 0 ? panelWidth / frozenFrame.panelWidth : 1;
   const aiBadge =
     isNative && status === 'active' ? resolveBuiltinBrowserAiBadge(aiState) : undefined;
+  // 鲁港通 - 窄面板状态条只留圆点，按钮只留图标（悬停给文字提示）
+  const aiStripNarrow = panelWidth < AI_STRIP_NARROW_WIDTH;
+  const aiBridge = typeof window === 'undefined' ? undefined : window.lugangDesktop?.ai;
+  const canTakeoverAi = Boolean(aiBridge?.takeover);
+  const canResumeAi = Boolean(aiBridge?.resume);
+  const aiStoppedHint = [aiBadge?.message, t('common:builtin_browser_ai_stopped_hint')]
+    .filter(Boolean)
+    .join(' · ');
 
   return (
     <Flex flexDirection={'column'} h={'100%'} minH={0} onKeyDownCapture={handlePanelKeyDown}>
@@ -1249,7 +1380,7 @@ const BuiltinBrowserPanelBody = ({
         >
           {t('common:builtin_browser')}
         </Text>
-        {isNative && status === 'active' && !aiBadge && (
+        {isNative && status === 'active' && (
           <Text
             h={'17px'}
             px={'6px'}
@@ -1281,50 +1412,7 @@ const BuiltinBrowserPanelBody = ({
             )}
           </Text>
         )}
-        {aiBadge && (
-          <MyTooltip label={aiBadge.message || t(aiBadge.labelKey as any)}>
-            <Flex
-              alignItems={'center'}
-              gap={'4px'}
-              h={'17px'}
-              px={'6px'}
-              borderRadius={'4px'}
-              bg={aiBadge.running ? 'blue.50' : 'orange.50'}
-              color={aiBadge.running ? 'blue.600' : 'orange.600'}
-              whiteSpace={'nowrap'}
-            >
-              <Box
-                w={'5px'}
-                h={'5px'}
-                borderRadius={'full'}
-                bg={aiBadge.running ? 'blue.500' : 'orange.500'}
-              />
-              {showAiBadgeLabel && (
-                <Text fontSize={'9px'} letterSpacing={'0.04em'}>
-                  {t(aiBadge.labelKey as any)}
-                </Text>
-              )}
-            </Flex>
-          </MyTooltip>
-        )}
         <Box flex={'1 1 0'} />
-
-        {/* 鲁港通 - AI 运行中给出显眼的停止入口，点击立即终止本次自动操作 */}
-        {aiBadge?.running && (
-          <Button
-            size={'xs'}
-            h={'22px'}
-            px={2}
-            fontSize={'10px'}
-            borderRadius={'6px'}
-            colorScheme={'red'}
-            isLoading={isStoppingAi}
-            loadingText={t('common:builtin_browser_ai_stopping')}
-            onClick={() => void handleStopAi()}
-          >
-            {t('common:builtin_browser_ai_stop')}
-          </Button>
-        )}
 
         {!isNative && status === 'active' && (
           <MyTooltip label={t('common:builtin_browser_refit')}>
@@ -1367,6 +1455,125 @@ const BuiltinBrowserPanelBody = ({
         </MyTooltip>
       </Flex>
 
+      {/* 鲁港通 - AI 状态条：运行中可接管/停止，接管后可继续/结束，停止后保留原因与操作记录入口 */}
+      {aiBadge && (
+        <Flex
+          flexShrink={0}
+          alignItems={'center'}
+          gap={'6px'}
+          px={'10px'}
+          py={'6px'}
+          borderBottom={'1px solid'}
+          borderBottomColor={aiBadge.status === 'paused' ? 'rgba(183,168,136,0.3)' : LG.lineSoft}
+          bgGradient={
+            aiBadge.status === 'running'
+              ? 'linear(to-r, #EAF3FD, #F5FAFF)'
+              : aiBadge.status === 'paused'
+                ? 'linear(to-r, #FBF4E4, #FFFBEF)'
+                : undefined
+          }
+          bg={aiBadge.status === 'stopped' ? '#F7F9FC' : undefined}
+        >
+          <Box
+            w={'6px'}
+            h={'6px'}
+            flexShrink={0}
+            borderRadius={'full'}
+            bg={aiBadge.status === 'running' ? '#4E9AE0' : '#C99A4B'}
+            css={
+              aiBadge.status === 'running'
+                ? {
+                    animation: 'lugangAiPulse 1.6s ease-in-out infinite',
+                    '@keyframes lugangAiPulse': {
+                      '0%, 100%': { boxShadow: '0 0 0 2px rgba(78,154,224,0.18)' },
+                      '50%': { boxShadow: '0 0 0 5px rgba(78,154,224,0.07)' }
+                    }
+                  }
+                : undefined
+            }
+          />
+          {!aiStripNarrow && (
+            <>
+              <Text
+                fontSize={'10.5px'}
+                fontWeight={600}
+                color={aiBadge.status === 'paused' ? '#8A6D3B' : LG.mountain}
+                whiteSpace={'nowrap'}
+              >
+                {t(aiBadge.labelKey as any)}
+              </Text>
+              <Text
+                flex={'1 1 0'}
+                minW={0}
+                fontSize={'9.5px'}
+                color={aiBadge.status === 'stopped' ? LG.muted : '#7B93A8'}
+                isTruncated
+                title={aiBadge.status === 'stopped' ? aiBadge.message : undefined}
+              >
+                {aiBadge.status === 'running'
+                  ? t('common:builtin_browser_ai_running_hint')
+                  : aiBadge.status === 'paused'
+                    ? t('common:builtin_browser_ai_paused_hint')
+                    : aiStoppedHint}
+              </Text>
+            </>
+          )}
+          {aiStripNarrow && <Box flex={'1 1 0'} />}
+          {aiBadge.status === 'running' && (
+            <>
+              {canTakeoverAi && (
+                <AiStripAction
+                  label={t('common:builtin_browser_ai_takeover')}
+                  icon={'common/lineUser'}
+                  narrow={aiStripNarrow}
+                  loading={aiBusy === 'takeover'}
+                  onClick={() => void handleTakeover()}
+                />
+              )}
+              <AiStripAction
+                label={t('common:builtin_browser_ai_stop')}
+                icon={'common/lineStop'}
+                tone={'danger'}
+                narrow={aiStripNarrow}
+                loading={aiBusy === 'stop'}
+                onClick={() => void handleStopAi()}
+              />
+            </>
+          )}
+          {aiBadge.status === 'paused' && (
+            <>
+              {canResumeAi && (
+                <AiStripAction
+                  label={t('common:builtin_browser_ai_resume')}
+                  icon={'common/arrowRight'}
+                  tone={'primary'}
+                  narrow={aiStripNarrow}
+                  loading={aiBusy === 'resume'}
+                  onClick={() => void handleResumeAi()}
+                />
+              )}
+              <AiStripAction
+                label={t('common:builtin_browser_ai_end')}
+                icon={'common/closeLight'}
+                narrow={aiStripNarrow}
+                loading={aiBusy === 'stop'}
+                onClick={() => void handleStopAi()}
+              />
+            </>
+          )}
+          {aiBadge.status === 'stopped' && aiBadge.canResume && canResumeAi && (
+            <AiStripAction
+              label={t('common:builtin_browser_ai_resume')}
+              icon={'common/arrowRight'}
+              tone={'primary'}
+              narrow={aiStripNarrow}
+              loading={aiBusy === 'resume'}
+              onClick={() => void handleResumeAi()}
+            />
+          )}
+        </Flex>
+      )}
+
       {/* 标签条：用户标签从云端 index 1 起（0 为隐藏占位），+ 新建空白标签 */}
       <Flex
         flexShrink={0}
@@ -1391,9 +1598,12 @@ const BuiltinBrowserPanelBody = ({
             flexShrink={0}
             px={'8px'}
             borderRadius={'6px'}
-            bg={tab.current && !activeDocToken ? 'white' : 'transparent'}
+            bg={tab.locked ? '#F2F8FE' : tab.current && !activeDocToken ? 'white' : 'transparent'}
             border={'1px solid'}
-            borderColor={tab.current && !activeDocToken ? LG.line : 'transparent'}
+            borderColor={
+              tab.locked ? '#D7E7F7' : tab.current && !activeDocToken ? LG.line : 'transparent'
+            }
+            title={tab.locked ? t('common:builtin_browser_ai_locked_tab_hint') : undefined}
             cursor={'pointer'}
             _hover={{ bg: 'white', borderColor: LG.line }}
             onClick={() => void handleSelectTab(tab.index)}
@@ -1415,19 +1625,38 @@ const BuiltinBrowserPanelBody = ({
             >
               {tabLabel(tab)}
             </Text>
-            <MyIcon
-              name={'close'}
-              w={'11px'}
-              h={'11px'}
-              flexShrink={0}
-              color={LG.mutedSoft}
-              _hover={{ color: LG.mountain }}
-              aria-label={t('common:builtin_browser_close_tab')}
-              onClick={(e) => {
-                e.stopPropagation();
-                void handleCloseTab(tab.index);
-              }}
-            />
+            {/* 鲁港通 - 锁定标签不给关闭入口，改用机器徽标提示 AI 正在操作 */}
+            {tab.locked ? (
+              <MyTooltip label={t('common:builtin_browser_ai_locked_tab_hint')}>
+                <Flex
+                  alignItems={'center'}
+                  justifyContent={'center'}
+                  flexShrink={0}
+                  cursor={'pointer'}
+                  aria-label={t('common:builtin_browser_ai_locked_tab_hint')}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    notifyLockedTab();
+                  }}
+                >
+                  <MyIcon name={'common/robot'} w={'12px'} h={'12px'} color={LG.mountain} />
+                </Flex>
+              </MyTooltip>
+            ) : (
+              <MyIcon
+                name={'close'}
+                w={'11px'}
+                h={'11px'}
+                flexShrink={0}
+                color={LG.mutedSoft}
+                _hover={{ color: LG.mountain }}
+                aria-label={t('common:builtin_browser_close_tab')}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void handleCloseTab(tab.index);
+                }}
+              />
+            )}
           </Flex>
         ))}
         {/* 鲁港通 - 文件标签与网页标签同条并存：点开看文档预览，关闭只结束该文件会话 */}
@@ -1942,6 +2171,24 @@ const BuiltinBrowserPanelBody = ({
           </>
         )}
       </Box>
+
+      {/* 鲁港通 - 本次操作时间线：底部折叠条，运行中实时追加，结束/停止后保留可查 */}
+      {aiState && aiState.steps.length > 0 && (
+        <Box
+          flexShrink={0}
+          borderTop={'1px solid'}
+          borderTopColor={LG.lineSoft}
+          bg={'#F6FAFF'}
+          px={2}
+          pt={1.5}
+        >
+          <AiTimeline
+            steps={aiState.steps}
+            open={timelineOpen}
+            onToggle={() => setTimelineOpen((open) => !open)}
+          />
+        </Box>
+      )}
 
       {/* 下载任务条：最多 5 条，保存路径不出主进程 */}
       {controls && downloads.length > 0 && (

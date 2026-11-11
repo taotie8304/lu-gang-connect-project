@@ -53,6 +53,7 @@ export type AiActionErrorCode =
   | 'upload_failed'
   | 'confirmation_unavailable'
   | 'handed_over'
+  | 'user_handover'
   | 'confirmation_declined'
   | 'confirmation_timeout'
   | 'unsupported_action'
