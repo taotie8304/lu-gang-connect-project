@@ -819,9 +819,9 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
     defaultTitle: '鲁港通 (LuGangTong) AI 輸出與信息時效免責聲明',
     defaultContent: `# 鲁港通 (LuGangTong) AI 輸出與信息時效免責聲明
 
-**最後更新：2026年11月10日**
+**版本：v1.0（正式版）｜最後更新：2026年11月11日**
 
-本聲明適用於鲁港通（LuGangTong）透過網頁、桌面客戶端及移動客戶端提供的全部人工智能生成內容（下稱「**輸出內容**」）。本聲明是《鲁港通使用條款》的補充文件；如本聲明與《使用條款》不一致，就 AI 輸出與信息時效事項，以本聲明為準。本聲明的訂立、效力、解釋與爭議解決適用《使用條款》第 14 條的約定。
+本聲明依據《中華人民共和國民法典》《生成式人工智能服務管理暫行辦法》等法律法規制定，適用於鲁港通（LuGangTong）透過網頁、桌面客戶端及移動客戶端提供的全部人工智能生成內容（下稱「**輸出內容**」）。本聲明是《鲁港通使用條款》的補充文件；如本聲明與《使用條款》不一致，就 AI 輸出與信息時效事項，以本聲明為準。本聲明的訂立、效力、解釋與爭議解決適用《使用條款》第 14 條的約定。
 
 ---
 
@@ -857,7 +857,7 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 3.1 在作出可能產生法律、財務或其他重大影響的決定前，用戶應核對官方原文，並視需要諮詢具備資質的專業人士。
 
-3.2 用戶對基於輸出內容作出的決定與行為自行承擔責任。
+3.2 在法律允許的範圍內，用戶對基於輸出內容作出的決定與行為自行承擔責任。
 
 3.3 用戶不得將輸出內容用於違法用途、虛假或引人誤解的商業宣傳，或冒充官方文件、官方結論對外提供。
 
@@ -871,9 +871,11 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
 
 4.1 在適用法律允許的最大範圍內，Airscend 不對因使用或依賴輸出內容產生的間接、附帶或後果性損失承擔責任；責任限制適用《使用條款》第 8 條。
 
-4.2 本聲明不排除或限制依適用法律不得排除或限制的責任，亦不影響用戶依法享有的權利。
+4.2 本聲明不排除或限制依適用法律不得排除或限制的責任。依據《中華人民共和國民法典》第五百零六條，本聲明不免除因造成對方人身損害而應承擔的責任，亦不免除因故意或者重大過失造成對方財產損失而應承擔的責任；本聲明亦不影響用戶依法享有的其他權利。
 
-4.3 本聲明中的免責與責任限制條款已以合理方式提請用戶注意；用戶如對上述條款有疑問，可通過第 5 條的方式要求我們說明。
+4.3 本聲明中的免責與責任限制條款，已依照《中華人民共和國民法典》第四百九十六條，以合理方式提請用戶注意，並可按照用戶要求予以說明；用戶如對上述條款有疑問，可通過第 5 條的方式要求我們說明。
+
+4.4 我們依照《中華人民共和國民法典》第四百九十七條，遵循公平原則確定本聲明中的權利與義務；不合理地免除或者減輕我們責任、加重用戶責任或限制用戶主要權利的條款不發生效力。
 
 ---
 
@@ -886,9 +888,9 @@ You acknowledge and agree that Apple and Apple's subsidiaries are third-party be
     defaultTitle: 'LuGangTong (鲁港通) AI Output and Information Currency Disclaimer',
     defaultContent: `# LuGangTong (鲁港通) AI Output and Information Currency Disclaimer
 
-**Last Updated: 10 November 2026**
+**Version: v1.0 (Final) | Last Updated: 11 November 2026**
 
-This Disclaimer applies to all AI-generated content (the "**Output Content**") provided through the LuGangTong (鲁港通) website, desktop client and mobile client. This Disclaimer is a supplementary document to the LuGangTong Terms of Use. If there is any inconsistency between this Disclaimer and the Terms of Use, this Disclaimer prevails with respect to AI output and information currency matters. The formation, validity, interpretation and dispute resolution of this Disclaimer are governed by Clause 14 of the Terms of Use.
+This Disclaimer is formulated in accordance with the Civil Code of the People's Republic of China, the Interim Measures for the Administration of Generative Artificial Intelligence Services and other applicable laws and regulations, and applies to all AI-generated content (the "**Output Content**") provided through the LuGangTong (鲁港通) website, desktop client and mobile client. This Disclaimer is a supplementary document to the LuGangTong Terms of Use. If there is any inconsistency between this Disclaimer and the Terms of Use, this Disclaimer prevails with respect to AI output and information currency matters. The formation, validity, interpretation and dispute resolution of this Disclaimer are governed by Clause 14 of the Terms of Use.
 
 ---
 
@@ -924,7 +926,7 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 
 3.1 Before making any decision that may have legal, financial or other significant consequences, users should verify the official original text and, where necessary, consult qualified professionals.
 
-3.2 Users are responsible for their own decisions and actions based on Output Content.
+3.2 To the extent permitted by applicable law, users are responsible for their own decisions and actions based on Output Content.
 
 3.3 Users must not use Output Content for unlawful purposes or false or misleading commercial promotion, or present it as official documents or official conclusions.
 
@@ -938,9 +940,11 @@ This Disclaimer applies to all AI-generated content (the "**Output Content**") p
 
 4.1 To the maximum extent permitted by applicable law, Airscend shall not be liable for any indirect, incidental or consequential loss arising from the use of or reliance on Output Content; the limitation of liability is governed by Clause 8 of the Terms of Use.
 
-4.2 Nothing in this Disclaimer excludes or limits any liability that cannot be excluded or limited under applicable law, nor affects any rights users enjoy under applicable law.
+4.2 Nothing in this Disclaimer excludes or limits any liability that cannot be excluded or limited under applicable law. In accordance with Article 506 of the Civil Code of the People's Republic of China, this Disclaimer does not exempt liability for personal injury caused to the other party, nor liability for property loss caused by intent or gross negligence; nor does it affect other rights users enjoy under applicable law.
 
-4.3 The disclaimers and limitation of liability clauses in this Disclaimer have been brought to users' attention in a reasonable manner; if users have any questions about such clauses, they may request an explanation from us through the means set out in Section 5.
+4.3 The disclaimers and limitation of liability clauses in this Disclaimer have been brought to users' attention in a reasonable manner in accordance with Article 496 of the Civil Code of the People's Republic of China and may be explained upon request; if users have any questions about such clauses, they may request an explanation from us through the means set out in Section 5.
+
+4.4 In accordance with Article 497 of the Civil Code of the People's Republic of China, we determine the rights and obligations under this Disclaimer in accordance with the principle of fairness; any clause that unreasonably exempts or mitigates our liability, aggravates users' liability or limits users' main rights shall not be effective.
 
 ---
 
