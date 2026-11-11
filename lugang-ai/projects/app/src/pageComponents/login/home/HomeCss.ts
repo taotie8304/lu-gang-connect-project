@@ -860,7 +860,7 @@ export const HOME_CSS = `
     .h5-personas { margin-top: 64px; padding: 68px 0; }
     .h5-h2 { font-size: clamp(28px, 8vw, 40px); }
     .h5-persona-tabs { display: flex; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; max-width: 100%; }
-    .h5-persona-tab { flex-shrink: 0; padding: 0 18px; }
+    .h5-persona-tab { flex-shrink: 0; padding: 0 12px; }
     .h5-persona-q, .h5-persona-a { padding: 24px 22px; }
     .h5-flow-section { padding: 72px 0 60px; }
     .h5-flow { margin-top: 30px; }
