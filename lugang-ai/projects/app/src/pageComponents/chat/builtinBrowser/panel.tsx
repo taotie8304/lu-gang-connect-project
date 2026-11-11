@@ -959,13 +959,16 @@ const BuiltinBrowserPanelBody = ({
   useEffect(() => {
     if (!controls) return;
     let cancelled = false;
+    // 鲁港通 - 0.12.0 之前的客户端不带站点 AI 权限字段，按默认「允许操作」归一化，避免误显示徽标
+    const applyNav = (next: DesktopBrowserNavState) =>
+      setNavState({ ...next, siteAiMode: next.siteAiMode ?? 'allow' });
     void controls
       .getNav()
       .then((next) => {
-        if (!cancelled) setNavState(next);
+        if (!cancelled) applyNav(next);
       })
       .catch(() => undefined);
-    const unsubscribe = controls.onNavChange((next) => setNavState(next));
+    const unsubscribe = controls.onNavChange(applyNav);
     return () => {
       cancelled = true;
       unsubscribe();
