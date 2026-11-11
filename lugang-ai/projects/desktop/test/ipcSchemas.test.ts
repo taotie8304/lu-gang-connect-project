@@ -2,13 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   aiExecuteSchema,
   booleanSchema,
+  clearBrowsingDataSchema,
   createTabSchema,
   cssRectSchema,
   documentDecideSchema,
   documentActiveSchema,
   documentTokenPayloadSchema,
+  downloadIdSchema,
+  findNextSchema,
+  findQuerySchema,
   navigateUrlSchema,
-  tabIdSchema
+  tabIdSchema,
+  zoomSetSchema
 } from '../src/main/ipcSchemas';
 
 describe('cssRectSchema', () => {
@@ -161,5 +166,71 @@ describe('documentDecideSchema', () => {
     expect(documentDecideSchema.safeParse({ token, index: -1, decision: 'apply' }).success).toBe(false);
     expect(documentDecideSchema.safeParse({ token, index: 60, decision: 'apply' }).success).toBe(false);
     expect(documentDecideSchema.safeParse({ token, index: 1.5, decision: 'apply' }).success).toBe(false);
+  });
+});
+
+describe('findQuerySchema', () => {
+  it('去空白后接受 1 到 200 字符的查询', () => {
+    expect(findQuerySchema.parse({ query: '  政府服务  ' })).toEqual({ query: '政府服务' });
+    expect(findQuerySchema.safeParse({ query: 'a'.repeat(200) }).success).toBe(true);
+  });
+
+  it('拒绝空白查询与超长查询', () => {
+    expect(findQuerySchema.safeParse({ query: '   ' }).success).toBe(false);
+    expect(findQuerySchema.safeParse({ query: 'a'.repeat(201) }).success).toBe(false);
+  });
+});
+
+describe('findNextSchema', () => {
+  it('只接受 next 与 previous', () => {
+    expect(findNextSchema.parse({ direction: 'next' })).toEqual({ direction: 'next' });
+    expect(findNextSchema.parse({ direction: 'previous' })).toEqual({ direction: 'previous' });
+    expect(findNextSchema.safeParse({ direction: 'up' }).success).toBe(false);
+  });
+});
+
+describe('zoomSetSchema', () => {
+  it('接受 50 到 200 的整数', () => {
+    expect(zoomSetSchema.parse({ percent: 125 })).toEqual({ percent: 125 });
+    expect(zoomSetSchema.safeParse({ percent: 50 }).success).toBe(true);
+    expect(zoomSetSchema.safeParse({ percent: 200 }).success).toBe(true);
+  });
+
+  it('拒绝越界与小数', () => {
+    expect(zoomSetSchema.safeParse({ percent: 49 }).success).toBe(false);
+    expect(zoomSetSchema.safeParse({ percent: 201 }).success).toBe(false);
+    expect(zoomSetSchema.safeParse({ percent: 110.5 }).success).toBe(false);
+  });
+});
+
+describe('downloadIdSchema', () => {
+  it('接受非空 id 并去空白', () => {
+    expect(downloadIdSchema.parse({ id: ' abc ' })).toEqual({ id: 'abc' });
+  });
+
+  it('拒绝空 id 与超长 id', () => {
+    expect(downloadIdSchema.safeParse({ id: '  ' }).success).toBe(false);
+    expect(downloadIdSchema.safeParse({ id: 'x'.repeat(65) }).success).toBe(false);
+  });
+});
+
+describe('clearBrowsingDataSchema', () => {
+  it('接受任意勾选组合', () => {
+    expect(
+      clearBrowsingDataSchema.parse({ cookies: true, cache: false, permissions: true })
+    ).toEqual({ cookies: true, cache: false, permissions: true });
+  });
+
+  it('拒绝一项都不勾的请求', () => {
+    expect(
+      clearBrowsingDataSchema.safeParse({ cookies: false, cache: false, permissions: false }).success
+    ).toBe(false);
+  });
+
+  it('拒绝缺字段与非布尔值', () => {
+    expect(clearBrowsingDataSchema.safeParse({ cookies: true, cache: true }).success).toBe(false);
+    expect(
+      clearBrowsingDataSchema.safeParse({ cookies: 'true', cache: false, permissions: false }).success
+    ).toBe(false);
   });
 });

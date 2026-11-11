@@ -18,6 +18,27 @@ export const IPC_CHANNELS = {
   tabList: 'lugang:tab-list',
   tabRetry: 'lugang:tab-retry',
   stateChanged: 'lugang:state-changed',
+  findStart: 'lugang:find-start',
+  findNext: 'lugang:find-next',
+  findStop: 'lugang:find-stop',
+  findResult: 'lugang:find-result',
+  zoomSet: 'lugang:zoom-set',
+  zoomReset: 'lugang:zoom-reset',
+  zoomChanged: 'lugang:zoom-changed',
+  zoomRestored: 'lugang:zoom-restored',
+  downloadsList: 'lugang:downloads-list',
+  downloadOpen: 'lugang:download-open',
+  downloadShowInFolder: 'lugang:download-show-in-folder',
+  downloadCancel: 'lugang:download-cancel',
+  downloadDismiss: 'lugang:download-dismiss',
+  downloadsChanged: 'lugang:downloads-changed',
+  pagePrint: 'lugang:page-print',
+  pageSavePdf: 'lugang:page-save-pdf',
+  pageCopyLink: 'lugang:page-copy-link',
+  pageOpenExternal: 'lugang:page-open-external',
+  pageMenu: 'lugang:page-menu',
+  clearBrowsingData: 'lugang:clear-browsing-data',
+  panelCommand: 'lugang:panel-command',
   retryLoad: 'lugang:retry-load',
   aiStatus: 'lugang:ai-status',
   aiStop: 'lugang:ai-stop',
@@ -59,6 +80,54 @@ export type DesktopBrowserState = {
   activeTabId: number | null;
   tabs: DesktopTab[];
   loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  zoomPercent: number;
+};
+
+/** 鲁港通 - 地址栏导航状态：后退/前进可用态与当前站点缩放档位 */
+export type DesktopBrowserNavState = {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  zoomPercent: number;
+};
+
+/** 鲁港通 - 页内查找命中：activeMatchOrdinal 从 1 起，matches 为 0 表示无结果 */
+export type DesktopFindResult = {
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
+};
+
+/** 鲁港通 - 换到已记忆缩放的站点时通知面板做一次轻提示 */
+export type DesktopZoomRestore = {
+  origin: string;
+  percent: number;
+};
+
+export type DesktopDownloadStatus = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+
+/** 鲁港通 - 下载任务条只暴露展示字段，本机保存路径始终留在主进程 */
+export type DesktopDownloadItem = {
+  id: string;
+  fileName: string;
+  receivedBytes: number;
+  totalBytes: number;
+  status: DesktopDownloadStatus;
+};
+
+/** 鲁港通 - 主进程向面板发出的 UI 指令（网页焦点在原生视图时使用） */
+export type DesktopPanelCommand =
+  | 'find'
+  | 'close-find'
+  | 'focus-url'
+  | 'clear-data'
+  | 'shortcuts';
+
+export type DesktopClearBrowsingDataOptions = {
+  cookies: boolean;
+  cache: boolean;
+  permissions: boolean;
 };
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };

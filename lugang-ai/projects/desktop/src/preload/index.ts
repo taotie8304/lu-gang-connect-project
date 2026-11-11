@@ -5,14 +5,20 @@ import {
   type DesktopAiExecuteRequest,
   type DesktopAiExecuteResponse,
   type DesktopAiState,
+  type DesktopBrowserNavState,
   type DesktopBrowserState,
+  type DesktopClearBrowsingDataOptions,
   type DesktopDiagnosticsExportResponse,
+  type DesktopDownloadItem,
+  type DesktopFindResult,
+  type DesktopPanelCommand,
   type DesktopDocumentBytes,
   type DesktopDocumentSnapshot,
   type DesktopDocumentSummary,
   type DesktopSessionSyncResponse,
   type DesktopUpdateStatus,
-  type DesktopVersionInfo
+  type DesktopVersionInfo,
+  type DesktopZoomRestore
 } from '../shared/ipc';
 import type { CssRect } from '../shared/geometry';
 
@@ -39,6 +45,95 @@ const api = {
     close: (id: number) =>
       ipcRenderer.invoke(IPC_CHANNELS.tabClose, id) as Promise<DesktopBrowserState>,
     list: () => ipcRenderer.invoke(IPC_CHANNELS.tabList) as Promise<DesktopBrowserState>
+  },
+  // 鲁港通 - 内置浏览器 P0：查找、缩放、下载、页面动作与原生更多菜单
+  browser: {
+    getNav: async (): Promise<DesktopBrowserNavState> => {
+      const state = (await ipcRenderer.invoke(IPC_CHANNELS.getState)) as DesktopBrowserState;
+      return {
+        canGoBack: state.canGoBack ?? false,
+        canGoForward: state.canGoForward ?? false,
+        zoomPercent: state.zoomPercent ?? 100
+      };
+    },
+    onNavChange: (callback: (state: DesktopBrowserNavState) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, state: DesktopBrowserState) =>
+        callback({
+          canGoBack: state.canGoBack ?? false,
+          canGoForward: state.canGoForward ?? false,
+          zoomPercent: state.zoomPercent ?? 100
+        });
+      ipcRenderer.on(IPC_CHANNELS.stateChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.stateChanged, listener);
+      };
+    },
+    goBack: () => ipcRenderer.invoke(IPC_CHANNELS.goBack) as Promise<boolean>,
+    goForward: () => ipcRenderer.invoke(IPC_CHANNELS.goForward) as Promise<boolean>,
+    findStart: (query: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.findStart, { query }) as Promise<void>,
+    findNext: (direction: 'next' | 'previous') =>
+      ipcRenderer.invoke(IPC_CHANNELS.findNext, { direction }) as Promise<void>,
+    findStop: () => ipcRenderer.invoke(IPC_CHANNELS.findStop) as Promise<void>,
+    onFindResult: (callback: (result: DesktopFindResult) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, result: DesktopFindResult) =>
+        callback(result);
+      ipcRenderer.on(IPC_CHANNELS.findResult, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.findResult, listener);
+      };
+    },
+    setZoom: (percent: number) =>
+      ipcRenderer.invoke(IPC_CHANNELS.zoomSet, { percent }) as Promise<number>,
+    resetZoom: () => ipcRenderer.invoke(IPC_CHANNELS.zoomReset) as Promise<number>,
+    onZoomChange: (callback: (percent: number) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, percent: number) => callback(percent);
+      ipcRenderer.on(IPC_CHANNELS.zoomChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.zoomChanged, listener);
+      };
+    },
+    onZoomRestore: (callback: (payload: DesktopZoomRestore) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, payload: DesktopZoomRestore) =>
+        callback(payload);
+      ipcRenderer.on(IPC_CHANNELS.zoomRestored, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.zoomRestored, listener);
+      };
+    },
+    listDownloads: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.downloadsList) as Promise<DesktopDownloadItem[]>,
+    onDownloadsChange: (callback: (list: DesktopDownloadItem[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, list: DesktopDownloadItem[]) =>
+        callback(list);
+      ipcRenderer.on(IPC_CHANNELS.downloadsChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.downloadsChanged, listener);
+      };
+    },
+    openDownload: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.downloadOpen, { id }) as Promise<boolean>,
+    showDownloadInFolder: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.downloadShowInFolder, { id }) as Promise<boolean>,
+    cancelDownload: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.downloadCancel, { id }) as Promise<void>,
+    dismissDownload: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.downloadDismiss, { id }) as Promise<void>,
+    print: () => ipcRenderer.invoke(IPC_CHANNELS.pagePrint) as Promise<boolean>,
+    savePdf: () => ipcRenderer.invoke(IPC_CHANNELS.pageSavePdf) as Promise<boolean>,
+    copyLink: () => ipcRenderer.invoke(IPC_CHANNELS.pageCopyLink) as Promise<boolean>,
+    openExternal: () => ipcRenderer.invoke(IPC_CHANNELS.pageOpenExternal) as Promise<boolean>,
+    openMenu: () => ipcRenderer.invoke(IPC_CHANNELS.pageMenu) as Promise<void>,
+    clearData: (options: DesktopClearBrowsingDataOptions) =>
+      ipcRenderer.invoke(IPC_CHANNELS.clearBrowsingData, options) as Promise<boolean>,
+    onCommand: (callback: (command: DesktopPanelCommand) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, command: DesktopPanelCommand) =>
+        callback(command);
+      ipcRenderer.on(IPC_CHANNELS.panelCommand, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.panelCommand, listener);
+      };
+    }
   },
   onStateChange: (callback: (state: DesktopBrowserState) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, state: DesktopBrowserState) =>

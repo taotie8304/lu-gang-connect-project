@@ -4,11 +4,25 @@
 // 面板左缘可拖拽调宽（宽度本地记忆），网址栏可手动输入网址让云端浏览器跳转；
 // 关闭面板即结束本次使用（释放云端会话）；单次时长上限由服务端控制，临近上限本地提醒
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { Box, Button, Flex, Input, Text } from '@chakra-ui/react';
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent
+} from 'react';
+import {
+  Box,
+  Button,
+  Checkbox,
+  Flex,
+  Input,
+  Modal,
+  ModalContent,
+  ModalOverlay,
+  Text
+} from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import PageContainer from '@/components/PageContainer';
 import MyIcon from '@fastgpt/web/components/common/Icon';
+import type { IconNameType } from '@fastgpt/web/components/common/Icon/type';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import { useRequest } from '@fastgpt/web/hooks/useRequest';
 import { useToast } from '@fastgpt/web/hooks/useToast';
@@ -36,8 +50,12 @@ import { createTabRefreshScheduler } from './polling';
 import { resolveBuiltinBrowserAiBadge } from './aiStatus';
 import type {
   DesktopAiState,
+  DesktopBrowserNavState,
+  DesktopClearBrowsingDataOptions,
   DesktopDocumentSnapshot,
-  DesktopDocumentSummary
+  DesktopDocumentSummary,
+  DesktopDownloadItem,
+  DesktopFindResult
 } from './desktopBridge';
 import { resolveActiveDocToken, resolveDocPanelView } from './documentTabs';
 import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
@@ -51,6 +69,65 @@ const VIEWPORT_FOLLOW_DEBOUNCE_MS = 600;
 const LOADING_SLOW_HINT_MS = 5 * 1000;
 // 鲁港通 - 面板窄于该宽度时头部隐藏剩余时间文案（英文/韩文更长，防挤压标题与按钮）
 const HEADER_HIDE_REMAINING_WIDTH = 420;
+// 鲁港通 - 查找输入防抖：中文输入法组合期结束后再查，避免逐字抖动
+const FIND_DEBOUNCE_MS = 250;
+const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200];
+const DEFAULT_NAV_STATE: DesktopBrowserNavState = {
+  canGoBack: false,
+  canGoForward: false,
+  zoomPercent: 100
+};
+
+const stepZoomPercent = (current: number, direction: 'in' | 'out') => {
+  const value = ZOOM_LEVELS.includes(current) ? current : 100;
+  if (direction === 'in') {
+    return ZOOM_LEVELS.find((level) => level > value) ?? ZOOM_LEVELS[ZOOM_LEVELS.length - 1];
+  }
+  return [...ZOOM_LEVELS].reverse().find((level) => level < value) ?? ZOOM_LEVELS[0];
+};
+
+const formatBytes = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = value;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 10 || unit === 0 ? Math.round(size) : size.toFixed(1)} ${units[unit]}`;
+};
+
+// 鲁港通 - 工具栏小图标按钮：后退/前进禁用时变淡且不可点
+const ToolbarIcon = ({
+  name,
+  label,
+  disabled,
+  onClick
+}: {
+  name: IconNameType;
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+}) => (
+  <MyTooltip label={label}>
+    <Flex
+      alignItems={'center'}
+      justifyContent={'center'}
+      w={'22px'}
+      h={'22px'}
+      flexShrink={0}
+      borderRadius={'5px'}
+      color={LG.muted}
+      opacity={disabled ? 0.32 : 1}
+      cursor={disabled ? 'not-allowed' : 'pointer'}
+      _hover={disabled ? undefined : { bg: 'rgba(54,101,150,0.08)', color: LG.mountain }}
+      onClick={disabled ? undefined : onClick}
+    >
+      <MyIcon name={name} w={'13px'} h={'13px'} />
+    </Flex>
+  </MyTooltip>
+);
 
 // 鲁港通 - 面板宽度本地记忆：读取时非法值回落默认，并按当前窗口宽度收敛
 const readStoredPanelWidth = () => {
@@ -103,9 +180,25 @@ const BuiltinBrowserPanelBody = ({
     snapshot: DesktopDocumentSnapshot;
   } | null>(null);
   const [docBusy, setDocBusy] = useState(false);
+  // 鲁港通 - P0 原生浏览器状态：导航、查找、下载与清理弹窗
+  const [navState, setNavState] = useState<DesktopBrowserNavState>(DEFAULT_NAV_STATE);
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState('');
+  const [findComposing, setFindComposing] = useState(false);
+  const [findResult, setFindResult] = useState<DesktopFindResult>();
+  const [downloads, setDownloads] = useState<DesktopDownloadItem[]>([]);
+  const [clearOpen, setClearOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [clearOptions, setClearOptions] = useState<DesktopClearBrowsingDataOptions>({
+    cookies: true,
+    cache: true,
+    permissions: true
+  });
+  const [clearing, setClearing] = useState(false);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
+  const findInputRef = useRef<HTMLInputElement>(null);
   const urlEditingRef = useRef(false);
   // 鲁港通 - 开台期间输入的网址先排队，会话就绪后自动打开
   const pendingNavigateRef = useRef<string>();
@@ -121,6 +214,8 @@ const BuiltinBrowserPanelBody = ({
   // 鲁港通 - 桌面桥可用时走本地浏览器，否则保持云端 AgentBay
   const transport = useMemo(() => createBuiltinBrowserTransport(), []);
   const isNative = transport.usesNativeView;
+  // 鲁港通 - 0.10.0 起桌面端提供原生导航/查找/缩放/下载能力，老客户端保持原样
+  const controls = transport.controls;
   const hasPageOverlay = usePageOverlayOpen();
   const tabsFull = tabs.length >= BUILTIN_BROWSER_MAX_TABS;
   // 鲁港通 - 文件预览桥只在新版桌面客户端存在，老客户端据此隐藏本地文件入口
@@ -778,6 +873,298 @@ const BuiltinBrowserPanelBody = ({
     }
   }, [isReloading, reloadPage, loadSession, t, toast, transport.usesNativeView]);
 
+  // 鲁港通 - 原生导航状态：后退/前进可用态与当前站点缩放比例
+  useEffect(() => {
+    if (!controls) return;
+    let cancelled = false;
+    void controls
+      .getNav()
+      .then((next) => {
+        if (!cancelled) setNavState(next);
+      })
+      .catch(() => undefined);
+    const unsubscribe = controls.onNavChange((next) => setNavState(next));
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [controls]);
+
+  // 鲁港通 - 换到已记忆缩放的站点时轻提示一次，避免用户误以为页面异常
+  useEffect(() => {
+    if (!controls) return;
+    return controls.onZoomRestore(({ percent }) => {
+      toast({
+        title: t('common:builtin_browser_zoom_restored', { percent }),
+        status: 'info',
+        duration: 2500
+      });
+    });
+  }, [controls, t, toast]);
+
+  const handleGoBack = useCallback(() => {
+    if (!controls || !navState.canGoBack) return;
+    void controls.goBack().catch(() => undefined);
+  }, [controls, navState.canGoBack]);
+
+  const handleGoForward = useCallback(() => {
+    if (!controls || !navState.canGoForward) return;
+    void controls.goForward().catch(() => undefined);
+  }, [controls, navState.canGoForward]);
+
+  const handleZoomStep = useCallback(
+    (direction: 'in' | 'out') => {
+      if (!controls) return;
+      void controls
+        .setZoom(stepZoomPercent(navState.zoomPercent, direction))
+        .then((percent) => setNavState((prev) => ({ ...prev, zoomPercent: percent })))
+        .catch(() => {
+          toast({ title: t('common:builtin_browser_zoom_failed'), status: 'warning' });
+        });
+    },
+    [controls, navState.zoomPercent, t, toast]
+  );
+
+  const handleZoomReset = useCallback(() => {
+    if (!controls) return;
+    void controls
+      .resetZoom()
+      .then((percent) => setNavState((prev) => ({ ...prev, zoomPercent: percent })))
+      .catch(() => {
+        toast({ title: t('common:builtin_browser_zoom_failed'), status: 'warning' });
+      });
+  }, [controls, t, toast]);
+
+  // 鲁港通 - 页内查找：输入防抖 250ms，输入法组合期不触发；清空即移除高亮
+  useEffect(() => {
+    if (!controls || !findOpen || findComposing) return;
+    const query = findQuery.trim();
+    setFindResult(undefined);
+    if (!query) {
+      void controls.findStop().catch(() => undefined);
+      return;
+    }
+    const timer = setTimeout(() => {
+      void controls.findStart(query).catch(() => undefined);
+    }, FIND_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [controls, findOpen, findQuery, findComposing]);
+
+  useEffect(() => {
+    if (!controls) return;
+    return controls.onFindResult((result) => setFindResult(result));
+  }, [controls]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setFindResult(undefined);
+    void controls?.findStop().catch(() => undefined);
+  }, [controls]);
+
+  const handleFindNext = useCallback(
+    (direction: 'next' | 'previous') => {
+      if (!controls) return;
+      const query = findQuery.trim();
+      if (!query) return;
+      // 鲁港通 - 防抖尚未发起查询时回车直接开查，避免按键落在上一轮查询上
+      if (!findResult) {
+        void controls.findStart(query).catch(() => undefined);
+        return;
+      }
+      void controls.findNext(direction).catch(() => undefined);
+    },
+    [controls, findQuery, findResult]
+  );
+
+  // 鲁港通 - 面板从网页切到文件预览时收起查找条，避免高亮留在隐藏页面上
+  useEffect(() => {
+    if (panelView !== 'browser' && findOpen) closeFind();
+  }, [panelView, findOpen, closeFind]);
+
+  // 鲁港通 - 下载任务条：挂载后先拉一次，之后跟随主进程推送
+  useEffect(() => {
+    if (!controls) return;
+    let cancelled = false;
+    void controls
+      .listDownloads()
+      .then((list) => {
+        if (!cancelled) setDownloads(list);
+      })
+      .catch(() => undefined);
+    const unsubscribe = controls.onDownloadsChange((list) => {
+      if (!cancelled) setDownloads(list);
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [controls]);
+
+  const handleDownloadAction = useCallback(
+    async (action: 'open' | 'folder' | 'cancel' | 'dismiss', id: string) => {
+      if (!controls) return;
+      try {
+        if (action === 'open' || action === 'folder') {
+          const ok =
+            action === 'open'
+              ? await controls.openDownload(id)
+              : await controls.showDownloadInFolder(id);
+          if (!ok) {
+            toast({
+              title: t('common:builtin_browser_download_open_failed'),
+              status: 'warning'
+            });
+          }
+          return;
+        }
+        if (action === 'cancel') await controls.cancelDownload(id);
+        else await controls.dismissDownload(id);
+      } catch {
+        toast({
+          title: t('common:builtin_browser_download_action_failed'),
+          status: 'warning'
+        });
+      }
+    },
+    [controls, t, toast]
+  );
+
+  // 鲁港通 - 主进程原生菜单与网页内快捷键发来的 UI 指令
+  useEffect(() => {
+    if (!controls) return;
+    return controls.onCommand((command) => {
+      if (command === 'find') setFindOpen(true);
+      else if (command === 'close-find') closeFind();
+      else if (command === 'focus-url') {
+        urlInputRef.current?.focus();
+        urlInputRef.current?.select();
+      } else if (command === 'clear-data') setClearOpen(true);
+      else if (command === 'shortcuts') setShortcutsOpen(true);
+    });
+  }, [controls, closeFind]);
+
+  useEffect(() => {
+    if (!findOpen) return;
+    const timer = setTimeout(() => findInputRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [findOpen]);
+
+  const clearSelectedCount =
+    Number(clearOptions.cookies) +
+    Number(clearOptions.cache) +
+    Number(clearOptions.permissions);
+
+  const handleClearBrowsingData = useCallback(async () => {
+    if (!controls || clearing || clearSelectedCount === 0) return;
+    setClearing(true);
+    try {
+      const cleared = await controls.clearData(clearOptions);
+      if (!cleared) {
+        toast({ title: t('common:builtin_browser_clear_failed'), status: 'warning' });
+        return;
+      }
+      setClearOpen(false);
+      toast({ title: t('common:builtin_browser_clear_done'), status: 'success' });
+    } catch {
+      toast({ title: t('common:builtin_browser_clear_failed'), status: 'warning' });
+    } finally {
+      setClearing(false);
+    }
+  }, [controls, clearing, clearSelectedCount, clearOptions, t, toast]);
+
+  // 鲁港通 - 焦点在面板 UI 时由渲染层处理快捷键；焦点在网页内由主进程处理，互不重复
+  const handlePanelKeyDown = useCallback(
+    (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (!controls || e.nativeEvent.isComposing) return;
+      const key = e.key.toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey;
+      if (key === 'escape' && !ctrl && !e.altKey) {
+        if (findOpen) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeFind();
+        }
+        return;
+      }
+      if (ctrl && !e.altKey) {
+        const handled = () => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        switch (key) {
+          case 'f':
+            handled();
+            setFindOpen(true);
+            return;
+          case 'l':
+            handled();
+            urlInputRef.current?.focus();
+            urlInputRef.current?.select();
+            return;
+          case 't':
+            handled();
+            void handleNewTab();
+            return;
+          case 'w': {
+            handled();
+            if (activeDocToken) {
+              void handleCloseDocTab(activeDocToken);
+              return;
+            }
+            const current = tabs.find((tab) => tab.current);
+            if (current) void handleCloseTab(current.index);
+            return;
+          }
+          case 'r':
+            handled();
+            void handleReload();
+            return;
+          case '=':
+          case '+':
+            handled();
+            handleZoomStep('in');
+            return;
+          case '-':
+          case '_':
+            handled();
+            handleZoomStep('out');
+            return;
+          case '0':
+            handled();
+            handleZoomReset();
+            return;
+          case 'p':
+            handled();
+            void controls.print().catch(() => undefined);
+            return;
+          default:
+            return;
+        }
+      }
+      if (e.altKey && !ctrl && (key === 'arrowleft' || key === 'arrowright')) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (key === 'arrowleft') handleGoBack();
+        else handleGoForward();
+      }
+    },
+    [
+      controls,
+      tabs,
+      activeDocToken,
+      findOpen,
+      closeFind,
+      handleNewTab,
+      handleCloseTab,
+      handleCloseDocTab,
+      handleReload,
+      handleZoomStep,
+      handleZoomReset,
+      handleGoBack,
+      handleGoForward
+    ]
+  );
+
   // 鲁港通 - 停止 AI：主进程先终止在途动作并立即回传停止结果，用户不必等当前指令跑完
   const handleStopAi = useCallback(async () => {
     if (isStoppingAi) return;
@@ -839,7 +1226,7 @@ const BuiltinBrowserPanelBody = ({
     isNative && status === 'active' ? resolveBuiltinBrowserAiBadge(aiState) : undefined;
 
   return (
-    <Flex flexDirection={'column'} h={'100%'} minH={0}>
+    <Flex flexDirection={'column'} h={'100%'} minH={0} onKeyDownCapture={handlePanelKeyDown}>
       {/* Header */}
       <Flex
         flexShrink={0}
@@ -952,7 +1339,8 @@ const BuiltinBrowserPanelBody = ({
             />
           </MyTooltip>
         )}
-        {status === 'active' && panelView === 'browser' && (
+        {/* 鲁港通 - 新桌面端刷新在网址栏，云端与尚无 P0 能力的老客户端保留顶部刷新 */}
+        {(!isNative || !controls) && status === 'active' && panelView === 'browser' && (
           <MyTooltip label={t('common:builtin_browser_refresh')}>
             <MyIcon
               name={'common/refresh'}
@@ -1009,6 +1397,15 @@ const BuiltinBrowserPanelBody = ({
             cursor={'pointer'}
             _hover={{ bg: 'white', borderColor: LG.line }}
             onClick={() => void handleSelectTab(tab.index)}
+            onMouseDown={(e) => {
+              if (e.button === 1) e.preventDefault();
+            }}
+            onAuxClick={(e) => {
+              if (e.button !== 1) return;
+              e.preventDefault();
+              e.stopPropagation();
+              void handleCloseTab(tab.index);
+            }}
           >
             <Text
               flex={'1 1 0'}
@@ -1103,19 +1500,44 @@ const BuiltinBrowserPanelBody = ({
         </MyTooltip>
       </Flex>
 
-      {/* 网址栏：输入后回车让云端浏览器跳转；开台等待期间也可输入，就绪后自动打开 */}
+      {/* 网址栏：左侧后退/前进/刷新，右侧缩放/查找/更多；输入后回车跳转 */}
       {panelView === 'browser' && (
         <Flex
           flexShrink={0}
           alignItems={'center'}
-          px={'10px'}
+          gap={'3px'}
+          px={'8px'}
           py={'5px'}
           bg={'#F5F9FE'}
           borderBottom={'1px solid'}
           borderBottomColor={LG.lineSoft}
         >
+          {controls && (
+            <>
+              <ToolbarIcon
+                name={'common/arrowLeft'}
+                label={t('common:builtin_browser_back')}
+                disabled={!navState.canGoBack}
+                onClick={handleGoBack}
+              />
+              <ToolbarIcon
+                name={'common/arrowRight'}
+                label={t('common:builtin_browser_forward')}
+                disabled={!navState.canGoForward}
+                onClick={handleGoForward}
+              />
+              <ToolbarIcon
+                name={'common/refresh'}
+                label={t('common:builtin_browser_refresh')}
+                disabled={isReloading}
+                onClick={() => void handleReload()}
+              />
+            </>
+          )}
           <Input
             ref={urlInputRef}
+            flex={'1 1 0'}
+            minW={0}
             size={'sm'}
             h={'27px'}
             fontSize={'11px'}
@@ -1145,6 +1567,131 @@ const BuiltinBrowserPanelBody = ({
               boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
             }}
             _placeholder={{ color: '#9DAFC2' }}
+          />
+          {controls && panelWidth > 360 && (
+            <MyTooltip label={t('common:builtin_browser_zoom_reset')}>
+              <Text
+                as={'button'}
+                type={'button'}
+                h={'22px'}
+                minW={'38px'}
+                px={'4px'}
+                borderRadius={'5px'}
+                fontSize={'10px'}
+                color={navState.zoomPercent === 100 ? LG.muted : LG.mountain}
+                bg={navState.zoomPercent === 100 ? 'transparent' : 'rgba(111,157,208,0.14)'}
+                _hover={{ bg: 'rgba(54,101,150,0.08)' }}
+                onClick={handleZoomReset}
+              >
+                {navState.zoomPercent}%
+              </Text>
+            </MyTooltip>
+          )}
+          {controls && (
+            <ToolbarIcon
+              name={'common/searchLight'}
+              label={t('common:builtin_browser_find')}
+              onClick={() => setFindOpen(true)}
+            />
+          )}
+          {controls && (
+            <ToolbarIcon
+              name={'common/ellipsis'}
+              label={t('common:builtin_browser_more')}
+              onClick={() => void controls.openMenu().catch(() => undefined)}
+            />
+          )}
+        </Flex>
+      )}
+
+      {/* 查找条：占布局高度，不覆盖网页；Esc 关闭并清除高亮 */}
+      {panelView === 'browser' && controls && findOpen && (
+        <Flex
+          flexShrink={0}
+          alignItems={'center'}
+          gap={'4px'}
+          px={'8px'}
+          py={'4px'}
+          bg={'#F2F7FD'}
+          borderBottom={'1px solid'}
+          borderBottomColor={LG.lineSoft}
+        >
+          <MyIcon
+            name={'common/searchLight'}
+            w={'12px'}
+            h={'12px'}
+            color={LG.mutedSoft}
+            flexShrink={0}
+          />
+          <Input
+            ref={findInputRef}
+            size={'sm'}
+            h={'24px'}
+            fontSize={'11px'}
+            flex={'1 1 0'}
+            minW={0}
+            value={findQuery}
+            onChange={(e) => setFindQuery(e.target.value)}
+            onCompositionStart={() => setFindComposing(true)}
+            onCompositionEnd={(e) => {
+              setFindComposing(false);
+              setFindQuery(e.currentTarget.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return;
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleFindNext(e.shiftKey ? 'previous' : 'next');
+              } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeFind();
+              }
+            }}
+            placeholder={t('common:builtin_browser_find_placeholder')}
+            bg={'white'}
+            border={'1px solid'}
+            borderColor={LG.line}
+            borderRadius={'6px'}
+            color={'#4A5F75'}
+            _focusVisible={{
+              bg: 'white',
+              borderColor: LG.lineStrong,
+              boxShadow: '0 0 0 3px rgba(111,157,208,0.12)'
+            }}
+            _placeholder={{ color: '#9DAFC2' }}
+          />
+          <Text
+            minW={'46px'}
+            textAlign={'right'}
+            fontSize={'10px'}
+            whiteSpace={'nowrap'}
+            color={findResult && findResult.matches === 0 ? '#C4823A' : LG.muted}
+          >
+            {findQuery.trim() && findResult
+              ? findResult.matches > 0
+                ? t('common:builtin_browser_find_count', {
+                    current: findResult.activeMatchOrdinal,
+                    total: findResult.matches
+                  })
+                : t('common:builtin_browser_find_no_result')
+              : ''}
+          </Text>
+          <ToolbarIcon
+            name={'common/leftArrowLight'}
+            label={t('common:builtin_browser_find_prev')}
+            disabled={!findResult || findResult.matches === 0}
+            onClick={() => handleFindNext('previous')}
+          />
+          <ToolbarIcon
+            name={'common/rightArrowLight'}
+            label={t('common:builtin_browser_find_next')}
+            disabled={!findResult || findResult.matches === 0}
+            onClick={() => handleFindNext('next')}
+          />
+          <ToolbarIcon
+            name={'close'}
+            label={t('common:builtin_browser_find_close')}
+            onClick={closeFind}
           />
         </Flex>
       )}
@@ -1395,6 +1942,273 @@ const BuiltinBrowserPanelBody = ({
           </>
         )}
       </Box>
+
+      {/* 下载任务条：最多 5 条，保存路径不出主进程 */}
+      {controls && downloads.length > 0 && (
+        <Flex
+          flexShrink={0}
+          flexDirection={'column'}
+          borderTop={'1px solid'}
+          borderTopColor={LG.lineSoft}
+          bg={'#F8FBFF'}
+          maxH={'170px'}
+          overflowY={'auto'}
+        >
+          {downloads.map((item) => {
+            const percent =
+              item.totalBytes > 0
+                ? Math.min(100, Math.round((item.receivedBytes / item.totalBytes) * 100))
+                : undefined;
+            return (
+              <Flex
+                key={item.id}
+                alignItems={'center'}
+                gap={'5px'}
+                px={'8px'}
+                py={'4px'}
+                borderBottom={'1px solid'}
+                borderBottomColor={'rgba(231,241,251,0.7)'}
+              >
+                <MyIcon
+                  name={'common/download'}
+                  w={'12px'}
+                  h={'12px'}
+                  flexShrink={0}
+                  color={item.status === 'progressing' ? LG.lake : LG.mutedSoft}
+                />
+                <Text
+                  flex={'1 1 0'}
+                  minW={0}
+                  fontSize={'10px'}
+                  noOfLines={1}
+                  color={LG.text}
+                  title={item.fileName}
+                >
+                  {item.fileName}
+                </Text>
+                {item.status === 'progressing' ? (
+                  <>
+                    <Box
+                      w={'54px'}
+                      h={'3px'}
+                      flexShrink={0}
+                      borderRadius={'2px'}
+                      bg={LG.pale}
+                      overflow={'hidden'}
+                    >
+                      <Box
+                        h={'100%'}
+                        w={`${percent ?? 15}%`}
+                        bg={'linear-gradient(90deg, #8FB4DC, #4F80B4)'}
+                      />
+                    </Box>
+                    <Text
+                      fontSize={'10px'}
+                      color={LG.muted}
+                      minW={'32px'}
+                      textAlign={'right'}
+                      whiteSpace={'nowrap'}
+                    >
+                      {percent === undefined ? formatBytes(item.receivedBytes) : `${percent}%`}
+                    </Text>
+                    <ToolbarIcon
+                      name={'close'}
+                      label={t('common:builtin_browser_download_cancel')}
+                      onClick={() => void handleDownloadAction('cancel', item.id)}
+                    />
+                  </>
+                ) : item.status === 'completed' ? (
+                  <>
+                    <Text fontSize={'10px'} color={LG.mutedSoft} flexShrink={0}>
+                      {formatBytes(item.totalBytes)}
+                    </Text>
+                    <Text
+                      as={'button'}
+                      type={'button'}
+                      fontSize={'10px'}
+                      color={LG.mountain}
+                      whiteSpace={'nowrap'}
+                      _hover={{ textDecoration: 'underline' }}
+                      onClick={() => void handleDownloadAction('open', item.id)}
+                    >
+                      {t('common:builtin_browser_download_open')}
+                    </Text>
+                    <Text
+                      as={'button'}
+                      type={'button'}
+                      fontSize={'10px'}
+                      color={LG.mountain}
+                      whiteSpace={'nowrap'}
+                      _hover={{ textDecoration: 'underline' }}
+                      onClick={() => void handleDownloadAction('folder', item.id)}
+                    >
+                      {t('common:builtin_browser_download_folder')}
+                    </Text>
+                    <ToolbarIcon
+                      name={'close'}
+                      label={t('common:builtin_browser_download_dismiss')}
+                      onClick={() => void handleDownloadAction('dismiss', item.id)}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Text fontSize={'10px'} color={'#C4823A'} flexShrink={0}>
+                      {item.status === 'cancelled'
+                        ? t('common:builtin_browser_download_cancelled')
+                        : t('common:builtin_browser_download_failed')}
+                    </Text>
+                    <ToolbarIcon
+                      name={'close'}
+                      label={t('common:builtin_browser_download_dismiss')}
+                      onClick={() => void handleDownloadAction('dismiss', item.id)}
+                    />
+                  </>
+                )}
+              </Flex>
+            );
+          })}
+        </Flex>
+      )}
+
+      {/* 清除浏览数据：应用级模态会临时隐藏原生视图 */}
+      <Modal
+        isOpen={clearOpen}
+        onClose={() => {
+          if (!clearing) setClearOpen(false);
+        }}
+        isCentered
+        autoFocus={false}
+        size={'sm'}
+      >
+        <ModalOverlay bg={'rgba(20,36,54,0.28)'} zIndex={1500} />
+        <ModalContent borderRadius={'12px'} p={'18px'} containerProps={{ zIndex: 1501 }}>
+          <Text fontSize={'14px'} fontWeight={600} color={LG.ink}>
+            {t('common:builtin_browser_clear_title')}
+          </Text>
+          <Text mt={'4px'} fontSize={'11px'} color={LG.muted}>
+            {t('common:builtin_browser_clear_desc')}
+          </Text>
+          <Flex flexDirection={'column'} gap={'8px'} mt={'14px'}>
+            <Checkbox
+              size={'sm'}
+              fontSize={'11px'}
+              color={LG.text}
+              isChecked={clearOptions.cookies}
+              onChange={(e) =>
+                setClearOptions((prev) => ({ ...prev, cookies: e.target.checked }))
+              }
+            >
+              {t('common:builtin_browser_clear_cookies')}
+            </Checkbox>
+            <Checkbox
+              size={'sm'}
+              fontSize={'11px'}
+              color={LG.text}
+              isChecked={clearOptions.cache}
+              onChange={(e) => setClearOptions((prev) => ({ ...prev, cache: e.target.checked }))}
+            >
+              {t('common:builtin_browser_clear_cache')}
+            </Checkbox>
+            <Checkbox
+              size={'sm'}
+              fontSize={'11px'}
+              color={LG.text}
+              isChecked={clearOptions.permissions}
+              onChange={(e) =>
+                setClearOptions((prev) => ({ ...prev, permissions: e.target.checked }))
+              }
+            >
+              {t('common:builtin_browser_clear_permissions')}
+            </Checkbox>
+          </Flex>
+          <Text mt={'10px'} fontSize={'10px'} color={LG.mutedSoft}>
+            {t('common:builtin_browser_clear_hint')}
+          </Text>
+          <Flex justifyContent={'flex-end'} gap={'8px'} mt={'16px'}>
+            <Button
+              size={'sm'}
+              h={'28px'}
+              px={'14px'}
+              fontSize={'11px'}
+              borderRadius={'6px'}
+              variant={'ghost'}
+              color={LG.muted}
+              isDisabled={clearing}
+              onClick={() => setClearOpen(false)}
+            >
+              {t('common:Cancel')}
+            </Button>
+            <Button
+              size={'sm'}
+              h={'28px'}
+              px={'14px'}
+              fontSize={'11px'}
+              borderRadius={'6px'}
+              colorScheme={'red'}
+              isDisabled={clearSelectedCount === 0}
+              isLoading={clearing}
+              onClick={() => void handleClearBrowsingData()}
+            >
+              {t('common:builtin_browser_clear_confirm')}
+            </Button>
+          </Flex>
+        </ModalContent>
+      </Modal>
+
+      {/* 键盘快捷键：与浏览器一致的常用操作说明 */}
+      <Modal
+        isOpen={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+        isCentered
+        autoFocus={false}
+        size={'sm'}
+      >
+        <ModalOverlay bg={'rgba(20,36,54,0.28)'} zIndex={1500} />
+        <ModalContent borderRadius={'12px'} p={'18px'} containerProps={{ zIndex: 1501 }}>
+          <Text fontSize={'14px'} fontWeight={600} color={LG.ink}>
+            {t('common:builtin_browser_shortcuts_title')}
+          </Text>
+          <Flex flexDirection={'column'} mt={'10px'}>
+            {[
+              [t('common:builtin_browser_shortcut_back'), 'Alt + ← / →'],
+              [t('common:builtin_browser_shortcut_find'), 'Ctrl + F'],
+              [t('common:builtin_browser_shortcut_tabs'), 'Ctrl + T / W'],
+              [t('common:builtin_browser_shortcut_url'), 'Ctrl + L'],
+              [t('common:builtin_browser_shortcut_reload'), 'Ctrl + R'],
+              [t('common:builtin_browser_shortcut_zoom'), 'Ctrl + + / -'],
+              [t('common:builtin_browser_shortcut_reset_zoom'), 'Ctrl + 0'],
+              [t('common:builtin_browser_shortcut_print'), 'Ctrl + P'],
+              [t('common:builtin_browser_shortcut_escape'), 'Esc']
+            ].map(([label, keys]) => (
+              <Flex
+                key={label}
+                justifyContent={'space-between'}
+                alignItems={'center'}
+                py={'4px'}
+                fontSize={'11px'}
+              >
+                <Text color={LG.text}>{label}</Text>
+                <Text color={LG.mountain} fontWeight={500} whiteSpace={'nowrap'}>
+                  {keys}
+                </Text>
+              </Flex>
+            ))}
+          </Flex>
+          <Flex justifyContent={'flex-end'} mt={'12px'}>
+            <Button
+              size={'sm'}
+              h={'28px'}
+              px={'14px'}
+              fontSize={'11px'}
+              borderRadius={'6px'}
+              variant={'primary'}
+              onClick={() => setShortcutsOpen(false)}
+            >
+              {t('common:Close')}
+            </Button>
+          </Flex>
+        </ModalContent>
+      </Modal>
 
       <ConfirmModal />
     </Flex>

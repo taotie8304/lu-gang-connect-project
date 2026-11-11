@@ -3,12 +3,15 @@ import type {
   BuiltinBrowserTab,
   BuiltinBrowserViewport
 } from '@fastgpt/global/support/builtinBrowser/type';
+import type { DesktopBrowserControls } from '../desktopBridge';
 
 export type BuiltinBrowserOpenResult = { resourceUrl?: string; expiresAt?: string };
 
 export type BuiltinBrowserTransport = {
   kind: 'cloud' | 'local';
   usesNativeView: boolean;
+  /** 鲁港通 - 桌面端 P0 原生能力；云端与老客户端没有该对象 */
+  controls?: DesktopBrowserControls;
   open(viewport?: BuiltinBrowserViewport): Promise<BuiltinBrowserOpenResult>;
   close(): Promise<void>;
   reload(): Promise<boolean>;

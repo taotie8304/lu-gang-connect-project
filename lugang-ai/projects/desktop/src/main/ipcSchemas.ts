@@ -27,6 +27,26 @@ export const aiExecuteSchema = z.object({
   commandId: z.string().trim().min(1).max(64).optional()
 });
 
+// 鲁港通 - 页内查找与缩放：查询限长，缩放百分比限定在档位范围内
+export const findQuerySchema = z.object({ query: z.string().trim().min(1).max(200) });
+
+export const findNextSchema = z.object({ direction: z.enum(['next', 'previous']) });
+
+export const zoomSetSchema = z.object({ percent: z.number().int().min(50).max(200) });
+
+export const downloadIdSchema = z.object({ id: z.string().trim().min(1).max(64) });
+
+// 鲁港通 - 清除浏览数据至少选择一项，禁止空请求
+export const clearBrowsingDataSchema = z
+  .object({
+    cookies: z.boolean(),
+    cache: z.boolean(),
+    permissions: z.boolean()
+  })
+  .refine((value) => value.cookies || value.cache || value.permissions, {
+    message: '至少选择一项'
+  });
+
 // 鲁港通 - 文档预览：令牌只允许 uuid 级安全字符，逐条决策的序号限定在改动条数上限内
 export const documentTokenSchema = z
   .string()

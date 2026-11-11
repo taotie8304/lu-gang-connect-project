@@ -6,17 +6,22 @@ import {
   type IpcMainInvokeEvent
 } from 'electron';
 import { z } from 'zod';
-import { IPC_CHANNELS } from '../shared/ipc';
+import { IPC_CHANNELS, type DesktopClearBrowsingDataOptions } from '../shared/ipc';
 import {
   aiExecuteSchema,
   booleanSchema,
+  clearBrowsingDataSchema,
   createTabSchema,
   cssRectSchema,
   documentDecideSchema,
   documentActiveSchema,
   documentTokenPayloadSchema,
+  downloadIdSchema,
+  findNextSchema,
+  findQuerySchema,
   navigateUrlSchema,
-  tabIdSchema
+  tabIdSchema,
+  zoomSetSchema
 } from './ipcSchemas';
 import type { CssRect } from '../shared/geometry';
 import type { BrowserManager } from './browser/manager';
@@ -129,6 +134,62 @@ export const registerIpc = ({
   handle(IPC_CHANNELS.tabSwitch, (payload) => browser.selectTab(payload as number), tabIdSchema);
   handle(IPC_CHANNELS.tabClose, (payload) => browser.closeTab(payload as number), tabIdSchema);
   handle(IPC_CHANNELS.tabList, () => browser.getState());
+
+  // 鲁港通 - 页内查找与缩放：参数全部经 schema 校验，命中结果由主进程推送
+  handle(
+    IPC_CHANNELS.findStart,
+    (payload) => browser.findStart((payload as { query: string }).query),
+    findQuerySchema
+  );
+  handle(
+    IPC_CHANNELS.findNext,
+    (payload) => browser.findNext((payload as { direction: 'next' | 'previous' }).direction),
+    findNextSchema
+  );
+  handle(IPC_CHANNELS.findStop, () => browser.findStop());
+  handle(
+    IPC_CHANNELS.zoomSet,
+    (payload) => browser.setZoom((payload as { percent: number }).percent),
+    zoomSetSchema
+  );
+  handle(IPC_CHANNELS.zoomReset, () => browser.resetZoom());
+
+  // 鲁港通 - 下载任务条：渲染层只能按 id 触发打开/定位，拿不到保存路径
+  handle(IPC_CHANNELS.downloadsList, () => browser.listDownloads());
+  handle(
+    IPC_CHANNELS.downloadOpen,
+    (payload) => browser.openDownload((payload as { id: string }).id),
+    downloadIdSchema
+  );
+  handle(
+    IPC_CHANNELS.downloadShowInFolder,
+    (payload) => browser.showDownloadInFolder((payload as { id: string }).id),
+    downloadIdSchema
+  );
+  handle(
+    IPC_CHANNELS.downloadCancel,
+    (payload) => browser.cancelDownload((payload as { id: string }).id),
+    downloadIdSchema
+  );
+  handle(
+    IPC_CHANNELS.downloadDismiss,
+    (payload) => browser.dismissDownload((payload as { id: string }).id),
+    downloadIdSchema
+  );
+
+  // 鲁港通 - 页面动作：打印/另存 PDF/复制链接/系统浏览器/更多菜单
+  handle(IPC_CHANNELS.pagePrint, () => browser.printPage());
+  handle(IPC_CHANNELS.pageSavePdf, () => browser.savePagePdf());
+  handle(IPC_CHANNELS.pageCopyLink, () => browser.copyLink());
+  handle(IPC_CHANNELS.pageOpenExternal, () => browser.openExternal());
+  handle(IPC_CHANNELS.pageMenu, () => browser.showPageMenu());
+
+  // 鲁港通 - 清除浏览数据仅作用于内置浏览器分区，至少选择一项
+  handle(
+    IPC_CHANNELS.clearBrowsingData,
+    (payload) => browser.clearBrowsingData(payload as DesktopClearBrowsingDataOptions),
+    clearBrowsingDataSchema
+  );
 
   handle(IPC_CHANNELS.aiStatus, () => ai.getState());
   handle(IPC_CHANNELS.aiStop, () => deviceChannel.stopAi());

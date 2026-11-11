@@ -35,6 +35,7 @@ export const createLocalTransport = (bridge: DesktopBridge): BuiltinBrowserTrans
   return {
     kind: 'local',
     usesNativeView: true,
+    controls: bridge.browser,
     open: async (_viewport?: BuiltinBrowserViewport) => {
       try {
         await bridge.openPanel();

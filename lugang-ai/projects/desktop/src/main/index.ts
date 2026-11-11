@@ -182,6 +182,7 @@ if (!gotLock) {
         tabPreloadPath: join(__dirname, '../preload/tab.cjs'),
         rendererDir,
         permissionStorePath: join(userDataDir, 'permissions.json'),
+        zoomStorePath: join(userDataDir, 'browser-zoom.json'),
         events: {
           onTabClosed: (event) => {
             void aiController?.handleTabClosed(event).catch((error) => {

@@ -8,6 +8,79 @@ export type DesktopBrowserState = {
   activeTabId: number | null;
   tabs: DesktopTab[];
   loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  zoomPercent: number;
+};
+
+/** 鲁港通 - 地址栏导航状态：与 projects/desktop/src/shared/ipc.ts 对应 */
+export type DesktopBrowserNavState = {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  zoomPercent: number;
+};
+
+export type DesktopFindResult = {
+  activeMatchOrdinal: number;
+  matches: number;
+  finalUpdate: boolean;
+};
+
+export type DesktopZoomRestore = {
+  origin: string;
+  percent: number;
+};
+
+export type DesktopDownloadStatus = 'progressing' | 'completed' | 'cancelled' | 'interrupted';
+
+export type DesktopDownloadItem = {
+  id: string;
+  fileName: string;
+  receivedBytes: number;
+  totalBytes: number;
+  status: DesktopDownloadStatus;
+};
+
+export type DesktopPanelCommand =
+  | 'find'
+  | 'close-find'
+  | 'focus-url'
+  | 'clear-data'
+  | 'shortcuts';
+
+export type DesktopClearBrowsingDataOptions = {
+  cookies: boolean;
+  cache: boolean;
+  permissions: boolean;
+};
+
+/** 鲁港通 - 内置浏览器 P0 能力；0.10.0 起提供，老客户端没有这个对象 */
+export type DesktopBrowserControls = {
+  getNav(): Promise<DesktopBrowserNavState>;
+  onNavChange(callback: (state: DesktopBrowserNavState) => void): () => void;
+  goBack(): Promise<boolean>;
+  goForward(): Promise<boolean>;
+  findStart(query: string): Promise<void>;
+  findNext(direction: 'next' | 'previous'): Promise<void>;
+  findStop(): Promise<void>;
+  onFindResult(callback: (result: DesktopFindResult) => void): () => void;
+  setZoom(percent: number): Promise<number>;
+  resetZoom(): Promise<number>;
+  onZoomChange(callback: (percent: number) => void): () => void;
+  onZoomRestore(callback: (payload: DesktopZoomRestore) => void): () => void;
+  listDownloads(): Promise<DesktopDownloadItem[]>;
+  onDownloadsChange(callback: (list: DesktopDownloadItem[]) => void): () => void;
+  openDownload(id: string): Promise<boolean>;
+  showDownloadInFolder(id: string): Promise<boolean>;
+  cancelDownload(id: string): Promise<void>;
+  dismissDownload(id: string): Promise<void>;
+  print(): Promise<boolean>;
+  savePdf(): Promise<boolean>;
+  copyLink(): Promise<boolean>;
+  openExternal(): Promise<boolean>;
+  openMenu(): Promise<void>;
+  clearData(options: DesktopClearBrowsingDataOptions): Promise<boolean>;
+  onCommand(callback: (command: DesktopPanelCommand) => void): () => void;
 };
 
 export type DesktopVersionInfo = { appVersion: string; protocolVersion: number };
@@ -248,6 +321,8 @@ export type DesktopBridge = {
   reload(): Promise<boolean>;
   goBack(): Promise<boolean>;
   goForward(): Promise<boolean>;
+  /** 0.10.0 起提供：后退/前进、页内查找、缩放、下载与页面动作 */
+  browser?: DesktopBrowserControls;
   documents?: DesktopDocuments;
   tabs: {
     create(url?: string): Promise<DesktopBrowserState>;

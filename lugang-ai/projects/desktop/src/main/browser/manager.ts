@@ -1,8 +1,28 @@
 // 鲁港通 - 本地浏览器管理器：每个标签一个 WebContentsView，共享独立分区
-import { BrowserWindow, WebContentsView, dialog, session } from 'electron';
-import { join } from 'node:path';
+import {
+  BrowserWindow,
+  Menu,
+  WebContentsView,
+  app,
+  clipboard,
+  dialog,
+  session,
+  shell
+} from 'electron';
+import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import { cssRectToDip, type DipRect } from '../bounds';
-import { IPC_CHANNELS, type DesktopBrowserState } from '../../shared/ipc';
+import {
+  IPC_CHANNELS,
+  type DesktopBrowserState,
+  type DesktopClearBrowsingDataOptions,
+  type DesktopDownloadItem,
+  type DesktopDownloadStatus,
+  type DesktopFindResult,
+  type DesktopPanelCommand
+} from '../../shared/ipc';
 import type { CssRect } from '../../shared/geometry';
 import { isManualBrowserNavigationAllowed, parseManualBrowserUrl } from '../navigation';
 import { installNavigationGuard } from '../navigationGuard';
@@ -20,6 +40,15 @@ import {
   savePermissionStore,
   type PermissionDecision
 } from '../permissionStore';
+import { buildDownloadFilePath, sanitizeFileBaseName, trimDownloadRows } from './downloads';
+import {
+  DEFAULT_ZOOM_PERCENT,
+  loadZoomStore,
+  normalizeZoomPercent,
+  saveZoomStore,
+  stepZoomPercent
+} from './zoom';
+import { resolveBrowserShortcut } from './shortcuts';
 
 type TabEntry = {
   view: WebContentsView;
@@ -27,6 +56,19 @@ type TabEntry = {
   url: string;
   failedUrl?: string;
   loading: boolean;
+  zoomOrigin?: string;
+};
+
+// 鲁港通 - 下载记录含本机保存路径，只在主进程内部使用
+type DownloadRecord = {
+  id: string;
+  fileName: string;
+  receivedBytes: number;
+  totalBytes: number;
+  status: DesktopDownloadStatus;
+  savePath: string;
+  startedAt: number;
+  item?: Electron.DownloadItem;
 };
 
 export type BrowserManagerOptions = {
@@ -34,6 +76,7 @@ export type BrowserManagerOptions = {
   tabPreloadPath: string;
   rendererDir: string;
   permissionStorePath: string;
+  zoomStorePath: string;
   partition?: string;
   events?: BrowserManagerEvents;
 };
@@ -87,15 +130,21 @@ export class BrowserManager {
   private readonly tabPreloadPath: string;
   private readonly rendererDir: string;
   private readonly permissionStorePath: string;
+  private readonly zoomStorePath: string;
   private readonly events: BrowserManagerEvents;
   private readonly tabs = new Map<number, TabEntry>();
   private readonly permissions: Record<string, PermissionDecision>;
   private readonly permissionPrompts = new Set<string>();
+  private readonly zoomStore: Record<string, number>;
+  private readonly downloads = new Map<string, DownloadRecord>();
   private order: TabOrderState = { order: [], activeId: null };
   private bounds: DipRect = { x: 0, y: 0, width: 0, height: 0 };
   private viewVisible = false;
   private panelOpen = false;
   private notifyTimer: ReturnType<typeof setTimeout> | undefined;
+  private notifyDownloadsTimer: ReturnType<typeof setTimeout> | undefined;
+  private findQuery: string | null = null;
+  private downloadSeq = 0;
   private destroyed = false;
 
   constructor(options: BrowserManagerOptions) {
@@ -104,8 +153,10 @@ export class BrowserManager {
     this.tabPreloadPath = options.tabPreloadPath;
     this.rendererDir = options.rendererDir;
     this.permissionStorePath = options.permissionStorePath;
+    this.zoomStorePath = options.zoomStorePath;
     this.events = options.events ?? {};
     this.permissions = loadPermissionStore(options.permissionStorePath);
+    this.zoomStore = loadZoomStore(options.zoomStorePath);
 
     const browserSession = session.fromPartition(this.partition);
     browserSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
@@ -116,7 +167,11 @@ export class BrowserManager {
       this.handlePermissionCheck(permission, requestingOrigin)
     );
     browserSession.on('will-download', (_event, item) => {
-      item.setSaveDialogOptions({ title: '保存下载文件', buttonLabel: '保存' });
+      // 鲁港通 - 下载默认存到系统下载目录并自动开始，任务条负责进度与打开入口
+      item.setSavePath(
+        buildDownloadFilePath(app.getPath('downloads'), item.getFilename(), existsSync)
+      );
+      this.trackDownload(item);
     });
   }
 
@@ -137,6 +192,7 @@ export class BrowserManager {
     if (!this.destroyed) {
       this.panelOpen = false;
       this.viewVisible = false;
+      this.findQuery = null;
       for (const id of [...this.tabs.keys()]) this.closeTabInternal(id);
       this.order = { order: [], activeId: null };
       this.emitState();
@@ -201,6 +257,7 @@ export class BrowserManager {
     if (this.order.activeId !== previousActiveId) {
       this.applyVisibility();
       this.emitState();
+      this.runFind(true);
     }
     return this.getState();
   };
@@ -218,6 +275,7 @@ export class BrowserManager {
     if (!this.destroyed && this.panelOpen && this.tabs.size === 0) this.createTab();
     this.applyVisibility();
     this.emitState();
+    this.runFind(true);
     this.notifyTabClosed(event);
     return this.getState();
   };
@@ -276,6 +334,176 @@ export class BrowserManager {
     void entry.view.webContents.loadURL(target).catch(() => undefined);
   };
 
+  // 鲁港通 - 页内查找：输入即从首个命中开始，Enter / Shift+Enter 走下一个 / 上一个
+  findStart = (query: string) => {
+    this.findQuery = query;
+    this.runFind(true);
+  };
+
+  findNext = (direction: 'next' | 'previous') => {
+    this.runFind(false, direction !== 'previous');
+  };
+
+  findStop = () => {
+    this.findQuery = null;
+    const entry = this.getActiveEntry();
+    if (entry && !entry.view.webContents.isDestroyed()) {
+      entry.view.webContents.stopFindInPage('clearSelection');
+    }
+  };
+
+  setZoom = (value: number): number => {
+    const entry = this.getActiveEntry();
+    if (!entry) return DEFAULT_ZOOM_PERCENT;
+    const percent = normalizeZoomPercent(value);
+    const origin = normalizeOrigin(entry.url);
+    if (origin) {
+      this.zoomStore[origin] = percent;
+      saveZoomStore(this.zoomStorePath, this.zoomStore);
+      entry.zoomOrigin = origin;
+    }
+    this.applyZoomPercent(entry, percent);
+    this.send(IPC_CHANNELS.zoomChanged, percent);
+    this.emitState();
+    return percent;
+  };
+
+  resetZoom = (): number => this.setZoom(DEFAULT_ZOOM_PERCENT);
+
+  zoomIn = (): number => this.setZoom(stepZoomPercent(this.getActiveZoomPercent(), 'in'));
+
+  zoomOut = (): number => this.setZoom(stepZoomPercent(this.getActiveZoomPercent(), 'out'));
+
+  printPage = (): boolean => {
+    const entry = this.getActiveEntry();
+    if (!entry || entry.failedUrl || entry.view.webContents.isDestroyed()) return false;
+    entry.view.webContents.print({ printBackground: true, silent: false }, () => undefined);
+    return true;
+  };
+
+  // 鲁港通 - 另存为 PDF 走系统保存对话框，完成后复用下载任务条打开/定位
+  savePagePdf = async (): Promise<boolean> => {
+    const entry = this.getActiveEntry();
+    if (!entry || entry.failedUrl || entry.view.webContents.isDestroyed()) return false;
+    const baseName = sanitizeFileBaseName(entry.title || normalizeOrigin(entry.url) || 'page');
+    const result = await dialog.showSaveDialog(this.window, {
+      title: '另存为 PDF',
+      defaultPath: join(app.getPath('downloads'), `${baseName}.pdf`),
+      filters: [{ name: 'PDF 文档', extensions: ['pdf'] }]
+    });
+    if (result.canceled || !result.filePath) return false;
+    const data = await entry.view.webContents.printToPDF({
+      printBackground: true,
+      pageSize: 'A4'
+    });
+    await writeFile(result.filePath, data);
+    this.addSyntheticDownload(basename(result.filePath), result.filePath, data.byteLength);
+    return true;
+  };
+
+  copyLink = (): boolean => {
+    const url = this.getActivePageUrl();
+    if (!url) return false;
+    clipboard.writeText(url);
+    return true;
+  };
+
+  openExternal = async (): Promise<boolean> => {
+    const url = this.getActivePageUrl();
+    if (!url) return false;
+    try {
+      await shell.openExternal(url);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // 鲁港通 - 更多菜单用 Electron 原生菜单：WebContentsView 会遮挡网页层浮层
+  showPageMenu = () => {
+    if (!this.getActiveEntry()) return;
+    const percent = this.getActiveZoomPercent();
+    const template: Electron.MenuItemConstructorOptions[] = [
+      { label: '打印页面', accelerator: 'CmdOrCtrl+P', click: () => this.printPage() },
+      { label: '另存为 PDF…', click: () => void this.savePagePdf().catch(() => undefined) },
+      { label: '复制页面链接', click: () => this.copyLink() },
+      { label: '在系统浏览器中打开', click: () => void this.openExternal() },
+      { type: 'separator' },
+      { label: `放大（${percent}%）`, click: () => this.zoomIn() },
+      { label: '缩小', click: () => this.zoomOut() },
+      {
+        label: percent === DEFAULT_ZOOM_PERCENT ? '重置缩放' : `重置缩放（当前 ${percent}%）`,
+        click: () => this.resetZoom()
+      },
+      { type: 'separator' },
+      { label: '清除浏览数据…', click: () => this.sendPanelCommand('clear-data') },
+      { label: '键盘快捷键', click: () => this.sendPanelCommand('shortcuts') }
+    ];
+    Menu.buildFromTemplate(template).popup({ window: this.window });
+  };
+
+  // 鲁港通 - 清除范围仅内置浏览器分区与站点权限，应用登录态与缩放记忆不受影响
+  clearBrowsingData = async (options: DesktopClearBrowsingDataOptions): Promise<boolean> => {
+    if (!options.cookies && !options.cache && !options.permissions) return false;
+    try {
+      const browserSession = session.fromPartition(this.partition);
+      if (options.cookies) {
+        await browserSession.clearStorageData({
+          storages: [
+            'cookies',
+            'localstorage',
+            'indexdb',
+            'cachestorage',
+            'serviceworkers',
+            'shadercache',
+            'filesystem'
+          ]
+        });
+      }
+      if (options.cache) await browserSession.clearCache();
+      if (options.permissions) {
+        for (const key of Object.keys(this.permissions)) delete this.permissions[key];
+        savePermissionStore(this.permissionStorePath, this.permissions);
+      }
+      for (const [id, entry] of this.tabs) {
+        if (entry.failedUrl) this.retryTab(id);
+        else if (!entry.view.webContents.isDestroyed()) entry.view.webContents.reload();
+      }
+      this.emitState();
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  listDownloads = (): DesktopDownloadItem[] => this.getDownloadRows();
+
+  openDownload = async (id: string): Promise<boolean> => {
+    const record = this.downloads.get(id);
+    if (!record || record.status !== 'completed' || !record.savePath) return false;
+    const error = await shell.openPath(record.savePath);
+    return error === '';
+  };
+
+  showDownloadInFolder = (id: string): boolean => {
+    const record = this.downloads.get(id);
+    if (!record || !record.savePath) return false;
+    shell.showItemInFolder(record.savePath);
+    return true;
+  };
+
+  cancelDownload = (id: string) => {
+    this.downloads.get(id)?.item?.cancel();
+  };
+
+  dismissDownload = (id: string) => {
+    const record = this.downloads.get(id);
+    if (!record) return;
+    record.item?.cancel();
+    this.downloads.delete(id);
+    this.emitDownloads();
+  };
+
   setBounds = (rect: CssRect) => {
     if (this.destroyed || this.window.isDestroyed()) return;
     const zoom = this.window.webContents.getZoomFactor();
@@ -290,16 +518,32 @@ export class BrowserManager {
     this.applyVisibility();
   };
 
-  getState = (): DesktopBrowserState => ({
-    panelOpen: this.panelOpen,
-    activeTabId: this.order.activeId,
-    tabs: this.order.order.map((id) => {
-      const entry = this.tabs.get(id)!;
-      return { id, title: entry.title, url: entry.url, current: id === this.order.activeId };
-    }),
-    loading:
-      this.order.activeId !== null && !!this.tabs.get(this.order.activeId)?.loading
-  });
+  getState = (): DesktopBrowserState => {
+    const entry = this.getActiveEntry();
+    let canGoBack = false;
+    let canGoForward = false;
+    if (entry && !entry.failedUrl && !entry.view.webContents.isDestroyed()) {
+      try {
+        canGoBack = entry.view.webContents.navigationHistory.canGoBack();
+        canGoForward = entry.view.webContents.navigationHistory.canGoForward();
+      } catch {
+        // 鲁港通 - 窗口销毁过程中读取历史可能抛错，按不可导航处理
+      }
+    }
+    return {
+      panelOpen: this.panelOpen,
+      activeTabId: this.order.activeId,
+      tabs: this.order.order.map((id) => {
+        const item = this.tabs.get(id)!;
+        return { id, title: item.title, url: item.url, current: id === this.order.activeId };
+      }),
+      loading:
+        this.order.activeId !== null && !!this.tabs.get(this.order.activeId)?.loading,
+      canGoBack,
+      canGoForward,
+      zoomPercent: this.getActiveZoomPercent()
+    };
+  };
 
   // 鲁港通 - AI 操作时按需挂上调试器；每次取当前活动标签，重开后自动切换新页面
   getActiveDebuggerSession = (): BrowserDebuggerSession | null => {
@@ -324,6 +568,10 @@ export class BrowserManager {
       clearTimeout(this.notifyTimer);
       this.notifyTimer = undefined;
     }
+    if (this.notifyDownloadsTimer) {
+      clearTimeout(this.notifyDownloadsTimer);
+      this.notifyDownloadsTimer = undefined;
+    }
     for (const id of [...this.tabs.keys()]) this.closeTabInternal(id);
     this.order = { order: [], activeId: null };
     this.panelOpen = false;
@@ -332,6 +580,203 @@ export class BrowserManager {
 
   private getActiveEntry = (): TabEntry | null =>
     this.order.activeId === null ? null : this.tabs.get(this.order.activeId) ?? null;
+
+  private getActivePageUrl(): string | null {
+    const entry = this.getActiveEntry();
+    if (!entry || entry.failedUrl) return null;
+    return entry.url.startsWith('http://') || entry.url.startsWith('https://') ? entry.url : null;
+  }
+
+  private getActiveZoomPercent(): number {
+    const entry = this.getActiveEntry();
+    if (!entry) return DEFAULT_ZOOM_PERCENT;
+    const origin = normalizeOrigin(entry.url);
+    if (!origin) return DEFAULT_ZOOM_PERCENT;
+    return this.zoomStore[origin] ?? DEFAULT_ZOOM_PERCENT;
+  }
+
+  private applyZoomPercent(entry: TabEntry, percent: number) {
+    const contents = entry.view.webContents;
+    if (contents.isDestroyed()) return;
+    try {
+      contents.setZoomFactor(percent / 100);
+    } catch {
+      // 鲁港通 - 页面销毁过程中忽略缩放失败
+    }
+  }
+
+  // 鲁港通 - 换站点时恢复该 origin 上次的缩放档位，同一站点内导航不重置
+  private restoreZoomForEntry(entry: TabEntry, url: string) {
+    const origin = normalizeOrigin(url);
+    if (!origin || entry.zoomOrigin === origin) return;
+    entry.zoomOrigin = origin;
+    const percent = this.zoomStore[origin] ?? DEFAULT_ZOOM_PERCENT;
+    this.applyZoomPercent(entry, percent);
+    // 鲁港通 - 仅对非默认档位提示，且只在本次导航确实恢复记忆时提示
+    if (
+      percent !== DEFAULT_ZOOM_PERCENT &&
+      this.order.activeId === entry.view.webContents.id
+    ) {
+      this.send(IPC_CHANNELS.zoomRestored, { origin, percent });
+    }
+  }
+
+  // 鲁港通 - Electron 语义：findNext=true 开启新查找会话，false 沿当前会话跳到下一个命中
+  private runFind(findNext: boolean, forward = true) {
+    if (!this.findQuery) return;
+    const entry = this.getActiveEntry();
+    if (!entry || entry.failedUrl || entry.view.webContents.isDestroyed()) return;
+    entry.view.webContents.findInPage(this.findQuery, { findNext, forward });
+  }
+
+  private trackDownload(item: Electron.DownloadItem) {
+    const record: DownloadRecord = {
+      id: randomUUID(),
+      fileName: item.getFilename() || `download-${++this.downloadSeq}`,
+      receivedBytes: item.getReceivedBytes(),
+      totalBytes: item.getTotalBytes(),
+      status: 'progressing',
+      savePath: '',
+      startedAt: Date.now() + this.downloadSeq,
+      item
+    };
+    this.downloads.set(record.id, record);
+    const sync = () => {
+      record.fileName = item.getFilename() || record.fileName;
+      record.receivedBytes = item.getReceivedBytes();
+      record.totalBytes = item.getTotalBytes();
+      record.savePath = item.getSavePath() || record.savePath;
+    };
+    item.on('updated', (_event, state) => {
+      sync();
+      if (state === 'interrupted') record.status = 'interrupted';
+      this.emitDownloads();
+    });
+    item.once('done', (_event, state) => {
+      sync();
+      record.status = state;
+      record.item = undefined;
+      this.trimDownloads();
+      this.emitDownloads();
+    });
+    this.emitDownloads();
+  }
+
+  private addSyntheticDownload(fileName: string, savePath: string, size: number) {
+    const record: DownloadRecord = {
+      id: randomUUID(),
+      fileName,
+      receivedBytes: size,
+      totalBytes: size,
+      status: 'completed',
+      savePath,
+      startedAt: Date.now() + ++this.downloadSeq
+    };
+    this.downloads.set(record.id, record);
+    this.trimDownloads();
+    this.emitDownloads();
+  }
+
+  private getDownloadRows(): DesktopDownloadItem[] {
+    return trimDownloadRows([...this.downloads.values()]).map((record) => ({
+      id: record.id,
+      fileName: record.fileName,
+      receivedBytes: record.receivedBytes,
+      totalBytes: record.totalBytes,
+      status: record.status
+    }));
+  }
+
+  private trimDownloads() {
+    const sorted = trimDownloadRows([...this.downloads.values()]);
+    if (sorted.length === this.downloads.size) return;
+    const keep = new Set(sorted.map((record) => record.id));
+    for (const [id, record] of this.downloads) {
+      if (keep.has(id)) continue;
+      record.item?.cancel();
+      this.downloads.delete(id);
+    }
+  }
+
+  private emitDownloads() {
+    if (this.destroyed || this.notifyDownloadsTimer) return;
+    this.notifyDownloadsTimer = setTimeout(() => {
+      this.notifyDownloadsTimer = undefined;
+      if (this.destroyed || this.window.isDestroyed()) return;
+      this.window.webContents.send(IPC_CHANNELS.downloadsChanged, this.getDownloadRows());
+    }, 100);
+  }
+
+  private send(channel: string, payload: unknown) {
+    if (this.destroyed || this.window.isDestroyed()) return;
+    this.window.webContents.send(channel, payload);
+  }
+
+  private sendPanelCommand(command: DesktopPanelCommand) {
+    this.send(IPC_CHANNELS.panelCommand, command);
+  }
+
+  // 鲁港通 - 网页焦点在原生视图时由主进程统一接快捷键，面板 UI 焦点由渲染层处理
+  private handleTabShortcut(event: Electron.Event, input: Electron.Input) {
+    // 鲁港通 - 查找条开着且焦点在网页内时，Esc 同时收起查找条并清除高亮
+    if (
+      input.type === 'keyDown' &&
+      !input.isAutoRepeat &&
+      input.key === 'Escape' &&
+      !input.control &&
+      !input.meta &&
+      !input.alt &&
+      this.findQuery
+    ) {
+      event.preventDefault();
+      this.findStop();
+      this.sendPanelCommand('close-find');
+      return;
+    }
+    const action = resolveBrowserShortcut(input);
+    if (!action) return;
+    event.preventDefault();
+    switch (action) {
+      case 'back':
+        this.goBack();
+        this.emitState();
+        break;
+      case 'forward':
+        this.goForward();
+        this.emitState();
+        break;
+      case 'find':
+        this.sendPanelCommand('find');
+        break;
+      case 'new-tab':
+        this.createTab();
+        this.sendPanelCommand('focus-url');
+        break;
+      case 'close-tab':
+        if (this.order.activeId !== null) this.closeTab(this.order.activeId);
+        break;
+      case 'focus-url':
+        this.sendPanelCommand('focus-url');
+        break;
+      case 'reload':
+        this.reload();
+        break;
+      case 'print':
+        this.printPage();
+        break;
+      case 'zoom-in':
+        this.zoomIn();
+        break;
+      case 'zoom-out':
+        this.zoomOut();
+        break;
+      case 'zoom-reset':
+        this.resetZoom();
+        break;
+      default:
+        break;
+    }
+  }
 
   private wireTabEvents(webContents: Electron.WebContents, entry: TabEntry) {
     webContents.on('page-title-updated', (_event, title) => {
@@ -346,11 +791,14 @@ export class BrowserManager {
     webContents.on('did-stop-loading', () => {
       entry.loading = false;
       this.emitState();
+      // 鲁港通 - 查找条开着时换页/换标签自动在新页面重查，命中序号由 found-in-page 重置
+      if (this.order.activeId === webContents.id) setTimeout(() => this.runFind(true), 80);
     });
     webContents.on('did-navigate', (_event, url) => {
       if (url.startsWith('http://') || url.startsWith('https://')) {
         entry.url = url;
         entry.failedUrl = undefined;
+        this.restoreZoomForEntry(entry, url);
       }
       this.emitState();
     });
@@ -358,6 +806,23 @@ export class BrowserManager {
       if (!isMainFrame) return;
       entry.url = url;
       this.emitState();
+      if (this.order.activeId === webContents.id) setTimeout(() => this.runFind(true), 80);
+    });
+    webContents.on('found-in-page', (_event, result) => {
+      if (this.order.activeId !== webContents.id) return;
+      const payload: DesktopFindResult = {
+        activeMatchOrdinal: result.activeMatchOrdinal ?? 0,
+        matches: result.matches ?? 0,
+        finalUpdate: Boolean(result.finalUpdate)
+      };
+      this.send(IPC_CHANNELS.findResult, payload);
+    });
+    webContents.on('before-input-event', (event, input) => this.handleTabShortcut(event, input));
+    // 鲁港通 - Ctrl+滚轮由 Chromium 请求缩放，主进程改按档位设置并记忆到站点
+    webContents.on('zoom-changed', (_event, direction) => {
+      if (this.order.activeId !== webContents.id) return;
+      if (direction === 'in') this.zoomIn();
+      else this.zoomOut();
     });
     webContents.on(
       'did-fail-load',

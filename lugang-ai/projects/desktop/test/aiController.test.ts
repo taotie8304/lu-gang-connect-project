@@ -55,7 +55,10 @@ const createBrowser = (): AiControllerBrowser & {
     panelOpen: true,
     activeTabId: 1,
     tabs: [{ id: 1, title: '测试表单', url: PAGE_URL, current: true }],
-    loading: false
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    zoomPercent: 100
   };
   return {
     state,
