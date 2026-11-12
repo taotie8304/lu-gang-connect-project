@@ -1,4 +1,4 @@
-// 鲁港通 - 桌面登录页：整页统一背景 + 铺满底部的动态山水，登录卡半透明融入（0.14.1）
+// 鲁港通 - 桌面登录页：整页纸感背景 + 底部通栏「两地长卷」，三栏透明叠加（0.14.2）
 .hero {
   --lg-ink: #1e1d1a;
   --lg-muted: #6f6a5e;
@@ -14,42 +14,205 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  // 鲁港通 - 整页一层连续渐变，三栏不再各自铺底色，消除竖向分界线
-  background: linear-gradient(150deg, #f8f5ee 0%, #f5f2e9 46%, #f1ede1 100%);
+  // 鲁港通 - 整页一层连续渐变，三栏不再各铺底色，消除竖向分界线
+  background:
+    radial-gradient(ellipse 48% 42% at 12% 4%, rgba(30, 123, 255, 0.05), transparent 60%),
+    radial-gradient(ellipse 40% 40% at 88% 10%, rgba(63, 156, 140, 0.05), transparent 62%),
+    linear-gradient(158deg, #faf7f0 0%, #f6f2e8 48%, #f1ecdf 100%);
   color: var(--lg-ink);
   user-select: none;
+
+  // 鲁港通 - 全页一层点阵纹理，不再按栏切分
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.32;
+    background-image: radial-gradient(rgba(30, 29, 26, 0.1) 1px, transparent 1px);
+    background-size: 30px 30px;
+    mask-image: radial-gradient(ellipse 58% 52% at 46% 40%, #000 4%, transparent 76%);
+    -webkit-mask-image: radial-gradient(ellipse 58% 52% at 46% 40%, #000 4%, transparent 76%);
+    pointer-events: none;
+  }
 }
 
-/* ===== 左：文案 ===== */
+/* ===== 底部通栏「两地长卷」 ===== */
+.panorama {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 340px;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.panoramaSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+// 香港维港剪影：素材基线对齐海平面，倒影底部柔化
+.hkSkyline {
+  position: absolute;
+  right: 0;
+  top: 28px;
+  width: 290px;
+  height: auto;
+  opacity: 0.72;
+  filter: saturate(0.82);
+  -webkit-mask-image: linear-gradient(to bottom, #000 84%, transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 84%, transparent 100%);
+}
+
+/* 云雾：多层缓慢漂移 */
+.mist {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(30px);
+  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.9), transparent 74%);
+  pointer-events: none;
+}
+
+.mist1 {
+  width: 520px;
+  height: 122px;
+  left: -10%;
+  bottom: 96px;
+  animation: mistDrift 42s linear infinite;
+}
+
+.mist2 {
+  width: 380px;
+  height: 92px;
+  left: 30%;
+  bottom: 128px;
+  opacity: 0.5;
+  animation: mistDrift 56s linear infinite reverse;
+}
+
+.mist3 {
+  width: 280px;
+  height: 80px;
+  right: 2%;
+  bottom: 112px;
+  opacity: 0.26;
+  animation: mistDrift 48s linear infinite;
+  animation-delay: -16s;
+}
+
+/* 连接两地的光带：山东 ⇄ 香港 双向流动 */
+.linkArc {
+  stroke-dasharray: 5 9;
+  animation: arcFlow 14s linear infinite;
+}
+
+.linkArc2 {
+  stroke-dasharray: 2 13;
+  animation: arcFlow 22s linear infinite reverse;
+}
+
+.linkDot {
+  filter: drop-shadow(0 0 3px rgba(30, 123, 255, 0.55));
+}
+
+/* 飞鸟：缓缓掠过山脊 */
+.birds {
+  animation: birdDrift 17s ease-in-out infinite;
+}
+
+/* 船只摇曳 + 航迹 */
+.boatBob {
+  animation: boatBob 6.5s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: 50% 92%;
+}
+
+.boatBob2 {
+  animation-duration: 7.8s;
+  animation-delay: -2.4s;
+}
+
+.wake {
+  stroke-dasharray: 6 10;
+  animation: waveFlow 9s linear infinite;
+}
+
+/* 水面波光横线流动 */
+.waveLine {
+  stroke-dasharray: 18 26;
+  animation: waveFlow 16s linear infinite;
+}
+
+.waveLine2 {
+  animation-duration: 23s;
+  animation-direction: reverse;
+}
+
+/* 光点上升 */
+.spark {
+  position: absolute;
+  bottom: 26px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(30, 123, 255, 0.5);
+  animation: rise linear infinite;
+}
+
+.spark1 {
+  left: 9%;
+  animation-duration: 8s;
+  animation-delay: -2s;
+}
+
+.spark2 {
+  left: 22%;
+  animation-duration: 10s;
+  animation-delay: -5s;
+  background: rgba(63, 156, 140, 0.5);
+}
+
+.spark3 {
+  left: 38%;
+  animation-duration: 9s;
+  animation-delay: -1s;
+}
+
+.spark4 {
+  left: 57%;
+  animation-duration: 11s;
+  animation-delay: -7s;
+  background: rgba(169, 133, 63, 0.45);
+}
+
+.spark5 {
+  left: 74%;
+  animation-duration: 8.5s;
+  animation-delay: -4s;
+}
+
+.spark6 {
+  left: 88%;
+  animation-duration: 12s;
+  animation-delay: -9s;
+  background: rgba(30, 123, 255, 0.35);
+}
+
+/* ===== 左：品牌与文案（透明叠加，无独立底色） ===== */
 .left {
   position: relative;
   z-index: 1;
-  width: 40%;
+  width: 41%;
   flex-shrink: 0;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  padding: 26px 40px 22px;
-}
-
-.glow {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(ellipse 62% 48% at 8% 6%, rgba(30, 123, 255, 0.1), transparent 62%),
-    radial-gradient(ellipse 56% 42% at 96% 78%, rgba(63, 156, 140, 0.1), transparent 64%);
-}
-
-.dots {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.4;
-  background-image: radial-gradient(rgba(30, 29, 26, 0.15) 1px, transparent 1px);
-  background-size: 28px 28px;
-  mask-image: radial-gradient(ellipse 66% 62% at 46% 42%, #000 6%, transparent 74%);
-  -webkit-mask-image: radial-gradient(ellipse 66% 62% at 46% 42%, #000 6%, transparent 74%);
+  padding: 28px 44px 24px;
+  overflow: hidden;
 }
 
 .brand {
@@ -61,27 +224,27 @@
 }
 
 .brandName {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 600;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.14em;
   line-height: 1.2;
 }
 
 .brandSub {
-  margin-top: 2px;
-  font-size: 8.5px;
+  margin-top: 3px;
+  font-size: 9px;
   color: var(--lg-faint);
-  letter-spacing: 0.26em;
+  letter-spacing: 0.3em;
 }
 
 .badge {
-  margin-left: 4px;
-  padding: 3px 10px;
+  margin-left: 6px;
+  padding: 4px 11px;
   border-radius: 999px;
-  border: 1px solid rgba(30, 123, 255, 0.28);
-  background: rgba(30, 123, 255, 0.07);
+  border: 1px solid rgba(30, 123, 255, 0.26);
+  background: rgba(30, 123, 255, 0.06);
   color: var(--lg-blue-deep);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.12em;
   white-space: nowrap;
 }
@@ -89,8 +252,8 @@
 .copy {
   position: relative;
   z-index: 3;
-  margin-top: clamp(24px, 7vh, 64px);
-  max-width: 500px;
+  margin-top: clamp(30px, 8vh, 72px);
+  max-width: 480px;
 }
 
 .eyebrow {
@@ -98,65 +261,66 @@
   align-items: center;
   gap: 13px;
   color: var(--lg-faint);
-  font-size: 11px;
-  letter-spacing: 0.16em;
+  font-size: 12px;
+  letter-spacing: 0.18em;
 
   i {
     display: block;
-    width: 28px;
+    width: 30px;
     height: 1px;
     flex-shrink: 0;
-    background: rgba(30, 29, 26, 0.22);
+    background: rgba(30, 29, 26, 0.24);
   }
 }
 
 .title {
-  margin-top: 18px;
+  margin-top: 20px;
   font-family: var(--lg-serif);
   font-weight: 600;
-  font-size: clamp(27px, 3vw, 40px);
-  line-height: 1.16;
+  font-size: 42px;
+  line-height: 1.15;
   letter-spacing: 0.015em;
 }
 
 .accent {
   position: relative;
   display: inline-block;
+  color: var(--lg-ink);
 
   &::after {
     content: '';
     position: absolute;
-    left: 2%;
-    right: 2%;
-    bottom: 0.06em;
-    height: 0.09em;
+    left: 1%;
+    right: 1%;
+    bottom: 0.05em;
+    height: 0.1em;
     border-radius: 999px;
-    background: linear-gradient(90deg, rgba(30, 123, 255, 0.22), rgba(63, 156, 140, 0.18));
+    background: linear-gradient(90deg, rgba(30, 123, 255, 0.3), rgba(63, 156, 140, 0.22));
     z-index: -1;
   }
 }
 
 .lede {
-  margin-top: 16px;
-  max-width: 460px;
-  font-size: 13.5px;
-  line-height: 1.9;
+  margin-top: 20px;
+  max-width: 468px;
+  font-size: 14.5px;
+  line-height: 1.95;
   color: var(--lg-muted);
 }
 
 .meta {
-  margin-top: 18px;
+  margin-top: 22px;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 16px;
-  font-size: 11px;
+  gap: 9px 18px;
+  font-size: 12px;
   color: var(--lg-faint);
   letter-spacing: 0.04em;
 
   span {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
+    gap: 8px;
   }
 
   i {
@@ -178,164 +342,39 @@
 
 .float {
   position: absolute;
-  padding: 6px 12px;
+  padding: 7px 14px;
   border-radius: 999px;
-  background: rgba(255, 253, 248, 0.82);
+  background: rgba(255, 253, 248, 0.86);
   border: 1px solid var(--lg-line);
   box-shadow: 0 8px 22px rgba(30, 29, 26, 0.05);
-  font-size: 10.5px;
+  font-size: 11.5px;
   color: var(--lg-muted);
   letter-spacing: 0.05em;
   animation: floaty 9s ease-in-out infinite;
 }
 
 .float1 {
-  right: 6%;
-  top: 24%;
+  right: 8%;
+  top: 25%;
   animation-delay: -1s;
 }
 
 .float2 {
-  right: 9%;
-  top: 50%;
+  right: 2%;
+  top: 69%;
   animation-delay: -4s;
 }
 
 .float3 {
-  left: 24%;
-  top: 72%;
+  left: 18%;
+  top: 76%;
   animation-delay: -6.5s;
 }
 
 .float4 {
-  right: 7%;
-  top: 63%;
+  right: 4%;
+  top: 57%;
   animation-delay: -2.5s;
-}
-
-/* 动态山水：整页底部通栏铺满，位于三栏内容之下 */
-.landscape {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: clamp(230px, 40vh, 330px);
-  z-index: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.lsLayer {
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 112%;
-  height: 100%;
-}
-
-.lsFar {
-  animation: drift 26s ease-in-out infinite alternate;
-}
-
-.lsMid {
-  animation: drift 19s ease-in-out infinite alternate-reverse;
-}
-
-.lsWater {
-  animation: drift 14s ease-in-out infinite alternate;
-}
-
-.cloud {
-  position: absolute;
-  height: 120px;
-  width: 420px;
-  border-radius: 50%;
-  filter: blur(28px);
-  background: radial-gradient(closest-side, rgba(255, 255, 255, 0.75), transparent 72%);
-}
-
-.cloud1 {
-  left: -6%;
-  bottom: 150px;
-  animation: cloudMove 38s linear infinite;
-}
-
-.cloud2 {
-  left: 46%;
-  bottom: 96px;
-  opacity: 0.7;
-  height: 90px;
-  width: 340px;
-  animation: cloudMove 46s linear infinite reverse;
-}
-
-.sun {
-  position: absolute;
-  right: 18%;
-  bottom: 198px;
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle at 38% 34%,
-    rgba(255, 236, 196, 0.95),
-    rgba(233, 178, 92, 0.55) 62%,
-    transparent 72%
-  );
-  filter: blur(1px);
-  opacity: 0.85;
-}
-
-.spark {
-  position: absolute;
-  bottom: 20px;
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: rgba(30, 123, 255, 0.5);
-  animation: rise linear infinite;
-}
-
-.spark1 {
-  left: 12%;
-  animation-duration: 7s;
-  animation-delay: -1s;
-}
-
-.spark2 {
-  left: 26%;
-  animation-duration: 9s;
-  animation-delay: -4s;
-  background: rgba(63, 156, 140, 0.5);
-}
-
-.spark3 {
-  left: 41%;
-  animation-duration: 8s;
-  animation-delay: -2s;
-}
-
-.spark4 {
-  left: 58%;
-  animation-duration: 10s;
-  animation-delay: -6s;
-  background: rgba(169, 133, 63, 0.45);
-}
-
-.spark5 {
-  left: 72%;
-  animation-duration: 7.5s;
-  animation-delay: -3s;
-}
-
-.waterline {
-  stroke-dasharray: 6 10;
-  animation: waterflow 11s linear infinite;
-}
-
-.waterline2 {
-  animation-duration: 16s;
-  animation-direction: reverse;
 }
 
 /* 页脚 */
@@ -348,8 +387,8 @@
 }
 
 .copyright {
-  max-width: 340px;
-  font-size: 10.5px;
+  max-width: 300px;
+  font-size: 11px;
   line-height: 1.7;
   color: rgba(30, 29, 26, 0.42);
 }
@@ -363,28 +402,26 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 22px 26px;
+  padding: 24px 20px;
   overflow-y: auto;
   user-select: text;
 }
 
-.centerDots {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.3;
-  background-image: radial-gradient(rgba(30, 29, 26, 0.14) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: radial-gradient(ellipse 62% 56% at 50% 46%, #000 6%, transparent 78%);
-  -webkit-mask-image: radial-gradient(ellipse 62% 56% at 50% 46%, #000 6%, transparent 78%);
-}
-
 .lang {
   position: absolute;
-  top: 14px;
-  right: 18px;
+  top: 18px;
+  right: 20px;
   z-index: 4;
-  border-radius: 8px;
+  min-height: 36px;
+  padding: 0 8px;
+  display: flex;
+  align-items: center;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid var(--lg-line);
+  box-shadow: 0 4px 14px rgba(30, 29, 26, 0.05);
+  font-size: 13px;
+  color: var(--lg-muted);
   overflow: hidden;
 }
 
@@ -392,115 +429,30 @@
   position: relative;
   z-index: 2;
   width: 100%;
+  max-width: 452px;
   display: flex;
   flex-direction: column;
   align-items: center;
-}
-
-.loginCard {
-  box-sizing: border-box;
-  width: 432px;
-  max-width: 100%;
-  // 鲁港通 - 去边框改半透明纸感，让登录卡融入整页山水背景
-  // 注意：不要加 backdrop-filter，Chromium 会把卡片绘制层提到 z-index 更高的史莱姆之上
-  background: rgba(255, 253, 248, 0.82);
-  border: none;
-  border-radius: 20px;
-  box-shadow:
-    0 2px 6px rgba(30, 29, 26, 0.04),
-    0 22px 54px rgba(30, 29, 26, 0.1),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  padding: 24px 24px 20px;
-}
-
-.loginTitle {
-  font-family: var(--lg-serif);
-  font-size: 24px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-}
-
-.loginSub {
-  margin-top: 5px;
-  font-size: 12px;
-  color: var(--lg-faint);
-}
-
-.loginBody {
-  margin-top: 13px;
-  font-size: 14px;
-  line-height: 1.5;
-}
-
-// 鲁港通 - 隐藏 LoginContainer 自带品牌行（登录卡标题由本页提供）
-.loginBody > div > div > div > div:first-child {
-  display: none;
-}
-
-.sessionNote {
-  margin-top: 14px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  color: var(--lg-muted);
-  font-size: 11.5px;
-}
-
-.lockGlyph {
-  width: 13px;
-  height: 13px;
-  flex-shrink: 0;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.6;
-}
-
-.version {
-  margin-top: 5px;
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--lg-gold);
-  letter-spacing: 0.08em;
-  opacity: 0.78;
-}
-
-/* ===== 右：史莱姆舞台 ===== */
-.right {
-  position: relative;
-  z-index: 1;
-  width: 22%;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-
-  &::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: radial-gradient(ellipse 70% 46% at 50% 88%, rgba(30, 123, 255, 0.1), transparent 66%);
-  }
 }
 
 /* 鲁港通 - 小史莱姆坐在登录卡上沿（相对 .stack 绝对定位） */
 .mini {
   position: absolute;
-  top: -80px;
+  top: -84px;
   left: 50%;
-  margin-left: 92px;
+  margin-left: 98px;
   width: 100px;
   z-index: 5;
   pointer-events: none;
 }
 
+// 鲁港通 - 小史莱姆阴影按可见球底锚定（素材球底约 84.3%），不再离身悬空
 .miniShadow {
   position: absolute;
   left: 50%;
-  top: 84px;
-  width: 62%;
-  height: 15px;
+  top: 82.5%;
+  width: 58%;
+  height: 13px;
   transform: translateX(-50%);
   border-radius: 50%;
   background: radial-gradient(closest-side, rgba(30, 29, 26, 0.26), transparent 76%);
@@ -508,6 +460,8 @@
 }
 
 .miniBob {
+  position: relative;
+  z-index: 1;
   animation: miniBob 4.6s ease-in-out infinite;
 }
 
@@ -520,8 +474,153 @@
   display: block;
   width: 100%;
   height: auto;
-  filter: drop-shadow(0 20px 30px rgba(30, 123, 255, 0.2));
+  filter: drop-shadow(0 18px 28px rgba(30, 123, 255, 0.18));
   user-drag: none;
+}
+
+// 鲁港通 - 注意：不要给登录卡加 backdrop-filter，Chromium 会把卡片绘制层提到史莱姆之上
+.loginCard {
+  box-sizing: border-box;
+  position: relative;
+  width: 100%;
+  border-radius: 22px;
+  background: rgba(255, 253, 248, 0.78);
+  box-shadow:
+    0 2px 6px rgba(30, 29, 26, 0.03),
+    0 24px 60px rgba(30, 29, 26, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 30px 30px 24px;
+}
+
+.loginTitle {
+  font-family: var(--lg-serif);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+
+.loginSub {
+  margin-top: 7px;
+  font-size: 12.5px;
+  color: var(--lg-faint);
+}
+
+.loginBody {
+  margin-top: 18px;
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+// 鲁港通 - 隐藏 LoginContainer 自带品牌行（登录卡标题由本页提供）
+.loginBody > div > div > div > div:first-child {
+  display: none;
+}
+
+.sessionNote {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--lg-muted);
+  font-size: 12px;
+}
+
+.lockGlyph {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+}
+
+.version {
+  margin-top: 6px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--lg-gold);
+  letter-spacing: 0.08em;
+  opacity: 0.78;
+}
+
+/* ===== 右：史莱姆舞台 ===== */
+.right {
+  position: relative;
+  z-index: 1;
+  width: 21%;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.stageGlow {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 150%;
+  height: 60%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(30, 123, 255, 0.09), transparent 70%);
+  pointer-events: none;
+}
+
+.bigStage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 30px 14px 0;
+}
+
+.big {
+  position: relative;
+  width: min(276px, 92%);
+  z-index: 3;
+}
+
+// 鲁港通 - 大史莱姆阴影与球体同容器，按可见球底锚定，随呼吸同步缩放
+.bigShadow {
+  position: absolute;
+  left: 50%;
+  top: 82.5%;
+  transform: translateX(-50%);
+  width: 62%;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.32), transparent 72%);
+  filter: blur(4px);
+  z-index: 0;
+  animation: shadowBreath 6.5s ease-in-out infinite;
+}
+
+.bigShadowWide {
+  position: absolute;
+  left: 50%;
+  top: 85%;
+  transform: translateX(-50%);
+  width: 88%;
+  height: 30px;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.1), transparent 78%);
+  filter: blur(9px);
+  z-index: 0;
+  animation: shadowBreath 6.5s ease-in-out infinite;
+}
+
+.bigBob {
+  position: relative;
+  z-index: 1;
+  animation: bigBob 6.5s ease-in-out infinite;
+  transform-origin: 50% 92%;
+}
+
+.jump {
+  animation: bigJump 1.5s ease;
 }
 
 .eyes {
@@ -606,45 +705,6 @@
   opacity: 1;
 }
 
-.bigStage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 40px 16px 0;
-}
-
-.big {
-  position: relative;
-  width: min(280px, 88%);
-  z-index: 3;
-}
-
-.bigBob {
-  animation: bigBob 6.5s ease-in-out infinite;
-  transform-origin: 50% 92%;
-}
-
-.jump {
-  animation: bigJump 1.5s ease;
-}
-
-/* 鲁港通 - 大史莱姆脚下阴影：加深加宽，与实体接触感更明确 */
-.shadow {
-  position: absolute;
-  left: 50%;
-  bottom: 42px;
-  transform: translateX(-50%);
-  width: 58%;
-  height: 26px;
-  border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.3), transparent 76%);
-  filter: blur(6px);
-  z-index: 1;
-}
-
 /* 粉色心心 */
 .hearts {
   position: absolute;
@@ -692,21 +752,24 @@
   }
 }
 
-@keyframes drift {
+@keyframes mistDrift {
   from {
-    transform: translateX(-2.2%);
+    transform: translateX(-6%);
   }
   to {
-    transform: translateX(1.2%);
+    transform: translateX(36%);
   }
 }
 
-@keyframes cloudMove {
-  from {
-    transform: translateX(-8%);
-  }
+@keyframes arcFlow {
   to {
-    transform: translateX(64%);
+    stroke-dashoffset: -420;
+  }
+}
+
+@keyframes waveFlow {
+  to {
+    stroke-dashoffset: -440;
   }
 }
 
@@ -722,14 +785,30 @@
     opacity: 0.25;
   }
   100% {
-    transform: translateY(-190px);
+    transform: translateY(-210px);
     opacity: 0;
   }
 }
 
-@keyframes waterflow {
-  to {
-    stroke-dashoffset: -320;
+@keyframes birdDrift {
+  0%,
+  100% {
+    transform: translate(0, 0);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translate(26px, -7px);
+    opacity: 0.55;
+  }
+}
+
+@keyframes boatBob {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-1.6deg);
+  }
+  50% {
+    transform: translateY(-4px) rotate(1.8deg);
   }
 }
 
@@ -795,6 +874,18 @@
   }
 }
 
+@keyframes shadowBreath {
+  0%,
+  100% {
+    transform: translateX(-50%) scaleX(1);
+    opacity: 0.92;
+  }
+  50% {
+    transform: translateX(-50%) scaleX(0.9);
+    opacity: 0.72;
+  }
+}
+
 @keyframes heartFloat {
   0% {
     transform: translateY(0) scale(0.6) rotate(-6deg);
@@ -831,19 +922,26 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .float,
-  .lsFar,
-  .lsMid,
-  .lsWater,
-  .cloud1,
-  .cloud2,
+  .birds,
+  .boatBob,
+  .wake,
+  .waveLine,
+  .mist,
   .spark,
-  .waterline,
+  .linkArc,
+  .linkArc2,
+  .float,
   .miniBob,
   .bigBob,
+  .bigShadow,
+  .bigShadowWide,
   .jump,
   .heart,
   .miniLook .eye {
     animation: none;
+  }
+
+  .linkDot {
+    display: none;
   }
 }

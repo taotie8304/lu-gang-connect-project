@@ -1,4 +1,5 @@
-import React, { useCallback, useSyncExternalStore } from 'react';
+import React, { useCallback, useState, useSyncExternalStore } from 'react';
+import { Flex } from '@chakra-ui/react';
 import { useRouter } from 'next/router';
 import { serviceSideProps } from '@/web/common/i18n/utils';
 import { clearToken } from '@/web/support/user/auth';
@@ -7,6 +8,7 @@ import { useMount } from 'ahooks';
 import LoginHeroModal from '@/pageComponents/login/LoginHeroModal';
 // 鲁港通 - 第 2 批：桌面客户端使用专属登录页（水墨长卷 + 玉版宣科技卡）
 import DesktopLoginHero from '@/pageComponents/login/DesktopLoginHero';
+import ThinkingFace from '@/components/common/ThinkingFace';
 import { isDesktopBridgeAvailable } from '@/pageComponents/chat/builtinBrowser/desktopBridge';
 import { postAcceptInvitationLink } from '@/web/support/user/team/api';
 import { useToast } from '@fastgpt/web/hooks/useToast';
@@ -21,6 +23,13 @@ import { useLoginRedirectAfterLogin } from '@/web/support/user/loginRedirect';
 const subscribeDesktopBridge = () => () => {};
 const getDesktopSnapshot = () => isDesktopBridgeAvailable();
 const getDesktopServerSnapshot = () => false;
+
+// 鲁港通 - 水合前的中性启动骨架：SSR 与首帧都是它，客户端不再先闪网页版首页
+const LoginBoot = () => (
+  <Flex position="fixed" inset={0} align="center" justify="center" bg="#f6f2e9">
+    <ThinkingFace size={44} />
+  </Flex>
+);
 
 // 鲁港通 - 默认 AI 助手应用 ID：普通用户登录后直达该应用对话，不再经过工作台
 const Login = ({ defaultAppId }: { defaultAppId: string }) => {
@@ -38,6 +47,7 @@ const Login = ({ defaultAppId }: { defaultAppId: string }) => {
     getDesktopSnapshot,
     getDesktopServerSnapshot
   );
+  const [booted, setBooted] = useState(false);
 
   const loginSuccess = useCallback(
     async (res: LoginSuccessResponseType) => {
@@ -89,9 +99,12 @@ const Login = ({ defaultAppId }: { defaultAppId: string }) => {
   );
 
   useMount(() => {
+    setBooted(true);
     clearToken();
     router.prefetch('/dashboard/agent');
   });
+
+  if (!booted) return <LoginBoot />;
 
   return isDesktop ? (
     <DesktopLoginHero onSuccess={loginSuccess} />
