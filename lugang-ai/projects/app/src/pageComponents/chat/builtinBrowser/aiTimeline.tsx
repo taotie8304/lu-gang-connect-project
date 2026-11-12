@@ -98,9 +98,9 @@ const AiTimeline = ({
               role={'listitem'}
               alignItems={'center'}
               gap={1.5}
-              minH={'24px'}
-              fontSize={'11px'}
-              lineHeight={'16px'}
+              minH={'26px'}
+              fontSize={'13px'}
+              lineHeight={'17px'}
               color={LG.text}
             >
               <Text
@@ -149,13 +149,13 @@ const AiTimeline = ({
         type={'button'}
         alignItems={'center'}
         gap={1}
-        h={'26px'}
+        h={'28px'}
         px={2.5}
         borderRadius={'8px'}
         border={`1px solid ${pendingConfirm ? 'rgba(192,138,46,0.45)' : LG.lineSoft}`}
         bg={pendingConfirm ? 'rgba(192,138,46,0.1)' : LG.paper}
         color={pendingConfirm ? '#A06A12' : LG.muted}
-        fontSize={'11px'}
+        fontSize={'13px'}
         cursor={'pointer'}
         _hover={{ bg: pendingConfirm ? 'rgba(192,138,46,0.16)' : LG.paleSoft }}
         onClick={onToggle}
@@ -164,8 +164,8 @@ const AiTimeline = ({
         <Text>{t('common:builtin_browser_ai_timeline_title', { count: steps.length })}</Text>
         <MyIcon
           name={'common/downArrowFill'}
-          w={'10px'}
-          h={'10px'}
+          w={'11px'}
+          h={'11px'}
           transform={open ? 'rotate(180deg)' : undefined}
           transition={'transform 0.15s'}
         />

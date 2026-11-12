@@ -20,7 +20,7 @@ const ChatErrorCard = ({ title, message }: { title: string; message: string }) =
           {title}
         </Box>
       </Flex>
-      <Box mt={'4px'} pl={'26px'} color={'myGray.500'} fontSize={'13px'} lineHeight={'20px'}>
+      <Box mt={'4px'} pl={'26px'} color={'myGray.500'} fontSize={'14px'} lineHeight={'21px'}>
         {message}
       </Box>
     </Box>

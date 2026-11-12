@@ -1,37 +1,35 @@
-// 鲁港通 - 桌面登录页三栏改版：左侧动态山水、右侧史莱姆舞台（0.13.0）
+// 鲁港通 - 桌面登录页：整页统一背景 + 铺满底部的动态山水，登录卡半透明融入（0.14.1）
 .hero {
-  --lg-paper: #f7f4ec;
-  --lg-paper2: #f2eee3;
-  --lg-card: #fffdf8;
   --lg-ink: #1e1d1a;
   --lg-muted: #6f6a5e;
   --lg-faint: #8f897b;
   --lg-line: rgba(30, 29, 26, 0.12);
-  --lg-line2: rgba(30, 29, 26, 0.18);
   --lg-blue-deep: #1863cc;
   --lg-gold: #a9853f;
   --lg-serif: 'Songti SC', 'Noto Serif SC', 'Source Han Serif SC', 'STSong', 'SimSun', Georgia,
     serif;
 
+  position: relative;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: var(--lg-paper);
+  // 鲁港通 - 整页一层连续渐变，三栏不再各自铺底色，消除竖向分界线
+  background: linear-gradient(150deg, #f8f5ee 0%, #f5f2e9 46%, #f1ede1 100%);
   color: var(--lg-ink);
   user-select: none;
 }
 
-/* ===== 左：文案 + 动态山水 ===== */
+/* ===== 左：文案 ===== */
 .left {
   position: relative;
+  z-index: 1;
   width: 40%;
   flex-shrink: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
   padding: 26px 40px 22px;
-  background: var(--lg-paper);
 }
 
 .glow {
@@ -215,13 +213,14 @@
   animation-delay: -2.5s;
 }
 
-/* 动态山水 */
+/* 动态山水：整页底部通栏铺满，位于三栏内容之下 */
 .landscape {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  height: 300px;
+  height: clamp(230px, 40vh, 330px);
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
 }
@@ -355,29 +354,15 @@
   color: rgba(30, 29, 26, 0.42);
 }
 
-.about {
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 11.5px;
-  color: var(--lg-muted);
-  letter-spacing: 0.12em;
-  white-space: nowrap;
-  transition: color 0.18s ease;
-
-  &:hover {
-    color: var(--lg-ink);
-  }
-}
-
 /* ===== 中：登录卡 ===== */
 .center {
   position: relative;
+  z-index: 1;
   flex: 1;
   min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--lg-paper2);
   padding: 22px 26px;
   overflow-y: auto;
   user-select: text;
@@ -416,12 +401,15 @@
   box-sizing: border-box;
   width: 432px;
   max-width: 100%;
-  background: var(--lg-card);
-  border: 1px solid var(--lg-line2);
+  // 鲁港通 - 去边框改半透明纸感，让登录卡融入整页山水背景
+  // 注意：不要加 backdrop-filter，Chromium 会把卡片绘制层提到 z-index 更高的史莱姆之上
+  background: rgba(255, 253, 248, 0.82);
+  border: none;
   border-radius: 20px;
   box-shadow:
-    0 2px 6px rgba(30, 29, 26, 0.05),
-    0 18px 48px rgba(30, 29, 26, 0.09);
+    0 2px 6px rgba(30, 29, 26, 0.04),
+    0 22px 54px rgba(30, 29, 26, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
   padding: 24px 24px 20px;
 }
 
@@ -480,11 +468,11 @@
 /* ===== 右：史莱姆舞台 ===== */
 .right {
   position: relative;
+  z-index: 1;
   width: 22%;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: linear-gradient(180deg, #f4f0e6, #efe9da);
   overflow: hidden;
 
   &::before {
@@ -496,13 +484,27 @@
   }
 }
 
+/* 鲁港通 - 小史莱姆坐在登录卡上沿（相对 .stack 绝对定位） */
 .mini {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 88px;
+  top: -80px;
+  left: 50%;
+  margin-left: 92px;
+  width: 100px;
   z-index: 5;
   pointer-events: none;
+}
+
+.miniShadow {
+  position: absolute;
+  left: 50%;
+  top: 84px;
+  width: 62%;
+  height: 15px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.26), transparent 76%);
+  filter: blur(3px);
 }
 
 .miniBob {
@@ -629,33 +631,18 @@
   animation: bigJump 1.5s ease;
 }
 
+/* 鲁港通 - 大史莱姆脚下阴影：加深加宽，与实体接触感更明确 */
 .shadow {
   position: absolute;
   left: 50%;
-  bottom: 44px;
+  bottom: 42px;
   transform: translateX(-50%);
-  width: 54%;
-  height: 24px;
+  width: 58%;
+  height: 26px;
   border-radius: 50%;
-  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.22), transparent 74%);
+  background: radial-gradient(closest-side, rgba(30, 29, 26, 0.3), transparent 76%);
   filter: blur(6px);
   z-index: 1;
-}
-
-.phaseLabel {
-  position: absolute;
-  bottom: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  padding: 4px 11px;
-  border-radius: 999px;
-  border: 1px solid var(--lg-line);
-  background: rgba(255, 253, 248, 0.7);
-  font-size: 10.5px;
-  color: var(--lg-muted);
-  letter-spacing: 0.08em;
-  white-space: nowrap;
 }
 
 /* 粉色心心 */

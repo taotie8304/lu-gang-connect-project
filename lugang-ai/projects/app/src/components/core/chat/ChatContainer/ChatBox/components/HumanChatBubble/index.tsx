@@ -82,7 +82,7 @@ const HumanChatBubble = ({
           borderRadius={'16px 16px 4px 16px'}
           textAlign={'left'}
           maxW={'100%'}
-          fontSize={'13px'}
+          fontSize={'15px'}
           lineHeight={1.7}
         >
           <HumanChatBubbleContent chatValue={chatValue} />

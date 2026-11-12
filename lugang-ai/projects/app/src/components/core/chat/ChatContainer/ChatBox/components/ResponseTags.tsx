@@ -74,14 +74,14 @@ const CitationListCard = React.memo(function CitationListCard({
           overflow={'hidden'}
         >
           <Box ref={cardContentRef}>
-            <Flex h={'22px'} alignItems={'center'} justifyContent={'space-between'}>
+            <Flex h={'24px'} alignItems={'center'} justifyContent={'space-between'}>
               <MyTooltip label={canOpenAll ? t('chat:view_citations') : ''}>
                 <Flex
                   alignItems={'center'}
                   gap={'6px'}
                   color={LG.muted}
-                  fontSize={'11.5px'}
-                  lineHeight={'18px'}
+                  fontSize={'12.5px'}
+                  lineHeight={'19px'}
                   fontWeight={500}
                   cursor={canOpenAll ? 'pointer' : 'default'}
                   _hover={

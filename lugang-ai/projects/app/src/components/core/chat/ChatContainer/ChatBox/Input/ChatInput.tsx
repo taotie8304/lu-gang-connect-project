@@ -211,7 +211,7 @@ const ChatInput = ({
             gap={'5px'}
             mb={'6px'}
             px={'8px'}
-            h={'22px'}
+            h={'24px'}
             w={'fit-content'}
             maxW={'100%'}
             borderRadius={'6px'}
@@ -219,10 +219,10 @@ const ChatInput = ({
             border={'1px solid'}
             borderColor={'rgba(111,157,208,0.28)'}
           >
-            <Text fontSize={'9px'} fontWeight={700} color={LG.mountain} flexShrink={0}>
+            <Text fontSize={'11.5px'} fontWeight={700} color={LG.mountain} flexShrink={0}>
               {libraryKindBadge(libraryFile.kind)}
             </Text>
-            <Text fontSize={'10px'} color={LG.ink} noOfLines={1} minW={0}>
+            <Text fontSize={'12.5px'} color={LG.ink} noOfLines={1} minW={0}>
               {libraryFile.name}
             </Text>
             <MyIcon

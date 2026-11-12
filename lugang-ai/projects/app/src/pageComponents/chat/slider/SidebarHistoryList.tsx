@@ -51,7 +51,7 @@ const GROUP_ORDER: GroupKey[] = ['pinned', 'today', 'week', 'earlier'];
 const GroupLabel = ({ label }: { label: string }) => (
   <Flex alignItems={'center'} gap={'6px'} px={'8px'} pt={'8px'} pb={'5px'}>
     <Box w={'4px'} h={'4px'} borderRadius={'50%'} bg={LG.lake} flexShrink={0} />
-    <Box fontSize={'10.5px'} letterSpacing={'0.16em'} color={'#788DA0'} whiteSpace={'nowrap'}>
+    <Box fontSize={'12.5px'} letterSpacing={'0.12em'} color={'#788DA0'} whiteSpace={'nowrap'}>
       {label}
     </Box>
   </Flex>
@@ -143,7 +143,7 @@ const SidebarHistoryList = ({ searchText = '' }: Props) => {
   return (
     <Flex flex={'1 0 0'} h={0} flexDir={'column'} overflowY={'auto'} overflowX={'hidden'} pb={2}>
       {groups.length === 0 ? (
-        <Box px={'9px'} py={3} fontSize={'11.5px'} color={LG.mutedSoft}>
+        <Box px={'9px'} py={3} fontSize={'13px'} color={LG.mutedSoft}>
           {searchText.trim() ? t('chat:sidebar.history_no_match') : t('chat:sidebar.history_empty')}
         </Box>
       ) : (
@@ -155,11 +155,11 @@ const SidebarHistoryList = ({ searchText = '' }: Props) => {
                 key={item.id}
                 alignItems={'center'}
                 gap={'8px'}
-                h={'32px'}
-                minH={'32px'}
+                h={'36px'}
+                minH={'36px'}
                 px={'9px'}
                 borderRadius={'8px'}
-                fontSize={'12.5px'}
+                fontSize={'14px'}
                 color={item.id === activeChatId ? '#245173' : '#4A5F70'}
                 bg={item.id === activeChatId ? LG.activeItem : 'transparent'}
                 boxShadow={item.id === activeChatId ? `inset 2px 0 0 ${LG.lake}` : 'none'}

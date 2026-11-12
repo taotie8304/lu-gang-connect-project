@@ -93,14 +93,14 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
     <Flex flexDir="column" alignItems="center" w="100%">
       <Flex alignItems="center" gap="8px" mb="14px" color="#5E7C98" lineHeight="1">
         <Box w="22px" h="1px" bgGradient="linear-gradient(90deg, transparent, #8FB4DC)" />
-        <Box as="span" fontSize="10.5px" letterSpacing="0.24em">
+        <Box as="span" fontSize="12.5px" letterSpacing="0.24em">
           {t('chat:home.eyebrow')}
         </Box>
         <Box w="22px" h="1px" bgGradient="linear-gradient(90deg, #8FB4DC, transparent)" />
       </Flex>
 
       <Box
-        fontSize={{ base: '26px', md: '34px' }}
+        fontSize={{ base: '30px', md: '38px' }}
         fontWeight={600}
         color="#1E3346"
         lineHeight="1.25"
@@ -125,7 +125,7 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
         )}
       </Box>
 
-      <Box mt="9px" fontSize="13.5px" color={LG.muted} textAlign="center">
+      <Box mt="9px" fontSize="15px" color={LG.muted} textAlign="center">
         {t('chat:home.subtitle')}
       </Box>
 
@@ -175,10 +175,10 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
               >
                 <CapabilityIcon name={key} />
               </Flex>
-              <Box as="h4" fontSize="13px" fontWeight={600} color={LG.ink} letterSpacing="0.02em">
+              <Box as="h4" fontSize="15px" fontWeight={600} color={LG.ink} letterSpacing="0.02em">
                 {t(`chat:home.capability.${key}.title`)}
               </Box>
-              <Box as="p" fontSize="11.5px" lineHeight="1.55" color="#788BA0">
+              <Box as="p" fontSize="13px" lineHeight="1.55" color="#788BA0">
                 {t(`chat:home.capability.${key}.desc`)}
               </Box>
               <Box position="absolute" top="14px" right="12px" color="#A3B5C7">
@@ -200,7 +200,7 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
       </Box>
 
       <Flex mt="20px" gap="9px" flexWrap="wrap" alignItems="center" justifyContent="center">
-        <Box as="span" fontSize="11px" color="#8296AA" letterSpacing="0.08em">
+        <Box as="span" fontSize="12.5px" color="#8296AA" letterSpacing="0.08em">
           {t('chat:home.try_label')}
         </Box>
         {SUGGESTIONS.map((key) => {
@@ -210,14 +210,14 @@ const LugangWelcomeHero = ({ onPickPrompt }: LugangWelcomeHeroProps) => {
               key={key}
               as="button"
               type="button"
-              h="28px"
+              h="32px"
               borderRadius="999px"
               border="1px solid"
               borderColor="rgba(111,157,208,0.3)"
               bg="rgba(255,255,255,0.85)"
               color="#476077"
-              fontSize="11.5px"
-              px="12px"
+              fontSize="13px"
+              px="13px"
               display="inline-flex"
               alignItems="center"
               gap="6px"

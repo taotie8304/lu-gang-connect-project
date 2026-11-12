@@ -123,8 +123,8 @@ const ToolbarIcon = ({
     <Flex
       alignItems={'center'}
       justifyContent={'center'}
-      w={'22px'}
-      h={'22px'}
+      w={'24px'}
+      h={'24px'}
       flexShrink={0}
       borderRadius={'5px'}
       color={LG.muted}
@@ -157,11 +157,11 @@ const AiStripAction = ({
   const button = (
     <Button
       size={'xs'}
-      h={'22px'}
+      h={'24px'}
       minW={0}
       w={narrow ? '24px' : undefined}
       px={narrow ? 0 : '8px'}
-      fontSize={'9.5px'}
+      fontSize={'12px'}
       fontWeight={500}
       borderRadius={'6px'}
       border={'1px solid'}
@@ -185,11 +185,11 @@ const AiStripAction = ({
       onClick={onClick}
     >
       {narrow ? (
-        <MyIcon name={icon} w={'12px'} h={'12px'} />
+        <MyIcon name={icon} w={'13px'} h={'13px'} />
       ) : (
         <Flex alignItems={'center'} gap={'4px'}>
-          <MyIcon name={icon} w={'12px'} h={'12px'} />
-          <Text as={'span'} fontSize={'9.5px'}>
+          <MyIcon name={icon} w={'13px'} h={'13px'} />
+          <Text as={'span'} fontSize={'12px'}>
             {label}
           </Text>
         </Flex>
@@ -1778,9 +1778,9 @@ const BuiltinBrowserPanelBody = ({
         borderBottomColor={LG.lineSoft}
         bgGradient={'linear(to-b, #FFFFFF, #F4F8FE)'}
       >
-        <MyIcon name={'common/globalLine'} w={'14px'} h={'14px'} color={LG.mountain} />
+        <MyIcon name={'common/globalLine'} w={'15px'} h={'15px'} color={LG.mountain} />
         <Text
-          fontSize={'12px'}
+          fontSize={'15px'}
           fontWeight={600}
           color={LG.ink}
           whiteSpace={'nowrap'}
@@ -1790,8 +1790,8 @@ const BuiltinBrowserPanelBody = ({
         </Text>
         {isNative && status === 'active' && (
           <Text
-            h={'17px'}
-            px={'6px'}
+            h={'22px'}
+            px={'7px'}
             display={'inline-flex'}
             alignItems={'center'}
             borderRadius={'4px'}
@@ -1799,7 +1799,7 @@ const BuiltinBrowserPanelBody = ({
             border={'1px solid'}
             borderColor={'rgba(111,157,208,0.26)'}
             color={LG.mountain}
-            fontSize={'9px'}
+            fontSize={'12px'}
             letterSpacing={'0.06em'}
             whiteSpace={'nowrap'}
           >
@@ -1808,7 +1808,7 @@ const BuiltinBrowserPanelBody = ({
         )}
         {!isNative && status === 'active' && showRemaining && remainingMinutes !== undefined && (
           <Text
-            fontSize={'10px'}
+            fontSize={'13px'}
             color={isExpiringSoon ? '#C4823A' : LG.muted}
             whiteSpace={'nowrap'}
           >
@@ -1903,7 +1903,7 @@ const BuiltinBrowserPanelBody = ({
           {!aiStripNarrow && (
             <>
               <Text
-                fontSize={'10.5px'}
+                fontSize={'13px'}
                 fontWeight={600}
                 color={aiBadge.status === 'paused' ? '#8A6D3B' : LG.mountain}
                 whiteSpace={'nowrap'}
@@ -1913,7 +1913,7 @@ const BuiltinBrowserPanelBody = ({
               <Text
                 flex={'1 1 0'}
                 minW={0}
-                fontSize={'9.5px'}
+                fontSize={'12px'}
                 color={aiBadge.status === 'stopped' ? LG.muted : '#7B93A8'}
                 isTruncated
                 title={aiBadge.status === 'stopped' ? aiBadge.message : undefined}
@@ -2000,9 +2000,9 @@ const BuiltinBrowserPanelBody = ({
           <Flex
             alignItems={'center'}
             gap={1}
-            h={'24px'}
-            minW={'88px'}
-            maxW={'180px'}
+            h={'28px'}
+            minW={'94px'}
+            maxW={'200px'}
             flexShrink={0}
             px={'8px'}
             borderRadius={'6px'}
@@ -2027,7 +2027,7 @@ const BuiltinBrowserPanelBody = ({
             />
             <Text
               flex={'1 1 0'}
-              fontSize={'10px'}
+              fontSize={'13px'}
               noOfLines={1}
               color={panelView === 'library' ? LG.ink : LG.muted}
             >
@@ -2040,9 +2040,9 @@ const BuiltinBrowserPanelBody = ({
             key={tab.index}
             alignItems={'center'}
             gap={1}
-            h={'24px'}
-            minW={'88px'}
-            maxW={'180px'}
+            h={'28px'}
+            minW={'94px'}
+            maxW={'200px'}
             flexShrink={0}
             px={'8px'}
             borderRadius={'6px'}
@@ -2067,7 +2067,7 @@ const BuiltinBrowserPanelBody = ({
           >
             <Text
               flex={'1 1 0'}
-              fontSize={'10px'}
+              fontSize={'13px'}
               noOfLines={1}
               color={tab.current && !activeDocToken ? LG.ink : LG.muted}
             >
@@ -2115,9 +2115,9 @@ const BuiltinBrowserPanelBody = ({
               key={doc.token}
               alignItems={'center'}
               gap={1}
-              h={'24px'}
-              minW={'88px'}
-              maxW={'180px'}
+              h={'28px'}
+              minW={'94px'}
+              maxW={'200px'}
               flexShrink={0}
               px={'6px'}
               borderRadius={'6px'}
@@ -2131,10 +2131,10 @@ const BuiltinBrowserPanelBody = ({
                 setActiveDocToken(doc.token);
               }}
             >
-              <DocumentFormatChip format={doc.format} size={13} />
+              <DocumentFormatChip format={doc.format} size={14} />
               <Text
                 flex={'1 1 0'}
-                fontSize={'10px'}
+                fontSize={'13px'}
                 noOfLines={1}
                 color={isActiveDoc ? LG.ink : LG.muted}
               >
@@ -2142,8 +2142,8 @@ const BuiltinBrowserPanelBody = ({
               </Text>
               <MyIcon
                 name={'close'}
-                w={'11px'}
-                h={'11px'}
+                w={'12px'}
+                h={'12px'}
                 flexShrink={0}
                 color={LG.mutedSoft}
                 _hover={{ color: LG.mountain }}
@@ -2160,8 +2160,8 @@ const BuiltinBrowserPanelBody = ({
           <Flex
             alignItems={'center'}
             justifyContent={'center'}
-            w={'24px'}
-            h={'24px'}
+            w={'28px'}
+            h={'28px'}
             flexShrink={0}
             borderRadius={'6px'}
             color={status === 'active' && !tabsFull ? LG.muted : LG.mutedSoft}
@@ -2219,8 +2219,8 @@ const BuiltinBrowserPanelBody = ({
             flex={'1 1 0'}
             minW={0}
             size={'sm'}
-            h={'27px'}
-            fontSize={'11px'}
+            h={'30px'}
+            fontSize={'13px'}
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             onFocus={() => {
@@ -2256,10 +2256,10 @@ const BuiltinBrowserPanelBody = ({
                 flexShrink={0}
                 alignItems={'center'}
                 gap={'3px'}
-                h={'22px'}
+                h={'24px'}
                 px={'5px'}
                 borderRadius={'5px'}
-                fontSize={'10px'}
+                fontSize={'13px'}
                 color={navState.siteAiMode === 'blocked' ? '#9E3E33' : '#8A6314'}
                 bg={navState.siteAiMode === 'blocked' ? '#FBEDEA' : '#FBF3DF'}
                 cursor={'pointer'}
@@ -2270,8 +2270,8 @@ const BuiltinBrowserPanelBody = ({
                   name={
                     navState.siteAiMode === 'blocked' ? 'common/disable' : 'common/viewLight'
                   }
-                  w={'10px'}
-                  h={'10px'}
+                  w={'11px'}
+                  h={'11px'}
                   color={navState.siteAiMode === 'blocked' ? '#9E3E33' : '#8A6314'}
                 />
                 {navState.siteAiMode === 'blocked'
@@ -2285,11 +2285,11 @@ const BuiltinBrowserPanelBody = ({
               <Text
                 as={'button'}
                 type={'button'}
-                h={'22px'}
-                minW={'38px'}
+                h={'24px'}
+                minW={'42px'}
                 px={'4px'}
                 borderRadius={'5px'}
-                fontSize={'10px'}
+                fontSize={'13px'}
                 color={navState.zoomPercent === 100 ? LG.muted : LG.mountain}
                 bg={navState.zoomPercent === 100 ? 'transparent' : 'rgba(111,157,208,0.14)'}
                 _hover={{ bg: 'rgba(54,101,150,0.08)' }}
@@ -2338,8 +2338,8 @@ const BuiltinBrowserPanelBody = ({
           <Input
             ref={findInputRef}
             size={'sm'}
-            h={'24px'}
-            fontSize={'11px'}
+            h={'26px'}
+            fontSize={'13px'}
             flex={'1 1 0'}
             minW={0}
             value={findQuery}
@@ -2373,9 +2373,9 @@ const BuiltinBrowserPanelBody = ({
             _placeholder={{ color: '#9DAFC2' }}
           />
           <Text
-            minW={'46px'}
+            minW={'52px'}
             textAlign={'right'}
-            fontSize={'10px'}
+            fontSize={'13px'}
             whiteSpace={'nowrap'}
             color={findResult && findResult.matches === 0 ? '#C4823A' : LG.muted}
           >
@@ -2444,7 +2444,7 @@ const BuiltinBrowserPanelBody = ({
               gap={3}
             >
               <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
-              <Text fontSize={'12px'} color={LG.muted}>
+              <Text fontSize={'14px'} color={LG.muted}>
                 {t('common:builtin_browser_doc_loading')}
               </Text>
             </Flex>
@@ -2477,7 +2477,7 @@ const BuiltinBrowserPanelBody = ({
           >
             <Flex alignItems={'center'} gap={'6px'} mb={'1'}>
               <MyIcon name={'common/globalLine'} w={'16px'} h={'16px'} color={LG.mountain} />
-              <Text fontSize={'13px'} fontWeight={600} color={LG.ink}>
+              <Text fontSize={'14.5px'} fontWeight={600} color={LG.ink}>
                 {t('common:builtin_browser_doc_landing_title')}
               </Text>
             </Flex>
@@ -2493,15 +2493,15 @@ const BuiltinBrowserPanelBody = ({
               borderRadius={'10px'}
               boxShadow={'0 6px 22px rgba(78,128,178,0.06)'}
             >
-              <Text fontSize={'11px'} fontWeight={600} color={LG.text} mb={'6px'}>
+              <Text fontSize={'13px'} fontWeight={600} color={LG.text} mb={'6px'}>
                 {t('common:builtin_browser_doc_landing_url_label')}
               </Text>
               <Flex gap={'6px'}>
                 <Input
                   ref={urlInputRef}
                   size={'sm'}
-                  h={'29px'}
-                  fontSize={'11px'}
+                  h={'32px'}
+                  fontSize={'13px'}
                   value={urlInput}
                   onChange={(e) => setUrlInput(e.target.value)}
                   onFocus={() => {
@@ -2531,9 +2531,9 @@ const BuiltinBrowserPanelBody = ({
                 />
                 <Button
                   size={'sm'}
-                  h={'29px'}
+                  h={'32px'}
                   px={'14px'}
-                  fontSize={'11px'}
+                  fontSize={'13px'}
                   borderRadius={'7px'}
                   bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
                   color={'white'}
@@ -2558,14 +2558,14 @@ const BuiltinBrowserPanelBody = ({
                 borderRadius={'10px'}
                 boxShadow={'0 6px 22px rgba(78,128,178,0.06)'}
               >
-                <Text fontSize={'11px'} fontWeight={600} color={LG.text} mb={'6px'}>
+                <Text fontSize={'13px'} fontWeight={600} color={LG.text} mb={'6px'}>
                   {t('common:builtin_browser_doc_landing_file_label')}
                 </Text>
                 <Button
                   w={'100%'}
                   size={'sm'}
-                  h={'29px'}
-                  fontSize={'11px'}
+                  h={'32px'}
+                  fontSize={'13px'}
                   borderRadius={'7px'}
                   variant={'outline'}
                   color={LG.mountain}
@@ -2576,7 +2576,7 @@ const BuiltinBrowserPanelBody = ({
                 >
                   {t('common:builtin_browser_doc_landing_file_action')}
                 </Button>
-                <Text mt={'6px'} fontSize={'10px'} color={LG.mutedSoft}>
+                <Text mt={'6px'} fontSize={'13px'} color={LG.mutedSoft}>
                   {t('common:builtin_browser_doc_landing_file_hint')}
                 </Text>
               </Box>
@@ -2595,11 +2595,11 @@ const BuiltinBrowserPanelBody = ({
             gap={3}
           >
             <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
-            <Text fontSize={'12px'} color={LG.muted}>
+            <Text fontSize={'14px'} color={LG.muted}>
               {t('common:builtin_browser_loading')}
             </Text>
             {loadingSlow && (
-              <Text fontSize={'11px'} color={LG.mutedSoft} textAlign={'center'} px={6}>
+              <Text fontSize={'13px'} color={LG.mutedSoft} textAlign={'center'} px={6}>
                 {t('common:builtin_browser_loading_slow')}
               </Text>
             )}
@@ -2616,7 +2616,7 @@ const BuiltinBrowserPanelBody = ({
             px={6}
           >
             <MyIcon name={'common/error'} w={'22px'} h={'22px'} color={'red.500'} />
-            <Text fontSize={'12px'} color={LG.text} textAlign={'center'}>
+            <Text fontSize={'14px'} color={LG.text} textAlign={'center'}>
               {errorMessage}
             </Text>
             <Button size={'sm'} variant={'primary'} onClick={() => void loadSession()}>
@@ -2665,7 +2665,7 @@ const BuiltinBrowserPanelBody = ({
             color={LG.muted}
           >
             {isResizing && (
-              <Text fontSize={'12px'}>{t('common:builtin_browser_resizing')}</Text>
+              <Text fontSize={'14px'}>{t('common:builtin_browser_resizing')}</Text>
             )}
           </Flex>
         )}
@@ -2711,23 +2711,23 @@ const BuiltinBrowserPanelBody = ({
               <Flex
                 key={item.id}
                 alignItems={'center'}
-                gap={'5px'}
-                px={'8px'}
-                py={'4px'}
+                gap={'6px'}
+                px={'9px'}
+                py={'5px'}
                 borderBottom={'1px solid'}
                 borderBottomColor={'rgba(231,241,251,0.7)'}
               >
                 <MyIcon
                   name={'common/download'}
-                  w={'12px'}
-                  h={'12px'}
+                  w={'13px'}
+                  h={'13px'}
                   flexShrink={0}
                   color={item.status === 'progressing' ? LG.lake : LG.mutedSoft}
                 />
                 <Text
                   flex={'1 1 0'}
                   minW={0}
-                  fontSize={'10px'}
+                  fontSize={'13px'}
                   noOfLines={1}
                   color={LG.text}
                   title={item.fileName}
@@ -2751,7 +2751,7 @@ const BuiltinBrowserPanelBody = ({
                       />
                     </Box>
                     <Text
-                      fontSize={'10px'}
+                      fontSize={'13px'}
                       color={LG.muted}
                       minW={'32px'}
                       textAlign={'right'}
@@ -2767,13 +2767,13 @@ const BuiltinBrowserPanelBody = ({
                   </>
                 ) : item.status === 'completed' ? (
                   <>
-                    <Text fontSize={'10px'} color={LG.mutedSoft} flexShrink={0}>
+                    <Text fontSize={'13px'} color={LG.mutedSoft} flexShrink={0}>
                       {formatBytes(item.totalBytes)}
                     </Text>
                     <Text
                       as={'button'}
                       type={'button'}
-                      fontSize={'10px'}
+                      fontSize={'13px'}
                       color={LG.mountain}
                       whiteSpace={'nowrap'}
                       _hover={{ textDecoration: 'underline' }}
@@ -2784,7 +2784,7 @@ const BuiltinBrowserPanelBody = ({
                     <Text
                       as={'button'}
                       type={'button'}
-                      fontSize={'10px'}
+                      fontSize={'13px'}
                       color={LG.mountain}
                       whiteSpace={'nowrap'}
                       _hover={{ textDecoration: 'underline' }}
@@ -2800,7 +2800,7 @@ const BuiltinBrowserPanelBody = ({
                   </>
                 ) : (
                   <>
-                    <Text fontSize={'10px'} color={'#C4823A'} flexShrink={0}>
+                    <Text fontSize={'13px'} color={'#C4823A'} flexShrink={0}>
                       {item.status === 'cancelled'
                         ? t('common:builtin_browser_download_cancelled')
                         : t('common:builtin_browser_download_failed')}
@@ -2830,16 +2830,16 @@ const BuiltinBrowserPanelBody = ({
       >
         <ModalOverlay bg={'rgba(20,36,54,0.28)'} zIndex={1500} />
         <ModalContent borderRadius={'12px'} p={'18px'} containerProps={{ zIndex: 1501 }}>
-          <Text fontSize={'14px'} fontWeight={600} color={LG.ink}>
+          <Text fontSize={'15px'} fontWeight={600} color={LG.ink}>
             {t('common:builtin_browser_clear_title')}
           </Text>
-          <Text mt={'4px'} fontSize={'11px'} color={LG.muted}>
+          <Text mt={'4px'} fontSize={'13px'} color={LG.muted}>
             {t('common:builtin_browser_clear_desc')}
           </Text>
           <Flex flexDirection={'column'} gap={'8px'} mt={'14px'}>
             <Checkbox
               size={'sm'}
-              fontSize={'11px'}
+              fontSize={'13px'}
               color={LG.text}
               isChecked={clearOptions.cookies}
               onChange={(e) =>
@@ -2850,7 +2850,7 @@ const BuiltinBrowserPanelBody = ({
             </Checkbox>
             <Checkbox
               size={'sm'}
-              fontSize={'11px'}
+              fontSize={'13px'}
               color={LG.text}
               isChecked={clearOptions.cache}
               onChange={(e) => setClearOptions((prev) => ({ ...prev, cache: e.target.checked }))}
@@ -2859,7 +2859,7 @@ const BuiltinBrowserPanelBody = ({
             </Checkbox>
             <Checkbox
               size={'sm'}
-              fontSize={'11px'}
+              fontSize={'13px'}
               color={LG.text}
               isChecked={clearOptions.permissions}
               onChange={(e) =>
@@ -2869,15 +2869,15 @@ const BuiltinBrowserPanelBody = ({
               {t('common:builtin_browser_clear_permissions')}
             </Checkbox>
           </Flex>
-          <Text mt={'10px'} fontSize={'10px'} color={LG.mutedSoft}>
+          <Text mt={'10px'} fontSize={'13px'} color={LG.mutedSoft}>
             {t('common:builtin_browser_clear_hint')}
           </Text>
           <Flex justifyContent={'flex-end'} gap={'8px'} mt={'16px'}>
             <Button
               size={'sm'}
-              h={'28px'}
-              px={'14px'}
-              fontSize={'11px'}
+              h={'30px'}
+              px={'15px'}
+              fontSize={'13px'}
               borderRadius={'6px'}
               variant={'ghost'}
               color={LG.muted}
@@ -2888,9 +2888,9 @@ const BuiltinBrowserPanelBody = ({
             </Button>
             <Button
               size={'sm'}
-              h={'28px'}
-              px={'14px'}
-              fontSize={'11px'}
+              h={'30px'}
+              px={'15px'}
+              fontSize={'13px'}
               borderRadius={'6px'}
               colorScheme={'red'}
               isDisabled={clearSelectedCount === 0}
@@ -2913,7 +2913,7 @@ const BuiltinBrowserPanelBody = ({
       >
         <ModalOverlay bg={'rgba(20,36,54,0.28)'} zIndex={1500} />
         <ModalContent borderRadius={'12px'} p={'18px'} containerProps={{ zIndex: 1501 }}>
-          <Text fontSize={'14px'} fontWeight={600} color={LG.ink}>
+          <Text fontSize={'15px'} fontWeight={600} color={LG.ink}>
             {t('common:builtin_browser_shortcuts_title')}
           </Text>
           <Flex flexDirection={'column'} mt={'10px'}>
@@ -2933,7 +2933,7 @@ const BuiltinBrowserPanelBody = ({
                 justifyContent={'space-between'}
                 alignItems={'center'}
                 py={'4px'}
-                fontSize={'11px'}
+                fontSize={'13px'}
               >
                 <Text color={LG.text}>{label}</Text>
                 <Text color={LG.mountain} fontWeight={500} whiteSpace={'nowrap'}>
@@ -2945,9 +2945,9 @@ const BuiltinBrowserPanelBody = ({
           <Flex justifyContent={'flex-end'} mt={'12px'}>
             <Button
               size={'sm'}
-              h={'28px'}
-              px={'14px'}
-              fontSize={'11px'}
+              h={'30px'}
+              px={'15px'}
+              fontSize={'13px'}
               borderRadius={'6px'}
               variant={'primary'}
               onClick={() => setShortcutsOpen(false)}

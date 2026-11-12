@@ -49,7 +49,7 @@ const BrandFace = ({ size = 34, onClick }: { size?: number; onClick?: () => void
 const SectionLabel = ({ label }: { label: string }) => (
   <Flex alignItems={'center'} gap={'6px'} px={'8px'} pt={'8px'} pb={'5px'}>
     <Box w={'4px'} h={'4px'} borderRadius={'50%'} bg={LG.lake} flexShrink={0} />
-    <Text fontSize={'10.5px'} letterSpacing={'0.16em'} color={'#788DA0'} whiteSpace={'nowrap'}>
+    <Text fontSize={'12.5px'} letterSpacing={'0.12em'} color={'#788DA0'} whiteSpace={'nowrap'}>
       {label}
     </Text>
   </Flex>
@@ -321,7 +321,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
             <BrandFace onClick={handlers.openHome} />
             <Box minW={0} flex={'1 0 0'} cursor={'pointer'} onClick={handlers.openHome}>
               <Text
-                fontSize={'15px'}
+                fontSize={'16px'}
                 fontWeight={600}
                 letterSpacing={'0.12em'}
                 color={LG.ink}
@@ -330,8 +330,8 @@ const ChatSlider = ({ activeAppId }: Props) => {
                 鲁港通
               </Text>
               <Text
-                fontSize={'9.5px'}
-                letterSpacing={'0.34em'}
+                fontSize={'12px'}
+                letterSpacing={'0.3em'}
                 color={'#4F80B4'}
                 mt={'2px'}
                 whiteSpace={'nowrap'}
@@ -363,18 +363,18 @@ const ChatSlider = ({ activeAppId }: Props) => {
 
         {/* 新对话 */}
         <Button
-          h={'42px'}
-          minH={'42px'}
+          h={'44px'}
+          minH={'44px'}
           w={'100%'}
           borderRadius={'11px'}
           border={'1px solid'}
           borderColor={'rgba(111,157,208,0.4)'}
           bg={'linear-gradient(135deg, #FFFFFF, #EDF4FC)'}
           color={LG.mountain}
-          fontSize={'13.5px'}
+          fontSize={'15px'}
           fontWeight={400}
           letterSpacing={'0.04em'}
-          leftIcon={<MyIcon name={'common/addLight'} w={'15px'} color={'currentColor'} />}
+          leftIcon={<MyIcon name={'common/addLight'} w={'16px'} color={'currentColor'} />}
           _hover={{
             bg: 'linear-gradient(135deg, #FFFFFF, #E7F1FB)',
             borderColor: 'rgba(111,157,208,0.75)',
@@ -388,7 +388,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
 
         {/* 搜索会话 */}
         <Flex
-          h={'34px'}
+          h={'36px'}
           flexShrink={0}
           borderRadius={'9px'}
           bg={'rgba(255,255,255,0.72)'}
@@ -398,13 +398,13 @@ const ChatSlider = ({ activeAppId }: Props) => {
           gap={'8px'}
           px={'10px'}
         >
-          <MyIcon name={'common/searchLight'} w={'13px'} color={'#8DA2B4'} flexShrink={0} />
+          <MyIcon name={'common/searchLight'} w={'14px'} color={'#8DA2B4'} flexShrink={0} />
           <Input
             variant={'unstyled'}
-            h={'32px'}
-            minH={'32px'}
+            h={'34px'}
+            minH={'34px'}
             flex={'1 0 0'}
-            fontSize={'12px'}
+            fontSize={'14px'}
             color={LG.text}
             placeholder={t('chat:sidebar.search_placeholder')}
             value={searchText}
@@ -422,11 +422,11 @@ const ChatSlider = ({ activeAppId }: Props) => {
                 key={item.appId}
                 alignItems={'center'}
                 gap={'9px'}
-                h={'32px'}
-                minH={'32px'}
+                h={'36px'}
+                minH={'36px'}
                 px={'9px'}
                 borderRadius={'8px'}
-                fontSize={'12.5px'}
+                fontSize={'14px'}
                 color={isAppActive(item.appId) ? '#245173' : '#405268'}
                 bg={isAppActive(item.appId) ? LG.activeItem : 'transparent'}
                 boxShadow={isAppActive(item.appId) ? `inset 2px 0 0 ${LG.lake}` : 'none'}
@@ -444,11 +444,11 @@ const ChatSlider = ({ activeAppId }: Props) => {
               <Flex
                 alignItems={'center'}
                 gap={'9px'}
-                h={'32px'}
-                minH={'32px'}
+                h={'36px'}
+                minH={'36px'}
                 px={'9px'}
                 borderRadius={'8px'}
-                fontSize={'12.5px'}
+                fontSize={'14px'}
                 color={pane === ChatSidebarPaneEnum.ALL_APPS ? '#245173' : '#405268'}
                 bg={pane === ChatSidebarPaneEnum.ALL_APPS ? LG.activeItem : 'transparent'}
                 boxShadow={
@@ -477,7 +477,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
         <Flex flexDirection={'column'} gap={'8px'} flexShrink={0}>
           {surplusPoints !== undefined && (
             <Flex
-              h={'34px'}
+              h={'38px'}
               borderRadius={'9px'}
               bg={'rgba(255,255,255,0.75)'}
               border={'1px solid'}
@@ -485,19 +485,19 @@ const ChatSlider = ({ activeAppId }: Props) => {
               alignItems={'center'}
               gap={'8px'}
               px={'10px'}
-              fontSize={'11.5px'}
+              fontSize={'13px'}
               color={'#4B6478'}
             >
-              <MyIcon name={'common/wallet'} w={'13px'} color={LG.lake} flexShrink={0} />
+              <MyIcon name={'common/wallet'} w={'14px'} color={LG.lake} flexShrink={0} />
               <Text whiteSpace={'nowrap'}>{t('chat:sidebar.credits_remaining')}</Text>
-              <Text fontSize={'13px'} fontWeight={600} color={LG.mountain} letterSpacing={'0.02em'}>
+              <Text fontSize={'14.5px'} fontWeight={600} color={LG.mountain} letterSpacing={'0.02em'}>
                 {formatNumber(surplusPoints)}
               </Text>
               <Text whiteSpace={'nowrap'}>{t('chat:sidebar.credits_unit')}</Text>
               <Button
                 variant={'unstyled'}
                 ml={'auto'}
-                fontSize={'10.5px'}
+                fontSize={'12px'}
                 color={LG.mountain}
                 flexShrink={0}
                 _hover={{ textDecoration: 'underline' }}
@@ -509,7 +509,7 @@ const ChatSlider = ({ activeAppId }: Props) => {
           )}
 
           <Flex
-            h={'44px'}
+            h={'48px'}
             borderRadius={'10px'}
             border={'1px solid'}
             borderColor={LG.line}
@@ -524,11 +524,11 @@ const ChatSlider = ({ activeAppId }: Props) => {
                   <Flex alignItems={'center'} gap={'9px'} minW={0} w={'100%'}>
                     {userAvatar}
                     <Box minW={0} flex={'1 0 0'}>
-                      <Text fontSize={'11.5px'} color={'#3F5266'} className={'textEllipsis'}>
+                      <Text fontSize={'13.5px'} color={'#3F5266'} className={'textEllipsis'}>
                         {userInfo.team?.memberName || userInfo.username}
                       </Text>
                       <Text
-                        fontSize={'10.5px'}
+                        fontSize={'12px'}
                         color={'#8095A8'}
                         mt={'1px'}
                         className={'textEllipsis'}
@@ -561,8 +561,8 @@ const ChatSlider = ({ activeAppId }: Props) => {
               </>
             ) : (
               <Flex alignItems={'center'} gap={'9px'} minW={0} cursor={'pointer'}>
-                <Avatar bg={LG.seal} borderRadius={'8px'} w={'26px'} h={'26px'} />
-                <Text fontSize={'11.5px'} color={'#3F5266'}>
+                <Avatar bg={LG.seal} borderRadius={'8px'} w={'28px'} h={'28px'} />
+                <Text fontSize={'13.5px'} color={'#3F5266'}>
                   {t('login:Login')}
                 </Text>
               </Flex>

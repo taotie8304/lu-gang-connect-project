@@ -227,7 +227,7 @@ const DesktopTitleBar = () => {
             borderRadius="5px"
           />
           <Text
-            fontSize="12px"
+            fontSize="13.5px"
             fontWeight={600}
             letterSpacing="0.18em"
             color={theme.brandColor}
@@ -236,7 +236,7 @@ const DesktopTitleBar = () => {
             {brand}
           </Text>
           <Text
-            fontSize="9.5px"
+            fontSize="11px"
             letterSpacing="0.28em"
             color={theme.taglineColor}
             whiteSpace="nowrap"

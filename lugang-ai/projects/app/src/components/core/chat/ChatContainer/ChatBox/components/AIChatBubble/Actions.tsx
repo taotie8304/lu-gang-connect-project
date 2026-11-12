@@ -120,7 +120,7 @@ const AIChatBubbleActions = ({
         alignItems={'center'}
         flexWrap={'wrap'}
         color={'myGray.400'}
-        fontSize={'12px'}
+        fontSize={'13px'}
         fontWeight={500}
         lineHeight={'24px'}
         whiteSpace={'nowrap'}
@@ -204,10 +204,10 @@ const AIChatBubbleActions = ({
           p={'12px'}
           whiteSpace={'pre-wrap'}
         >
-          <Box fontSize={'10px'} lineHeight={'14px'} color={'myGray.500'}>
+          <Box fontSize={'11px'} lineHeight={'15px'} color={'myGray.500'}>
             {feedbackUserName || t('chat:log.feedback.user_bad_feedback')}
           </Box>
-          <Box fontSize={'12px'} lineHeight={'18px'} color={'myGray.900'}>
+          <Box fontSize={'13px'} lineHeight={'19px'} color={'myGray.900'}>
             {badFeedback}
           </Box>
         </Flex>

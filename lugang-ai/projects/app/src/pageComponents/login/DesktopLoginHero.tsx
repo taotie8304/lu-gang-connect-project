@@ -1,11 +1,10 @@
 /**
- * 鲁港通 - 桌面客户端专属登录页（0.13.0 三栏改版）
- * 左：品牌文案 + 动态山水；中：登录卡；右：大小史莱姆舞台。
+ * 鲁港通 - 桌面客户端专属登录页（0.14.1 整页山水 + 史莱姆坐卡改版）
+ * 整页共用一层背景与动态山水，登录卡半透明融入其中，小史莱姆坐在登录卡上沿。
  * 登录窗口由主进程锁定 1280×800，仅在桌面桥可用时由 pages/login 分流渲染。
  */
 import React, { useEffect, useState } from 'react';
-import { Flex, Image, Text } from '@chakra-ui/react';
-import NextLink from 'next/link';
+import { Flex, Image } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import { LoginContainer } from '@/pageComponents/login';
 import ThinkingFace from '@/components/common/ThinkingFace';
@@ -27,13 +26,12 @@ const LOGIN_PHASES: {
   face: MascotFace;
   mouth: boolean;
   duration: number;
-  labelKey: string;
   jump?: boolean;
 }[] = [
-  { face: 'left', mouth: false, duration: 1900, labelKey: 'login:desktop_phase_login' },
-  { face: 'idle', mouth: false, duration: 1800, labelKey: 'login:desktop_phase_you' },
-  { face: 'squint', mouth: true, duration: 1700, labelKey: 'login:desktop_phase_squint' },
-  { face: 'wide', mouth: false, duration: 1700, labelKey: 'login:desktop_phase_jump', jump: true }
+  { face: 'left', mouth: false, duration: 1900 },
+  { face: 'idle', mouth: false, duration: 1800 },
+  { face: 'squint', mouth: true, duration: 1700 },
+  { face: 'wide', mouth: false, duration: 1700, jump: true }
 ];
 
 const LockGlyph = () => (
@@ -159,7 +157,10 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
 
   return (
     <Flex className={styles.hero}>
-      {/* 左：品牌文案 + 动态山水 */}
+      {/* 整页动态山水：铺满登录框架底部，三栏内容透明叠加其上 */}
+      <Landscape />
+
+      {/* 左：品牌文案 */}
       <div className={styles.left}>
         <span className={styles.glow} aria-hidden />
         <span className={styles.dots} aria-hidden />
@@ -202,19 +203,12 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
           ))}
         </div>
 
-        <Landscape />
-
         <div className={styles.foot}>
-          <div>
-            <div className={styles.copyright}>{t('login:desktop_copyright')}</div>
-            <NextLink href="/about">
-              <Text className={styles.about}>{t('login:nav_about')}</Text>
-            </NextLink>
-          </div>
+          <div className={styles.copyright}>{t('login:desktop_copyright')}</div>
         </div>
       </div>
 
-      {/* 中：登录卡 */}
+      {/* 中：登录卡 + 坐在卡上的小史莱姆 */}
       <div className={styles.center}>
         <span className={styles.centerDots} aria-hidden />
         <div className={styles.lang}>
@@ -222,6 +216,22 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
         </div>
 
         <div className={styles.stack}>
+          <div className={styles.mini} aria-hidden>
+            <span className={styles.miniShadow} />
+            <div className={styles.miniBob}>
+              <div className={styles.mascot}>
+                <Image
+                  className={styles.mascotImg}
+                  src="/imgs/home-mascot-base.webp"
+                  alt=""
+                  draggable={false}
+                />
+                <MascotEyes face="idle" mini />
+              </div>
+            </div>
+            <Hearts />
+          </div>
+
           <div className={styles.loginCard}>
             <h2 className={styles.loginTitle}>{loginCopy.title}</h2>
             <p className={styles.loginSub}>{loginCopy.sub}</p>
@@ -240,23 +250,8 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
         </div>
       </div>
 
-      {/* 右：大史莱姆 + 右上角小史莱姆 */}
+      {/* 右：大史莱姆舞台 */}
       <div className={styles.right} aria-hidden>
-        <div className={styles.mini}>
-          <div className={styles.miniBob}>
-            <div className={styles.mascot}>
-              <Image
-                className={styles.mascotImg}
-                src="/imgs/home-mascot-base.webp"
-                alt=""
-                draggable={false}
-              />
-              <MascotEyes face="idle" mini />
-            </div>
-          </div>
-          <Hearts />
-        </div>
-
         <div className={styles.bigStage}>
           <span className={styles.shadow} />
           <div className={styles.big}>
@@ -284,8 +279,6 @@ const DesktopLoginHero = ({ onSuccess }: DesktopLoginHeroProps) => {
             </div>
           </div>
         </div>
-
-        <span className={styles.phaseLabel}>{t(phase.labelKey)}</span>
       </div>
     </Flex>
   );

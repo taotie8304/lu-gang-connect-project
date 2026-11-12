@@ -96,7 +96,7 @@ const ChangeBadge = ({ mark }: { mark: 'pending' | 'applied' }) => {
       borderRadius={'3px'}
       bg={tone.soft}
       color={tone.text}
-      fontSize={'9px'}
+      fontSize={'11.5px'}
       lineHeight={'14px'}
       whiteSpace={'nowrap'}
     >
@@ -112,7 +112,7 @@ const ChangeBadge = ({ mark }: { mark: 'pending' | 'applied' }) => {
 const ParagraphView = ({ block }: { block: DesktopDocumentParagraphBlock }) => {
   const baseStyle = block.heading
     ? headingStyle(block.heading)
-    : { fontSize: '13.5px', lineHeight: 1.9, color: LG.text, mb: '9px' };
+    : { fontSize: '15px', lineHeight: 1.9, color: LG.text, mb: '9px' };
 
   if (!block.mark || block.originalText === undefined) {
     return block.text ? <Text {...baseStyle}>{block.text}</Text> : <Box h={'10px'} />;
@@ -169,7 +169,7 @@ const ParagraphView = ({ block }: { block: DesktopDocumentParagraphBlock }) => {
 
 const TableView = ({ block }: { block: DesktopDocumentTableBlock }) => (
   <Box my={'10px'} overflowX={'auto'} border={'1px solid'} borderColor={LG.line} borderRadius={'4px'}>
-    <Box as={'table'} w={'100%'} fontSize={'12px'} sx={{ borderCollapse: 'collapse' }}>
+    <Box as={'table'} w={'100%'} fontSize={'14px'} sx={{ borderCollapse: 'collapse' }}>
       <Box as={'tbody'}>
         {block.rows.map((row, rowIndex) => (
           <Box as={'tr'} key={rowIndex} borderBottom={'1px solid'} borderBottomColor={LG.lineSoft}>
@@ -309,7 +309,7 @@ const SheetRowNumber = ({
     textAlign={'center'}
     verticalAlign={'top'}
     bg={bg}
-    fontSize={'9.5px'}
+    fontSize={'12px'}
     color={badge ? badge.tone.text : LG.mutedSoft}
     borderRight={'1px solid'}
     borderRightColor={LG.line}
@@ -325,7 +325,7 @@ const SheetRowNumber = ({
           borderRadius={'2px'}
           bg={badge.tone.strong}
           color={badge.tone.text}
-          fontSize={'8px'}
+          fontSize={'10.5px'}
           lineHeight={'11px'}
           whiteSpace={'nowrap'}
         >
@@ -346,7 +346,7 @@ const SheetGrid = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
 
   return (
     <Box overflowX={'auto'}>
-      <Box as={'table'} minW={'100%'} fontSize={'11px'} sx={{ borderCollapse: 'collapse' }}>
+      <Box as={'table'} minW={'100%'} fontSize={'13px'} sx={{ borderCollapse: 'collapse' }}>
         <Box as={'thead'}>
           <Box as={'tr'}>
             <Box
@@ -360,7 +360,7 @@ const SheetGrid = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
               py={'3px'}
               bg={LG.paleSoft}
               color={LG.mutedSoft}
-              fontSize={'9px'}
+              fontSize={'11.5px'}
               fontWeight={500}
               borderRight={'1px solid'}
               borderRightColor={LG.line}
@@ -375,7 +375,7 @@ const SheetGrid = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
                 py={'3px'}
                 bg={LG.paleSoft}
                 color={LG.mutedSoft}
-                fontSize={'9px'}
+                fontSize={'11.5px'}
                 fontWeight={500}
                 borderRight={'1px solid'}
                 borderRightColor={LG.lineSoft}
@@ -465,10 +465,10 @@ const SheetCard = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
         borderBottom={hasContent ? '1px solid' : undefined}
         borderBottomColor={LG.lineSoft}
       >
-        <Text fontSize={'12px'} fontWeight={600} color={LG.text} noOfLines={1}>
+        <Text fontSize={'14px'} fontWeight={600} color={LG.text} noOfLines={1}>
           {sheet.name}
         </Text>
-        <Text fontSize={'10px'} color={LG.muted} flexShrink={0}>
+        <Text fontSize={'12.5px'} color={LG.muted} flexShrink={0}>
           {t('common:builtin_browser_doc_sheet_size' as any, {
             rows: sheet.rowCount,
             columns: sheet.columnCount
@@ -480,11 +480,11 @@ const SheetCard = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
       ) : (
         <Box px={'10px'} py={'8px'}>
           {sheet.header.length > 0 ? (
-            <Text fontSize={'10px'} color={LG.muted} noOfLines={2}>
+            <Text fontSize={'12.5px'} color={LG.muted} noOfLines={2}>
               {sheet.header.join(' / ')}
             </Text>
           ) : (
-            <Text fontSize={'10.5px'} color={LG.mutedSoft}>
+            <Text fontSize={'13px'} color={LG.mutedSoft}>
               {t('common:builtin_browser_doc_sheet_empty' as any)}
             </Text>
           )}
@@ -494,7 +494,7 @@ const SheetCard = ({ sheet }: { sheet: DesktopDocumentSheet }) => {
         <Text
           px={'10px'}
           py={'5px'}
-          fontSize={'9.5px'}
+          fontSize={'12px'}
           color={PENDING_TONE.text}
           bg={PENDING_TONE.soft}
           borderTop={'1px solid'}
@@ -515,13 +515,13 @@ const SheetPreview = ({ snapshot }: { snapshot: DesktopDocumentSnapshot }) => {
   const sheets = snapshot.sheets ?? [];
   return (
     <Paper wide>
-      <Text fontSize={'12px'} fontWeight={600} color={LG.ink} mb={'8px'}>
+      <Text fontSize={'14px'} fontWeight={600} color={LG.ink} mb={'8px'}>
         {t('common:builtin_browser_doc_xlsx_hint' as any)}
       </Text>
       {sheets.length > 0 ? (
         sheets.map((sheet) => <SheetCard key={sheet.name} sheet={sheet} />)
       ) : (
-        <Text fontSize={'11px'} color={LG.mutedSoft}>
+        <Text fontSize={'13px'} color={LG.mutedSoft}>
           {t('common:builtin_browser_doc_unavailable' as any)}
         </Text>
       )}
@@ -568,11 +568,11 @@ const StatusCard = ({
         bg={palette.bg}
         borderRadius={'6px'}
       >
-        <Text fontSize={'11.5px'} fontWeight={600} color={LG.text}>
+        <Text fontSize={'13.5px'} fontWeight={600} color={LG.text}>
           {title}
         </Text>
         {description && (
-          <Text fontSize={'10.5px'} color={LG.muted}>
+          <Text fontSize={'13px'} color={LG.muted}>
             {description}
           </Text>
         )}
@@ -622,13 +622,13 @@ const ReviewCard = ({
       bg={'white'}
     >
       <Flex alignItems={'center'} justifyContent={'space-between'} mb={'5px'}>
-        <Text fontSize={'11px'} fontWeight={600} color={LG.text}>
+        <Text fontSize={'13px'} fontWeight={600} color={LG.text}>
           {t('common:builtin_browser_doc_review_progress' as any, {
             current: progress.decided + 1,
             total: progress.total
           })}
         </Text>
-        <Text fontSize={'10px'} color={LG.mutedSoft}>
+        <Text fontSize={'12.5px'} color={LG.mutedSoft}>
           {progress.percent}%
         </Text>
       </Flex>
@@ -640,10 +640,10 @@ const ReviewCard = ({
           transition={'width 0.2s ease'}
         />
       </Box>
-      <Text fontSize={'10px'} color={PENDING_TONE.text} mb={'5px'}>
+      <Text fontSize={'12.5px'} color={PENDING_TONE.text} mb={'5px'}>
         {t('common:builtin_browser_doc_review_source_hint' as any)}
       </Text>
-      <Text fontSize={'11px'} color={LG.muted} mb={'6px'} noOfLines={1}>
+      <Text fontSize={'13px'} color={LG.muted} mb={'6px'} noOfLines={1}>
         {position}
       </Text>
       <Flex gap={'7px'} mb={'8px'}>
@@ -657,11 +657,11 @@ const ReviewCard = ({
           border={'1px solid'}
           borderColor={LG.lineSoft}
         >
-          <Text fontSize={'9px'} color={LG.mutedSoft} mb={'1px'}>
+          <Text fontSize={'11.5px'} color={LG.mutedSoft} mb={'1px'}>
             {t('common:builtin_browser_doc_review_before' as any)}
           </Text>
           <Text
-            fontSize={'11px'}
+            fontSize={'13px'}
             color={current.before ? LG.muted : LG.mutedSoft}
             textDecorationLine={current.before ? 'line-through' : undefined}
             textDecorationColor={'rgba(196,130,120,0.7)'}
@@ -682,11 +682,11 @@ const ReviewCard = ({
           border={'1px solid'}
           borderColor={PENDING_TONE.border}
         >
-          <Text fontSize={'9px'} color={PENDING_TONE.text} mb={'1px'}>
+          <Text fontSize={'11.5px'} color={PENDING_TONE.text} mb={'1px'}>
             {t('common:builtin_browser_doc_review_after' as any)}
           </Text>
           <Text
-            fontSize={'11px'}
+            fontSize={'13px'}
             color={PENDING_TONE.text}
             maxH={'54px'}
             overflowY={'auto'}
@@ -699,9 +699,9 @@ const ReviewCard = ({
       <Flex alignItems={'center'} gap={'6px'}>
         <Button
           size={'xs'}
-          h={'25px'}
+          h={'28px'}
           px={'8px'}
-          fontSize={'10.5px'}
+          fontSize={'13px'}
           variant={'ghost'}
           color={LG.mountain}
           isDisabled={!editable}
@@ -712,9 +712,9 @@ const ReviewCard = ({
         <Box flex={'1 1 0'} />
         <Button
           size={'xs'}
-          h={'25px'}
+          h={'28px'}
           px={'10px'}
-          fontSize={'10.5px'}
+          fontSize={'13px'}
           variant={'outline'}
           color={LG.muted}
           borderColor={LG.line}
@@ -725,9 +725,9 @@ const ReviewCard = ({
         </Button>
         <Button
           size={'xs'}
-          h={'25px'}
+          h={'28px'}
           px={'12px'}
-          fontSize={'10.5px'}
+          fontSize={'13px'}
           borderRadius={'6px'}
           bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
           color={'white'}
@@ -769,9 +769,9 @@ const ResultCard = ({
           snapshot.copy ? (
             <Button
               size={'xs'}
-              h={'25px'}
+              h={'28px'}
               px={'12px'}
-              fontSize={'10.5px'}
+              fontSize={'13px'}
               borderRadius={'6px'}
               bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
               color={'white'}
@@ -850,7 +850,7 @@ const DocumentPreviewPanel = ({
             bg={PENDING_TONE.soft}
           >
             {snapshot.warnings.map((warning, index) => (
-              <Text key={index} fontSize={'10.5px'} color={PENDING_TONE.text}>
+              <Text key={index} fontSize={'13px'} color={PENDING_TONE.text}>
                 {warning}
               </Text>
             ))}
@@ -879,7 +879,7 @@ const DocumentPreviewPanel = ({
         ) : (
           <Paper>
             <Flex alignItems={'center'} justifyContent={'center'} h={'460px'}>
-              <Text fontSize={'11px'} color={LG.muted}>
+              <Text fontSize={'13px'} color={LG.muted}>
                 {snapshot.message || t('common:builtin_browser_doc_unavailable' as any)}
               </Text>
             </Flex>
@@ -914,7 +914,7 @@ const DocumentPreviewPanel = ({
           bg={'white'}
         >
           <MyIcon name={'common/globalLine'} w={'12px'} h={'12px'} color={LG.mutedSoft} />
-          <Text fontSize={'10px'} color={LG.mutedSoft} noOfLines={1}>
+          <Text fontSize={'12.5px'} color={LG.mutedSoft} noOfLines={1}>
             {t('common:builtin_browser_doc_local_hint' as any)}
           </Text>
         </Flex>

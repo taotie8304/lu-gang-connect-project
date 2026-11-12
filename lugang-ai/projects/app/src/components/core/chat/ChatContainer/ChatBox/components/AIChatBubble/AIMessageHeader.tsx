@@ -41,12 +41,12 @@ const AIMessageHeader = ({ appName, time, showVerified = false }: AIMessageHeade
   return (
     <Flex alignItems={'center'} gap={'8px'} mb={'7px'} minW={0}>
       {appName && (
-        <Box fontSize={'12.5px'} fontWeight={600} color={LG.ink} minW={0} noOfLines={1}>
+        <Box fontSize={'13.5px'} fontWeight={600} color={LG.ink} minW={0} noOfLines={1}>
           {appName}
         </Box>
       )}
       {time && (
-        <Box fontSize={'10.5px'} color={'#91A3B6'} flexShrink={0}>
+        <Box fontSize={'11.5px'} color={'#91A3B6'} flexShrink={0}>
           {t(formatTimeToChatItemTime(time) as any, {
             time: dayjs(time).format('HH:mm')
           }).replace('#', ':')}
@@ -56,18 +56,18 @@ const AIMessageHeader = ({ appName, time, showVerified = false }: AIMessageHeade
         <Flex
           alignItems={'center'}
           gap={'3px'}
-          h={'19px'}
+          h={'21px'}
           px={'6px'}
           flexShrink={0}
           borderRadius={'5px'}
-          fontSize={'10px'}
+          fontSize={'11px'}
           letterSpacing={'0.04em'}
           bg={'rgba(111,157,208,0.12)'}
           color={LG.mountain}
           border={'1px solid'}
           borderColor={'rgba(111,157,208,0.24)'}
         >
-          <Box as={'svg'} w={'9px'} h={'9px'} viewBox={'0 0 24 24'} fill={'none'} stroke={'currentColor'} strokeWidth={2.4} strokeLinecap={'round'} strokeLinejoin={'round'}>
+          <Box as={'svg'} w={'10px'} h={'10px'} viewBox={'0 0 24 24'} fill={'none'} stroke={'currentColor'} strokeWidth={2.4} strokeLinecap={'round'} strokeLinejoin={'round'}>
             <polyline points={'20 6 9 17 4 12'} />
           </Box>
           {t('chat:answer_verified_official')}

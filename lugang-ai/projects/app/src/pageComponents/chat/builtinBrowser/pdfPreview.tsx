@@ -208,11 +208,11 @@ const PdfPreview = ({
     <Box ref={containerRef} maxW={'820px'} mx={'auto'}>
       <Flex alignItems={'center'} justifyContent={'space-between'} gap={3} mb={'8px'} px={'2px'}>
         <Flex alignItems={'center'} gap={2} minW={0}>
-          <Text fontSize={'12px'} fontWeight={600} color={LG.ink} noOfLines={1}>
+          <Text fontSize={'14px'} fontWeight={600} color={LG.ink} noOfLines={1}>
             {snapshot.fileName}
           </Text>
           {pageText && (
-            <Text fontSize={'9.5px'} color={LG.mutedSoft} flexShrink={0}>
+            <Text fontSize={'12px'} color={LG.mutedSoft} flexShrink={0}>
               {pageText}
             </Text>
           )}
@@ -220,9 +220,9 @@ const PdfPreview = ({
         {onOpenExternal && (
           <Button
             size={'xs'}
-            h={'25px'}
-            px={'9px'}
-            fontSize={'10.5px'}
+            h={'28px'}
+            px={'10px'}
+            fontSize={'13px'}
             fontWeight={500}
             flexShrink={0}
             variant={'ghost'}
@@ -245,7 +245,7 @@ const PdfPreview = ({
           borderColor={LG.line}
           bg={LG.paleSoft}
           color={LG.muted}
-          fontSize={'10px'}
+          fontSize={'12.5px'}
           lineHeight={'1.6'}
         >
           {readonlyHint}
@@ -262,7 +262,7 @@ const PdfPreview = ({
           borderColor={'rgba(217,164,65,0.5)'}
           bg={'rgba(246,201,120,0.2)'}
           color={'#8A6118'}
-          fontSize={'10px'}
+          fontSize={'12.5px'}
         >
           {limitText}
         </Text>
@@ -281,7 +281,7 @@ const PdfPreview = ({
           borderColor={LG.line}
           borderRadius={'6px'}
         >
-          <Text fontSize={'11.5px'} color={LG.muted} textAlign={'center'}>
+          <Text fontSize={'13.5px'} color={LG.muted} textAlign={'center'}>
             {t(
               (readBytes
                 ? 'common:builtin_browser_doc_pdf_failed'
@@ -292,9 +292,9 @@ const PdfPreview = ({
             {readBytes && (
               <Button
                 size={'xs'}
-                h={'26px'}
-                px={'12px'}
-                fontSize={'10.5px'}
+                h={'30px'}
+                px={'13px'}
+                fontSize={'13px'}
                 borderRadius={'6px'}
                 variant={'outline'}
                 borderColor={LG.line}
@@ -308,9 +308,9 @@ const PdfPreview = ({
             {onOpenExternal && (
               <Button
                 size={'xs'}
-                h={'26px'}
-                px={'12px'}
-                fontSize={'10.5px'}
+                h={'30px'}
+                px={'13px'}
+                fontSize={'13px'}
                 borderRadius={'6px'}
                 bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
                 color={'white'}
@@ -335,7 +335,7 @@ const PdfPreview = ({
           borderRadius={'6px'}
         >
           <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
-          <Text fontSize={'11px'} color={LG.muted}>
+          <Text fontSize={'13px'} color={LG.muted}>
             {t('common:builtin_browser_doc_pdf_loading' as any)}
           </Text>
         </Flex>

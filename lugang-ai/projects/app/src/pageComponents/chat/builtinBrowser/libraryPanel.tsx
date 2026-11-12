@@ -87,7 +87,7 @@ const MenuItem = ({
     px={'9px'}
     py={'6px'}
     borderRadius={'5px'}
-    fontSize={'11px'}
+    fontSize={'13px'}
     color={danger ? '#B4544E' : LG.text}
     textAlign={'left'}
     _hover={{ bg: danger ? 'rgba(200,90,80,0.08)' : 'rgba(111,157,208,0.1)' }}
@@ -96,7 +96,7 @@ const MenuItem = ({
     {icon ? (
       <MyIcon name={icon} w={'12px'} h={'12px'} flexShrink={0} color={'currentColor'} />
     ) : (
-      <Text as={'span'} fontSize={'11px'} lineHeight={'12px'} w={'12px'} textAlign={'center'}>
+      <Text as={'span'} fontSize={'13px'} lineHeight={'12px'} w={'12px'} textAlign={'center'}>
         {glyph ?? ''}
       </Text>
     )}
@@ -266,10 +266,10 @@ const ToolbarButton = ({
 }) => (
   <Button
     size={'xs'}
-    h={'24px'}
-    px={'8px'}
-    gap={'4px'}
-    fontSize={'10.5px'}
+    h={'28px'}
+    px={'9px'}
+    gap={'5px'}
+    fontSize={'13px'}
     fontWeight={500}
     borderRadius={'6px'}
     border={'1px solid'}
@@ -280,7 +280,7 @@ const ToolbarButton = ({
     _hover={{ bg: 'rgba(111,157,208,0.1)' }}
     onClick={onClick}
   >
-    {icon && <MyIcon name={icon} w={'11px'} h={'11px'} color={'currentColor'} />}
+    {icon && <MyIcon name={icon} w={'12px'} h={'12px'} color={'currentColor'} />}
     {label}
   </Button>
 );
@@ -298,10 +298,10 @@ const IconAction = ({
     <Flex
       alignItems={'center'}
       justifyContent={'center'}
-      w={'22px'}
-      h={'22px'}
+      w={'26px'}
+      h={'26px'}
       flexShrink={0}
-      borderRadius={'5px'}
+      borderRadius={'6px'}
       color={LG.muted}
       cursor={'pointer'}
       _hover={{ bg: 'rgba(54,101,150,0.08)', color: LG.mountain }}
@@ -312,7 +312,7 @@ const IconAction = ({
         onClick(event);
       }}
     >
-      <MyIcon name={icon} w={'13px'} h={'13px'} />
+      <MyIcon name={icon} w={'14px'} h={'14px'} />
     </Flex>
   </MyTooltip>
 );
@@ -330,11 +330,11 @@ const StarButton = ({ item, onToggle }: { item: DesktopLibraryItem; onToggle: ()
       <Text
         as={'button'}
         type={'button'}
-        w={'20px'}
-        h={'20px'}
-        lineHeight={'20px'}
+        w={'24px'}
+        h={'24px'}
+        lineHeight={'24px'}
         textAlign={'center'}
-        fontSize={'12px'}
+        fontSize={'15px'}
         color={item.starred ? LG.sand : LG.mutedSoft}
         cursor={'pointer'}
         _hover={{ color: LG.sand }}
@@ -379,7 +379,7 @@ export const LibraryDocToolbar = ({
       >
         <ToolbarButton icon={'common/arrowLeft'} label={t('common:builtin_browser_library_back' as any)} onClick={onBack} />
         {format && <DocumentFormatChip format={format} size={14} />}
-        <Text flex={'1 1 0'} minW={0} fontSize={'10.5px'} color={LG.ink} noOfLines={1}>
+        <Text flex={'1 1 0'} minW={0} fontSize={'13px'} color={LG.ink} noOfLines={1}>
           {item.name}
         </Text>
         <StarButton item={item} onToggle={() => actions.toggleStar(item)} />
@@ -395,16 +395,16 @@ export const LibraryDocToolbar = ({
           <Flex
             alignItems={'center'}
             justifyContent={'center'}
-            w={'22px'}
-            h={'22px'}
+            w={'26px'}
+            h={'26px'}
             flexShrink={0}
-            borderRadius={'5px'}
+            borderRadius={'6px'}
             color={LG.muted}
             cursor={'pointer'}
             _hover={{ bg: 'rgba(54,101,150,0.08)', color: LG.mountain }}
             onClick={() => actions.openExternal(item)}
           >
-            <MyIcon name={'out'} w={'13px'} h={'13px'} />
+            <MyIcon name={'out'} w={'14px'} h={'14px'} />
           </Flex>
         </MyTooltip>
         <IconAction
@@ -454,17 +454,17 @@ const FileRow = ({
       >
         <KindTile item={item} />
         <Box flex={'1 1 0'} minW={0}>
-          <Text fontSize={'11.5px'} color={LG.ink} noOfLines={1} title={item.name}>
+          <Text fontSize={'13.5px'} color={LG.ink} noOfLines={1} title={item.name}>
             {item.name}
           </Text>
           <Flex alignItems={'center'} gap={'5px'} mt={'2px'} flexWrap={'wrap'}>
-            <Text fontSize={'9.5px'} color={'#A97B2E'}>
+            <Text fontSize={'12.5px'} color={'#A97B2E'}>
               {t('common:builtin_browser_library_missing_tag' as any)}
             </Text>
             <Text
               as={'button'}
               type={'button'}
-              fontSize={'9.5px'}
+              fontSize={'12.5px'}
               color={LG.mountain}
               cursor={'pointer'}
               _hover={{ textDecoration: 'underline' }}
@@ -478,7 +478,7 @@ const FileRow = ({
             <Text
               as={'button'}
               type={'button'}
-              fontSize={'9.5px'}
+              fontSize={'12.5px'}
               color={LG.muted}
               cursor={'pointer'}
               _hover={{ textDecoration: 'underline' }}
@@ -516,7 +516,7 @@ const FileRow = ({
     >
       <KindTile item={item} />
       <Box flex={'1 1 0'} minW={0}>
-        <Text fontSize={'11.5px'} color={LG.ink} noOfLines={1} title={item.name}>
+        <Text fontSize={'13.5px'} color={LG.ink} noOfLines={1} title={item.name}>
           {item.name}
         </Text>
         <Flex alignItems={'center'} gap={'5px'} mt={'2px'} minW={0}>
@@ -526,21 +526,21 @@ const FileRow = ({
             h={'13px'}
             lineHeight={'13px'}
             borderRadius={'3px'}
-            fontSize={'8.5px'}
+            fontSize={'11px'}
             color={LG.mountain}
             bg={'rgba(111,157,208,0.12)'}
           >
             {librarySourceLabel(item.source)}
           </Text>
           {sub && (
-            <Text fontSize={'9.5px'} color={LG.mutedSoft} noOfLines={1} minW={0} maxW={'42%'}>
+            <Text fontSize={'12.5px'} color={LG.mutedSoft} noOfLines={1} minW={0} maxW={'42%'}>
               {sub}
             </Text>
           )}
-          <Text fontSize={'9.5px'} color={LG.mutedSoft} flexShrink={0}>
+          <Text fontSize={'12.5px'} color={LG.mutedSoft} flexShrink={0}>
             {formatLibrarySize(item.size)}
           </Text>
-          <Text fontSize={'9.5px'} color={LG.mutedSoft} flexShrink={0} noOfLines={1}>
+          <Text fontSize={'12.5px'} color={LG.mutedSoft} flexShrink={0} noOfLines={1}>
             {formatLibraryTime(item.usedAt, now)}
           </Text>
         </Flex>
@@ -573,11 +573,11 @@ const Chip = ({
     type={'button'}
     flexShrink={0}
     alignItems={'center'}
-    gap={'4px'}
-    h={'22px'}
-    px={'9px'}
+    gap={'5px'}
+    h={'26px'}
+    px={'10px'}
     borderRadius={'full'}
-    fontSize={'10px'}
+    fontSize={'12.5px'}
     fontWeight={500}
     border={'1px solid'}
     borderColor={active ? 'transparent' : LG.line}
@@ -587,7 +587,7 @@ const Chip = ({
     onClick={onClick}
   >
     {label}
-    <Text as={'span'} fontSize={'9px'} opacity={0.8}>
+    <Text as={'span'} fontSize={'12.5px'} opacity={0.8}>
       {count}
     </Text>
   </Flex>
@@ -625,7 +625,7 @@ const PreviewShell = ({
           onClick={onBack}
         />
         <KindTile item={item} size={16} />
-        <Text flex={'1 1 0'} minW={0} fontSize={'10.5px'} color={LG.ink} noOfLines={1}>
+        <Text flex={'1 1 0'} minW={0} fontSize={'13px'} color={LG.ink} noOfLines={1}>
           {item.name}
         </Text>
         <StarButton item={item} onToggle={() => actions.toggleStar(item)} />
@@ -633,16 +633,16 @@ const PreviewShell = ({
           <Flex
             alignItems={'center'}
             justifyContent={'center'}
-            w={'22px'}
-            h={'22px'}
+            w={'26px'}
+            h={'26px'}
             flexShrink={0}
-            borderRadius={'5px'}
+            borderRadius={'6px'}
             color={LG.muted}
             cursor={'pointer'}
             _hover={{ bg: 'rgba(54,101,150,0.08)', color: LG.mountain }}
             onClick={() => actions.openExternal(item)}
           >
-            <MyIcon name={'out'} w={'13px'} h={'13px'} />
+            <MyIcon name={'out'} w={'14px'} h={'14px'} />
           </Flex>
         </MyTooltip>
         <IconAction
@@ -763,7 +763,7 @@ const LibraryPanel = ({
             textAlign={'center'}
           >
             <KindTile item={previewItem} size={44} />
-            <Text mt={'12px'} fontSize={'12px'} fontWeight={600} color={LG.ink}>
+            <Text mt={'12px'} fontSize={'14px'} fontWeight={600} color={LG.ink}>
               {t(
                 (tooLarge
                   ? 'common:builtin_browser_library_image_too_large'
@@ -771,7 +771,7 @@ const LibraryPanel = ({
               )}
             </Text>
             {!tooLarge && (
-              <Text mt={'6px'} fontSize={'10px'} lineHeight={1.8} color={LG.muted}>
+              <Text mt={'6px'} fontSize={'12.5px'} lineHeight={1.8} color={LG.muted}>
                 {t('common:builtin_browser_library_unsupported_copy' as any)}
               </Text>
             )}
@@ -802,7 +802,7 @@ const LibraryPanel = ({
           textAlign={'center'}
         >
           <MyIcon name={'common/fileNotFound'} w={'34px'} h={'34px'} color={'#C9A45C'} />
-          <Text mt={'12px'} fontSize={'11px'} lineHeight={1.8} color={LG.text} maxW={'340px'}>
+          <Text mt={'12px'} fontSize={'13px'} lineHeight={1.8} color={LG.text} maxW={'340px'}>
             {t('common:builtin_browser_library_missing_title' as any)}
           </Text>
           <Flex mt={'14px'} gap={'6px'}>
@@ -878,18 +878,18 @@ const LibraryPanel = ({
             bg={'rgba(111,157,208,0.25)'}
           />
         </Flex>
-        <Text fontSize={'13px'} fontWeight={600} color={LG.ink}>
+        <Text fontSize={'14.5px'} fontWeight={600} color={LG.ink}>
           {t('common:builtin_browser_library_empty_title' as any)}
         </Text>
-        <Text mt={'6px'} fontSize={'10.5px'} lineHeight={1.8} color={LG.muted} maxW={'330px'}>
+        <Text mt={'6px'} fontSize={'13px'} lineHeight={1.8} color={LG.muted} maxW={'330px'}>
           {t('common:builtin_browser_library_empty_copy' as any)}
         </Text>
         <Button
           mt={'14px'}
           size={'sm'}
-          h={'30px'}
-          px={'16px'}
-          fontSize={'11px'}
+          h={'34px'}
+          px={'18px'}
+          fontSize={'13.5px'}
           borderRadius={'7px'}
           bg={'linear-gradient(140deg, #8FB4DC, #4F80B4)'}
           color={'white'}
@@ -901,7 +901,7 @@ const LibraryPanel = ({
         </Button>
         <Flex mt={'10px'} alignItems={'center'} gap={'4px'}>
           <MyIcon name={'support/permission/privateLight'} w={'10px'} h={'10px'} color={LG.mutedSoft} />
-          <Text fontSize={'9.5px'} color={LG.mutedSoft}>
+          <Text fontSize={'12.5px'} color={LG.mutedSoft}>
             {t('common:builtin_browser_library_empty_note' as any)}
           </Text>
         </Flex>
@@ -933,7 +933,7 @@ const LibraryPanel = ({
             flexShrink={0}
             color={LG.mountain}
           />
-          <Text flex={'1 1 0'} fontSize={'9.5px'} lineHeight={1.7} color={LG.text}>
+          <Text flex={'1 1 0'} fontSize={'12.5px'} lineHeight={1.7} color={LG.text}>
             {t('common:builtin_browser_library_tip' as any)}
           </Text>
           <MyIcon
@@ -957,21 +957,21 @@ const LibraryPanel = ({
           minW={0}
           alignItems={'center'}
           gap={'5px'}
-          h={'26px'}
-          px={'8px'}
+          h={'30px'}
+          px={'9px'}
           borderRadius={'7px'}
           border={'1px solid'}
           borderColor={LG.line}
           bg={'white'}
         >
-          <MyIcon name={'common/searchLight'} w={'12px'} h={'12px'} color={LG.mutedSoft} />
+          <MyIcon name={'common/searchLight'} w={'13px'} h={'13px'} color={LG.mutedSoft} />
           <Input
             flex={'1 1 0'}
             minW={0}
             h={'100%'}
             p={0}
             border={'none'}
-            fontSize={'10.5px'}
+            fontSize={'13px'}
             color={LG.ink}
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
@@ -987,19 +987,19 @@ const LibraryPanel = ({
             flexShrink={0}
             alignItems={'center'}
             gap={'4px'}
-            h={'26px'}
-            px={'8px'}
+            h={'30px'}
+            px={'9px'}
             borderRadius={'7px'}
             border={'1px solid'}
             borderColor={LG.line}
             bg={'white'}
-            fontSize={'10px'}
+            fontSize={'12.5px'}
             color={LG.muted}
             cursor={'pointer'}
             _hover={{ bg: 'rgba(111,157,208,0.08)' }}
             onClick={cycleSort}
           >
-            <MyIcon name={'common/filter'} w={'11px'} h={'11px'} />
+            <MyIcon name={'common/filter'} w={'12px'} h={'12px'} />
             {t(SORT_LABEL_KEY[sort] as any)}
           </Flex>
         </MyTooltip>
@@ -1007,8 +1007,8 @@ const LibraryPanel = ({
           <Flex
             alignItems={'center'}
             justifyContent={'center'}
-            w={'26px'}
-            h={'26px'}
+            w={'30px'}
+            h={'30px'}
             flexShrink={0}
             borderRadius={'7px'}
             border={'1px solid'}
@@ -1019,7 +1019,7 @@ const LibraryPanel = ({
             _hover={{ bg: 'rgba(111,157,208,0.08)', color: LG.mountain }}
             onClick={onImport}
           >
-            <MyIcon name={'common/addLight'} w={'12px'} h={'12px'} />
+            <MyIcon name={'common/addLight'} w={'13px'} h={'13px'} />
           </Flex>
         </MyTooltip>
       </Flex>
@@ -1078,11 +1078,11 @@ const LibraryPanel = ({
         gap={'4px'}
         px={'10px'}
         mt={'7px'}
-        fontSize={'9px'}
+        fontSize={'12px'}
         color={LG.mutedSoft}
         whiteSpace={'nowrap'}
       >
-        <Text as={'b'} fontSize={'9.5px'} color={LG.muted} fontWeight={600}>
+        <Text as={'b'} fontSize={'12.5px'} color={LG.muted} fontWeight={600}>
           {t('common:builtin_browser_library_summary' as any, {
             count: items.length,
             size: formatLibrarySize(totalSize)
@@ -1121,14 +1121,14 @@ const LibraryPanel = ({
           bg={'#FFF9ED'}
         >
           <MyIcon name={'common/exclamationMark'} w={'12px'} h={'12px'} color={'#A97B2E'} />
-          <Text flex={'1 1 0'} fontSize={'9.5px'} lineHeight={1.6} color={'#8A6118'}>
+          <Text flex={'1 1 0'} fontSize={'12.5px'} lineHeight={1.6} color={'#8A6118'}>
             {t('common:builtin_browser_library_missing_banner' as any, { count: missingCount })}
           </Text>
           <Text
             as={'button'}
             type={'button'}
             flexShrink={0}
-            fontSize={'9.5px'}
+            fontSize={'12.5px'}
             fontWeight={600}
             color={LG.mountain}
             cursor={'pointer'}
@@ -1150,7 +1150,7 @@ const LibraryPanel = ({
             alignItems={'center'}
             justifyContent={'center'}
             textAlign={'center'}
-            fontSize={'10px'}
+            fontSize={'12.5px'}
             lineHeight={1.8}
             color={LG.mutedSoft}
           >
@@ -1159,7 +1159,7 @@ const LibraryPanel = ({
         ) : (
           groups.map((group) => (
             <Box key={group.label} mb={'6px'}>
-              <Text px={'2px'} py={'3px'} fontSize={'9px'} fontWeight={600} color={LG.mutedSoft}>
+              <Text px={'2px'} py={'3px'} fontSize={'12px'} fontWeight={600} color={LG.mutedSoft}>
                 {group.label}
               </Text>
               <Flex flexDirection={'column'} gap={'4px'}>
@@ -1193,7 +1193,7 @@ const LibraryPanel = ({
           type={'button'}
           alignItems={'center'}
           gap={'4px'}
-          fontSize={'10px'}
+          fontSize={'12.5px'}
           color={LG.mountain}
           cursor={'pointer'}
           _hover={{ textDecoration: 'underline' }}
@@ -1204,7 +1204,7 @@ const LibraryPanel = ({
         </Flex>
         <Box flex={'1 1 0'} />
         <MyIcon name={'support/permission/privateLight'} w={'10px'} h={'10px'} color={LG.mutedSoft} />
-        <Text fontSize={'9px'} color={LG.mutedSoft}>
+        <Text fontSize={'12px'} color={LG.mutedSoft}>
           {t('common:builtin_browser_library_footer_local' as any)}
         </Text>
       </Flex>
