@@ -331,6 +331,45 @@ export type DesktopDocumentSummary = {
 /** 鲁港通 - PDF 查看只把文件字节交给本机渲染进程，返回值里不出现本机路径 */
 export type DesktopDocumentBytes = { name: string; data: Uint8Array };
 
+/** 鲁港通 - 资料库格式分档：与 projects/desktop/src/shared/ipc.ts 对应 */
+export type DesktopLibraryKind = 'docx' | 'xlsx' | 'pdf' | 'image' | 'archive' | 'other';
+
+export type DesktopLibrarySource = 'ai' | 'download' | 'edit' | 'import';
+
+export type DesktopLibraryItem = {
+  id: string;
+  name: string;
+  kind: DesktopLibraryKind;
+  source: DesktopLibrarySource;
+  size: number;
+  addedAt: number;
+  usedAt: number;
+  starred: boolean;
+  missing: boolean;
+  origin?: string;
+  parentName?: string;
+};
+
+export type DesktopLibraryOpenResult =
+  | { type: 'document'; snapshot: DesktopDocumentSnapshot }
+  | { type: 'image'; name: string; data: Uint8Array }
+  | { type: 'unsupported'; reason?: 'image_too_large' }
+  | { type: 'missing' };
+
+/** 鲁港通 - 个人资料库：0.14.0 起提供，老客户端没有这个对象，网页端据此隐藏入口 */
+export type DesktopLibraryControls = {
+  list(): Promise<DesktopLibraryItem[]>;
+  importLocal(): Promise<DesktopLibraryItem | null>;
+  open(id: string): Promise<DesktopLibraryOpenResult | null>;
+  star(id: string, starred: boolean): Promise<DesktopLibraryItem | null>;
+  reveal(id: string): Promise<boolean>;
+  openExternal(id: string): Promise<boolean>;
+  trash(id: string): Promise<boolean>;
+  remove(id: string): Promise<boolean>;
+  relocate(id: string): Promise<DesktopLibraryItem | null>;
+  onChanged(callback: (list: DesktopLibraryItem[]) => void): () => void;
+};
+
 /** 文件只在本机解析；老客户端没有这个对象，网页端据此隐藏文件入口 */
 export type DesktopDocuments = {
   openLocal(): Promise<DesktopDocumentSnapshot | null>;
@@ -370,6 +409,8 @@ export type DesktopBridge = {
   /** 0.12.0 起提供：本站点 AI 权限查询、设置与原生菜单入口 */
   siteAi?: DesktopSiteAiControls;
   documents?: DesktopDocuments;
+  /** 0.14.0 起提供：个人资料库列表、预览、收藏与文件操作 */
+  library?: DesktopLibraryControls;
   tabs: {
     create(url?: string): Promise<DesktopBrowserState>;
     switch(id: number): Promise<DesktopBrowserState>;

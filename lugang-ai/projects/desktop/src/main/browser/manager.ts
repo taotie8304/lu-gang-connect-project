@@ -101,9 +101,17 @@ export type BrowserTabClosedEvent = {
   reason: 'user' | 'crashed';
 };
 
+export type BrowserDownloadCompletedEvent = {
+  path: string;
+  fileName: string;
+  url?: string;
+};
+
 export type BrowserManagerEvents = {
   onTabClosed?: (event: BrowserTabClosedEvent) => void;
   onPanelClosed?: () => void;
+  // 鲁港通 - 下载完成后把落盘位置交给资料库暂存索引，浏览器本身不关心
+  onDownloadCompleted?: (event: BrowserDownloadCompletedEvent) => void;
 };
 
 export type BrowserDebuggerSession = {
@@ -473,6 +481,12 @@ export class BrowserManager {
     });
     await writeFile(result.filePath, data);
     this.addSyntheticDownload(basename(result.filePath), result.filePath, data.byteLength);
+    // 鲁港通 - 另存 PDF 同样算网页下载，资料库可直接找到
+    this.events.onDownloadCompleted?.({
+      path: result.filePath,
+      fileName: basename(result.filePath),
+      ...(entry.url ? { url: entry.url } : {})
+    });
     return true;
   };
 
@@ -786,6 +800,14 @@ export class BrowserManager {
       record.item = undefined;
       this.trimDownloads();
       this.emitDownloads();
+      if (state === 'completed' && record.savePath) {
+        const url = item.getURL();
+        this.events.onDownloadCompleted?.({
+          path: record.savePath,
+          fileName: record.fileName,
+          ...(url ? { url } : {})
+        });
+      }
     });
     this.emitDownloads();
   }

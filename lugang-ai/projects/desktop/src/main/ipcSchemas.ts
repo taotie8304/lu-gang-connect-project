@@ -75,3 +75,11 @@ export const documentDecideSchema = z.object({
   index: z.number().int().min(0).max(59),
   decision: z.enum(['apply', 'skip'])
 });
+
+// 鲁港通 - 资料库：条目 id 由主进程生成，网页端只能按 id 操作
+export const libraryIdSchema = z.object({ id: z.string().trim().min(1).max(64) });
+
+export const libraryStarSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  starred: z.boolean()
+});

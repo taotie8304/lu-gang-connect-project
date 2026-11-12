@@ -15,15 +15,24 @@ import { isPhoneUserAgent } from './device';
 import {
   isDesktopBridgeAvailable,
   type DesktopAiState,
-  type DesktopBrowserState
+  type DesktopBrowserState,
+  type DesktopLibraryKind
 } from './desktopBridge';
 import { shouldAutoOpenPanel } from './panelSync';
 import { canUseBuiltinBrowser } from './visibility';
+
+// 鲁港通 - 继续修改的文件上下文：只带展示字段，实际路径留在主进程
+export type LibraryFileContext = { name: string; kind: DesktopLibraryKind };
 
 type BuiltinBrowserContextType = {
   isOpen: boolean;
   openPanel: () => void;
   closePanel: () => void;
+  /** 鲁港通 - 打开右栏并切到资料库；nonce 递增让面板每次都收到显式切换 */
+  openLibrary: () => void;
+  libraryNonce: number;
+  libraryFile: LibraryFileContext | null;
+  setLibraryFile: (file: LibraryFileContext | null) => void;
 };
 
 export const BuiltinBrowserContext = createContext<BuiltinBrowserContextType | null>(null);
@@ -48,11 +57,21 @@ export const useBuiltinBrowserVisible = () => {
 
 export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [libraryNonce, setLibraryNonce] = useState(0);
+  const [libraryFile, setLibraryFileState] = useState<LibraryFileContext | null>(null);
   const isVisible = useBuiltinBrowserVisible();
   const isDesktop = useIsDesktopBridge();
 
   const openPanel = useCallback(() => setIsOpen(true), []);
   const closePanel = useCallback(() => setIsOpen(false), []);
+  // 鲁港通 - 资料库入口：展开右栏并让面板切到资料库视图
+  const openLibrary = useCallback(() => {
+    setIsOpen(true);
+    setLibraryNonce((value) => value + 1);
+  }, []);
+  const setLibraryFile = useCallback((file: LibraryFileContext | null) => {
+    setLibraryFileState(file);
+  }, []);
 
   // 鲁港通 - 刷新/重进页面时恢复面板：桌面读本地视图状态，网页读云端会话状态
   useEffect(() => {
@@ -114,8 +133,16 @@ export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) =>
   }, [isDesktop]);
 
   const value = useMemo(
-    () => ({ isOpen, openPanel, closePanel }),
-    [isOpen, openPanel, closePanel]
+    () => ({
+      isOpen,
+      openPanel,
+      closePanel,
+      openLibrary,
+      libraryNonce,
+      libraryFile,
+      setLibraryFile
+    }),
+    [isOpen, openPanel, closePanel, openLibrary, libraryNonce, libraryFile, setLibraryFile]
   );
 
   return <BuiltinBrowserContext.Provider value={value}>{children}</BuiltinBrowserContext.Provider>;

@@ -19,6 +19,8 @@ import {
   downloadIdSchema,
   findNextSchema,
   findQuerySchema,
+  libraryIdSchema,
+  libraryStarSchema,
   navigateUrlSchema,
   siteAiPrefGetSchema,
   siteAiPrefSetSchema,
@@ -31,6 +33,7 @@ import type { AiController } from './ai/controller';
 import type { DeviceChannel } from './ai/deviceChannel';
 import type { AiCommand } from './ai/protocol';
 import type { DocumentPreviewManager } from './ai/documentPreview';
+import type { LibraryManager } from './library/manager';
 import type { Diagnostics } from './diagnostics';
 import type { WindowControls } from './windowChrome';
 import type { UpdateController } from './update';
@@ -57,6 +60,18 @@ type RegisterIpcOptions = {
     | 'openExternal'
     | 'setActive'
   >;
+  library: Pick<
+    LibraryManager,
+    | 'list'
+    | 'importLocal'
+    | 'open'
+    | 'star'
+    | 'reveal'
+    | 'openExternal'
+    | 'trash'
+    | 'remove'
+    | 'relocate'
+  >;
   windowControls: WindowControls;
   update: Pick<UpdateController, 'getStatus' | 'check' | 'install' | 'subscribe'>;
 };
@@ -73,6 +88,7 @@ export const registerIpc = ({
   deviceChannel,
   diagnostics,
   documents,
+  library,
   windowControls,
   update
 }: RegisterIpcOptions) => {
@@ -296,6 +312,48 @@ export const registerIpc = ({
     IPC_CHANNELS.documentsSetActive,
     (payload) => documents.setActive((payload as { token: string | null }).token),
     documentActiveSchema
+  );
+
+  // 鲁港通 - 资料库：条目只含展示字段，路径与文件动作全部留在主进程
+  handle(IPC_CHANNELS.libraryList, () => library.list());
+  handle(IPC_CHANNELS.libraryImport, () => library.importLocal());
+  handle(
+    IPC_CHANNELS.libraryOpen,
+    (payload) => library.open((payload as { id: string }).id),
+    libraryIdSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryStar,
+    (payload) => {
+      const { id, starred } = payload as { id: string; starred: boolean };
+      return library.star(id, starred);
+    },
+    libraryStarSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryReveal,
+    (payload) => library.reveal((payload as { id: string }).id),
+    libraryIdSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryOpenExternal,
+    (payload) => library.openExternal((payload as { id: string }).id),
+    libraryIdSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryTrash,
+    (payload) => library.trash((payload as { id: string }).id),
+    libraryIdSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryRemove,
+    (payload) => library.remove((payload as { id: string }).id),
+    libraryIdSchema
+  );
+  handle(
+    IPC_CHANNELS.libraryRelocate,
+    (payload) => library.relocate((payload as { id: string }).id),
+    libraryIdSchema
   );
 
   // 鲁港通 - 自绘标题栏的窗口按钮：全部走主窗口校验，关闭仍复用收进托盘策略

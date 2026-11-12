@@ -1,6 +1,6 @@
 import type { FlexProps, BoxProps } from '@chakra-ui/react';
-import { Box, Flex, Textarea, useBoolean } from '@chakra-ui/react';
-import React, { useRef, useCallback, useMemo, useState } from 'react';
+import { Box, Flex, Text, Textarea, useBoolean } from '@chakra-ui/react';
+import React, { useRef, useCallback, useEffect, useMemo, useState, useContext } from 'react';
 import { useTranslation } from 'next-i18next';
 import MyTooltip from '@fastgpt/web/components/common/MyTooltip';
 import MyIcon from '@fastgpt/web/components/common/Icon';
@@ -21,6 +21,9 @@ import { isChatFileAllowedBySelectConfig } from '../utils/file';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import PointsBalanceNotice, { PointsBalanceTag } from '@/pageComponents/chat/PointsBalanceNotice';
 import BuiltinBrowserEntryButton from '@/pageComponents/chat/builtinBrowser/entryButton';
+import BuiltinLibraryEntryButton from '@/pageComponents/chat/builtinBrowser/libraryButton';
+import { BuiltinBrowserContext } from '@/pageComponents/chat/builtinBrowser/context';
+import { libraryKindBadge } from '@/pageComponents/chat/builtinBrowser/libraryList';
 import { useToast } from '@fastgpt/web/hooks/useToast';
 import VoiceInput, { type VoiceInputComponentRef } from './VoiceInput';
 import MyBox from '@fastgpt/web/components/common/MyBox';
@@ -59,6 +62,14 @@ const ChatInput = ({
   const { toast } = useToast();
   const { isPc } = useSystem();
   const VoiceInputRef = useRef<VoiceInputComponentRef>(null);
+  // 鲁港通 - 从资料库点「继续修改」后，输入框上方显示文件上下文并自动聚焦
+  const builtinBrowser = useContext(BuiltinBrowserContext);
+  const libraryFile = builtinBrowser?.libraryFile ?? null;
+
+  useEffect(() => {
+    if (!libraryFile) return;
+    TextareaDom?.current?.focus();
+  }, [libraryFile, TextareaDom]);
 
   const { setValue, control } = chatForm;
   const inputValue = useWatch({
@@ -193,6 +204,40 @@ const ChatInput = ({
   const RenderTextarea = useMemo(
     () => (
       <Flex direction={'column'} mt={fileList.length > 0 ? 1 : 0} minH={'42px'}>
+        {/* 鲁港通 - 资料库续改上下文：只展示文件名，点 × 移除 */}
+        {libraryFile && (
+          <Flex
+            alignItems={'center'}
+            gap={'5px'}
+            mb={'6px'}
+            px={'8px'}
+            h={'22px'}
+            w={'fit-content'}
+            maxW={'100%'}
+            borderRadius={'6px'}
+            bg={'rgba(111,157,208,0.1)'}
+            border={'1px solid'}
+            borderColor={'rgba(111,157,208,0.28)'}
+          >
+            <Text fontSize={'9px'} fontWeight={700} color={LG.mountain} flexShrink={0}>
+              {libraryKindBadge(libraryFile.kind)}
+            </Text>
+            <Text fontSize={'10px'} color={LG.ink} noOfLines={1} minW={0}>
+              {libraryFile.name}
+            </Text>
+            <MyIcon
+              name={'close'}
+              w={'10px'}
+              h={'10px'}
+              flexShrink={0}
+              color={LG.mutedSoft}
+              cursor={'pointer'}
+              _hover={{ color: LG.mountain }}
+              aria-label={String(t('common:builtin_browser_library_ctx_remove' as any))}
+              onClick={() => builtinBrowser?.setLibraryFile(null)}
+            />
+          </Flex>
+        )}
         {/* Textarea */}
         <Flex w={'100%'} position={'relative'}>
           {/* Prompt Container */}
@@ -318,18 +363,24 @@ const ChatInput = ({
               overflow={'hidden'}
               whiteSpace={'nowrap'}
             >
-              <Box flexShrink={0}>{appNamePlaceholderParts.prefix}</Box>
-              <Box
-                flex={'0 1 auto'}
-                minW={0}
-                maxW={'100%'}
-                overflow={'hidden'}
-                textOverflow={'ellipsis'}
-                whiteSpace={'nowrap'}
-              >
-                {placeholderAppName}
-              </Box>
-              <Box flexShrink={0}>{appNamePlaceholderParts.suffix}</Box>
+              {libraryFile ? (
+                <Box flexShrink={0}>{t('common:builtin_browser_library_ctx_hint' as any)}</Box>
+              ) : (
+                <>
+                  <Box flexShrink={0}>{appNamePlaceholderParts.prefix}</Box>
+                  <Box
+                    flex={'0 1 auto'}
+                    minW={0}
+                    maxW={'100%'}
+                    overflow={'hidden'}
+                    textOverflow={'ellipsis'}
+                    whiteSpace={'nowrap'}
+                  >
+                    {placeholderAppName}
+                  </Box>
+                  <Box flexShrink={0}>{appNamePlaceholderParts.suffix}</Box>
+                </>
+              )}
             </Flex>
           )}
         </Flex>
@@ -350,7 +401,10 @@ const ChatInput = ({
       handleSend,
       canUploadFile,
       isFileTypeAllowed,
-      onSelectFile
+      onSelectFile,
+      libraryFile,
+      builtinBrowser,
+      t
     ]
   );
 
@@ -382,6 +436,8 @@ const ChatInput = ({
           <Flex alignItems={'center'} h={'28px'}>
             {/* 鲁港通 - 办事浏览器入口 */}
             <BuiltinBrowserEntryButton />
+            {/* 鲁港通 - 个人资料库入口（老客户端无桥对象时自身隐藏） */}
+            <BuiltinLibraryEntryButton />
 
             {/* file selector button */}
             {canUploadFile && (

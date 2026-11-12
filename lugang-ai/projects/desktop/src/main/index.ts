@@ -3,11 +3,12 @@ import { app, dialog, Menu, safeStorage, shell } from 'electron';
 import type { BrowserWindow } from 'electron';
 import log from 'electron-log/main';
 import { hostname } from 'node:os';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { DocumentPreviewManager, type PreviewEditor } from './ai/documentPreview';
 import { BrowserManager } from './browser/manager';
+import { createLibraryManager, type LibraryManager } from './library/manager';
 import { createDeviceStore } from './deviceStore';
 import { registerIpc } from './ipc';
 import { decideWindowCloseAction } from './lifecycle';
@@ -29,10 +30,11 @@ import { extractPdfOutline, writePdfOverlayCopy } from './ai/document/pdfOverlay
 import { parseDocumentFile } from './ai/document/parse';
 import { createFileGenerator } from './ai/fileGenerator';
 import { createFilePicker } from './ai/filePicker';
+import { GENERATED_FILE_FOLDER } from './ai/fileNaming';
 import { fillFormCopy } from './ai/form/fill';
 import { parseFormFile } from './ai/form/parse';
 import { createDiagnostics, type DiagnosticsDevice } from './diagnostics';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 
 // 鲁港通 - 必须先 setName：electron-log 与 userData 路径都按应用名取目录
 app.setName('鲁港通');
@@ -183,6 +185,8 @@ if (!gotLock) {
         { isMaximizeDisabled: () => loginWindow.isLoginMode() }
       );
 
+      // 鲁港通 - 资料库在文档会话之后装配，浏览器下载回调按可选引用规避初始化顺序
+      let library: LibraryManager | undefined;
       const browser = new BrowserManager({
         window: mainWindow,
         tabPreloadPath: join(__dirname, '../preload/tab.cjs'),
@@ -201,6 +205,18 @@ if (!gotLock) {
             void aiController?.handlePanelClosed().catch((error) => {
               log.warn('[lugang-desktop] ai panel reopen failed', error);
             });
+          },
+          // 鲁港通 - 网页下载完成后自动登记到资料库，来源记域名
+          onDownloadCompleted: (event) => {
+            void library
+              ?.register({
+                path: event.path,
+                source: 'download',
+                ...(event.url ? { origin: event.url } : {})
+              })
+              .catch((error) => {
+                log.warn('[lugang-desktop] library register download failed', error);
+              });
           }
         }
       });
@@ -228,6 +244,12 @@ if (!gotLock) {
         const copy =
           document.format === 'docx' ? await editDocxCopy(input) : await editXlsxCopy(input);
         lastGeneratedPath = copy.path;
+        // 鲁港通 - 编辑副本登记到资料库，来源记原文件名
+        void library
+          ?.register({ path: copy.path, source: 'edit', parentName: document.name })
+          .catch((error) => {
+            log.warn('[lugang-desktop] library register edit copy failed', error);
+          });
         return copy;
       };
       // 鲁港通 - PDF 叠加同样只写副本：原文件保持原样，副本落到下载目录
@@ -242,6 +264,12 @@ if (!gotLock) {
           outputDir: app.getPath('downloads')
         });
         lastGeneratedPath = copy.path;
+        // 鲁港通 - PDF 叠加副本同样登记，来源记原文件名
+        void library
+          ?.register({ path: copy.path, source: 'edit', parentName: input.fileName })
+          .catch((error) => {
+            log.warn('[lugang-desktop] library register pdf copy failed', error);
+          });
         return copy;
       };
       // 鲁港通 - 右栏文件标签与逐条确认：会话只在本机主进程，快照不含本机路径
@@ -271,6 +299,36 @@ if (!gotLock) {
           }
         }
       });
+      // 鲁港通 - 个人资料库：索引只存本机 userData，文件不搬动；首次运行回填生成文件夹
+      library = createLibraryManager({
+        filePath: join(userDataDir, 'library.json'),
+        generatedFolder: join(app.getPath('downloads'), GENERATED_FILE_FOLDER),
+        exists: (path) => existsSync(path),
+        stat: async (path) => {
+          const info = await stat(path);
+          return { size: info.size, mtimeMs: info.mtimeMs };
+        },
+        readdir: async (path) => {
+          const entries = await readdir(path, { withFileTypes: true });
+          return entries.map((entry) => ({ name: entry.name, isFile: entry.isFile() }));
+        },
+        trashItem: (path) => shell.trashItem(path),
+        showItemInFolder: (path) => shell.showItemInFolder(path),
+        openPath: (path) => shell.openPath(path),
+        pickFile: (options) => pickFile(options),
+        openDocument: (path) => documents.openPath(path),
+        readFile: (path) => readFile(path),
+        emit: (items) => {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(IPC_CHANNELS.libraryChanged, items);
+          }
+        },
+        log: (message, error) => log.warn(`[lugang-desktop] ${message}`, error)
+      });
+      const activeLibrary = library;
+      void activeLibrary.init().catch((error) => {
+        log.warn('[lugang-desktop] library init failed', error);
+      });
       // 鲁港通 - 停止 AI 或关闭面板时一并放弃未完成的预览会话（含 PDF 叠加）
       const previewDocument: AiDocumentPreviewer = Object.assign(
         (input: Parameters<AiDocumentPreviewer>[0]) => documents.preview(input),
@@ -286,6 +344,10 @@ if (!gotLock) {
         generateFile: async (input) => {
           const file = await generateFile(input);
           lastGeneratedPath = file.path;
+          // 鲁港通 - AI 生成的文件自动登记到资料库
+          void library?.register({ path: file.path, source: 'ai' }).catch((error) => {
+            log.warn('[lugang-desktop] library register generated file failed', error);
+          });
           return file;
         },
         pickFile,
@@ -313,6 +375,12 @@ if (!gotLock) {
             outputDir: app.getPath('downloads')
           });
           lastGeneratedPath = copy.path;
+          // 鲁港通 - 填表副本登记到资料库，来源记表单名
+          void library
+            ?.register({ path: copy.path, source: 'edit', parentName: form.name })
+            .catch((error) => {
+              log.warn('[lugang-desktop] library register form copy failed', error);
+            });
           return copy;
         },
         confirmForm: createAiFormConfirmer({
@@ -436,6 +504,7 @@ if (!gotLock) {
         deviceChannel: activeDeviceChannel,
         documents,
         diagnostics,
+        library: activeLibrary,
         windowControls,
         update
       });

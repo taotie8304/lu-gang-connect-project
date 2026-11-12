@@ -75,6 +75,41 @@ describe('resolveDocPanelView', () => {
       resolveDocPanelView({ activeDocToken: null, status: 'loading', currentTabUrl: '' })
     ).toBe('browser');
   });
+
+  it('资料库打开时优先于落地页与浏览器，但让位于文件预览', () => {
+    expect(
+      resolveDocPanelView({
+        activeDocToken: null,
+        status: 'active',
+        currentTabUrl: 'about:blank',
+        libraryOpen: true
+      })
+    ).toBe('library');
+    expect(
+      resolveDocPanelView({
+        activeDocToken: null,
+        status: 'loading',
+        currentTabUrl: '',
+        libraryOpen: true
+      })
+    ).toBe('library');
+    expect(
+      resolveDocPanelView({
+        activeDocToken: 'token-a',
+        status: 'active',
+        currentTabUrl: 'https://a.com',
+        libraryOpen: true
+      })
+    ).toBe('doc');
+    expect(
+      resolveDocPanelView({
+        activeDocToken: null,
+        status: 'active',
+        currentTabUrl: 'https://a.com',
+        libraryOpen: false
+      })
+    ).toBe('browser');
+  });
 });
 
 describe('resolveActiveDocToken', () => {

@@ -57,10 +57,14 @@ import type {
   DesktopDocumentSnapshot,
   DesktopDocumentSummary,
   DesktopDownloadItem,
-  DesktopFindResult
+  DesktopFindResult,
+  DesktopLibraryItem
 } from './desktopBridge';
 import { resolveActiveDocToken, resolveDocPanelView } from './documentTabs';
 import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
+import LibraryPanel, { LibraryDocToolbar } from './libraryPanel';
+import type { LibraryItemActions, LibraryPreview } from './libraryPanel';
+import { libraryImageMime } from './libraryList';
 import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const MINUTE_MS = 60 * 1000;
@@ -247,6 +251,12 @@ const BuiltinBrowserPanelBody = ({
     snapshot: DesktopDocumentSnapshot;
   } | null>(null);
   const [docBusy, setDocBusy] = useState(false);
+  // 鲁港通 - 个人资料库：常驻标签与列表状态；打开文件后记录来自资料库的条目以便显示工具条
+  const [libraryItems, setLibraryItems] = useState<DesktopLibraryItem[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryPreview, setLibraryPreview] = useState<LibraryPreview | null>(null);
+  const [libraryBusy, setLibraryBusy] = useState(false);
+  const [libraryDocItemId, setLibraryDocItemId] = useState<string | null>(null);
   // 鲁港通 - P0 原生浏览器状态：导航、查找、下载与清理弹窗
   const [navState, setNavState] = useState<DesktopBrowserNavState>(DEFAULT_NAV_STATE);
   const [findOpen, setFindOpen] = useState(false);
@@ -290,8 +300,13 @@ const BuiltinBrowserPanelBody = ({
     () => (typeof window === 'undefined' ? undefined : window.lugangDesktop?.documents),
     []
   );
+  // 鲁港通 - 资料库桥只在 0.14.0 起的桌面客户端存在，老客户端不显示入口与标签
+  const library = useMemo(
+    () => (typeof window === 'undefined' ? undefined : window.lugangDesktop?.library),
+    []
+  );
   const currentTabUrl = tabs.find((tab) => tab.current)?.url;
-  const panelView = resolveDocPanelView({ activeDocToken, status, currentTabUrl });
+  const panelView = resolveDocPanelView({ activeDocToken, status, currentTabUrl, libraryOpen });
 
   const { runAsync: openSession } = useRequest(transport.open, {
     manual: true,
@@ -528,10 +543,60 @@ const BuiltinBrowserPanelBody = ({
     };
   }, [documents, applyDocTabs]);
 
+  // 鲁港通 - 资料库：订阅主进程索引推送，挂载后先拉一次
+  const applyLibraryItems = useCallback((list: DesktopLibraryItem[]) => {
+    setLibraryItems(list);
+  }, []);
+
+  useEffect(() => {
+    if (!library) return;
+    let cancelled = false;
+    void library
+      .list()
+      .then((list) => {
+        if (!cancelled) applyLibraryItems(list);
+      })
+      .catch(() => undefined);
+    const unsubscribe = library.onChanged(applyLibraryItems);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [library, applyLibraryItems]);
+
+  // 鲁港通 - 图片预览用 blob 地址渲染，离开预览立即释放
+  const libraryImageUrlRef = useRef<string | null>(null);
+  const revokeLibraryImage = useCallback(() => {
+    if (!libraryImageUrlRef.current) return;
+    URL.revokeObjectURL(libraryImageUrlRef.current);
+    libraryImageUrlRef.current = null;
+  }, []);
+  useEffect(() => revokeLibraryImage, [revokeLibraryImage]);
+
+  // 鲁港通 - 聊天输入框的资料库入口：nonce 变化即切到资料库列表
+  const libraryNonce = builtinBrowser?.libraryNonce ?? 0;
+  const libraryNonceRef = useRef(libraryNonce);
+  useEffect(() => {
+    if (libraryNonce === libraryNonceRef.current) return;
+    libraryNonceRef.current = libraryNonce;
+    setActiveDocToken(null);
+    revokeLibraryImage();
+    setLibraryPreview(null);
+    setLibraryOpen(true);
+  }, [libraryNonce, revokeLibraryImage]);
+
   const activeDocSummary = useMemo(
     () => docTabs.find((item) => item.token === activeDocToken),
     [docTabs, activeDocToken]
   );
+  // 鲁港通 - 当前活动文件来自资料库时显示工具条；切到别的文件标签后按文件名失配自动隐藏
+  const libraryDocItem = useMemo(() => {
+    if (!libraryDocItemId) return null;
+    const item = libraryItems.find((row) => row.id === libraryDocItemId);
+    if (!item || item.missing) return null;
+    if (activeDocSummary && activeDocSummary.fileName !== item.name) return null;
+    return item;
+  }, [libraryDocItemId, libraryItems, activeDocSummary]);
   const activeDocState = activeDocSummary?.state;
   const docSnapshot =
     docSnapshotCache?.token === activeDocToken ? docSnapshotCache.snapshot : null;
@@ -579,6 +644,7 @@ const BuiltinBrowserPanelBody = ({
   const handleNewTab = useCallback(async () => {
     if (tabsFull) return;
     setActiveDocToken(null);
+    setLibraryOpen(false);
     try {
       applyTabs(await createTab());
       urlEditingRef.current = false;
@@ -591,6 +657,7 @@ const BuiltinBrowserPanelBody = ({
   const handleSelectTab = useCallback(
     async (index: number) => {
       setActiveDocToken(null);
+      setLibraryOpen(false);
       try {
         const res = await selectTab(index);
         applyTabs(res.tabs);
@@ -635,8 +702,13 @@ const BuiltinBrowserPanelBody = ({
       }
       setDocTabs((prev) => prev.filter((item) => item.token !== token));
       setActiveDocToken((current) => (current === token ? null : current));
+      // 鲁港通 - 关闭的是资料库来源的文件时一并收起工具条关联
+      const closing = docTabs.find((item) => item.token === token);
+      if (closing && libraryDocItem && closing.fileName === libraryDocItem.name) {
+        setLibraryDocItemId(null);
+      }
     },
-    [documents]
+    [documents, docTabs, libraryDocItem]
   );
 
   // 鲁港通 - 选择本地文件：主进程弹原生选择框，文件全程只在本机解析、不上传
@@ -724,6 +796,294 @@ const BuiltinBrowserPanelBody = ({
       });
     }
   }, [documents, activeDocToken, t, toast]);
+
+  // 鲁港通 - 打开资料库条目：文档走右栏文件会话，图片走面板内预览，缺失/不支持给出对应页面
+  const handleOpenLibraryItem = useCallback(
+    async (item: DesktopLibraryItem, options?: { continueEdit?: boolean }) => {
+      if (!library || libraryBusy) return;
+      setLibraryBusy(true);
+      try {
+        const result = await library.open(item.id);
+        if (!result) {
+          toast({
+            title: t('common:builtin_browser_library_open_failed' as any),
+            status: 'warning'
+          });
+          return;
+        }
+        if (result.type === 'document') {
+          if (documents) {
+            try {
+              applyDocTabs(await documents.list());
+            } catch {
+              // 标签条由主进程推送补齐，列表失败不阻塞文件打开
+            }
+          }
+          revokeLibraryImage();
+          setLibraryPreview(null);
+          setLibraryOpen(false);
+          setLibraryDocItemId(item.id);
+          setActiveDocToken(result.snapshot.token);
+          setDocSnapshotCache({ token: result.snapshot.token, snapshot: result.snapshot });
+          if (options?.continueEdit) {
+            builtinBrowser?.setLibraryFile({ name: item.name, kind: item.kind });
+            toast({
+              title: t('common:builtin_browser_library_continue_ready' as any),
+              status: 'success'
+            });
+          }
+          return;
+        }
+        if (result.type === 'image') {
+          revokeLibraryImage();
+          // 鲁港通 - 复制到独立的 ArrayBuffer，避免跨进程字节视图与 Blob 类型不兼容
+          const bytes = new Uint8Array(result.data.byteLength);
+          bytes.set(result.data);
+          const url = URL.createObjectURL(
+            new Blob([bytes.buffer], { type: libraryImageMime(result.name) })
+          );
+          libraryImageUrlRef.current = url;
+          setLibraryPreview({ kind: 'image', itemId: item.id, name: result.name, url });
+          return;
+        }
+        if (result.type === 'missing') {
+          setLibraryPreview({ kind: 'missing', itemId: item.id, name: item.name });
+          return;
+        }
+        setLibraryPreview({
+          kind: 'unsupported',
+          itemId: item.id,
+          name: item.name,
+          ...(result.reason ? { reason: result.reason } : {})
+        });
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_library_open_failed') as any),
+          status: 'warning'
+        });
+      } finally {
+        setLibraryBusy(false);
+      }
+    },
+    [
+      library,
+      libraryBusy,
+      documents,
+      applyDocTabs,
+      revokeLibraryImage,
+      builtinBrowser,
+      t,
+      toast
+    ]
+  );
+
+  // 鲁港通 - 导入本机文件：取消时静默返回，成功后由索引推送把新记录排到最前
+  const handleImportLibrary = useCallback(async () => {
+    if (!library || libraryBusy) return;
+    setLibraryBusy(true);
+    try {
+      await library.importLocal();
+    } catch (err) {
+      toast({
+        title: t(getErrText(err, 'common:builtin_browser_library_import_failed') as any),
+        status: 'warning'
+      });
+    } finally {
+      setLibraryBusy(false);
+    }
+  }, [library, libraryBusy, t, toast]);
+
+  const handleToggleLibraryStar = useCallback(
+    async (item: DesktopLibraryItem) => {
+      if (!library) return;
+      try {
+        const updated = await library.star(item.id, !item.starred);
+        if (!updated) {
+          toast({
+            title: t('common:builtin_browser_library_action_failed' as any),
+            status: 'warning'
+          });
+          return;
+        }
+        setLibraryItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_library_action_failed') as any),
+          status: 'warning'
+        });
+      }
+    },
+    [library, t, toast]
+  );
+
+  const handleRevealLibrary = useCallback(
+    async (item: DesktopLibraryItem) => {
+      if (!library) return;
+      try {
+        const revealed = await library.reveal(item.id);
+        if (!revealed) {
+          toast({
+            title: t('common:builtin_browser_library_reveal_failed' as any),
+            status: 'warning'
+          });
+        }
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_library_reveal_failed') as any),
+          status: 'warning'
+        });
+      }
+    },
+    [library, t, toast]
+  );
+
+  const handleOpenExternalLibrary = useCallback(
+    async (item: DesktopLibraryItem) => {
+      if (!library) return;
+      try {
+        const opened = await library.openExternal(item.id);
+        if (!opened) {
+          toast({
+            title: t('common:builtin_browser_library_open_external_failed' as any),
+            status: 'warning'
+          });
+        }
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_library_open_external_failed') as any),
+          status: 'warning'
+        });
+      }
+    },
+    [library, t, toast]
+  );
+
+  // 鲁港通 - 重新定位：用户取消选择或文件不可读时静默返回，缺口仍在缺失横幅上可见
+  const handleRelocateLibrary = useCallback(
+    async (item: DesktopLibraryItem) => {
+      if (!library) return;
+      try {
+        const updated = await library.relocate(item.id);
+        if (!updated) return;
+        setLibraryItems((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
+        setLibraryPreview((prev) => (prev?.itemId === updated.id ? null : prev));
+      } catch {
+        // 主进程已记录日志，缺失状态保持原样
+      }
+    },
+    [library]
+  );
+
+  // 鲁港通 - 只删索引记录，原文件保持原位
+  const handleRemoveLibrary = useCallback(
+    async (item: DesktopLibraryItem) => {
+      if (!library) return;
+      try {
+        const removed = await library.remove(item.id);
+        if (!removed) {
+          toast({
+            title: t('common:builtin_browser_library_action_failed' as any),
+            status: 'warning'
+          });
+          return;
+        }
+        setLibraryPreview((prev) => (prev?.itemId === item.id ? null : prev));
+        setLibraryDocItemId((prev) => (prev === item.id ? null : prev));
+        toast({ title: t('common:builtin_browser_library_remove_done' as any), status: 'success' });
+      } catch (err) {
+        toast({
+          title: t(getErrText(err, 'common:builtin_browser_library_action_failed') as any),
+          status: 'warning'
+        });
+      }
+    },
+    [library, t, toast]
+  );
+
+  // 鲁港通 - 删除到回收站会动文件，必须二次确认
+  const handleTrashLibrary = useCallback(
+    (item: DesktopLibraryItem) => {
+      if (!library) return;
+      openConfirm({
+        customContent: t('common:builtin_browser_library_trash_confirm' as any, {
+          name: item.name
+        }),
+        confirmText: t('common:builtin_browser_library_trash_confirm_ok' as any),
+        onConfirm: async () => {
+          try {
+            const trashed = await library.trash(item.id);
+            if (!trashed) {
+              toast({
+                title: t('common:builtin_browser_library_trash_failed' as any),
+                status: 'warning'
+              });
+              return;
+            }
+            setLibraryPreview((prev) => (prev?.itemId === item.id ? null : prev));
+            setLibraryDocItemId((prev) => (prev === item.id ? null : prev));
+            toast({
+              title: t('common:builtin_browser_library_trash_done' as any),
+              status: 'success'
+            });
+          } catch {
+            toast({
+              title: t('common:builtin_browser_library_trash_failed' as any),
+              status: 'warning'
+            });
+          }
+        }
+      })();
+    },
+    [library, openConfirm, t, toast]
+  );
+
+  const handleCloseLibraryPreview = useCallback(() => {
+    revokeLibraryImage();
+    setLibraryPreview(null);
+  }, [revokeLibraryImage]);
+
+  // 鲁港通 - 打开所在文件夹：取第一个未缺失条目所在的目录
+  const handleRevealLibraryFolder = useCallback(() => {
+    const target = libraryItems.find((item) => !item.missing);
+    if (!target) {
+      toast({
+        title: t('common:builtin_browser_library_reveal_failed' as any),
+        status: 'warning'
+      });
+      return;
+    }
+    void handleRevealLibrary(target);
+  }, [libraryItems, handleRevealLibrary, t, toast]);
+
+  const handleBackToLibrary = useCallback(() => {
+    revokeLibraryImage();
+    setLibraryPreview(null);
+    setLibraryDocItemId(null);
+    setActiveDocToken(null);
+    setLibraryOpen(true);
+  }, [revokeLibraryImage]);
+
+  const libraryActions = useMemo<LibraryItemActions>(
+    () => ({
+      open: (item) => void handleOpenLibraryItem(item),
+      continueEdit: (item) => void handleOpenLibraryItem(item, { continueEdit: true }),
+      toggleStar: (item) => void handleToggleLibraryStar(item),
+      reveal: (item) => void handleRevealLibrary(item),
+      openExternal: (item) => void handleOpenExternalLibrary(item),
+      trash: (item) => handleTrashLibrary(item),
+      remove: (item) => void handleRemoveLibrary(item),
+      relocate: (item) => void handleRelocateLibrary(item)
+    }),
+    [
+      handleOpenLibraryItem,
+      handleToggleLibraryStar,
+      handleRevealLibrary,
+      handleOpenExternalLibrary,
+      handleTrashLibrary,
+      handleRemoveLibrary,
+      handleRelocateLibrary
+    ]
+  );
 
   const expiresAtMs = session ? new Date(session.expiresAt).getTime() : undefined;
 
@@ -1381,6 +1741,17 @@ const BuiltinBrowserPanelBody = ({
   const aiStoppedHint = [aiBadge?.message, t('common:builtin_browser_ai_stopped_hint')]
     .filter(Boolean)
     .join(' · ');
+  const docPreviewNode = docSnapshot ? (
+    <DocumentPreviewPanel
+      snapshot={docSnapshot}
+      busy={docBusy}
+      onDecide={(index, decision) => void handleDecideDoc(index, decision)}
+      onApplyAll={() => void handleApplyAllDoc()}
+      onOpenCopy={() => void handleOpenCopyDoc()}
+      readBytes={documents?.read}
+      onOpenExternal={documents?.openExternal ? () => void handleOpenExternalDoc() : undefined}
+    />
+  ) : null;
 
   return (
     <Flex flexDirection={'column'} h={'100%'} minH={0} onKeyDownCapture={handlePanelKeyDown}>
@@ -1613,6 +1984,46 @@ const BuiltinBrowserPanelBody = ({
         overflowX={'auto'}
         css={{ '&::-webkit-scrollbar': { height: '2px' } }}
       >
+        {/* 鲁港通 - 资料库常驻标签：不可关闭，点击切到资料库列表 */}
+        {library && (
+          <Flex
+            alignItems={'center'}
+            gap={1}
+            h={'24px'}
+            minW={'88px'}
+            maxW={'180px'}
+            flexShrink={0}
+            px={'8px'}
+            borderRadius={'6px'}
+            bg={panelView === 'library' ? 'white' : 'transparent'}
+            border={'1px solid'}
+            borderColor={panelView === 'library' ? LG.line : 'transparent'}
+            cursor={'pointer'}
+            _hover={{ bg: 'white', borderColor: LG.line }}
+            onClick={() => {
+              revokeLibraryImage();
+              setLibraryPreview(null);
+              setActiveDocToken(null);
+              setLibraryOpen(true);
+            }}
+          >
+            <MyIcon
+              name={'common/folderFill'}
+              w={'12px'}
+              h={'12px'}
+              flexShrink={0}
+              color={panelView === 'library' ? LG.mountain : LG.mutedSoft}
+            />
+            <Text
+              flex={'1 1 0'}
+              fontSize={'10px'}
+              noOfLines={1}
+              color={panelView === 'library' ? LG.ink : LG.muted}
+            >
+              {t('common:builtin_browser_library_open' as any)}
+            </Text>
+          </Flex>
+        )}
         {tabs.map((tab) => (
           <Flex
             key={tab.index}
@@ -1704,7 +2115,10 @@ const BuiltinBrowserPanelBody = ({
               borderColor={isActiveDoc ? LG.line : 'transparent'}
               cursor={'pointer'}
               _hover={{ bg: 'white', borderColor: LG.line }}
-              onClick={() => setActiveDocToken(doc.token)}
+              onClick={() => {
+                setLibraryOpen(false);
+                setActiveDocToken(doc.token);
+              }}
             >
               <DocumentFormatChip format={doc.format} size={13} />
               <Text
@@ -1994,17 +2408,22 @@ const BuiltinBrowserPanelBody = ({
       >
         {panelView === 'doc' &&
           (docSnapshot ? (
-            <DocumentPreviewPanel
-              snapshot={docSnapshot}
-              busy={docBusy}
-              onDecide={(index, decision) => void handleDecideDoc(index, decision)}
-              onApplyAll={() => void handleApplyAllDoc()}
-              onOpenCopy={() => void handleOpenCopyDoc()}
-              readBytes={documents?.read}
-              onOpenExternal={
-                documents?.openExternal ? () => void handleOpenExternalDoc() : undefined
-              }
-            />
+            libraryDocItem ? (
+              // 鲁港通 - 从资料库进入的文件在预览上方显示返回/收藏/继续修改工具条
+              <Flex flexDirection={'column'} h={'100%'} minH={0}>
+                <LibraryDocToolbar
+                  item={libraryDocItem}
+                  busy={libraryBusy}
+                  onBack={handleBackToLibrary}
+                  actions={libraryActions}
+                />
+                <Box flex={'1 1 0'} minH={0}>
+                  {docPreviewNode}
+                </Box>
+              </Flex>
+            ) : (
+              docPreviewNode
+            )
           ) : (
             <Flex
               h={'100%'}
@@ -2019,6 +2438,19 @@ const BuiltinBrowserPanelBody = ({
               </Text>
             </Flex>
           ))}
+
+        {/* 鲁港通 - 资料库列表/预览：搜索筛选、缺失提示与空状态都在面板内完成 */}
+        {panelView === 'library' && (
+          <LibraryPanel
+            items={libraryItems}
+            preview={libraryPreview}
+            busy={libraryBusy}
+            actions={libraryActions}
+            onImport={() => void handleImportLibrary()}
+            onClosePreview={handleCloseLibraryPreview}
+            onRevealFolder={handleRevealLibraryFolder}
+          />
+        )}
 
         {/* 鲁港通 - 落地页两层入口：打开互联网网址，或选择本机文档预览修改 */}
         {panelView === 'landing' && (

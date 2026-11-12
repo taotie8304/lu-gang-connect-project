@@ -15,6 +15,8 @@ import {
   type DesktopDocumentBytes,
   type DesktopDocumentSnapshot,
   type DesktopDocumentSummary,
+  type DesktopLibraryItem,
+  type DesktopLibraryOpenResult,
   type DesktopSessionSyncResponse,
   type DesktopSiteAiMode,
   type DesktopSiteAiPrefChange,
@@ -228,6 +230,37 @@ const api = {
       ipcRenderer.on(IPC_CHANNELS.documentsChanged, listener);
       return () => {
         ipcRenderer.removeListener(IPC_CHANNELS.documentsChanged, listener);
+      };
+    }
+  },
+  // 鲁港通 - 个人资料库：只暴露展示字段与按 id 的操作，本机路径留在主进程
+  library: {
+    list: () => ipcRenderer.invoke(IPC_CHANNELS.libraryList) as Promise<DesktopLibraryItem[]>,
+    importLocal: () =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryImport) as Promise<DesktopLibraryItem | null>,
+    open: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryOpen, { id }) as Promise<DesktopLibraryOpenResult | null>,
+    star: (id: string, starred: boolean) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryStar, { id, starred }) as Promise<
+        DesktopLibraryItem | null
+      >,
+    reveal: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryReveal, { id }) as Promise<boolean>,
+    openExternal: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryOpenExternal, { id }) as Promise<boolean>,
+    trash: (id: string) => ipcRenderer.invoke(IPC_CHANNELS.libraryTrash, { id }) as Promise<boolean>,
+    remove: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryRemove, { id }) as Promise<boolean>,
+    relocate: (id: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.libraryRelocate, { id }) as Promise<
+        DesktopLibraryItem | null
+      >,
+    onChanged: (callback: (list: DesktopLibraryItem[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, list: DesktopLibraryItem[]) =>
+        callback(list);
+      ipcRenderer.on(IPC_CHANNELS.libraryChanged, listener);
+      return () => {
+        ipcRenderer.removeListener(IPC_CHANNELS.libraryChanged, listener);
       };
     }
   },

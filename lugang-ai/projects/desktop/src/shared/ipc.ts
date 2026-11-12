@@ -76,6 +76,16 @@ export const IPC_CHANNELS = {
   documentsOpenExternal: 'lugang:documents-open-external',
   documentsSetActive: 'lugang:documents-set-active',
   documentsChanged: 'lugang:documents-changed',
+  libraryList: 'lugang:library-list',
+  libraryImport: 'lugang:library-import',
+  libraryOpen: 'lugang:library-open',
+  libraryStar: 'lugang:library-star',
+  libraryReveal: 'lugang:library-reveal',
+  libraryOpenExternal: 'lugang:library-open-external',
+  libraryTrash: 'lugang:library-trash',
+  libraryRemove: 'lugang:library-remove',
+  libraryRelocate: 'lugang:library-relocate',
+  libraryChanged: 'lugang:library-changed',
   diagnosticsExport: 'lugang:diagnostics-export'
 } as const;
 
@@ -358,6 +368,34 @@ export type DesktopDocumentSummary = {
 
 /** 鲁港通 - PDF 查看只把文件字节交给本机渲染进程，返回值里不出现本机路径 */
 export type DesktopDocumentBytes = { name: string; data: Uint8Array };
+
+/** 鲁港通 - 资料库格式分档：只用于展示与预览分流，不等于完整 MIME */
+export type DesktopLibraryKind = 'docx' | 'xlsx' | 'pdf' | 'image' | 'archive' | 'other';
+
+/** 鲁港通 - 资料库来源：AI 生成、网页下载、编辑副本、本机导入 */
+export type DesktopLibrarySource = 'ai' | 'download' | 'edit' | 'import';
+
+/** 鲁港通 - 资料库条目：只含展示字段，绝对路径留在主进程 */
+export type DesktopLibraryItem = {
+  id: string;
+  name: string;
+  kind: DesktopLibraryKind;
+  source: DesktopLibrarySource;
+  size: number;
+  addedAt: number;
+  usedAt: number;
+  starred: boolean;
+  missing: boolean;
+  origin?: string;
+  parentName?: string;
+};
+
+/** 鲁港通 - 打开资料库条目的四种结果：文档会话、图片字节、不支持预览、文件缺失 */
+export type DesktopLibraryOpenResult =
+  | { type: 'document'; snapshot: DesktopDocumentSnapshot }
+  | { type: 'image'; name: string; data: Uint8Array }
+  | { type: 'unsupported'; reason?: 'image_too_large' }
+  | { type: 'missing' };
 
 /** 鲁港通 - 诊断包导出只回传是否已保存，具体保存路径由用户在本机选择 */
 export type DesktopDiagnosticsExportResponse = { saved: boolean };

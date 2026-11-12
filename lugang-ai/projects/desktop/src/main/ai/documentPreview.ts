@@ -1,8 +1,10 @@
 // 鲁港通 - 文档预览会话：右栏逐条确认、全部应用、超时与副本生成都只在本机完成
 import { randomUUID } from 'node:crypto';
 import { readFile, stat } from 'node:fs/promises';
+import { basename, extname } from 'node:path';
 import type { DocumentEditOperation } from './protocol';
 import type { EditedDocumentCopy } from './document/editTypes';
+import { parseDocumentFile } from './document/parse';
 import type { ParsedDocument } from './document/types';
 import { DocumentParseError } from './document/types';
 import {
@@ -109,6 +111,8 @@ export type DocumentPreviewManagerOptions = {
   editDocument: PreviewEditor;
   writePdf?: PreviewPdfWriter;
   openLocal?: () => Promise<LocalPreviewInput | null>;
+  // 鲁港通 - 资料库按路径打开时解析 Word/Excel，默认走本机解析器，测试可注入
+  parseLocalPath?: (path: string) => Promise<ParsedDocument>;
   openCopy?: (path: string) => void | Promise<void>;
   emit?: (list: DesktopDocumentSummary[]) => void;
   timeoutMs?: number;
@@ -138,6 +142,7 @@ export class DocumentPreviewManager {
   private readonly editDocument: PreviewEditor;
   private readonly writePdf?: PreviewPdfWriter;
   private readonly pickLocal?: () => Promise<LocalPreviewInput | null>;
+  private readonly parseLocalPath: (path: string) => Promise<ParsedDocument>;
   private readonly openCopyPath?: (path: string) => void | Promise<void>;
   private readonly emit: (list: DesktopDocumentSummary[]) => void;
   private readonly timeoutMs: number;
@@ -150,6 +155,7 @@ export class DocumentPreviewManager {
     this.editDocument = options.editDocument;
     this.writePdf = options.writePdf;
     this.pickLocal = options.openLocal;
+    this.parseLocalPath = options.parseLocalPath ?? parseDocumentFile;
     this.openCopyPath = options.openCopy;
     this.emit = options.emit ?? (() => undefined);
     this.timeoutMs = options.timeoutMs ?? DEFAULT_REVIEW_TIMEOUT_MS;
@@ -223,16 +229,7 @@ export class DocumentPreviewManager {
       void this.loadPdfReview(session, input.entries);
     });
 
-  openLocal = async (): Promise<DesktopDocumentSnapshot | null> => {
-    if (!this.pickLocal) return null;
-    let input: LocalPreviewInput | null = null;
-    try {
-      input = await this.pickLocal();
-    } catch {
-      return null;
-    }
-    if (!input) return null;
-
+  private openViewInput = async (input: LocalPreviewInput): Promise<DesktopDocumentSnapshot> => {
     const session: Session = {
       token: randomUUID(),
       mode: 'view',
@@ -280,6 +277,35 @@ export class DocumentPreviewManager {
     }
 
     return this.snapshot(session);
+  };
+
+  openLocal = async (): Promise<DesktopDocumentSnapshot | null> => {
+    if (!this.pickLocal) return null;
+    let input: LocalPreviewInput | null = null;
+    try {
+      input = await this.pickLocal();
+    } catch {
+      return null;
+    }
+    if (!input) return null;
+
+    return this.openViewInput(input);
+  };
+
+  // 鲁港通 - 资料库按路径打开：PDF 直接只读预览，Word/Excel 解析成功后才建查看会话
+  openPath = async (path: string): Promise<DesktopDocumentSnapshot | null> => {
+    const extension = extname(path).toLowerCase();
+    if (extension === '.pdf') {
+      return this.openViewInput({ format: 'pdf', name: basename(path), path });
+    }
+    if (extension !== '.docx' && extension !== '.xlsx') return null;
+    let document: ParsedDocument;
+    try {
+      document = await this.parseLocalPath(path);
+    } catch {
+      return null;
+    }
+    return this.openViewInput({ format: document.format, document });
   };
 
   list = (): DesktopDocumentSummary[] =>
