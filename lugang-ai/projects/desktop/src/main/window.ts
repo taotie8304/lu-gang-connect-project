@@ -10,6 +10,7 @@ import {
 import { installNavigationGuard } from './navigationGuard';
 import { decideMainWindowPermission } from './mainWindowPermissions';
 import { createWindowFrameOptions } from './windowChrome';
+import { createLoginWindowController, isLoginPageUrl } from './loginWindow';
 import {
   MIN_WINDOW_HEIGHT,
   MIN_WINDOW_WIDTH,
@@ -80,6 +81,24 @@ export const createMainWindow = ({
   // 鲁港通 - 双保险：应用菜单已移除，窗口自身也不显示菜单栏
   window.setAutoHideMenuBar(true);
   window.setMenuBarVisibility(false);
+
+  // 鲁港通 - 登录页锁定 1280×800 且不可缩放；路由进出登录页时切换窗口状态
+  const loginWindow = createLoginWindowController({
+    getNormalBounds: () => window.getNormalBounds(),
+    getWorkArea: () => screen.getDisplayMatching(window.getBounds()).workArea,
+    isMaximized: () => window.isMaximized(),
+    unmaximize: () => window.unmaximize(),
+    maximize: () => window.maximize(),
+    setResizable: (resizable) => window.setResizable(resizable),
+    setMaximizable: (maximizable) => window.setMaximizable(maximizable),
+    setBounds: (bounds) => window.setBounds(bounds)
+  });
+  const syncLoginWindowMode = (url: string) => {
+    if (isLoginPageUrl(url, appOrigin)) loginWindow.enterLoginMode();
+    else loginWindow.exitLoginMode();
+  };
+  window.webContents.on('did-navigate', (_event, url) => syncLoginWindowMode(url));
+  window.webContents.on('did-navigate-in-page', (_event, url) => syncLoginWindowMode(url));
 
   // 鲁港通 - 主窗口只对应用源开放剪贴板读写（聊天页复制/粘贴），其余权限一律拒绝
   window.webContents.session.setPermissionRequestHandler(
@@ -168,6 +187,8 @@ export const createMainWindow = ({
 
   const persist = () => {
     if (window.isDestroyed()) return;
+    // 鲁港通 - 登录页尺寸是临时的，不覆盖用户平时的窗口记忆（含关闭时收进托盘）
+    if (loginWindow.isLoginMode()) return;
     saveWindowState(userDataDir, {
       ...window.getNormalBounds(),
       isMaximized: window.isMaximized()
@@ -194,11 +215,11 @@ export const createMainWindow = ({
   });
 
   window.once('ready-to-show', () => {
-    if (restorePosition && stored.isMaximized) window.maximize();
+    if (!loginWindow.isLoginMode() && restorePosition && stored.isMaximized) window.maximize();
     window.show();
   });
 
   void window.loadURL(appUrl).catch(() => undefined);
 
-  return window;
+  return { window, loginWindow };
 };

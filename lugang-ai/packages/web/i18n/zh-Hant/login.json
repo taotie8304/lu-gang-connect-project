@@ -127,5 +127,9 @@
   "about_contact_cta_title2": "開始你的魯港之旅",
   "about_contact_cta_btn": "進入魯港通 →",
   "show_password": "顯示密碼",
-  "hide_password": "隱藏密碼"
+  "hide_password": "隱藏密碼",
+  "desktop_phase_login": "望向登入框",
+  "desktop_phase_you": "望向你",
+  "desktop_phase_squint": "— w —",
+  "desktop_phase_jump": "跳兩下 ✦"
 }

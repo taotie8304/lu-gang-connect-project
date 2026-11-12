@@ -81,15 +81,15 @@ const LIGHT_THEME: Theme = {
   actionHoverBg: 'rgba(111,157,208,0.14)'
 };
 
-// 鲁港通 - 登录页是深色水墨底，标题栏换成同色系深底，避免顶部出现一条亮边
-const DARK_THEME: Theme = {
-  barBg: 'rgba(6,18,31,0.9)',
-  borderColor: 'rgba(200,169,106,0.28)',
-  sealBg: 'linear-gradient(145deg, #D9C08A, #B29155)',
-  brandColor: '#F7F3E8',
-  taglineColor: '#C8A96A',
-  actionColor: '#D9D3C4',
-  actionHoverBg: 'rgba(255,255,255,0.1)'
+// 鲁港通 - 登录页是米色纸张底，标题栏换成同色系浅底，与三栏登录页连成一体
+const LOGIN_THEME: Theme = {
+  barBg: 'rgba(247,244,236,0.94)',
+  borderColor: 'rgba(30,29,26,0.1)',
+  sealBg: 'linear-gradient(145deg, #BFE3FF, #1E7BFF 68%)',
+  brandColor: '#1E1D1A',
+  taglineColor: '#A9853F',
+  actionColor: '#57534A',
+  actionHoverBg: 'rgba(30,29,26,0.06)'
 };
 
 const WindowButton = ({
@@ -165,9 +165,9 @@ const DesktopTitleBar = () => {
   // 鲁港通 - 浏览器与老客户端没有窗口能力：不渲染自绘标题栏，保留系统原生标题栏
   if (!controls) return null;
 
-  // 鲁港通 - 登录页自身已有品牌区，标题栏只保留窗口按钮与拖动区，避免两处品牌上下相邻
+  // 鲁港通 - 登录页锁尺寸期间不提供最大化入口；页面背景换成同款纸色
   const isLogin = router.pathname.startsWith('/login');
-  const theme = isLogin ? DARK_THEME : LIGHT_THEME;
+  const theme = isLogin ? LOGIN_THEME : LIGHT_THEME;
   const sidebarLabel = sidebar?.collapsed
     ? t('common:desktop_sidebar_expand')
     : t('common:desktop_sidebar_collapse');
@@ -191,63 +191,61 @@ const DesktopTitleBar = () => {
       backdropFilter="blur(12px)"
       userSelect="none"
     >
-      {!isLogin && (
-        <Flex alignItems="center" gap="10px" pl="14px" pr="10px" minW={0}>
-          {sidebar && (
-            <Flex
-              as="button"
-              type="button"
-              className={styles.action}
-              w="24px"
-              h="24px"
-              flexShrink={0}
-              alignItems="center"
-              justifyContent="center"
-              border={0}
-              borderRadius="6px"
-              bg="transparent"
-              color={theme.actionColor}
-              cursor="pointer"
-              title={sidebarLabel}
-              aria-label={sidebarLabel}
-              _hover={{ bg: theme.actionHoverBg }}
-              onClick={() => sidebar.toggle()}
-            >
-              <SidebarIcon />
-            </Flex>
-          )}
-
-          <Flex alignItems="center" gap="8px" flexShrink={0}>
-            <Box
-              as="img"
-              src="/imgs/chat/lugang_banner_fold.svg"
-              alt={brand}
-              w="18px"
-              h="18px"
-              flexShrink={0}
-              borderRadius="5px"
-            />
-            <Text
-              fontSize="12px"
-              fontWeight={600}
-              letterSpacing="0.18em"
-              color={theme.brandColor}
-              whiteSpace="nowrap"
-            >
-              {brand}
-            </Text>
-            <Text
-              fontSize="9.5px"
-              letterSpacing="0.28em"
-              color={theme.taglineColor}
-              whiteSpace="nowrap"
-              display={{ base: 'none', md: 'block' }}
-            >
-              智联鲁港
-            </Text>
+      <Flex alignItems="center" gap="10px" pl="14px" pr="10px" minW={0}>
+        {!isLogin && sidebar && (
+          <Flex
+            as="button"
+            type="button"
+            className={styles.action}
+            w="24px"
+            h="24px"
+            flexShrink={0}
+            alignItems="center"
+            justifyContent="center"
+            border={0}
+            borderRadius="6px"
+            bg="transparent"
+            color={theme.actionColor}
+            cursor="pointer"
+            title={sidebarLabel}
+            aria-label={sidebarLabel}
+            _hover={{ bg: theme.actionHoverBg }}
+            onClick={() => sidebar.toggle()}
+          >
+            <SidebarIcon />
           </Flex>
+        )}
+
+        <Flex alignItems="center" gap="8px" flexShrink={0}>
+          <Box
+            as="img"
+            src="/imgs/chat/lugang_banner_fold.svg"
+            alt={brand}
+            w="18px"
+            h="18px"
+            flexShrink={0}
+            borderRadius="5px"
+          />
+          <Text
+            fontSize="12px"
+            fontWeight={600}
+            letterSpacing="0.18em"
+            color={theme.brandColor}
+            whiteSpace="nowrap"
+          >
+            {brand}
+          </Text>
+          <Text
+            fontSize="9.5px"
+            letterSpacing="0.28em"
+            color={theme.taglineColor}
+            whiteSpace="nowrap"
+            display={{ base: 'none', md: 'block' }}
+          >
+            智联鲁港
+          </Text>
         </Flex>
-      )}
+      </Flex>
 
       <Box flex="1 0 0" />
 
@@ -259,9 +257,15 @@ const DesktopTitleBar = () => {
         >
           <MinimizeIcon />
         </WindowButton>
-        <WindowButton label={maximizeLabel} theme={theme} onClick={() => controls.toggleMaximize()}>
-          {maximized ? <RestoreIcon /> : <MaximizeIcon />}
-        </WindowButton>
+        {!isLogin && (
+          <WindowButton
+            label={maximizeLabel}
+            theme={theme}
+            onClick={() => controls.toggleMaximize()}
+          >
+            {maximized ? <RestoreIcon /> : <MaximizeIcon />}
+          </WindowButton>
+        )}
         <WindowButton
           label={t('common:desktop_window_close')}
           theme={theme}

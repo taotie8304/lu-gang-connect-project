@@ -147,7 +147,7 @@ if (!gotLock) {
       const userDataDir = app.getPath('userData');
       const rendererDir = join(__dirname, '../renderer');
 
-      mainWindow = createMainWindow({
+      const created = createMainWindow({
         appUrl,
         preloadPath: join(__dirname, '../preload/index.cjs'),
         rendererDir,
@@ -156,26 +156,32 @@ if (!gotLock) {
           decideWindowCloseAction({ isQuitting, hasTray: Boolean(tray) }) === 'hide-to-tray',
         onHideToTray: () => tray?.notifyHidden()
       });
+      mainWindow = created.window;
+      const loginWindow = created.loginWindow;
 
       // 鲁港通 - 自绘标题栏的窗口按钮：关闭走 close，复用「收进托盘」策略
       const main = mainWindow;
-      const windowControls = createWindowControls({
-        minimize: () => main.minimize(),
-        maximize: () => main.maximize(),
-        unmaximize: () => main.unmaximize(),
-        isMaximized: () => main.isMaximized(),
-        close: () => main.close(),
-        // 鲁港通 - 系统级最大化（贴边、双击标题栏、快捷键）同样要同步给标题栏
-        subscribeMaximize: (listener) => {
-          main.on('maximize', listener);
-          main.on('unmaximize', listener);
-          return () => {
-            if (main.isDestroyed()) return;
-            main.removeListener('maximize', listener);
-            main.removeListener('unmaximize', listener);
-          };
-        }
-      });
+      const windowControls = createWindowControls(
+        {
+          minimize: () => main.minimize(),
+          maximize: () => main.maximize(),
+          unmaximize: () => main.unmaximize(),
+          isMaximized: () => main.isMaximized(),
+          close: () => main.close(),
+          // 鲁港通 - 系统级最大化（贴边、双击标题栏、快捷键）同样要同步给标题栏
+          subscribeMaximize: (listener) => {
+            main.on('maximize', listener);
+            main.on('unmaximize', listener);
+            return () => {
+              if (main.isDestroyed()) return;
+              main.removeListener('maximize', listener);
+              main.removeListener('unmaximize', listener);
+            };
+          }
+        },
+        // 鲁港通 - 登录页窗口锁尺寸期间拒绝最大化
+        { isMaximizeDisabled: () => loginWindow.isLoginMode() }
+      );
 
       const browser = new BrowserManager({
         window: mainWindow,

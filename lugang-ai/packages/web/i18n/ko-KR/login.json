@@ -127,5 +127,9 @@
   "about_contact_cta_title2": "루강 여정을 시작하십시오",
   "about_contact_cta_btn": "루강통 시작하기 →",
   "show_password": "비밀번호 표시",
-  "hide_password": "비밀번호 숨기기"
+  "hide_password": "비밀번호 숨기기",
+  "desktop_phase_login": "로그인 창 바라보기",
+  "desktop_phase_you": "당신 바라보기",
+  "desktop_phase_squint": "— w —",
+  "desktop_phase_jump": "두 번 폴짝 ✦"
 }

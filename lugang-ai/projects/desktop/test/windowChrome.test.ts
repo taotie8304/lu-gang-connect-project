@@ -66,6 +66,28 @@ describe('createWindowControls', () => {
     expect(window.maximize).not.toHaveBeenCalled();
   });
 
+  it('最大化被禁用时（登录锁尺寸）不调整窗口并返回当前状态', () => {
+    const { window } = createFakeWindow();
+    const controls = createWindowControls(window, { isMaximizeDisabled: () => true });
+
+    expect(controls.toggleMaximize()).toBe(false);
+    expect(window.maximize).not.toHaveBeenCalled();
+    expect(window.unmaximize).not.toHaveBeenCalled();
+  });
+
+  it('最大化禁用状态每次调用实时判断', () => {
+    let disabled = true;
+    const { window } = createFakeWindow();
+    const controls = createWindowControls(window, { isMaximizeDisabled: () => disabled });
+
+    controls.toggleMaximize();
+    expect(window.maximize).not.toHaveBeenCalled();
+
+    disabled = false;
+    expect(controls.toggleMaximize()).toBe(true);
+    expect(window.maximize).toHaveBeenCalledTimes(1);
+  });
+
   it('关闭走窗口 close，复用收进托盘策略', () => {
     const { window } = createFakeWindow();
     createWindowControls(window).close();

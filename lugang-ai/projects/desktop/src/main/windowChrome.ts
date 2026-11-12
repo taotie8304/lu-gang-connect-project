@@ -16,7 +16,10 @@ export type WindowControlHost = {
 
 export type MaximizeListener = (maximized: boolean) => void;
 
-export const createWindowControls = (window: WindowControlHost) => {
+export const createWindowControls = (
+  window: WindowControlHost,
+  { isMaximizeDisabled }: { isMaximizeDisabled?: () => boolean } = {}
+) => {
   const listeners = new Set<MaximizeListener>();
 
   const notify = () => {
@@ -32,6 +35,8 @@ export const createWindowControls = (window: WindowControlHost) => {
     isMaximized: () => window.isMaximized(),
     // 返回本次请求的目标状态；实际结果仍以 maximize/unmaximize 事件为准
     toggleMaximize: () => {
+      // 鲁港通 - 登录页锁尺寸期间拒绝最大化（系统级双击等入口也走这里）
+      if (isMaximizeDisabled?.()) return window.isMaximized();
       const nextMaximized = !window.isMaximized();
       if (nextMaximized) window.maximize();
       else window.unmaximize();
