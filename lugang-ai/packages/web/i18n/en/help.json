@@ -11,8 +11,7 @@
     "guide": "User Guide",
     "credits": "Top-ups & Credits",
     "legal": "Legal & Disclaimer",
-    "backHome": "Back to Website",
-    "start": "Get Started",
+    "back": "Back",
     "aria": "Help center navigation"
   },
   "langNotice": "This help center is currently available in Simplified Chinese. Other language versions are in preparation.",

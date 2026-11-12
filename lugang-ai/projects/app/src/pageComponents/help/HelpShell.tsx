@@ -38,11 +38,9 @@ const HelpShell = ({ children, showLangNotice = false, footerNote }: HelpShellPr
           </nav>
 
           <div className="hp-header-actions">
-            <Link href="/" className="hp-btn hp-btn-ghost">
-              {t('nav.backHome')}
-            </Link>
-            <Link href="/login" className="hp-btn hp-btn-primary">
-              {t('nav.start')}
+            {/* 鲁港通 - 帮助中心是从聊天页进来的：只留「返回」回聊天，绝不指向 /login（登录页挂载会清登录态） */}
+            <Link href="/chat" className="hp-btn hp-btn-primary">
+              {t('nav.back')}
             </Link>
           </div>
         </div>
