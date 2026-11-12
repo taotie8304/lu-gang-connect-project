@@ -60,7 +60,7 @@ import type {
   DesktopFindResult,
   DesktopLibraryItem
 } from './desktopBridge';
-import { resolveActiveDocToken, resolveDocPanelView } from './documentTabs';
+import { resolveActiveDocToken, resolveDocPanelView, shouldHandleLibraryRequest } from './documentTabs';
 import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
 import LibraryPanel, { LibraryDocToolbar } from './libraryPanel';
 import type { LibraryItemActions, LibraryPreview } from './libraryPanel';
@@ -573,17 +573,28 @@ const BuiltinBrowserPanelBody = ({
   }, []);
   useEffect(() => revokeLibraryImage, [revokeLibraryImage]);
 
-  // 鲁港通 - 聊天输入框的资料库入口：nonce 变化即切到资料库列表
+  // 鲁港通 - 聊天输入框的资料库入口：消费未处理的打开请求（含面板挂载前发出的）
   const libraryNonce = builtinBrowser?.libraryNonce ?? 0;
-  const libraryNonceRef = useRef(libraryNonce);
+  const libraryRequestPending = builtinBrowser?.libraryRequestPending ?? false;
+  const consumeLibraryRequest = builtinBrowser?.consumeLibraryRequest;
+  const handledLibraryNonceRef = useRef(0);
   useEffect(() => {
-    if (libraryNonce === libraryNonceRef.current) return;
-    libraryNonceRef.current = libraryNonce;
+    if (
+      !shouldHandleLibraryRequest({
+        nonce: libraryNonce,
+        pending: libraryRequestPending,
+        handledNonce: handledLibraryNonceRef.current
+      })
+    ) {
+      return;
+    }
+    handledLibraryNonceRef.current = libraryNonce;
     setActiveDocToken(null);
     revokeLibraryImage();
     setLibraryPreview(null);
     setLibraryOpen(true);
-  }, [libraryNonce, revokeLibraryImage]);
+    consumeLibraryRequest?.();
+  }, [libraryNonce, libraryRequestPending, consumeLibraryRequest, revokeLibraryImage]);
 
   const activeDocSummary = useMemo(
     () => docTabs.find((item) => item.token === activeDocToken),

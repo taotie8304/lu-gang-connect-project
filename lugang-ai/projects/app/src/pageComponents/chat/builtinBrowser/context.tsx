@@ -31,6 +31,9 @@ type BuiltinBrowserContextType = {
   /** 鲁港通 - 打开右栏并切到资料库；nonce 递增让面板每次都收到显式切换 */
   openLibrary: () => void;
   libraryNonce: number;
+  /** 鲁港通 - 打开请求是否还没被面板消费（面板未挂载时也保留，挂载即切库） */
+  libraryRequestPending: boolean;
+  consumeLibraryRequest: () => void;
   libraryFile: LibraryFileContext | null;
   setLibraryFile: (file: LibraryFileContext | null) => void;
 };
@@ -57,17 +60,20 @@ export const useBuiltinBrowserVisible = () => {
 
 export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [libraryNonce, setLibraryNonce] = useState(0);
+  const [libraryRequest, setLibraryRequest] = useState({ nonce: 0, pending: false });
   const [libraryFile, setLibraryFileState] = useState<LibraryFileContext | null>(null);
   const isVisible = useBuiltinBrowserVisible();
   const isDesktop = useIsDesktopBridge();
 
   const openPanel = useCallback(() => setIsOpen(true), []);
   const closePanel = useCallback(() => setIsOpen(false), []);
-  // 鲁港通 - 资料库入口：展开右栏并让面板切到资料库视图
+  // 鲁港通 - 资料库入口：展开右栏并登记一次未消费的切库请求
   const openLibrary = useCallback(() => {
     setIsOpen(true);
-    setLibraryNonce((value) => value + 1);
+    setLibraryRequest((value) => ({ nonce: value.nonce + 1, pending: true }));
+  }, []);
+  const consumeLibraryRequest = useCallback(() => {
+    setLibraryRequest((value) => (value.pending ? { ...value, pending: false } : value));
   }, []);
   const setLibraryFile = useCallback((file: LibraryFileContext | null) => {
     setLibraryFileState(file);
@@ -138,11 +144,22 @@ export const BuiltinBrowserProvider = ({ children }: { children: ReactNode }) =>
       openPanel,
       closePanel,
       openLibrary,
-      libraryNonce,
+      libraryNonce: libraryRequest.nonce,
+      libraryRequestPending: libraryRequest.pending,
+      consumeLibraryRequest,
       libraryFile,
       setLibraryFile
     }),
-    [isOpen, openPanel, closePanel, openLibrary, libraryNonce, libraryFile, setLibraryFile]
+    [
+      isOpen,
+      openPanel,
+      closePanel,
+      openLibrary,
+      libraryRequest,
+      consumeLibraryRequest,
+      libraryFile,
+      setLibraryFile
+    ]
   );
 
   return <BuiltinBrowserContext.Provider value={value}>{children}</BuiltinBrowserContext.Provider>;

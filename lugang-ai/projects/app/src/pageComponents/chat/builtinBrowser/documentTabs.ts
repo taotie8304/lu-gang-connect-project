@@ -23,6 +23,13 @@ export const resolveDocPanelView = (input: {
   return 'browser';
 };
 
+// 鲁港通 - 资料库打开请求：面板挂载前发出的请求也要被消费，重开面板时不重放旧请求
+export const shouldHandleLibraryRequest = (input: {
+  nonce: number;
+  pending: boolean;
+  handledNonce: number;
+}): boolean => input.pending && input.nonce !== input.handledNonce;
+
 // 鲁港通 - 自动认领：保持当前文件；当前文件已关闭时接管新的待审会话
 export const resolveActiveDocToken = (
   list: DesktopDocumentSummary[],

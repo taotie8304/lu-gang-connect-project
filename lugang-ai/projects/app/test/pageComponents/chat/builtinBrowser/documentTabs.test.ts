@@ -9,6 +9,7 @@ import {
   resolveDocPanelView,
   resolveReviewProgress,
   resolveSheetWidth,
+  shouldHandleLibraryRequest,
   xlsxColumnLabel
 } from '@/pageComponents/chat/builtinBrowser/documentTabs';
 import type {
@@ -38,6 +39,21 @@ const snapshot = (overrides: Partial<DesktopDocumentSnapshot>): DesktopDocumentS
   blocks: [],
   warnings: [],
   ...overrides
+});
+
+describe('shouldHandleLibraryRequest', () => {
+  it('面板首次挂载时收到未消费的打开请求要切资料库', () => {
+    expect(shouldHandleLibraryRequest({ nonce: 1, pending: true, handledNonce: 0 })).toBe(true);
+  });
+
+  it('已消费的请求在面板重开后不再自动切资料库', () => {
+    expect(shouldHandleLibraryRequest({ nonce: 1, pending: false, handledNonce: 0 })).toBe(false);
+    expect(shouldHandleLibraryRequest({ nonce: 2, pending: true, handledNonce: 2 })).toBe(false);
+  });
+
+  it('面板挂着时新的打开请求仍要生效', () => {
+    expect(shouldHandleLibraryRequest({ nonce: 3, pending: true, handledNonce: 2 })).toBe(true);
+  });
 });
 
 describe('resolveDocPanelView', () => {

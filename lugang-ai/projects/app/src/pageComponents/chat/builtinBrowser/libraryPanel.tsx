@@ -306,7 +306,11 @@ const IconAction = ({
       cursor={'pointer'}
       _hover={{ bg: 'rgba(54,101,150,0.08)', color: LG.mountain }}
       aria-label={label}
-      onClick={onClick}
+      onClick={(event: ReactMouseEvent<HTMLElement>) => {
+        // 鲁港通 - 行内「更多」不能冒泡到整行，否则会直接触发打开文件
+        event.stopPropagation();
+        onClick(event);
+      }}
     >
       <MyIcon name={icon} w={'13px'} h={'13px'} />
     </Flex>
