@@ -1,4 +1,4 @@
-import { Box, Flex, Grid, Button, VStack, HStack, type BoxProps } from '@chakra-ui/react';
+import { Box, Flex, Grid, Button, VStack, HStack } from '@chakra-ui/react';
 import { useClientTranslation } from '@fastgpt/web/i18n/useClientTranslation';
 import React, { useCallback, useEffect, useState } from 'react';
 import { useSystemStore } from '@/web/common/system/useSystemStore';
@@ -15,8 +15,28 @@ import { StandardSubLevelEnum } from '@fastgpt/global/support/wallet/sub/constan
 import { getExtraPointsPackage } from '@fastgpt/global/support/wallet/bill/lugangPrice';
 import type { PricePurchaseIntent } from './purchaseIntent';
 import { useVoucherSelect } from './useVoucherSelect';
+import { buildExtraPointsCardDisplay } from './extraPointsDisplay';
 
-const PLAN_CARD_MAX_WIDTH = '483px';
+const EXTRA_PLAN_GRID_MAX_WIDTH = '1000px';
+
+const FeatureCheckIcon = () => (
+  <svg
+    width={'15'}
+    height={'15'}
+    viewBox={'0 0 16 16'}
+    fill={'none'}
+    style={{ flexShrink: 0, marginTop: '2.5px' }}
+  >
+    <circle cx={'8'} cy={'8'} r={'7'} fill={'#EAF1FF'} />
+    <path
+      d={'M5 8.2l2 2 4-4.2'}
+      stroke={'#3E78FF'}
+      strokeWidth={'1.6'}
+      strokeLinecap={'round'}
+      strokeLinejoin={'round'}
+    />
+  </svg>
+);
 
 const ExtraPlan = ({
   onPaySuccess,
@@ -41,7 +61,7 @@ const ExtraPlan = ({
     teamPlanStatus?.standard?.currentSubLevel === StandardSubLevelEnum.free;
 
   const extraPointsPackages = subPlans?.extraPoints?.packages || [];
-  const [selectedPackageIndex, setSelectedPackageIndex] = useState<number>(0);
+  const [buyingPackageIndex, setBuyingPackageIndex] = useState<number>();
   const { selectVoucher, voucherSelectModal } = useVoucherSelect();
 
   const { runAsync: onclickBuyExtraPoints, loading: isLoadingBuyExtraPoints } = useRequest(
@@ -117,243 +137,211 @@ const ExtraPlan = ({
     subPlans?.activityExpirationTime
   );
 
-  const planCardProps = {
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    w: ['100%', PLAN_CARD_MAX_WIDTH],
-    // 鲁港通 - 固定 488px 高度在多语言/长文案下会裁掉底部提示行，改为最小高度由内容撑开
-    minH: ['auto', '488px'],
-    p: ['16px', '24px 32px'],
-    flexShrink: 0,
-    bg: 'white',
-    borderRadius: 'xl',
-    borderWidth: '1px',
-    borderColor: 'myGray.200',
-    boxShadow: '1.5',
-    overflow: 'hidden'
-  } satisfies BoxProps;
-
   return (
     <VStack w={'100%'} alignItems={'center'}>
-      <Flex
-        w={['100%', PLAN_CARD_MAX_WIDTH]}
-        maxW={['100%', PLAN_CARD_MAX_WIDTH]}
-        justifyContent={'center'}
+      {!!subPlans?.activityExpirationTime && (
+        <Box fontSize={'12px'} color={'myGray.500'} mb={'16px'}>
+          {activityExpirationTime}
+        </Box>
+      )}
+
+      {/* 鲁港通 - 价格页改版：三档积分包各自成卡、各自购买，与基础套餐卡片视觉规范一致 */}
+      <Grid
+        w={'100%'}
+        maxW={EXTRA_PLAN_GRID_MAX_WIDTH}
+        gridTemplateColumns={['1fr', 'repeat(3, minmax(0, 1fr))']}
+        gap={[4, 5]}
+        alignItems={'stretch'}
       >
-        <Box position={'relative'} {...planCardProps}>
-          {subPlans?.activityExpirationTime && (
-            <>
-              <Box
-                position={'absolute'}
-                top={8}
-                left={'36%'}
-                width={'55px'}
-                height={'64px'}
-                zIndex={0}
-                bgImage={'url(/imgs/system/extraSnowflake1.svg)'}
-                backgroundSize="100% 100%"
-                backgroundRepeat="no-repeat"
-              />
-              <Box
-                position={'absolute'}
-                top={1}
-                left={'60%'}
-                width={'25px'}
-                height={'25px'}
-                zIndex={0}
-                bgImage={'url(/imgs/system/extraSnowflake2.svg)'}
-                backgroundSize="100% 100%"
-                backgroundRepeat="no-repeat"
-              />
-              <Box
-                position={'absolute'}
-                top={1}
-                right={3}
-                width={'67px'}
-                height={'72px'}
-                zIndex={0}
-                bgImage={'url(/imgs/system/extraSnowflake3.svg)'}
-                backgroundSize="100% 100%"
-                backgroundRepeat="no-repeat"
-              />
-            </>
-          )}
-          <Box
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            fontSize={'18px'}
-            fontWeight={'500'}
-            color={'primary.700'}
-            pb={subPlans?.activityExpirationTime ? 2 : 6}
-            borderBottomWidth={'1px'}
-            borderBottomColor={'myGray.200'}
-          >
-            {t('price:support.wallet.subscription.Extra ai points')}
-            <Box fontSize={'12px'} fontWeight={'normal'} color={'myGray.600'} mt={0.5}>
-              {activityExpirationTime}
-            </Box>
-          </Box>
-          <Grid
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            gridTemplateColumns={['repeat(2, 1fr)', 'repeat(3, 1fr)']}
-            gap={[2, 3]}
-            py={[3, 4]}
-            minHeight={['180px', '220px']}
-            flex={'1 0 auto'}
-          >
-            {extraPointsPackages.map((pkg, index) => (
-              <Flex
-                key={index}
-                flexDir={'column'}
-                alignItems={'center'}
-                justifyContent={'center'}
-                py={extraPointsPackages.length > 6 ? 1 : 2}
-                px={[3, 4]}
-                borderRadius={['8px', 'sm']}
-                borderWidth={'1px'}
-                borderColor={selectedPackageIndex === index ? '#3E78FF' : 'myGray.200'}
-                bg={selectedPackageIndex === index ? 'primary.25' : 'white'}
-                cursor={'pointer'}
-                _hover={{
-                  borderColor: '#3E78FF',
-                  bg: 'primary.25'
-                }}
-                onClick={() => setSelectedPackageIndex(index)}
-                transition={'all 0.2s'}
-                position={'relative'}
-                overflow={'hidden'}
-              >
-                {!!pkg.activityBonusPoints && (
-                  <Flex
-                    position={'absolute'}
-                    top={0.5}
-                    right={-8}
-                    minW={24}
-                    py={0.5}
-                    justifyContent={'center'}
-                    fontSize={'10px'}
-                    fontWeight={'bold'}
-                    color={'white'}
-                    bg={'#ED372C'}
-                    transform={'rotate(37deg)'}
-                    whiteSpace={'nowrap'}
-                  >
-                    +{formatNumberWithUnit(pkg.activityBonusPoints, i18n.language)}
-                  </Flex>
-                )}
-                <Box fontSize={'24px'} fontWeight={'medium'} color={'myGray.600'}>
-                  {formatNumberWithUnit(pkg.points, i18n.language)}{' '}
-                  <Box as={'span'} fontSize={'12px'}>
-                    {t('common:support.wallet.subscription.point')}
-                  </Box>
-                </Box>
-                <Box
-                  fontSize={['10px', '12px']}
-                  fontWeight={'medium'}
-                  color={'myGray.500'}
-                  mt={[1, 2]}
+        {extraPointsPackages.map((pkg, index) => {
+          const display = buildExtraPointsCardDisplay({
+            index,
+            packageCount: extraPointsPackages.length,
+            points: pkg.points,
+            price: pkg.price
+          });
+
+          return (
+            <Flex
+              key={index}
+              position={'relative'}
+              flexDir={'column'}
+              alignItems={'stretch'}
+              textAlign={'left'}
+              h={'100%'}
+              bg={'white'}
+              borderWidth={'1.5px'}
+              borderColor={display.recommended ? '#BFD3FF' : '#EAECF3'}
+              borderRadius={'16px'}
+              p={['20px', '24px 26px']}
+              boxShadow={'0 1px 2px 0 rgba(19,51,107,.10), 0 0 1px 0 rgba(19,51,107,.15)'}
+              transition={'transform .2s ease, border-color .2s ease, box-shadow .2s ease'}
+              _hover={{
+                transform: 'translateY(-3px)',
+                borderColor: '#B9CCFF',
+                boxShadow:
+                  '0 16px 34px -16px rgba(19,51,107,.30), 0 0 1px 0 rgba(19,51,107,.15)'
+              }}
+            >
+              {display.recommended && (
+                <Flex
+                  position={'absolute'}
+                  top={'-11px'}
+                  left={'50%'}
+                  transform={'translateX(-50%)'}
+                  h={'22px'}
+                  px={'12px'}
+                  borderRadius={'999px'}
+                  alignItems={'center'}
+                  bg={'#3E78FF'}
+                  color={'white'}
+                  fontSize={'11.5px'}
+                  fontWeight={600}
+                  letterSpacing={'.5px'}
+                  whiteSpace={'nowrap'}
+                  boxShadow={'0 4px 10px -2px rgba(62,120,255,.55)'}
                 >
-                  {t('price:extra_points.valid_permanent')}
+                  {t('price:extra_points.recommended')}
+                </Flex>
+              )}
+
+              {!!pkg.activityBonusPoints && (
+                <Flex
+                  position={'absolute'}
+                  top={'16px'}
+                  right={'16px'}
+                  h={'22px'}
+                  px={'10px'}
+                  borderRadius={'999px'}
+                  alignItems={'center'}
+                  bg={'#FFF1F0'}
+                  color={'#D92D20'}
+                  border={'1px solid #FECDCA'}
+                  fontSize={'11px'}
+                  fontWeight={600}
+                  whiteSpace={'nowrap'}
+                >
+                  {t('price:extra_points.bonus_tag', {
+                    count: pkg.activityBonusPoints
+                  })}
+                </Flex>
+              )}
+
+              <Flex alignItems={'baseline'} gap={'7px'} pr={'70px'}>
+                <Box
+                  fontSize={'29px'}
+                  lineHeight={'1.05'}
+                  fontWeight={700}
+                  letterSpacing={'-.8px'}
+                  color={'#101828'}
+                >
+                  {formatNumberWithUnit(pkg.points, i18n.language)}
+                </Box>
+                <Box fontSize={'13.5px'} color={'myGray.600'} fontWeight={500}>
+                  {t('common:support.wallet.subscription.point')}
                 </Box>
               </Flex>
-            ))}
-          </Grid>
 
-          <Flex
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            justifyContent={'space-between'}
-            alignItems={'center'}
-          >
-            <Box
-              fontSize={['13px', '14px']}
-              color={'myGray.600'}
-              fontWeight={'medium'}
-              textAlign={['center', 'left']}
-            >
-              {t('price:support.wallet.subscription.total_points')}
-            </Box>
-            <Box color={'myGray.600'} fontSize={['18px', '20px']} fontWeight={'medium'}>
-              {selectedPackageIndex !== undefined && extraPointsPackages[selectedPackageIndex]
-                ? formatNumberWithUnit(
-                    extraPointsPackages[selectedPackageIndex].points +
-                      (extraPointsPackages[selectedPackageIndex]?.activityBonusPoints || 0),
-                    i18n.language
-                  )
-                : '--'}
-            </Box>
-          </Flex>
-          <Flex
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            justifyContent={'space-between'}
-            alignItems={'center'}
-          >
-            <Box
-              fontSize={['13px', '14px']}
-              color={'myGray.600'}
-              fontWeight={'medium'}
-              textAlign={['center', 'left']}
-            >
-              {t('price:support.wallet.subscription.Update extra price')}
-            </Box>
-            <Box color={'myGray.600'} fontSize={['18px', '20px']} fontWeight={'medium'}>
-              {selectedPackageIndex !== undefined && extraPointsPackages[selectedPackageIndex]
-                ? t('price:extraPointsPrice', {
-                    price: extraPointsPackages[selectedPackageIndex].price
-                  })
-                : '--'}
-            </Box>
-          </Flex>
+              <Box fontSize={'12px'} color={'myGray.500'} mt={'6px'}>
+                {t('price:extra_points.one_time')}
+              </Box>
 
-          <Button
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            h={['40px', '44px']}
-            variant={'primaryGhost'}
-            isLoading={isLoadingBuyExtraPoints}
-            isDisabled={
-              selectedPackageIndex === undefined || !extraPointsPackages[selectedPackageIndex]
-            }
-            onClick={() => {
-              if (selectedPackageIndex !== undefined && extraPointsPackages[selectedPackageIndex]) {
-                const selectedPackage = extraPointsPackages[selectedPackageIndex];
-                submitExtraPointsPurchase({
-                  type: 'extraPoints',
-                  points: selectedPackage.points,
-                  month: selectedPackage.month
-                });
-              }
-            }}
-            fontSize={['14px', '16px']}
-            color={'primary.700'}
-            mt={[3, 4]}
-          >
-            {t('price:support.wallet.Buy')}
-          </Button>
+              <Flex alignItems={'flex-end'} gap={'9px'} mt={'18px'}>
+                <Box
+                  fontSize={'42px'}
+                  lineHeight={'1'}
+                  fontWeight={700}
+                  letterSpacing={'-1.2px'}
+                  color={'#101828'}
+                >
+                  <Box as={'span'} fontSize={'22px'} fontWeight={600} mr={'1px'}>
+                    ¥
+                  </Box>
+                  {pkg.price}
+                </Box>
+                <Box fontSize={'12px'} color={'myGray.500'} pb={'5px'}>
+                  {t('price:extra_points.unit_price', { price: display.unitPrice })}
+                </Box>
+              </Flex>
 
-          <HStack
-            position={'relative'}
-            zIndex={1}
-            w={'100%'}
-            color={'blue.700'}
-            mt={[4, 6]}
-            spacing={[2, 0]}
-          >
-            <MyIcon name={'infoRounded'} w={['16px', '18px']} />
-            <Box fontSize={['12px', '14px']} fontWeight={'medium'} lineHeight={['1.4', 'normal']}>
-              {t('price:support.wallet.subscription.Update extra ai points tips')}
-            </Box>
-          </HStack>
+              <Box h={'1px'} bg={'#EAECF3'} my={'18px 0 15px'} flexShrink={0} />
+
+              <VStack alignItems={'stretch'} spacing={'10px'} flex={'1'}>
+                <Flex
+                  alignItems={'flex-start'}
+                  gap={'8px'}
+                  fontSize={'13px'}
+                  color={'#475467'}
+                  lineHeight={'1.55'}
+                >
+                  <FeatureCheckIcon />
+                  <Box>{t('price:extra_points.feature_permanent')}</Box>
+                </Flex>
+                <Flex
+                  alignItems={'flex-start'}
+                  gap={'8px'}
+                  fontSize={'13px'}
+                  color={'#475467'}
+                  lineHeight={'1.55'}
+                >
+                  <FeatureCheckIcon />
+                  <Box>{t('price:extra_points.feature_universal')}</Box>
+                </Flex>
+                <Flex
+                  alignItems={'flex-start'}
+                  gap={'8px'}
+                  fontSize={'13px'}
+                  color={'#475467'}
+                  lineHeight={'1.55'}
+                >
+                  <FeatureCheckIcon />
+                  <Box>
+                    {t('price:extra_points.feature_deep_qa', {
+                      count: display.deepQaCount
+                    })}
+                  </Box>
+                </Flex>
+              </VStack>
+
+              <Button
+                mt={'22px'}
+                h={'42px'}
+                flexShrink={0}
+                borderRadius={'10px'}
+                variant={display.recommended ? 'primary' : 'primaryGhost'}
+                color={display.recommended ? 'white' : 'primary.700'}
+                fontSize={['14px', '14.5px']}
+                fontWeight={600}
+                isLoading={isLoadingBuyExtraPoints && buyingPackageIndex === index}
+                isDisabled={isLoadingBuyExtraPoints && buyingPackageIndex !== index}
+                onClick={() => {
+                  setBuyingPackageIndex(index);
+                  submitExtraPointsPurchase({
+                    type: 'extraPoints',
+                    points: pkg.points,
+                    month: pkg.month
+                  });
+                }}
+              >
+                {t('price:extra_points.buy_now')}
+              </Button>
+            </Flex>
+          );
+        })}
+      </Grid>
+
+      <HStack
+        w={'100%'}
+        justifyContent={'center'}
+        color={'primary.700'}
+        mt={['20px', '24px']}
+        spacing={'6px'}
+      >
+        <MyIcon name={'infoRounded'} w={'15px'} />
+        <Box fontSize={'12.5px'} lineHeight={'1.5'}>
+          {t('price:support.wallet.subscription.Update extra ai points tips')}
         </Box>
-      </Flex>
+      </HStack>
 
       {voucherSelectModal}
 
