@@ -188,10 +188,12 @@ docker compose -f docker-compose.prod.yml ps
 # 等待鲁港通前端启动
 echo ""
 echo -e "${YELLOW}等待鲁港通前端启动...${NC}"
+DEPLOY_OK=0
 for i in {1..30}; do
     # 鲁港通 - 4.16.2 无 /api/health 路由，改用公开的 getInitData 作为启动探测端点
     if curl -s -f http://localhost:3210/api/common/system/getInitData > /dev/null 2>&1; then
         echo -e "${GREEN}✓ 鲁港通前端启动成功!${NC}"
+        DEPLOY_OK=1
         break
     fi
     if [ $i -eq 30 ]; then
@@ -206,6 +208,18 @@ done
 echo ""
 echo -e "${BLUE}鲁港通前端最近日志:${NC}"
 docker logs lugang-ai-app --tail 5 2>/dev/null || echo "无日志"
+
+# 鲁港通 - 镜像收尾：部署成功才清理，只保留当前版与回滚目标；失败保留现场
+echo ""
+if [ "$DEPLOY_OK" = "1" ]; then
+    if [ -n "$CURRENT_AI_IMAGE" ] && [ "$CURRENT_AI_IMAGE" != "无" ]; then
+        echo "$CURRENT_AI_IMAGE" > .rollback-tag
+        echo -e "${GREEN}✓ 回滚目标已持久化: ${CURRENT_AI_IMAGE}${NC}"
+    fi
+    bash ./prune-old-images.sh || echo -e "${YELLOW}警告: 镜像清理失败，不影响本次部署${NC}"
+else
+    echo -e "${YELLOW}警告: 前端启动探测未通过，跳过镜像清理以保留现场${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════╗${NC}"
