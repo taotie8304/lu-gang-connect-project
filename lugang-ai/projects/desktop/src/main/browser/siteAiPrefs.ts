@@ -28,8 +28,8 @@ const LOCAL_ONLY_ACTIONS = new Set([
   'fill_pdf'
 ]);
 
-// 鲁港通 - 「仅读取」允许阅读与导航；滚动属于阅读的一部分
-const READ_ONLY_ACTIONS = new Set(['navigate', 'read', 'scroll', 'stop']);
+// 鲁港通 - 「仅读取」允许阅读与导航；识图只读取当前可见区域，同样属于阅读
+const READ_ONLY_ACTIONS = new Set(['navigate', 'read', 'read_image', 'scroll', 'stop']);
 
 export type SiteAiDecision =
   | { allowed: true }

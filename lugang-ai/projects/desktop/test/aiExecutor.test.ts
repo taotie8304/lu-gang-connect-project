@@ -47,6 +47,8 @@ type DriverOptions = {
   fileStateAfterSet?: AiFileInputState;
   setFilesResult?: boolean;
   uploadSnapshot?: AiPageSnapshot;
+  capture?: { mime: 'image/jpeg' | 'image/png'; base64: string; width: number; height: number };
+  captureError?: boolean;
   coveredBy?: {
     tag?: string;
     role?: string;
@@ -77,6 +79,7 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
     navigate: [] as string[],
     fileInput: [] as string[],
     setFiles: [] as Array<[string, string[]]>,
+    captureScreen: 0,
     settle: 0
   };
 
@@ -159,7 +162,13 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
       if (options.uploadSnapshot) current = structuredClone(options.uploadSnapshot);
       return true;
     },
-    captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
+    captureScreen: async () => {
+      calls.captureScreen += 1;
+      if (options.captureError) throw new Error('capture failed');
+      return (
+        options.capture ?? { mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }
+      );
+    },
     settle: async () => {
       calls.settle += 1;
     }
@@ -501,6 +510,28 @@ describe('AI 页面执行器', () => {
     expect(result.ok).toBe(true);
     expect(result.changed).toBe(true);
     expect(calls.scroll).toEqual([['down', 300]]);
+  });
+
+  it('read_image 同时返回截图与页面快照', async () => {
+    const capture = { mime: 'image/jpeg' as const, base64: 'jpeg-data', width: 1280, height: 720 };
+    const { driver, calls } = createDriver(makeSnapshot([]), { capture });
+
+    const result = await createExecutor(driver).execute({ action: 'read_image' });
+
+    expect(result).toMatchObject({ ok: true, changed: true, image: capture });
+    expect(result.snapshot?.title).toBe('政府表格');
+    expect(calls.captureScreen).toBe(1);
+    expect(calls.snapshots).toHaveLength(1);
+  });
+
+  it('截图失败返回 screenshot_failed 且不画失败标注', async () => {
+    const { driver } = createDriver(makeSnapshot([]), { captureError: true });
+
+    const result = await createExecutor(driver).execute({ action: 'read_image' });
+
+    expect(result).toMatchObject({ ok: false, code: 'screenshot_failed' });
+    expect(result.message).toContain('页面截图失败');
+    expect(result.highlight).toBeUndefined();
   });
 
   it('导航到任意公网站点', async () => {

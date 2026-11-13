@@ -33,6 +33,7 @@ describe('evaluateSiteAiMode', () => {
     expect(evaluateSiteAiMode('read_only', 'navigate')).toEqual({ allowed: true });
     expect(evaluateSiteAiMode('read_only', 'read')).toEqual({ allowed: true });
     expect(evaluateSiteAiMode('read_only', 'scroll')).toEqual({ allowed: true });
+    expect(evaluateSiteAiMode('read_only', 'read_image')).toEqual({ allowed: true });
     expect(evaluateSiteAiMode('read_only', 'click')).toEqual({
       allowed: false,
       reason: 'read_only'
@@ -58,6 +59,10 @@ describe('evaluateSiteAiMode', () => {
       reason: 'blocked'
     });
     expect(evaluateSiteAiMode('blocked', 'scroll')).toEqual({
+      allowed: false,
+      reason: 'blocked'
+    });
+    expect(evaluateSiteAiMode('blocked', 'read_image')).toEqual({
       allowed: false,
       reason: 'blocked'
     });

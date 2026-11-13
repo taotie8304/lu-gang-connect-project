@@ -503,6 +503,21 @@ export class AiExecutor {
       return { ok: true, snapshot: read.snapshot };
     }
 
+    // 鲁港通 - 识图同时回传页面快照，模型才能把截图文字对回元素位置
+    if (command.action === 'read_image') {
+      try {
+        const snapshot = await this.driver.snapshot();
+        const image = await this.driver.captureScreen();
+        return { ok: true, changed: true, snapshot, image };
+      } catch {
+        return {
+          ok: false,
+          code: 'screenshot_failed',
+          message: '页面截图失败，可能页面正在跳转或已经关闭。请稍后再试。'
+        };
+      }
+    }
+
     const initial = await this.readSnapshot();
     if ('result' in initial) return initial.result;
 

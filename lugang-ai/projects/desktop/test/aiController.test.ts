@@ -12,7 +12,8 @@ import type {
   AiFormConfirmer,
   AiFormFiller,
   AiFormOpener,
-  AiPageDriver
+  AiPageDriver,
+  AiScreenCapture
 } from '../src/main/ai/executor';
 import type { AiAuditRecord } from '../src/main/ai/audit';
 import type { ParsedForm } from '../src/main/ai/form/types';
@@ -108,6 +109,8 @@ const createDriver = (
       name?: string;
       rect?: { x: number; y: number; width: number; height: number };
     };
+    capture?: AiScreenCapture;
+    captureGate?: Promise<void>;
   } = {}
 ) => {
   let current = initial;
@@ -138,7 +141,12 @@ const createDriver = (
     }),
     insertText: vi.fn(async () => undefined),
     navigate: vi.fn(async () => undefined),
-    captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
+    captureScreen: vi.fn(async (): Promise<AiScreenCapture> => {
+      if (options.captureGate) await options.captureGate;
+      return (
+        options.capture ?? { mime: 'image/jpeg', base64: 'abc', width: 1280, height: 720 }
+      );
+    }),
     settle: vi.fn(async () => undefined)
   };
   return {
@@ -163,6 +171,8 @@ const createController = (
     confirmForm?: AiFormConfirmer;
     afterClick?: AiPageSnapshot;
     siteAiModes?: Record<string, DesktopSiteAiMode>;
+    capture?: AiScreenCapture;
+    captureGate?: Promise<void>;
     coveredBy?: {
       tag?: string;
       role?: string;
@@ -174,7 +184,9 @@ const createController = (
   const browser = createBrowser(options.siteAiModes);
   const harness = createDriver(makeSnapshot(options.elements ?? []), {
     afterClick: options.afterClick,
-    coveredBy: options.coveredBy
+    coveredBy: options.coveredBy,
+    capture: options.capture,
+    captureGate: options.captureGate
   });
   const controller = new AiController({
     browser,
@@ -1179,6 +1191,29 @@ describe('AI 桌面控制器 · 站点级 AI 权限', () => {
     expect(scroll.ok).toBe(true);
   });
 
+  it('仅读取站点放行识图', async () => {
+    const { controller } = createController({
+      siteAiModes: { [PAGE_ORIGIN]: 'read_only' }
+    });
+
+    const result = await controller.execute({ action: 'read_image' });
+
+    expect(result.ok).toBe(true);
+    expect(result.image).toBeDefined();
+  });
+
+  it('禁止 AI 站点拒绝识图且不截图', async () => {
+    const { controller, driver } = createController({
+      siteAiModes: { [PAGE_ORIGIN]: 'blocked' }
+    });
+
+    const result = await controller.execute({ action: 'read_image' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('site_blocked');
+    expect(driver.captureScreen).not.toHaveBeenCalled();
+  });
+
   it('禁止 AI 站点拒绝读取与导航，改回允许后恢复', async () => {
     const siteAiModes: Record<string, DesktopSiteAiMode> = {
       'https://blocked.example': 'blocked'
@@ -1265,6 +1300,78 @@ describe('AI 桌面控制器 · 站点级 AI 权限', () => {
       outcome: 'failed',
       errorCode: 'site_read_only'
     });
+  });
+});
+
+describe('AI 桌面控制器 · 识图时间线与审计', () => {
+  it('时间线记录 read_image 且不带目标摘要，审计不含截图数据', async () => {
+    const records: AiAuditRecord[] = [];
+    const image: AiScreenCapture = {
+      mime: 'image/jpeg',
+      base64: 'BASE64_SECRET',
+      width: 1280,
+      height: 720
+    };
+    const { controller } = createController({
+      elements: [],
+      capture: image,
+      audit: (record) => {
+        records.push(record);
+      }
+    });
+
+    const result = await controller.execute(
+      { action: 'read_image' },
+      { commandId: 'cmd-ocr' }
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.image).toEqual(image);
+    const steps = controller.getState().steps;
+    const step = steps[steps.length - 1];
+    expect(step).toMatchObject({ action: 'read_image', status: 'ok' });
+    expect(step.target).toBeUndefined();
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      commandId: 'cmd-ocr',
+      action: 'read_image',
+      outcome: 'ok',
+      host: 'www.gov.hk',
+      path: '/en/residents/form'
+    });
+    expect(JSON.stringify(records[0])).not.toContain('BASE64_SECRET');
+  });
+
+  it('接管后在途识图按 user_handover 回传且只截一次', async () => {
+    let release: () => void = () => undefined;
+    const captureGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const { controller, driver } = createController({ captureGate });
+    await controller.execute({ action: 'read' });
+
+    const pending = controller.execute({ action: 'read_image' });
+    await vi.waitFor(() => expect(driver.captureScreen).toHaveBeenCalledTimes(1));
+
+    controller.pause();
+    release();
+
+    const result = await pending;
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('user_handover');
+    expect(driver.captureScreen).toHaveBeenCalledTimes(1);
+  });
+
+  it('会话停止后拒绝识图且不再截图', async () => {
+    const { controller, driver } = createController();
+    await controller.execute({ action: 'read' });
+    controller.stop();
+
+    const result = await controller.execute({ action: 'read_image' });
+
+    expect(result.ok).toBe(false);
+    expect(result.stopped).toBe(true);
+    expect(driver.captureScreen).not.toHaveBeenCalled();
   });
 });
 
