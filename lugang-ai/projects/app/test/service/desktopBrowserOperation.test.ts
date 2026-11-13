@@ -118,6 +118,7 @@ describe('browser operation tool schema', () => {
     expect(tool.function.description).toContain('桌面客户端');
     expect((tool.function.parameters as any).properties.action.enum).toEqual([
       'read',
+      'read_image',
       'navigate',
       'click',
       'type',
@@ -132,6 +133,24 @@ describe('browser operation tool schema', () => {
       'fill_pdf',
       'wait'
     ]);
+  });
+
+  it('exposes read_image for text that only exists inside images', () => {
+    const tool = createBrowserOperationTool();
+    const description = tool.function.description;
+
+    expect((tool.function.parameters as any).properties.action.enum).toContain('read_image');
+    expect(description).toContain('read_image');
+    expect(description).toContain('当前可见区域');
+    expect(description).toContain('验证码');
+    expect(description).toContain('不要尝试绕过');
+  });
+
+  it('parses read_image without extra parameters', () => {
+    expect(parseBrowserOperationArgs({ action: 'read_image' })).toEqual({
+      success: true,
+      args: { action: 'read_image' }
+    });
   });
 
   it('describes local file generation and user-picked uploads', () => {
@@ -497,6 +516,7 @@ describe('browser operation tool schema', () => {
     if (!result.success) {
       expect(result.error).toContain('不支持');
       expect(result.error).toContain('read');
+      expect(result.error).toContain('read_image');
     }
   });
 
