@@ -12,6 +12,7 @@ import { aiStepLabel, aiStepStatusLabel } from './aiStatus';
 const STEP_ICONS: Record<string, IconNameType> = {
   navigate: 'common/globalLine',
   read: 'common/detail',
+  read_image: 'common/detail',
   click: 'common/select',
   type: 'common/edit',
   select: 'common/downArrowFill',

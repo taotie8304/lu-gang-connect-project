@@ -246,6 +246,7 @@
   "builtin_browser_ai_step_open_form": "Open form",
   "builtin_browser_ai_step_pause": "Taken over",
   "builtin_browser_ai_step_read": "Read page",
+  "builtin_browser_ai_step_read_image": "Read text in image",
   "builtin_browser_ai_step_resume": "Continue",
   "builtin_browser_ai_step_scroll": "Scroll",
   "builtin_browser_ai_step_select": "Select",

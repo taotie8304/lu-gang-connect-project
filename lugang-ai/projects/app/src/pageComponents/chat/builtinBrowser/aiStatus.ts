@@ -35,6 +35,7 @@ export const resolveBuiltinBrowserAiBadge = (
 const AI_STEP_LABELS: Record<string, string> = {
   navigate: 'common:builtin_browser_ai_step_navigate',
   read: 'common:builtin_browser_ai_step_read',
+  read_image: 'common:builtin_browser_ai_step_read_image',
   click: 'common:builtin_browser_ai_step_click',
   type: 'common:builtin_browser_ai_step_type',
   select: 'common:builtin_browser_ai_step_select',

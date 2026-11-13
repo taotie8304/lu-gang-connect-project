@@ -66,6 +66,10 @@ describe('aiStepLabel', () => {
     expect(aiStepLabel('resume')).toBe('common:builtin_browser_ai_step_resume');
   });
 
+  it('识别页面文字动作映射到多语言 key', () => {
+    expect(aiStepLabel('read_image')).toBe('common:builtin_browser_ai_step_read_image');
+  });
+
   it('未知动作回落到通用文案 key', () => {
     expect(aiStepLabel('launch_rocket')).toBe('common:builtin_browser_ai_step_generic');
   });

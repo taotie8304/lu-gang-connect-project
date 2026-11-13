@@ -246,6 +246,7 @@
   "builtin_browser_ai_step_open_form": "양식 열기",
   "builtin_browser_ai_step_pause": "인계됨",
   "builtin_browser_ai_step_read": "페이지 읽기",
+  "builtin_browser_ai_step_read_image": "이미지 속 글자 읽기",
   "builtin_browser_ai_step_resume": "작업 재개",
   "builtin_browser_ai_step_scroll": "스크롤",
   "builtin_browser_ai_step_select": "선택",

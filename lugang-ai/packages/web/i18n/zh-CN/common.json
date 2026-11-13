@@ -246,6 +246,7 @@
   "builtin_browser_ai_step_open_form": "打开表单",
   "builtin_browser_ai_step_pause": "已接管",
   "builtin_browser_ai_step_read": "读取页面",
+  "builtin_browser_ai_step_read_image": "识别页面文字",
   "builtin_browser_ai_step_resume": "继续操作",
   "builtin_browser_ai_step_scroll": "滚动",
   "builtin_browser_ai_step_select": "选择",
