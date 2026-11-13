@@ -58,6 +58,7 @@ const createDriver = (): AiPageDriver => ({
   navigate: vi.fn(async () => undefined),
   fileInput: vi.fn(async () => emptyFileState),
   setFileInputFiles: vi.fn(async () => false),
+  captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
   settle: vi.fn(async () => undefined)
 });
 

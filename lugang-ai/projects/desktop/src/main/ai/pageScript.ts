@@ -379,3 +379,9 @@ export const buildAiScrollExpression = (direction: string, amount?: number): str
       typeof amount === 'number' ? JSON.stringify(amount) : 'undefined'
     })`
   );
+
+// 鲁港通 - 截图隐私遮罩：真实脚本在 Task 7 落地，这里先提供可联调的失败安全桩
+export const buildAiMaskSensitiveExpression = (): string =>
+  `(() => ({ ok: true, masked: 0 }))()`;
+
+export const buildAiUnmaskExpression = (): string => `(() => 0)()`;

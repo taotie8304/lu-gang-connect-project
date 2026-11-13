@@ -4,16 +4,19 @@ import type {
   AiPageDriver,
   AiPrepareInputResult,
   AiResolvedElement,
+  AiScreenCapture,
   AiScrollResult,
   AiSelectOptionResult
 } from './executor';
 import {
   buildAiFileStateExpression,
+  buildAiMaskSensitiveExpression,
   buildAiPrepareInputExpression,
   buildAiResolveExpression,
   buildAiScrollExpression,
   buildAiSelectExpression,
-  buildAiSnapshotExpression
+  buildAiSnapshotExpression,
+  buildAiUnmaskExpression
 } from './pageScript';
 import { normalizeAiSnapshot, type AiPageScroll, type AiPageSnapshot } from './snapshot';
 
@@ -30,6 +33,10 @@ export type CdpPageDriverOptions = {
 };
 
 const DEFAULT_COMMAND_TIMEOUT_MS = 8000;
+const MAX_SCREENSHOT_BYTES = 512 * 1024;
+const MAX_SCREENSHOT_EDGE = 1600;
+const SCREENSHOT_QUALITIES = [70, 55, 40] as const;
+const SCREENSHOT_FAILED_MESSAGE = '页面截图失败，可能页面正在跳转或已经关闭。请稍后再试。';
 export const AI_CDP_TIMEOUT_MESSAGE = '页面响应超时，页面可能正在跳转或已经卡住，请稍后重试。';
 
 type EvaluatePayload = {
@@ -288,6 +295,61 @@ export class CdpPageDriver implements AiPageDriver {
     if (typeof nodeId !== 'number' || nodeId <= 0) return false;
     await session.sendCommand('DOM.setFileInputFiles', { nodeId, files });
     return true;
+  }
+
+  // 鲁港通 - 截图前先打码；任何一步失败都放弃本次截图，绝不上传未打码图片
+  async captureScreen(): Promise<AiScreenCapture> {
+    const session = this.requireSession();
+    let masked = false;
+    try {
+      const mask = await this.evaluate<{ ok?: boolean }>(buildAiMaskSensitiveExpression());
+      if (!mask || mask.ok !== true) throw new AiDriverError(SCREENSHOT_FAILED_MESSAGE);
+      masked = true;
+
+      const metrics = (await session.sendCommand('Page.getLayoutMetrics')) as
+        | {
+            cssVisualViewport?: {
+              pageX?: number;
+              pageY?: number;
+              clientWidth?: number;
+              clientHeight?: number;
+            };
+          }
+        | undefined;
+      const viewport = metrics?.cssVisualViewport ?? {};
+      const x = Math.max(0, Math.round(viewport.pageX ?? 0));
+      const y = Math.max(0, Math.round(viewport.pageY ?? 0));
+      const width = Math.max(1, Math.round(viewport.clientWidth ?? 0));
+      const height = Math.max(1, Math.round(viewport.clientHeight ?? 0));
+      const scale = Math.min(1, MAX_SCREENSHOT_EDGE / Math.max(width, height));
+
+      for (const quality of SCREENSHOT_QUALITIES) {
+        const shot = (await session.sendCommand('Page.captureScreenshot', {
+          format: 'jpeg',
+          quality,
+          fromSurface: true,
+          clip: { x, y, width, height, scale }
+        })) as { data?: string } | undefined;
+        const data = typeof shot?.data === 'string' ? shot.data : '';
+        if (!data) continue;
+        if (Buffer.byteLength(data, 'base64') <= MAX_SCREENSHOT_BYTES) {
+          return { mime: 'image/jpeg', base64: data, width, height };
+        }
+      }
+
+      throw new AiDriverError(SCREENSHOT_FAILED_MESSAGE);
+    } catch (error) {
+      if (error instanceof AiDriverError) throw error;
+      throw new AiDriverError(SCREENSHOT_FAILED_MESSAGE);
+    } finally {
+      if (masked) {
+        try {
+          await this.evaluate(buildAiUnmaskExpression());
+        } catch {
+          // 页面已跳转或关闭时遮罩随页面消失
+        }
+      }
+    }
   }
 
   async settle(): Promise<void> {

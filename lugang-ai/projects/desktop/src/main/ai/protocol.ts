@@ -23,6 +23,10 @@ const readCommand = z.object({
   fullText: z.boolean().optional()
 });
 
+const readImageCommand = z.object({
+  action: z.literal('read_image')
+});
+
 const navigateCommand = z.object({
   action: z.literal('navigate'),
   url: z.string().trim().min(1).max(2048)
@@ -334,6 +338,7 @@ const fillPdfCommand = z.object({
 
 export const aiCommandSchema = z.discriminatedUnion('action', [
   readCommand,
+  readImageCommand,
   navigateCommand,
   clickCommand,
   typeCommand,

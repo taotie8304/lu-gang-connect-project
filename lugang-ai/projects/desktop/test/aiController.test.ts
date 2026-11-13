@@ -138,6 +138,7 @@ const createDriver = (
     }),
     insertText: vi.fn(async () => undefined),
     navigate: vi.fn(async () => undefined),
+    captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
     settle: vi.fn(async () => undefined)
   };
   return {

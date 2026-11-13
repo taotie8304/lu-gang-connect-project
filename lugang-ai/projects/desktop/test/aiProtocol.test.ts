@@ -357,6 +357,19 @@ describe('AI 指令协议', () => {
       )
     ).toBeNull();
   });
+
+  it('parses read_image commands', () => {
+    const parsed = parseAiCommandDetailed({ action: 'read_image' });
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success) expect(parsed.command).toEqual({ action: 'read_image' });
+  });
+
+  it('keeps rejecting unknown actions', () => {
+    const parsed = parseAiCommandDetailed({ action: 'capture' });
+
+    expect(parsed.success).toBe(false);
+  });
 });
 
 describe('AI 指令协议 · 模型常见写法兼容', () => {

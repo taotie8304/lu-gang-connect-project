@@ -159,6 +159,7 @@ const createDriver = (initial: AiPageSnapshot, options: DriverOptions = {}) => {
       if (options.uploadSnapshot) current = structuredClone(options.uploadSnapshot);
       return true;
     },
+    captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
     settle: async () => {
       calls.settle += 1;
     }

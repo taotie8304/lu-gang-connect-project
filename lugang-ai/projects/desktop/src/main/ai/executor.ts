@@ -75,6 +75,7 @@ export type AiActionErrorCode =
   | 'document_no_change'
   | 'document_edit_failed'
   | 'document_preview_unavailable'
+  | 'screenshot_failed'
   | 'timeout'
   | 'page_error';
 
@@ -245,6 +246,14 @@ export type AiFileResult = {
   folder?: string;
 };
 
+/** 鲁港通 - 页面截图：只在内存与结果回传中使用，不落盘、不进审计 */
+export type AiScreenCapture = {
+  mime: 'image/jpeg' | 'image/png';
+  base64: string;
+  width: number;
+  height: number;
+};
+
 export type AiCommandResult = {
   ok: boolean;
   code?: AiActionErrorCode | AiStopReason;
@@ -260,6 +269,7 @@ export type AiCommandResult = {
   document?: AiDocumentInfo;
   documentToken?: string;
   edit?: AiDocumentEditInfo;
+  image?: AiScreenCapture;
   /** 鲁港通 - 仅桌面端展示用，进入审计与上行结果前剔除 */
   highlight?: AiFailureHighlight;
 };
@@ -310,6 +320,7 @@ export type AiPageDriver = {
   navigate(url: string): Promise<void>;
   fileInput(ref: string): Promise<AiFileInputState>;
   setFileInputFiles(ref: string, files: string[]): Promise<boolean>;
+  captureScreen(): Promise<AiScreenCapture>;
   settle(): Promise<void>;
 };
 

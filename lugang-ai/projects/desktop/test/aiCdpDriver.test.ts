@@ -300,3 +300,119 @@ describe('CDP 页面驱动 · 命令超时', () => {
     expect(snapshot.title).toBe('申请页面');
   });
 });
+
+describe('CDP 页面截图', () => {
+  const SMALL_SHOT = { data: Buffer.from('jpeg-bytes').toString('base64') };
+  const OVERSIZE = { data: Buffer.alloc(512 * 1024 + 1).toString('base64') };
+
+  const captureHandler = (options: {
+    qualityData?: Record<number, { data: string }>;
+    maskOk?: boolean;
+    screenshotError?: boolean;
+    viewport?: { pageX: number; pageY: number; clientWidth: number; clientHeight: number };
+  } = {}) =>
+    (method: string, params?: Record<string, unknown>) => {
+      if (method === 'Runtime.evaluate') {
+        return { result: { value: { ok: options.maskOk !== false } } };
+      }
+      if (method === 'Page.getLayoutMetrics') {
+        return {
+          cssVisualViewport:
+            options.viewport ??
+            { pageX: 0, pageY: 240, clientWidth: 1280, clientHeight: 720 }
+        };
+      }
+      if (method === 'Page.captureScreenshot') {
+        if (options.screenshotError) throw new Error('target closed');
+        const quality = Number(params?.quality);
+        return options.qualityData?.[quality] ?? SMALL_SHOT;
+      }
+      return {};
+    };
+
+  it('先遮罩、按可见视口截图、最后移除遮罩', async () => {
+    const { driver, calls } = createDriver(captureHandler());
+
+    const image = await driver.captureScreen();
+
+    expect(image).toEqual({
+      mime: 'image/jpeg',
+      base64: SMALL_SHOT.data,
+      width: 1280,
+      height: 720
+    });
+    expect(calls.map((call) => call.method)).toEqual([
+      'Runtime.evaluate',
+      'Page.getLayoutMetrics',
+      'Page.captureScreenshot',
+      'Runtime.evaluate'
+    ]);
+    expect(calls[2].params).toMatchObject({
+      format: 'jpeg',
+      quality: 70,
+      fromSurface: true,
+      clip: { x: 0, y: 240, width: 1280, height: 720, scale: 1 }
+    });
+  });
+
+  it('长边超过 1600 时等比缩小', async () => {
+    const { driver, calls } = createDriver(
+      captureHandler({
+        viewport: { pageX: 0, pageY: 0, clientWidth: 3200, clientHeight: 1800 }
+      })
+    );
+
+    const image = await driver.captureScreen();
+
+    expect(image.width).toBe(3200);
+    expect(image.height).toBe(1800);
+    expect(calls[2].params).toMatchObject({
+      clip: { width: 3200, height: 1800, scale: 0.5 }
+    });
+  });
+
+  it('超过 512KB 时按 70 → 55 → 40 依次降质', async () => {
+    const { driver, calls } = createDriver(
+      captureHandler({
+        qualityData: { 70: OVERSIZE, 55: OVERSIZE, 40: SMALL_SHOT }
+      })
+    );
+
+    const image = await driver.captureScreen();
+
+    expect(image.base64).toBe(SMALL_SHOT.data);
+    expect(
+      calls
+        .filter((call) => call.method === 'Page.captureScreenshot')
+        .map((call) => call.params?.quality)
+    ).toEqual([70, 55, 40]);
+  });
+
+  it('三次仍超限时失败并移除遮罩', async () => {
+    const { driver, calls } = createDriver(
+      captureHandler({ qualityData: { 70: OVERSIZE, 55: OVERSIZE, 40: OVERSIZE } })
+    );
+
+    await expect(driver.captureScreen()).rejects.toThrow('页面截图失败');
+    expect(calls[calls.length - 1].method).toBe('Runtime.evaluate');
+  });
+
+  it('遮罩注入失败时放弃截图', async () => {
+    const { driver, calls } = createDriver(captureHandler({ maskOk: false }));
+
+    await expect(driver.captureScreen()).rejects.toThrow('页面截图失败');
+    expect(calls.map((call) => call.method)).toEqual(['Runtime.evaluate']);
+  });
+
+  it('截图抛错时仍尝试移除遮罩', async () => {
+    const { driver, calls } = createDriver(captureHandler({ screenshotError: true }));
+
+    await expect(driver.captureScreen()).rejects.toThrow('页面截图失败');
+    expect(calls.map((call) => call.method)).toEqual([
+      'Runtime.evaluate',
+      'Page.getLayoutMetrics',
+      'Page.captureScreenshot',
+      'Runtime.evaluate'
+    ]);
+  });
+});

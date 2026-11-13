@@ -61,6 +61,7 @@ const createDriver = (): AiPageDriver => ({
   navigate: async () => undefined,
   fileInput: async () => emptyFileState,
   setFileInputFiles: async () => false,
+  captureScreen: async () => ({ mime: 'image/jpeg', base64: 'abc', width: 100, height: 100 }),
   settle: async () => undefined
 });
 
