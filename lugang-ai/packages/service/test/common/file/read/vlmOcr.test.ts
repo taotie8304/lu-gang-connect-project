@@ -13,7 +13,11 @@ vi.mock('@fastgpt/service/core/ai/model', () => ({
   getVlmModel: mockGetVlmModel
 }));
 
-import { isVlmOcrAvailable, recognizeImageWithVlm } from '@fastgpt/service/common/file/read/vlmOcr';
+import {
+  isVlmOcrAvailable,
+  recognizeImageWithVlm,
+  recognizeImageWithVlmResult
+} from '@fastgpt/service/common/file/read/vlmOcr';
 
 const visionModel = {
   model: 'qwen-vl-max',
@@ -77,9 +81,7 @@ describe('recognizeImageWithVlm', () => {
     expect(props.modelData).toBe(visionModel);
     const content = props.body.messages[0].content;
     expect(content[0].text).toContain('只输出图片中真实存在的文字');
-    expect(content[1].image_url.url).toBe(
-      `data:image/png;base64,${buffer.toString('base64')}`
-    );
+    expect(content[1].image_url.url).toBe(`data:image/png;base64,${buffer.toString('base64')}`);
   });
 
   it('没有可用视觉模型时返回空文本且不发起请求', async () => {
@@ -155,5 +157,70 @@ describe('recognizeImageWithVlm', () => {
         mime: 'image/png'
       })
     ).resolves.toBe('');
+  });
+});
+
+describe('recognizeImageWithVlmResult', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockGetVlmModel.mockReturnValue(visionModel);
+  });
+
+  it('有文字时返回 ok 与归一化文本', async () => {
+    mockCreateChatCompletion.mockResolvedValueOnce(
+      createCompletionResponse('  第一行文字\n第二行文字  ')
+    );
+
+    await expect(
+      recognizeImageWithVlmResult({ buffer: Buffer.from('x'), mime: 'image/png' })
+    ).resolves.toEqual({ status: 'ok', text: '第一行文字\n第二行文字' });
+  });
+
+  it('空内容、NO_TEXT 与版式 JSON 噪声返回 empty', async () => {
+    for (const content of ['', 'NO_TEXT', '[{"rotate_rect":[1,2,3,4,90],"text":"O"}]']) {
+      mockCreateChatCompletion.mockResolvedValueOnce(createCompletionResponse(content));
+      await expect(
+        recognizeImageWithVlmResult({ buffer: Buffer.from('x'), mime: 'image/png' })
+      ).resolves.toEqual({ status: 'empty', text: '' });
+    }
+  });
+
+  it('未登记视觉模型时返回 unavailable 且不发起请求', async () => {
+    mockGetVlmModel.mockReturnValue(undefined);
+
+    await expect(
+      recognizeImageWithVlmResult({ buffer: Buffer.from('x'), mime: 'image/png' })
+    ).resolves.toEqual({ status: 'unavailable', text: '' });
+    expect(mockCreateChatCompletion).not.toHaveBeenCalled();
+  });
+
+  it('AbortError 归为 timeout', async () => {
+    mockCreateChatCompletion.mockRejectedValueOnce(
+      Object.assign(new Error('request timeout'), { name: 'AbortError' })
+    );
+
+    await expect(
+      recognizeImageWithVlmResult({ buffer: Buffer.from('x'), mime: 'image/png' })
+    ).resolves.toEqual({ status: 'timeout', text: '' });
+  });
+
+  it('其他异常归为 failed', async () => {
+    mockCreateChatCompletion.mockRejectedValueOnce(new Error('connection reset'));
+
+    await expect(
+      recognizeImageWithVlmResult({ buffer: Buffer.from('x'), mime: 'image/png' })
+    ).resolves.toEqual({ status: 'failed', text: '' });
+  });
+
+  it('透传调用方指定的超时时间', async () => {
+    mockCreateChatCompletion.mockResolvedValueOnce(createCompletionResponse('文字'));
+
+    await recognizeImageWithVlmResult({
+      buffer: Buffer.from('x'),
+      mime: 'image/png',
+      timeoutMs: 45_000
+    });
+
+    expect(mockCreateChatCompletion.mock.calls[0][0].timeout).toBe(45_000);
   });
 });

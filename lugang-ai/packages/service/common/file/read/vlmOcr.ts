@@ -46,10 +46,7 @@ const isLayoutJsonNoise = (text: string) => {
       items.length > 0 &&
       items.every(
         (item) =>
-          item !== null &&
-          typeof item === 'object' &&
-          'rotate_rect' in item &&
-          'text' in item
+          item !== null && typeof item === 'object' && 'rotate_rect' in item && 'text' in item
       )
     );
   } catch {
@@ -67,21 +64,36 @@ const normalizeOcrText = (raw: string) => {
   return text;
 };
 
+export type VlmOcrStatus = 'ok' | 'empty' | 'unavailable' | 'timeout' | 'failed';
+
+export type VlmOcrResult = {
+  status: VlmOcrStatus;
+  text: string;
+};
+
+// 鲁港通 - 超时识别：SDK 不同版本抛出的超时形态不一致，统一按名称/错误码/文案判定
+const isTimeoutError = (error: unknown): boolean => {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  if (candidate.name === 'AbortError' || candidate.name === 'TimeoutError') return true;
+  if (candidate.code === 'ETIMEDOUT' || candidate.code === 'ABORT_ERR') return true;
+  return typeof candidate.message === 'string' && /timeout|timed out|超时/i.test(candidate.message);
+};
+
 /**
- * 鲁港通 - 调用视觉模型识别图片中的文字内容。
- *
- * 任何异常都归一化为空字符串，由调用方决定是否向用户诚实说明无法识别；
- * 绝不根据文件名或上下文编造内容。
+ * 鲁港通 - 带状态的视觉读图：供页面识图区分未启用/为空/超时/失败，旧调用方继续用 string 版本
  */
-export const recognizeImageWithVlm = async ({
+export const recognizeImageWithVlmResult = async ({
   buffer,
-  mime
+  mime,
+  timeoutMs = VLM_OCR_TIMEOUT
 }: {
   buffer: Buffer;
   mime: string;
-}): Promise<string> => {
+  timeoutMs?: number;
+}): Promise<VlmOcrResult> => {
   const modelData = getOcrVlmModel();
-  if (!modelData) return '';
+  if (!modelData) return { status: 'unavailable', text: '' };
 
   try {
     const { response, isStreamResponse } = await createChatCompletion({
@@ -105,18 +117,34 @@ export const recognizeImageWithVlm = async ({
           }
         ]
       },
-      timeout: VLM_OCR_TIMEOUT
+      timeout: timeoutMs
     });
 
-    if (isStreamResponse) return '';
+    if (isStreamResponse) return { status: 'empty', text: '' };
 
-    const rawContent = (response as { choices?: { message?: { content?: unknown } }[] }).choices?.[0]
-      ?.message?.content;
-    const text = typeof rawContent === 'string' ? rawContent : '';
-
-    return normalizeOcrText(text);
+    const rawContent = (response as { choices?: { message?: { content?: unknown } }[] })
+      .choices?.[0]?.message?.content;
+    const text = normalizeOcrText(typeof rawContent === 'string' ? rawContent : '');
+    return text ? { status: 'ok', text } : { status: 'empty', text: '' };
   } catch (error) {
     logger.warn('VLM OCR failed', { model: modelData.model, error });
-    return '';
+    return isTimeoutError(error) ? { status: 'timeout', text: '' } : { status: 'failed', text: '' };
   }
+};
+
+/**
+ * 鲁港通 - 调用视觉模型识别图片中的文字内容。
+ *
+ * 任何异常都归一化为空字符串，由调用方决定是否向用户诚实说明无法识别；
+ * 绝不根据文件名或上下文编造内容。
+ */
+export const recognizeImageWithVlm = async ({
+  buffer,
+  mime
+}: {
+  buffer: Buffer;
+  mime: string;
+}): Promise<string> => {
+  const result = await recognizeImageWithVlmResult({ buffer, mime });
+  return result.text;
 };
