@@ -1,11 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   buildAiFileStateExpression,
+  buildAiMaskSensitiveExpression,
   buildAiPrepareInputExpression,
   buildAiResolveExpression,
   buildAiScrollExpression,
   buildAiSelectExpression,
-  buildAiSnapshotExpression
+  buildAiSnapshotExpression,
+  buildAiUnmaskExpression
 } from '../src/main/ai/pageScript';
 
 type RectInput = { x?: number; y?: number; width?: number; height?: number };
@@ -65,6 +67,13 @@ const installPage = () => {
 describe('AI 页面脚本', () => {
   beforeEach(() => {
     installPage();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    document
+      .querySelectorAll('[data-lugang-ai-mask="1"]')
+      .forEach((node) => node.remove());
   });
 
   it('生成页面快照：可见交互元素、标签名、角色与链接', () => {
@@ -363,5 +372,97 @@ describe('AI 页面脚本', () => {
 
     const top = evalInPage<{ after: { y: number } }>(buildAiScrollExpression('top'));
     expect(top.after.y).toBe(0);
+  });
+
+  it('为密码、验证码与银行卡输入框生成视口坐标遮罩', () => {
+    document.body.innerHTML += `
+      <input id="otp" autocomplete="one-time-code" value="123456" />
+      <input id="card" autocomplete="cc-number" value="4111111111111111" />
+      <input id="newPwd" type="password" autocomplete="new-password" value="abc" />
+    `;
+    // 鲁港通 - innerHTML 重写会重建全部节点，基础用例里的密码框需要重新打桩
+    stubRect(document.getElementById('pwd')!, { x: 10, y: 60 });
+    stubRect(document.getElementById('otp')!, { x: 10, y: 340 });
+    stubRect(document.getElementById('card')!, { x: 10, y: 380 });
+    stubRect(document.getElementById('newPwd')!, { x: 10, y: 420 });
+
+    const result = evalInPage<{ ok: boolean; masked: number }>(
+      buildAiMaskSensitiveExpression()
+    );
+
+    expect(result).toEqual({ ok: true, masked: 4 });
+    const masks = document.querySelectorAll('[data-lugang-ai-mask="1"]');
+    expect(masks).toHaveLength(4);
+    const first = masks[0] as HTMLElement;
+    expect(first.parentElement).toBe(document.documentElement);
+    expect(first.style.position).toBe('fixed');
+    expect(first.style.left).toBe('10px');
+    expect(first.style.top).toBe('60px');
+    expect(first.style.background).toBe('rgb(31, 35, 41)');
+    expect(first.style.zIndex).toBe('2147483647');
+    expect(first.style.pointerEvents).toBe('none');
+  });
+
+  it('不遮罩普通文本框、隐藏字段和视口外字段', () => {
+    document.body.innerHTML += `
+      <input id="hiddenPwd" type="password" value="x" style="display:none" />
+    `;
+    stubRect(document.getElementById('hiddenPwd')!, { x: 10, y: 460 });
+    stubRect(document.getElementById('pwd')!, { x: 10, y: 5000 });
+
+    const result = evalInPage<{ ok: boolean; masked: number }>(
+      buildAiMaskSensitiveExpression()
+    );
+
+    expect(result).toEqual({ ok: true, masked: 0 });
+    expect(document.querySelectorAll('[data-lugang-ai-mask="1"]')).toHaveLength(0);
+  });
+
+  it('跨域 iframe 整块遮罩', () => {
+    const frame = document.createElement('iframe');
+    frame.id = 'crossOrigin';
+    document.body.appendChild(frame);
+    Object.defineProperty(frame, 'contentDocument', {
+      configurable: true,
+      get: () => null
+    });
+    stubRect(frame, { x: 100, y: 200, width: 400, height: 300 });
+
+    const result = evalInPage<{ ok: boolean; masked: number }>(
+      buildAiMaskSensitiveExpression()
+    );
+
+    expect(result).toEqual({ ok: true, masked: 2 });
+    const masks = document.querySelectorAll('[data-lugang-ai-mask="1"]');
+    expect(masks).toHaveLength(2);
+    const iframeMask = masks[1] as HTMLElement;
+    expect(iframeMask.style.left).toBe('100px');
+    expect(iframeMask.style.top).toBe('200px');
+    expect(iframeMask.style.width).toBe('400px');
+    expect(iframeMask.style.height).toBe('300px');
+  });
+
+  it('移除遮罩只删自己的标记节点', () => {
+    document.body.innerHTML += `<div id="pageOwn">页面内容</div>`;
+    // 鲁港通 - 同上，innerHTML 重写后重新打桩密码框，保证页面上确实存在遮罩
+    stubRect(document.getElementById('pwd')!, { x: 10, y: 60 });
+    const masked = evalInPage<{ ok: boolean }>(buildAiMaskSensitiveExpression());
+    expect(masked.ok).toBe(true);
+    expect(document.querySelectorAll('[data-lugang-ai-mask="1"]').length).toBeGreaterThan(0);
+
+    evalInPage(buildAiUnmaskExpression());
+
+    expect(document.querySelectorAll('[data-lugang-ai-mask="1"]')).toHaveLength(0);
+    expect(document.getElementById('pageOwn')).not.toBeNull();
+  });
+
+  it('遮罩注入失败时返回 ok=false', () => {
+    vi.spyOn(document.documentElement, 'appendChild').mockImplementationOnce(() => {
+      throw new Error('blocked');
+    });
+
+    const result = evalInPage<{ ok: boolean }>(buildAiMaskSensitiveExpression());
+
+    expect(result).toEqual({ ok: false, masked: 0 });
   });
 });

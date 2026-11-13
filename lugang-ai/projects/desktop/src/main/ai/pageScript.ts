@@ -334,13 +334,84 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     var after = scrollState();
     return { before: before, after: after, changed: before.x !== after.x || before.y !== after.y };
   };
+  var MASK_ATTR = 'data-lugang-ai-mask';
+  var MASK_COLOR = '#1f2329';
+  var SENSITIVE_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
+  var isSensitiveInput = function (el) {
+    if (!el || el.tagName.toLowerCase() !== 'input') return false;
+    if (String(el.getAttribute('type') || '').toLowerCase() === 'password') return true;
+    return SENSITIVE_AUTOCOMPLETE.test(String(el.getAttribute('autocomplete') || ''));
+  };
+  var removeMasks = function () {
+    var nodes = document.querySelectorAll('[' + MASK_ATTR + '="1"]');
+    for (var i = 0; i < nodes.length; i += 1) nodes[i].remove();
+  };
+  var createMask = function (rect) {
+    var viewportWidth = globalThis.innerWidth || 0;
+    var viewportHeight = globalThis.innerHeight || 0;
+    var left = Math.max(0, rect.left);
+    var top = Math.max(0, rect.top);
+    var mask = document.createElement('div');
+    mask.setAttribute(MASK_ATTR, '1');
+    mask.style.position = 'fixed';
+    mask.style.left = left + 'px';
+    mask.style.top = top + 'px';
+    mask.style.width = Math.max(0, Math.min(rect.width, viewportWidth - left)) + 'px';
+    mask.style.height = Math.max(0, Math.min(rect.height, viewportHeight - top)) + 'px';
+    mask.style.background = MASK_COLOR;
+    mask.style.zIndex = '2147483647';
+    mask.style.pointerEvents = 'none';
+    document.documentElement.appendChild(mask);
+  };
+  var maskSensitive = function () {
+    try {
+      removeMasks();
+      var masked = 0;
+      var inputs = document.querySelectorAll('input');
+      for (var i = 0; i < inputs.length; i += 1) {
+        var input = inputs[i];
+        if (!isSensitiveInput(input) || !isVisible(input) || !inViewport(input)) continue;
+        createMask(input.getBoundingClientRect());
+        masked += 1;
+      }
+      var frames = document.querySelectorAll('iframe');
+      for (var j = 0; j < frames.length; j += 1) {
+        var frame = frames[j];
+        if (!isVisible(frame) || !inViewport(frame)) continue;
+        var crossOrigin = false;
+        try {
+          crossOrigin = !frame.contentDocument;
+        } catch (error) {
+          crossOrigin = true;
+        }
+        if (!crossOrigin) continue;
+        createMask(frame.getBoundingClientRect());
+        masked += 1;
+      }
+      return { ok: true, masked: masked };
+    } catch (error) {
+      // 鲁港通 - 中途失败时先清掉已铺的遮罩，避免遮罩残留在用户页面上
+      try {
+        removeMasks();
+      } catch (cleanupError) {
+        // 鲁港通 - 清理本身失败也不能把异常抛给调用方
+      }
+      return { ok: false, masked: 0 };
+    }
+  };
+  var unmaskSensitive = function () {
+    removeMasks();
+    return { ok: true };
+  };
   globalThis.__lugangAi = {
     snapshot: snapshot,
     resolve: resolve,
     prepareInput: prepareInput,
     selectOption: selectOption,
     fileInput: fileInput,
-    scroll: scroll
+    scroll: scroll,
+    maskSensitive: maskSensitive,
+    unmaskSensitive: unmaskSensitive
   };
 })()`;
 
@@ -380,8 +451,9 @@ export const buildAiScrollExpression = (direction: string, amount?: number): str
     })`
   );
 
-// 鲁港通 - 截图隐私遮罩：真实脚本在 Task 7 落地，这里先提供可联调的失败安全桩
+// 鲁港通 - 截图隐私遮罩：密码/OTP/银行卡字段与跨域 iframe 一律在截图前打码
 export const buildAiMaskSensitiveExpression = (): string =>
-  `(() => ({ ok: true, masked: 0 }))()`;
+  wrap('globalThis.__lugangAi.maskSensitive()');
 
-export const buildAiUnmaskExpression = (): string => `(() => 0)()`;
+export const buildAiUnmaskExpression = (): string =>
+  wrap('globalThis.__lugangAi.unmaskSensitive()');
