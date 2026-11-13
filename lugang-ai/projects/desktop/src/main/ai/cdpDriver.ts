@@ -300,9 +300,13 @@ export class CdpPageDriver implements AiPageDriver {
   // 鲁港通 - 截图前先打码；任何一步失败都放弃本次截图，绝不上传未打码图片
   async captureScreen(): Promise<AiScreenCapture> {
     const session = this.requireSession();
+    // 鲁港通 - 每次截图独立 token：看门狗提前放弃后，慢截图的收尾只解除自己的遮罩，不会误删下一条指令的遮罩
+    const captureToken = `shot-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     let masked = false;
     try {
-      const mask = await this.evaluate<{ ok?: boolean }>(buildAiMaskSensitiveExpression());
+      const mask = await this.evaluate<{ ok?: boolean }>(
+        buildAiMaskSensitiveExpression(captureToken)
+      );
       if (!mask || mask.ok !== true) throw new AiDriverError(SCREENSHOT_FAILED_MESSAGE);
       masked = true;
 
@@ -354,7 +358,7 @@ export class CdpPageDriver implements AiPageDriver {
     } finally {
       if (masked) {
         try {
-          await this.evaluate(buildAiUnmaskExpression());
+          await this.evaluate(buildAiUnmaskExpression(captureToken));
         } catch {
           // 页面已跳转或关闭时遮罩随页面消失
         }

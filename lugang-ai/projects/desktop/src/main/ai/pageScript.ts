@@ -335,6 +335,7 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     return { before: before, after: after, changed: before.x !== after.x || before.y !== after.y };
   };
   var MASK_ATTR = 'data-lugang-ai-mask';
+  var MASK_OWNER_ATTR = 'data-lugang-ai-mask-owner';
   var MASK_COLOR = '#1f2329';
   var SENSITIVE_AUTOCOMPLETE = /(^|\s)(cc-[a-z-]+|one-time-code|current-password|new-password)(\s|$)/i;
   var isSensitiveInput = function (el) {
@@ -342,36 +343,51 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
     if (String(el.getAttribute('type') || '').toLowerCase() === 'password') return true;
     return SENSITIVE_AUTOCOMPLETE.test(String(el.getAttribute('autocomplete') || ''));
   };
-  var removeMasks = function () {
+  // 鲁港通 - 按截图 token 归属清理遮罩；不带 token 时只清无主遮罩，保持旧调用方行为
+  var removeMasks = function (token) {
     var nodes = document.querySelectorAll('[' + MASK_ATTR + '="1"]');
-    for (var i = 0; i < nodes.length; i += 1) nodes[i].remove();
+    var owner = token ? String(token) : '';
+    for (var i = 0; i < nodes.length; i += 1) {
+      if ((nodes[i].getAttribute(MASK_OWNER_ATTR) || '') === owner) nodes[i].remove();
+    }
   };
-  var createMask = function (rect) {
+  var createMask = function (rect, token) {
     var viewportWidth = globalThis.innerWidth || 0;
     var viewportHeight = globalThis.innerHeight || 0;
     var left = Math.max(0, rect.left);
     var top = Math.max(0, rect.top);
     var mask = document.createElement('div');
     mask.setAttribute(MASK_ATTR, '1');
-    mask.style.position = 'fixed';
-    mask.style.left = left + 'px';
-    mask.style.top = top + 'px';
-    mask.style.width = Math.max(0, Math.min(rect.width, viewportWidth - left)) + 'px';
-    mask.style.height = Math.max(0, Math.min(rect.height, viewportHeight - top)) + 'px';
-    mask.style.background = MASK_COLOR;
-    mask.style.zIndex = '2147483647';
-    mask.style.pointerEvents = 'none';
+    // 鲁港通 - 遮罩记下本次截图的 token，收尾只解除自己的遮罩
+    if (token) mask.setAttribute(MASK_OWNER_ATTR, String(token));
+    // 鲁港通 - 内联样式带 !important，防止页面全局 CSS 把遮罩隐藏或移位
+    mask.style.setProperty('position', 'fixed', 'important');
+    mask.style.setProperty('left', left + 'px', 'important');
+    mask.style.setProperty('top', top + 'px', 'important');
+    mask.style.setProperty(
+      'width',
+      Math.max(0, Math.min(rect.width, viewportWidth - left)) + 'px',
+      'important'
+    );
+    mask.style.setProperty(
+      'height',
+      Math.max(0, Math.min(rect.height, viewportHeight - top)) + 'px',
+      'important'
+    );
+    mask.style.setProperty('background', MASK_COLOR, 'important');
+    mask.style.setProperty('z-index', '2147483647', 'important');
+    mask.style.setProperty('pointer-events', 'none', 'important');
     document.documentElement.appendChild(mask);
   };
-  var maskSensitive = function () {
+  var maskSensitive = function (token) {
     try {
-      removeMasks();
+      removeMasks(token);
       var masked = 0;
       var inputs = document.querySelectorAll('input');
       for (var i = 0; i < inputs.length; i += 1) {
         var input = inputs[i];
         if (!isSensitiveInput(input) || !isVisible(input) || !inViewport(input)) continue;
-        createMask(input.getBoundingClientRect());
+        createMask(input.getBoundingClientRect(), token);
         masked += 1;
       }
       var frames = document.querySelectorAll('iframe');
@@ -385,22 +401,22 @@ export const AI_PAGE_HELPERS_SOURCE = String.raw`(() => {
           crossOrigin = true;
         }
         if (!crossOrigin) continue;
-        createMask(frame.getBoundingClientRect());
+        createMask(frame.getBoundingClientRect(), token);
         masked += 1;
       }
       return { ok: true, masked: masked };
     } catch (error) {
-      // 鲁港通 - 中途失败时先清掉已铺的遮罩，避免遮罩残留在用户页面上
+      // 鲁港通 - 中途失败时只清掉本次已铺的遮罩，不能误删其他截图的遮罩
       try {
-        removeMasks();
+        removeMasks(token);
       } catch (cleanupError) {
         // 鲁港通 - 清理本身失败也不能把异常抛给调用方
       }
       return { ok: false, masked: 0 };
     }
   };
-  var unmaskSensitive = function () {
-    removeMasks();
+  var unmaskSensitive = function (token) {
+    removeMasks(token);
     return { ok: true };
   };
   globalThis.__lugangAi = {
@@ -451,9 +467,13 @@ export const buildAiScrollExpression = (direction: string, amount?: number): str
     })`
   );
 
-// 鲁港通 - 截图隐私遮罩：密码/OTP/银行卡字段与跨域 iframe 一律在截图前打码
-export const buildAiMaskSensitiveExpression = (): string =>
-  wrap('globalThis.__lugangAi.maskSensitive()');
+// 鲁港通 - 截图隐私遮罩：密码/OTP/银行卡字段与跨域 iframe 一律在截图前打码；token 用于圈定本次截图的遮罩归属
+export const buildAiMaskSensitiveExpression = (token?: string): string =>
+  wrap(
+    `globalThis.__lugangAi.maskSensitive(${typeof token === 'string' ? JSON.stringify(token) : ''})`
+  );
 
-export const buildAiUnmaskExpression = (): string =>
-  wrap('globalThis.__lugangAi.unmaskSensitive()');
+export const buildAiUnmaskExpression = (token?: string): string =>
+  wrap(
+    `globalThis.__lugangAi.unmaskSensitive(${typeof token === 'string' ? JSON.stringify(token) : ''})`
+  );

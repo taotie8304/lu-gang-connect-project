@@ -401,6 +401,9 @@ describe('AI 页面脚本', () => {
     expect(first.style.background).toBe('rgb(31, 35, 41)');
     expect(first.style.zIndex).toBe('2147483647');
     expect(first.style.pointerEvents).toBe('none');
+    // 鲁港通 - 遮罩样式必须带 !important，避免被页面全局 CSS 覆盖
+    expect(first.style.getPropertyPriority('position')).toBe('important');
+    expect(first.style.getPropertyPriority('z-index')).toBe('important');
   });
 
   it('不遮罩普通文本框、隐藏字段和视口外字段', () => {
@@ -454,6 +457,38 @@ describe('AI 页面脚本', () => {
 
     expect(document.querySelectorAll('[data-lugang-ai-mask="1"]')).toHaveLength(0);
     expect(document.getElementById('pageOwn')).not.toBeNull();
+  });
+
+  it('遮罩按截图 token 归属，解除只清理本次遮罩', () => {
+    stubRect(document.getElementById('pwd')!, { x: 10, y: 60 });
+    const tokenA = 'shot-a';
+    const tokenB = 'shot-b';
+
+    expect(evalInPage<{ ok: boolean }>(buildAiMaskSensitiveExpression(tokenA)).ok).toBe(true);
+    const masksA = Array.from(document.querySelectorAll('[data-lugang-ai-mask="1"]'));
+    expect(masksA.length).toBeGreaterThan(0);
+    masksA.forEach((node) => {
+      expect(node.getAttribute('data-lugang-ai-mask-owner')).toBe(tokenA);
+    });
+
+    expect(evalInPage<{ ok: boolean }>(buildAiMaskSensitiveExpression(tokenB)).ok).toBe(true);
+    const masksB = Array.from(document.querySelectorAll('[data-lugang-ai-mask="1"]')).filter(
+      (node) => !masksA.includes(node)
+    );
+    expect(masksB).toHaveLength(masksA.length);
+    masksB.forEach((node) => {
+      expect(node.getAttribute('data-lugang-ai-mask-owner')).toBe(tokenB);
+    });
+
+    // 鲁港通 - 慢截图被看门狗放弃后的收尾只能清掉自己的遮罩，不能误删下一条指令的遮罩
+    evalInPage(buildAiUnmaskExpression(tokenA));
+    const remaining = Array.from(document.querySelectorAll('[data-lugang-ai-mask="1"]'));
+    expect(remaining).toHaveLength(masksB.length);
+    expect(remaining[0]).toBe(masksB[0]);
+    masksA.forEach((node) => expect(node.isConnected).toBe(false));
+
+    evalInPage(buildAiUnmaskExpression(tokenB));
+    expect(document.querySelectorAll('[data-lugang-ai-mask="1"]')).toHaveLength(0);
   });
 
   it('遮罩注入失败时回滚已插入的遮罩并返回 ok=false', () => {
