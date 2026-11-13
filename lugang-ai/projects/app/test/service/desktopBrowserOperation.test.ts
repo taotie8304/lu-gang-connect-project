@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatCompletionMessageParam } from '@fastgpt/global/core/ai/llm/type';
 import {
   BROWSER_OPERATION_TOOL_NAME,
@@ -19,6 +19,14 @@ import {
 } from '@fastgpt/service/support/desktopCommand/constant';
 import type { DesktopBrowserSnapshot } from '@fastgpt/global/support/desktopCommand/type';
 import { createTestStore } from './desktopTestStore';
+
+const { mockRecognizeImageWithVlmResult } = vi.hoisted(() => ({
+  mockRecognizeImageWithVlmResult: vi.fn()
+}));
+
+vi.mock('@fastgpt/service/common/file/read/vlmOcr', () => ({
+  recognizeImageWithVlmResult: mockRecognizeImageWithVlmResult
+}));
 
 const deviceId = 'device_12345678';
 const commandId = '0f0f0f0f-1111-4222-8333-444444444444';
@@ -66,7 +74,10 @@ const createFakeStore = () => ({
   })),
   waitForResult: vi.fn(async () => ({ ok: true, changed: true, snapshot }) as any),
   saveBrowserResume: vi.fn(async () => {}),
-  getBrowserResume: vi.fn(async () => undefined as any)
+  getBrowserResume: vi.fn(async () => undefined as any),
+  deleteResult: vi.fn(async () => {}),
+  getBrowserOcrCount: vi.fn(async () => 0),
+  incrementBrowserOcrCount: vi.fn(async () => 1)
 });
 
 type FakeStore = ReturnType<typeof createFakeStore>;
@@ -2495,5 +2506,153 @@ describe('desktop document editing · PDF 原样副本叠加（0.8.7）', () => 
     expect(description).toContain('不要仿制');
     expect(description).toContain('generate_file');
     expect(description).toContain('标签');
+  });
+});
+
+describe('desktop browser read_image', () => {
+  const image = {
+    mime: 'image/jpeg' as const,
+    base64: Buffer.from('fake-jpeg').toString('base64'),
+    width: 1280,
+    height: 720
+  };
+
+  const createReadImageStore = () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.15.0');
+    store.waitForResult.mockResolvedValue({ ok: true, changed: true, snapshot, image } as any);
+    return store;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockRecognizeImageWithVlmResult.mockResolvedValue({
+      status: 'ok',
+      text: '申请表编号 A123'
+    });
+  });
+
+  it('回传识别文字与页面快照，响应不含 base64，审计不含文字', async () => {
+    const store = createReadImageStore();
+    const audit = vi.fn(async () => {});
+    const run = createExecutor({ store, audit });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('页面文字识别结果（当前可见区域）：');
+    expect(result.response).toContain('申请表编号 A123');
+    expect(result.response).toContain('聯絡我們');
+    expect(result.response).not.toContain(image.base64);
+    expect(store.enqueue).toHaveBeenCalledWith({
+      deviceId,
+      command: { action: 'read_image' }
+    });
+    expect(store.deleteResult).toHaveBeenCalledWith(commandId);
+    expect(audit).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'read_image', ok: true })
+    );
+    const record = audit.mock.calls[0][0] as any;
+    expect(JSON.stringify(record)).not.toContain('A123');
+    expect(JSON.stringify(record)).not.toContain(image.base64);
+  });
+
+  it('识别文字超过 6000 字时截断并说明', async () => {
+    const store = createReadImageStore();
+    mockRecognizeImageWithVlmResult.mockResolvedValue({
+      status: 'ok',
+      text: '字'.repeat(6001)
+    });
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('字'.repeat(6000));
+    expect(result.response).not.toContain('字'.repeat(6001));
+    expect(result.response).toContain('已截断前 6000 字');
+  });
+
+  it('旧客户端在入队前被拒绝', async () => {
+    const store = createFakeStore();
+    store.getDeviceAppVersionByOwner.mockResolvedValue('0.14.1');
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('升级');
+    expect(store.enqueue).not.toHaveBeenCalled();
+    expect(mockRecognizeImageWithVlmResult).not.toHaveBeenCalled();
+  });
+
+  it('配额已满时在入队前被拒绝', async () => {
+    const store = createReadImageStore();
+    store.getBrowserOcrCount.mockResolvedValue(20);
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('达到上限');
+    expect(store.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('第 20 张仍然成功', async () => {
+    const store = createReadImageStore();
+    store.getBrowserOcrCount.mockResolvedValue(19);
+    store.incrementBrowserOcrCount.mockResolvedValue(20);
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('页面文字识别结果');
+  });
+
+  it('并发自增超过 20 时返回限额提示', async () => {
+    const store = createReadImageStore();
+    store.getBrowserOcrCount.mockResolvedValue(19);
+    store.incrementBrowserOcrCount.mockResolvedValue(21);
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('达到上限');
+    expect(mockRecognizeImageWithVlmResult).not.toHaveBeenCalled();
+  });
+
+  it('结果缺少截图时提示且不计数', async () => {
+    const store = createReadImageStore();
+    store.waitForResult.mockResolvedValue({ ok: true, changed: true, snapshot } as any);
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('客户端没有返回页面截图');
+    expect(store.incrementBrowserOcrCount).not.toHaveBeenCalled();
+    expect(store.deleteResult).toHaveBeenCalledWith(commandId);
+  });
+
+  it.each([
+    ['empty', '当前可见区域没有识别到文字'],
+    ['unavailable', '当前还没有启用图片文字识别能力'],
+    ['timeout', '识别图片文字超时'],
+    ['failed', '识别图片文字失败']
+  ] as const)('OCR %s 返回对应文案', async (status, expected) => {
+    const store = createReadImageStore();
+    mockRecognizeImageWithVlmResult.mockResolvedValue({ status, text: '' });
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain(expected);
+  });
+
+  it('桌面截图失败时保留失败提示并删除结果键', async () => {
+    const store = createReadImageStore();
+    store.waitForResult.mockResolvedValue({ ok: false, code: 'screenshot_failed' } as any);
+    const run = createExecutor({ store });
+
+    const result = await run({ action: 'read_image' });
+
+    expect(result.response).toContain('页面截图失败');
+    expect(store.deleteResult).toHaveBeenCalledWith(commandId);
+    expect(mockRecognizeImageWithVlmResult).not.toHaveBeenCalled();
   });
 });

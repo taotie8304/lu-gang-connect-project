@@ -65,3 +65,10 @@ export const getDesktopCommandBusyTtlMs = (action?: string) =>
 
 /** 会话级浏览器续跑状态保留 10 分钟，与设计文档一致 */
 export const DESKTOP_BROWSER_RESUME_TTL_MS = 10 * 60 * 1000;
+
+/** 鲁港通 - 内置浏览器识图：最低客户端版本、单对话配额与识别上限 */
+export const DESKTOP_OCR_MIN_VERSION = '0.15.0';
+export const DESKTOP_BROWSER_OCR_MAX_PER_CHAT = 20;
+export const DESKTOP_BROWSER_OCR_COUNT_TTL_SECONDS = 24 * 60 * 60;
+export const DESKTOP_BROWSER_OCR_TIMEOUT_MS = 45_000;
+export const DESKTOP_BROWSER_OCR_TEXT_LIMIT = 6000;

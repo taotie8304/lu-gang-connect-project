@@ -21,10 +21,19 @@ import type {
 } from '@fastgpt/global/support/desktopCommand/type';
 import {
   DESKTOP_BROWSER_CLICK_RESULT_TIMEOUT_MS,
+  DESKTOP_BROWSER_OCR_COUNT_TTL_SECONDS,
+  DESKTOP_BROWSER_OCR_MAX_PER_CHAT,
+  DESKTOP_BROWSER_OCR_TEXT_LIMIT,
+  DESKTOP_BROWSER_OCR_TIMEOUT_MS,
   DESKTOP_BROWSER_RESULT_TIMEOUT_MS,
   DESKTOP_COMMAND_MAX_BYTES,
+  DESKTOP_OCR_MIN_VERSION,
   isDesktopLongWaitAction
 } from './constant';
+import {
+  recognizeImageWithVlmResult,
+  type VlmOcrStatus
+} from '../../common/file/read/vlmOcr';
 import {
   desktopCommandStore,
   type DesktopCommandStore
@@ -939,6 +948,16 @@ const formatPdfFillResult = (
 const API_LANDING_WARNING =
   '页面现在停在网站的接口或登录跳转地址上；这类地址只会显示 JSON、报错数据或代码页，不能继续在这个页面上办事。请立即返回上一页，改用页面上公开的「注册 / 登录 / 申请 / 成为会员 / 立即加入」入口重新进入；不要重复点击刚才的「登入/注册」按钮，也不要直接打开这个地址。';
 
+const OCR_STATUS_MESSAGES: Record<Exclude<VlmOcrStatus, 'ok'>, string> = {
+  empty:
+    '当前可见区域没有识别到文字。可能是图片、图表或扫描件太模糊，或页面上确实没有文字。请结合已读到的页面内容继续；需要时让用户手动复制关键文字。',
+  unavailable:
+    '当前还没有启用图片文字识别能力，无法读取这张图里的文字。请让用户手动复制页面上的文字，再继续办理。',
+  timeout:
+    '识别图片文字超时，页面可能太大或网络繁忙。请稍后重试一次；仍然不行就让用户手动复制文字。',
+  failed: '识别图片文字失败，请稍后重试一次；仍然不行就让用户手动复制文字。'
+};
+
 const guidanceForCode = (code?: string, action?: string): string | undefined => {
   const isFormFill = action === 'fill_form';
   const isDocumentEdit = action === 'edit_document';
@@ -969,6 +988,8 @@ const guidanceForCode = (code?: string, action?: string): string | undefined => 
       return '目标不是文件上传入口。请先重新读取页面，选择正确的上传按钮。';
     case 'upload_failed':
       return '文件没有成功附加到页面。请让用户手动选择文件上传，不要在没有文件的情况下提交。';
+    case 'screenshot_failed':
+      return '页面截图失败，可能页面正在跳转或已经关闭。请稍后再试。';
     case 'file_generation_failed':
       return '文件没有生成成功。请调整文件名或内容后重新生成；如果仍然失败，请让用户自行准备文件。';
     case 'unsupported_action':
@@ -1262,6 +1283,33 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
+    // 鲁港通 - 识图依赖 0.15.0，且单对话最多 20 张：两项都在入队前拦截
+    if (action === 'read_image') {
+      const appVersion = await store.getDeviceAppVersionByOwner(identity.tmbId);
+      if (!isDesktopDocumentVersionSupported(appVersion, DESKTOP_OCR_MIN_VERSION)) {
+        return finish({
+          response:
+            '当前桌面客户端版本较旧，还不能识别页面图片里的文字。请让用户把客户端升级到最新版本（客户端内检查更新）后再试。',
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'desktop_upgrade_required'
+        });
+      }
+      const count = await store.getBrowserOcrCount({ tmbId: identity.tmbId, chatId });
+      if (count >= DESKTOP_BROWSER_OCR_MAX_PER_CHAT) {
+        return finish({
+          response: `本次对话已识别 ${DESKTOP_BROWSER_OCR_MAX_PER_CHAT} 张页面图片，达到上限。请让用户手动复制页面文字，或新开一个对话继续。`,
+          action,
+          deviceId,
+          url: requestUrl,
+          ok: false,
+          code: 'ocr_limit_reached'
+        });
+      }
+    }
+
     // 鲁港通 - 文档修改依赖 0.6.0、PDF 叠加依赖 0.8.7；带分区定位时必须使用 0.8.8
     if (isDesktopDocumentAction(action) || isDesktopPdfOverlayAction(action)) {
       const usesPdfSections =
@@ -1412,6 +1460,15 @@ export const createDesktopBrowserOperationExecutor = ({
       });
     }
 
+    // 鲁港通 - 截图结果读到后立即删除，缩短图片在 Redis 的停留；删除失败由 5 分钟 TTL 兜底
+    if (action === 'read_image') {
+      try {
+        await store.deleteResult(envelope.id);
+      } catch {
+        // 结果键 5 分钟后自然过期
+      }
+    }
+
     const snapshot = result.snapshot;
     if (snapshot) latestElements = snapshot.elements ?? [];
     const resultUrl = snapshot?.url || requestUrl;
@@ -1477,6 +1534,67 @@ export const createDesktopBrowserOperationExecutor = ({
         url: resultUrl || resume?.url,
         ok: false,
         code: 'document_missing'
+      });
+    }
+
+    if (action === 'read_image') {
+      if (!result.image) {
+        return finish({
+          response:
+            '客户端没有返回页面截图，这次识别没有成功。请重新读取页面后再试；如果反复失败，请让用户手动复制页面文字。',
+          action,
+          deviceId,
+          url: resultUrl || resume?.url,
+          ok: false,
+          code: 'image_missing'
+        });
+      }
+
+      const count = await store.incrementBrowserOcrCount({
+        tmbId: identity.tmbId,
+        chatId,
+        ttlSeconds: DESKTOP_BROWSER_OCR_COUNT_TTL_SECONDS
+      });
+      if (count > DESKTOP_BROWSER_OCR_MAX_PER_CHAT) {
+        return finish({
+          response: `本次对话已识别 ${DESKTOP_BROWSER_OCR_MAX_PER_CHAT} 张页面图片，达到上限。请让用户手动复制页面文字，或新开一个对话继续。`,
+          action,
+          deviceId,
+          url: resultUrl || resume?.url,
+          ok: false,
+          code: 'ocr_limit_reached'
+        });
+      }
+
+      const ocr = await recognizeImageWithVlmResult({
+        buffer: Buffer.from(result.image.base64, 'base64'),
+        mime: result.image.mime,
+        timeoutMs: DESKTOP_BROWSER_OCR_TIMEOUT_MS
+      });
+      if (ocr.status !== 'ok') {
+        return finish({
+          response: `${prefix}${OCR_STATUS_MESSAGES[ocr.status]}${snapshotBlock}`,
+          action,
+          deviceId,
+          url: resultUrl || resume?.url,
+          ok: false,
+          code: `ocr_${ocr.status}`,
+          changed: result.changed
+        });
+      }
+
+      const truncated = ocr.text.length > DESKTOP_BROWSER_OCR_TEXT_LIMIT;
+      const text = truncated ? ocr.text.slice(0, DESKTOP_BROWSER_OCR_TEXT_LIMIT) : ocr.text;
+      const truncationNote = truncated
+        ? `\n（识别文字较长，已截断前 ${DESKTOP_BROWSER_OCR_TEXT_LIMIT} 字；需要更多内容请滚动页面后再识别一次。）`
+        : '';
+      return finish({
+        response: `${prefix}${apiLandingWarning}页面文字识别结果（当前可见区域）：\n${text}${truncationNote}${snapshotBlock}`,
+        action,
+        deviceId,
+        url: resultUrl || resume?.url,
+        ok: true,
+        changed: result.changed
       });
     }
 
