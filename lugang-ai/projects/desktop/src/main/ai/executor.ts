@@ -503,12 +503,14 @@ export class AiExecutor {
       return { ok: true, snapshot: read.snapshot };
     }
 
-    // 鲁港通 - 识图同时回传页面快照，模型才能把截图文字对回元素位置
+    // 鲁港通 - 识图同时回传页面快照，模型才能把截图文字对回元素位置；
+    // 快照同样走 readSnapshot，本机/内网地址与 read 一样拒绝放行
     if (command.action === 'read_image') {
+      const read = await this.readSnapshot();
+      if ('result' in read) return read.result;
       try {
-        const snapshot = await this.driver.snapshot();
         const image = await this.driver.captureScreen();
-        return { ok: true, changed: true, snapshot, image };
+        return { ok: true, changed: true, snapshot: read.snapshot, image };
       } catch {
         return {
           ok: false,

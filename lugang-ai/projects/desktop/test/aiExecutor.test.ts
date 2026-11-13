@@ -530,8 +530,21 @@ describe('AI 页面执行器', () => {
     const result = await createExecutor(driver).execute({ action: 'read_image' });
 
     expect(result).toMatchObject({ ok: false, code: 'screenshot_failed' });
-    expect(result.message).toContain('页面截图失败');
+    expect(result.message).toBe('页面截图失败，可能页面正在跳转或已经关闭。请稍后再试。');
     expect(result.highlight).toBeUndefined();
+  });
+
+  it('当前页面是本机地址时拒绝识图且不截图', async () => {
+    const { driver, calls } = createDriver(
+      makeSnapshot([], { url: 'http://127.0.0.1:3100/page' })
+    );
+
+    const result = await createExecutor(driver).execute({ action: 'read_image' });
+
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe('not_allowed');
+    expect(result.image).toBeUndefined();
+    expect(calls.captureScreen).toBe(0);
   });
 
   it('导航到任意公网站点', async () => {
