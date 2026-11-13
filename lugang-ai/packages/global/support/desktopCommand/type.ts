@@ -163,6 +163,14 @@ export type DesktopDocumentEditResult = {
   warnings?: string[];
 };
 
+/** 鲁港通 - 浏览器识图截图：只在内存与结果回传中使用，不落盘、不进审计 */
+export type DesktopBrowserImage = {
+  mime: 'image/jpeg' | 'image/png';
+  base64: string;
+  width: number;
+  height: number;
+};
+
 export type DesktopCommandResult = {
   ok: boolean;
   code?: string;
@@ -187,6 +195,8 @@ export type DesktopCommandResult = {
   documentToken?: string;
   /** edit_document 的写入统计 */
   edit?: DesktopDocumentEditResult;
+  /** read_image 的页面截图 */
+  image?: DesktopBrowserImage;
 };
 
 /** 设备注册（POST）：deviceId 由客户端生成并在本机持久化 */

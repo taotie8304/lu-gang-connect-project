@@ -476,6 +476,53 @@ describe('POST /api/proApi/desktop/result', () => {
     });
   });
 
+  it('passes a browser image through to storage', async () => {
+    const image = {
+      mime: 'image/jpeg',
+      base64: Buffer.from('fake-jpeg-bytes').toString('base64'),
+      width: 1280,
+      height: 720
+    };
+    const req = {
+      method: 'POST',
+      body: { deviceId, commandId, result: { ok: true, changed: true, image } },
+      headers: { authorization: 'Bearer lgd_token' }
+    } as any;
+
+    await expect(resultHandler(req, createRes())).resolves.toEqual({ accepted: true });
+
+    expect(mocks.saveDesktopCommandResult).toHaveBeenCalledWith({
+      commandId,
+      result: { ok: true, changed: true, image }
+    });
+  });
+
+  it('rejects invalid browser images', async () => {
+    const image = { mime: 'image/jpeg', base64: 'abc', width: 1280, height: 720 };
+    const invalid = [
+      { ...image, mime: 'image/webp' },
+      { ...image, base64: '' },
+      { ...image, base64: 'a'.repeat(720_001) },
+      { ...image, width: 0 },
+      { ...image, width: -1 },
+      { ...image, width: 10.5 },
+      { ...image, height: 10_001 }
+    ];
+
+    for (const candidate of invalid) {
+      const req = {
+        method: 'POST',
+        body: { deviceId, commandId, result: { ok: true, image: candidate } },
+        headers: { authorization: 'Bearer lgd_token' }
+      } as any;
+      await expect(resultHandler(req, createRes())).rejects.toBeInstanceOf(
+        ApiRequestInputParseError
+      );
+    }
+
+    expect(mocks.saveDesktopCommandResult).not.toHaveBeenCalled();
+  });
+
   it('passes pdf section fields through unchanged', async () => {
     const document = {
       format: 'pdf',

@@ -166,6 +166,13 @@ const documentEditResultSchema = z.object({
   warnings: warningsSchema.optional()
 });
 
+const imageSchema = z.object({
+  mime: z.enum(['image/jpeg', 'image/png']),
+  base64: z.string().min(1).max(720_000),
+  width: z.number().int().min(1).max(10_000),
+  height: z.number().int().min(1).max(10_000)
+});
+
 const bodySchema = z.object({
   deviceId: z.string().regex(/^[A-Za-z0-9_-]{8,64}$/, '设备标识格式不正确'),
   commandId: z.uuid('指令标识格式不正确'),
@@ -183,7 +190,8 @@ const bodySchema = z.object({
     fill: formFillResultSchema.optional(),
     document: documentSummarySchema.optional(),
     documentToken: tokenSchema.optional(),
-    edit: documentEditResultSchema.optional()
+    edit: documentEditResultSchema.optional(),
+    image: imageSchema.optional()
   })
 });
 
