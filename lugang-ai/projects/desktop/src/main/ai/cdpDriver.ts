@@ -321,7 +321,17 @@ export class CdpPageDriver implements AiPageDriver {
       const y = Math.max(0, Math.round(viewport.pageY ?? 0));
       const width = Math.max(1, Math.round(viewport.clientWidth ?? 0));
       const height = Math.max(1, Math.round(viewport.clientHeight ?? 0));
-      const scale = Math.min(1, MAX_SCREENSHOT_EDGE / Math.max(width, height));
+      // 鲁港通 - Chromium 输出位图 = CSS px × devicePixelRatio，长边上限必须按设备像素算
+      let dpr = 1;
+      try {
+        const ratio = await this.evaluate<unknown>('globalThis.devicePixelRatio || 1');
+        if (typeof ratio === 'number' && Number.isFinite(ratio) && ratio > 0) dpr = ratio;
+      } catch {
+        // 读不到设备像素比时按 1 处理，截图流程继续
+      }
+      const scale = Math.min(1, MAX_SCREENSHOT_EDGE / (Math.max(width, height) * dpr));
+      const pixelWidth = Math.max(1, Math.round(width * scale * dpr));
+      const pixelHeight = Math.max(1, Math.round(height * scale * dpr));
 
       for (const quality of SCREENSHOT_QUALITIES) {
         const shot = (await session.sendCommand('Page.captureScreenshot', {
@@ -333,7 +343,7 @@ export class CdpPageDriver implements AiPageDriver {
         const data = typeof shot?.data === 'string' ? shot.data : '';
         if (!data) continue;
         if (Buffer.byteLength(data, 'base64') <= MAX_SCREENSHOT_BYTES) {
-          return { mime: 'image/jpeg', base64: data, width, height };
+          return { mime: 'image/jpeg', base64: data, width: pixelWidth, height: pixelHeight };
         }
       }
 

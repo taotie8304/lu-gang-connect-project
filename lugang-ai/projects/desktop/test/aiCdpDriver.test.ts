@@ -309,10 +309,15 @@ describe('CDP 页面截图', () => {
     qualityData?: Record<number, { data: string }>;
     maskOk?: boolean;
     screenshotError?: boolean;
+    dpr?: number;
     viewport?: { pageX: number; pageY: number; clientWidth: number; clientHeight: number };
   } = {}) =>
     (method: string, params?: Record<string, unknown>) => {
       if (method === 'Runtime.evaluate') {
+        // 鲁港通 - 驱动会单独求值设备像素比，其余求值按遮罩脚本返回
+        if (String(params?.expression ?? '').includes('devicePixelRatio')) {
+          return { result: { value: options.dpr ?? 1 } };
+        }
         return { result: { value: { ok: options.maskOk !== false } } };
       }
       if (method === 'Page.getLayoutMetrics') {
@@ -344,10 +349,14 @@ describe('CDP 页面截图', () => {
     expect(calls.map((call) => call.method)).toEqual([
       'Runtime.evaluate',
       'Page.getLayoutMetrics',
+      'Runtime.evaluate',
       'Page.captureScreenshot',
       'Runtime.evaluate'
     ]);
-    expect(calls[2].params).toMatchObject({
+    expect(
+      String(calls[2].params?.expression).includes('devicePixelRatio')
+    ).toBe(true);
+    expect(calls[3].params).toMatchObject({
       format: 'jpeg',
       quality: 70,
       fromSurface: true,
@@ -355,7 +364,7 @@ describe('CDP 页面截图', () => {
     });
   });
 
-  it('长边超过 1600 时等比缩小', async () => {
+  it('长边超过 1600 时等比缩小，并回报实际位图尺寸', async () => {
     const { driver, calls } = createDriver(
       captureHandler({
         viewport: { pageX: 0, pageY: 0, clientWidth: 3200, clientHeight: 1800 }
@@ -364,11 +373,72 @@ describe('CDP 页面截图', () => {
 
     const image = await driver.captureScreen();
 
-    expect(image.width).toBe(3200);
-    expect(image.height).toBe(1800);
-    expect(calls[2].params).toMatchObject({
+    expect(image.width).toBe(1600);
+    expect(image.height).toBe(900);
+    expect(calls[3].params).toMatchObject({
       clip: { width: 3200, height: 1800, scale: 0.5 }
     });
+  });
+
+  it('高分屏按设备像素计算长边上限', async () => {
+    const { driver, calls } = createDriver(
+      captureHandler({
+        dpr: 2,
+        viewport: { pageX: 0, pageY: 0, clientWidth: 1280, clientHeight: 720 }
+      })
+    );
+
+    const image = await driver.captureScreen();
+
+    expect(image.width).toBe(1600);
+    expect(image.height).toBe(900);
+    expect(calls[3].params).toMatchObject({
+      clip: { width: 1280, height: 720, scale: 0.625 }
+    });
+  });
+
+  it('读不到设备像素比时按 1 截图', async () => {
+    const { driver } = createDriver((method, params) => {
+      if (method === 'Runtime.evaluate') {
+        if (String(params?.expression ?? '').includes('devicePixelRatio')) {
+          return { result: { value: { ok: true } } };
+        }
+        return { result: { value: { ok: true } } };
+      }
+      if (method === 'Page.getLayoutMetrics') {
+        return {
+          cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 1280, clientHeight: 720 }
+        };
+      }
+      if (method === 'Page.captureScreenshot') return SMALL_SHOT;
+      return {};
+    });
+
+    const image = await driver.captureScreen();
+
+    expect(image).toMatchObject({ width: 1280, height: 720, base64: SMALL_SHOT.data });
+  });
+
+  it('设备像素比求值失败时按 1 继续截图', async () => {
+    const { driver } = createDriver((method, params) => {
+      if (method === 'Runtime.evaluate') {
+        if (String(params?.expression ?? '').includes('devicePixelRatio')) {
+          throw new Error('evaluate failed');
+        }
+        return { result: { value: { ok: true } } };
+      }
+      if (method === 'Page.getLayoutMetrics') {
+        return {
+          cssVisualViewport: { pageX: 0, pageY: 0, clientWidth: 1280, clientHeight: 720 }
+        };
+      }
+      if (method === 'Page.captureScreenshot') return SMALL_SHOT;
+      return {};
+    });
+
+    const image = await driver.captureScreen();
+
+    expect(image).toMatchObject({ width: 1280, height: 720, base64: SMALL_SHOT.data });
   });
 
   it('超过 512KB 时按 70 → 55 → 40 依次降质', async () => {
@@ -411,6 +481,7 @@ describe('CDP 页面截图', () => {
     expect(calls.map((call) => call.method)).toEqual([
       'Runtime.evaluate',
       'Page.getLayoutMetrics',
+      'Runtime.evaluate',
       'Page.captureScreenshot',
       'Runtime.evaluate'
     ]);
