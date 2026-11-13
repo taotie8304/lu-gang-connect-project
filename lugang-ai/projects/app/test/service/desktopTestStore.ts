@@ -48,6 +48,25 @@ export class FakeRedis {
     return this.entries.delete(key);
   }
 
+  // 鲁港通 - 对齐 Redis INCRBY + EXPIRE NX：只在首次自增时设置过期
+  async incrementIntegerWithTtl({
+    key,
+    increment = 1,
+    ttlSeconds
+  }: {
+    key: string;
+    increment?: number;
+    ttlSeconds: number;
+  }) {
+    const current = this.alive(key);
+    const next = Number(current?.value ?? 0) + increment;
+    this.entries.set(key, {
+      value: String(next),
+      expiresAt: current?.expiresAt ?? this.now() + ttlSeconds * 1000
+    });
+    return next;
+  }
+
   async evalScript({
     script,
     keys,

@@ -18,6 +18,7 @@ import {
 import type { DesktopCommandStore } from '@fastgpt/service/support/desktopCommand/store';
 import { createTestStore as createStore } from './desktopTestStore';
 
+const commandId = '0f0f0f0f-1111-4222-8333-444444444444';
 const deviceId = 'device_12345678';
 
 const register = (store: DesktopCommandStore, overrides: Record<string, string> = {}) =>
@@ -384,5 +385,34 @@ describe('desktop command result', () => {
     advance(DESKTOP_RESULT_TTL_SECONDS * 1000);
 
     await expect(store.getResult(envelope.id)).resolves.toBeUndefined();
+  });
+});
+
+describe('desktop browser OCR quota', () => {
+  it('按对话计数，首次自增设置 24 小时过期且后续不重置', async () => {
+    const { store, redis, advance } = createStore();
+    const params = { tmbId: 'tmb-1', chatId: 'chat-1', ttlSeconds: 86_400 };
+
+    await expect(store.incrementBrowserOcrCount(params)).resolves.toBe(1);
+    await expect(store.incrementBrowserOcrCount(params)).resolves.toBe(2);
+
+    expect(await redis.get('desktop-command:v1:browser-ocr:tmb-1:chat-1')).toBe('2');
+    await expect(store.getBrowserOcrCount({ tmbId: 'tmb-1', chatId: 'chat-1' })).resolves.toBe(2);
+    await expect(store.getBrowserOcrCount({ tmbId: 'tmb-1', chatId: 'chat-2' })).resolves.toBe(0);
+
+    advance(24 * 60 * 60 * 1000 - 1);
+    expect(await store.getBrowserOcrCount({ tmbId: 'tmb-1', chatId: 'chat-1' })).toBe(2);
+    advance(1);
+    expect(await store.getBrowserOcrCount({ tmbId: 'tmb-1', chatId: 'chat-1' })).toBe(0);
+  });
+
+  it('删除结果键且重复删除幂等', async () => {
+    const { store } = createStore();
+    await store.saveResult({ commandId, result: { ok: true } });
+    expect(await store.getResult(commandId)).toBeDefined();
+
+    await expect(store.deleteResult(commandId)).resolves.toBeUndefined();
+    expect(await store.getResult(commandId)).toBeUndefined();
+    await expect(store.deleteResult(commandId)).resolves.toBeUndefined();
   });
 });

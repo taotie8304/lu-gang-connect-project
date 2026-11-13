@@ -48,6 +48,9 @@ export type DesktopBrowserOperationStore = Pick<
   | 'saveBrowserResume'
   | 'getBrowserResume'
   | 'getDeviceAppVersionByOwner'
+  | 'deleteResult'
+  | 'getBrowserOcrCount'
+  | 'incrementBrowserOcrCount'
 >;
 
 export type DesktopBrowserAuditRecord = {

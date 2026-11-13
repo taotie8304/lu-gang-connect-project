@@ -40,7 +40,7 @@ import {
 
 type DesktopCommandRedis = Pick<
   RedisCacheAdapter,
-  'get' | 'set' | 'setIfAbsent' | 'delete' | 'evalScript'
+  'get' | 'set' | 'setIfAbsent' | 'delete' | 'evalScript' | 'incrementIntegerWithTtl'
 >;
 
 export type DesktopDeviceRecord = {
@@ -271,6 +271,8 @@ export class DesktopCommandStore {
   private resultKey = (commandId: string) => this.key('result', commandId);
   private browserResumeKey = (tmbId: string, chatId: string) =>
     this.key('browser-resume', tmbId, chatId);
+  private browserOcrKey = (tmbId: string, chatId: string) =>
+    this.key('browser-ocr', tmbId, chatId);
 
   private async touchHeartbeat(deviceId: string) {
     await this.redis.set({
@@ -531,6 +533,41 @@ export class DesktopCommandStore {
     } catch {
       return undefined;
     }
+  }
+
+  /** 鲁港通 - 单对话识图次数：无键或非法值按 0 处理 */
+  async getBrowserOcrCount({
+    tmbId,
+    chatId
+  }: {
+    tmbId: string;
+    chatId: string;
+  }): Promise<number> {
+    const raw = await this.redis.get(this.browserOcrKey(tmbId, chatId));
+    const count = Number(raw);
+    return Number.isFinite(count) && count > 0 ? count : 0;
+  }
+
+  /** 鲁港通 - 首次自增设置 24 小时 TTL，避免计数永久累积 */
+  async incrementBrowserOcrCount({
+    tmbId,
+    chatId,
+    ttlSeconds
+  }: {
+    tmbId: string;
+    chatId: string;
+    ttlSeconds: number;
+  }): Promise<number> {
+    return this.redis.incrementIntegerWithTtl({
+      key: this.browserOcrKey(tmbId, chatId),
+      increment: 1,
+      ttlSeconds
+    });
+  }
+
+  /** 鲁港通 - read_image 读到结果后立即删除截图，缩短图片在 Redis 的停留 */
+  async deleteResult(commandId: string): Promise<void> {
+    await this.redis.delete(this.resultKey(commandId));
   }
 
   /** 长轮询心跳在 60 秒内视为在线；执行中的指令单独保活。 */
