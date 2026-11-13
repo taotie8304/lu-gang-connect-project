@@ -456,13 +456,31 @@ describe('AI 页面脚本', () => {
     expect(document.getElementById('pageOwn')).not.toBeNull();
   });
 
-  it('遮罩注入失败时返回 ok=false', () => {
-    vi.spyOn(document.documentElement, 'appendChild').mockImplementationOnce(() => {
-      throw new Error('blocked');
-    });
+  it('遮罩注入失败时回滚已插入的遮罩并返回 ok=false', () => {
+    document.body.innerHTML += `
+      <input id="otp" autocomplete="one-time-code" value="123456" />
+    `;
+    // 鲁港通 - innerHTML 重写会重建全部节点；重新打桩后页面上有 2 个可遮罩目标，第 2 次 appendChild 才会发生
+    stubRect(document.getElementById('pwd')!, { x: 10, y: 60 });
+    stubRect(document.getElementById('otp')!, { x: 10, y: 340 });
 
-    const result = evalInPage<{ ok: boolean }>(buildAiMaskSensitiveExpression());
+    // 鲁港通 - 第 2 次 appendChild 抛错时首个遮罩已插入，失败必须回滚干净，不留残影
+    let calls = 0;
+    const original = document.documentElement.appendChild.bind(document.documentElement);
+    vi.spyOn(document.documentElement, 'appendChild').mockImplementation(((
+      ...args: Parameters<typeof original>
+    ) => {
+      calls += 1;
+      if (calls === 2) throw new Error('blocked');
+      return original(...args);
+    }) as typeof document.documentElement.appendChild);
 
+    const result = evalInPage<{ ok: boolean; masked: number }>(
+      buildAiMaskSensitiveExpression()
+    );
+
+    expect(calls).toBe(2);
     expect(result).toEqual({ ok: false, masked: 0 });
+    expect(document.querySelectorAll('[data-lugang-ai-mask="1"]')).toHaveLength(0);
   });
 });
