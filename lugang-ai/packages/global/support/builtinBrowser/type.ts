@@ -87,7 +87,7 @@ export type ReloadBuiltinBrowserSessionResponse = {
 /** 关台（DELETE）响应（幂等：无进行中会话时 closed=false） */
 export type CloseBuiltinBrowserSessionResponse = {
   closed: boolean;
-  /** 本次使用时长（分钟，向上取整，最小 1；P2 计费展示用） */
+  /** 本次使用时长（分钟，向上取整，最小 1）；仅用于会话统计，不参与计费 */
   durationMinutes?: number;
 };
 

@@ -21,6 +21,7 @@ import { isChatFileAllowedBySelectConfig } from '../utils/file';
 import ComplianceTip from '@/components/common/ComplianceTip/index';
 import PointsBalanceNotice, { PointsBalanceTag } from '@/pageComponents/chat/PointsBalanceNotice';
 import BuiltinBrowserEntryButton from '@/pageComponents/chat/builtinBrowser/entryButton';
+import BuiltinBrowserScenarioButton from '@/pageComponents/chat/builtinBrowser/scenarioButton';
 import BuiltinLibraryEntryButton from '@/pageComponents/chat/builtinBrowser/libraryButton';
 import { BuiltinBrowserContext } from '@/pageComponents/chat/builtinBrowser/context';
 import { libraryKindBadge } from '@/pageComponents/chat/builtinBrowser/libraryList';
@@ -168,6 +169,39 @@ const ChatInput = ({
     enableVoiceInput && !!sourceTarget.sourceId && !!whisperConfig?.open && !formFileUploading;
   const isDefaultInputHeight =
     !mobilePreSpeak && !inputValue && fileList.length === 0 && !canUseInputGuide;
+
+  // 鲁港通 - 场景指令发送：生成中保留队列，可发送时自动发出；ref 防止同一指令重复发送
+  const sentScenarioPromptIdRef = useRef(0);
+  useEffect(() => {
+    const prompt = builtinBrowser?.scenarioPrompt;
+    if (!prompt || prompt.id === sentScenarioPromptIdRef.current) return;
+    if (isChatting || disableSend || hasFileUploading || formFileUploading) return;
+
+    sentScenarioPromptIdRef.current = prompt.id;
+    try {
+      onSendMessage({
+        text: prompt.text,
+        files: [],
+        interactive: lastInteractive,
+        clearInput: false
+      });
+      builtinBrowser?.consumeScenarioPrompt();
+    } catch {
+      sentScenarioPromptIdRef.current = 0;
+      toast({ status: 'error', title: t('common:builtin_browser_scenario_send_failed') });
+    }
+  }, [
+    builtinBrowser?.scenarioPrompt,
+    isChatting,
+    disableSend,
+    hasFileUploading,
+    formFileUploading,
+    lastInteractive,
+    onSendMessage,
+    toast,
+    t,
+    builtinBrowser
+  ]);
 
   // Upload files
   useRequest(uploadFiles, {
@@ -434,6 +468,8 @@ const ChatInput = ({
         <Flex alignItems={'center'} gap={[0, 1]}>
           {/* Attachment and Voice Group */}
           <Flex alignItems={'center'} h={'28px'}>
+            {/* 鲁港通 - 场景模板入口 */}
+            <BuiltinBrowserScenarioButton />
             {/* 鲁港通 - 办事浏览器入口 */}
             <BuiltinBrowserEntryButton />
             {/* 鲁港通 - 个人资料库入口（老客户端无桥对象时自身隐藏） */}

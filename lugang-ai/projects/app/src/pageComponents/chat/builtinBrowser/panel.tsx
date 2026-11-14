@@ -29,8 +29,6 @@ import { useToast } from '@fastgpt/web/hooks/useToast';
 import { useConfirm } from '@fastgpt/web/hooks/useConfirm';
 import { getErrText } from '@fastgpt/global/common/error/utils';
 import {
-  BUILTIN_BROWSER_CROP_LEFT_PX,
-  BUILTIN_BROWSER_CROP_TOP_PX,
   BUILTIN_BROWSER_MAX_TABS,
   BUILTIN_BROWSER_PANEL_DEFAULT_WIDTH,
   BUILTIN_BROWSER_PANEL_RESIZE_HIT_PX,
@@ -65,6 +63,7 @@ import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
 import LibraryPanel, { LibraryDocToolbar } from './libraryPanel';
 import type { LibraryItemActions, LibraryPreview } from './libraryPanel';
 import { libraryImageMime } from './libraryList';
+import ScenarioSection from './scenario/ScenarioSection';
 import { LG } from '@/pageComponents/chat/lugangTheme';
 
 const MINUTE_MS = 60 * 1000;
@@ -275,22 +274,22 @@ const BuiltinBrowserPanelBody = ({
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const urlInputRef = useRef<HTMLInputElement>(null);
+  const scenarioSectionRef = useRef<HTMLDivElement>(null);
+  const consumedScenarioNonceRef = useRef(0);
   const findInputRef = useRef<HTMLInputElement>(null);
   const urlEditingRef = useRef(false);
   // 鲁港通 - 开台期间输入的网址先排队，会话就绪后自动打开
   const pendingNavigateRef = useRef<string>();
   const isResizingRef = useRef(isResizing);
+  // 鲁港通 - 拖拽调宽期间冻结云端视口：松手后按最终尺寸统一贴合，避免连发 resize
   const freezeRef = useRef<{ width: number; height: number; panelWidth: number } | null>(null);
-  const [frozenFrame, setFrozenFrame] = useState<{
-    width: number;
-    height: number;
-    panelWidth: number;
-  } | null>(null);
   const tabsSchedulerRef = useRef<ReturnType<typeof createTabRefreshScheduler>>();
 
   // 鲁港通 - 桌面桥可用时走本地浏览器，否则保持云端 AgentBay
   const transport = useMemo(() => createBuiltinBrowserTransport(), []);
   const isNative = transport.usesNativeView;
+  // 鲁港通 - 网页版云端浏览器只读：不渲染画面与手动浏览控件，只展示进度与当前页
+  const cloudReadOnly = !isNative;
   // 鲁港通 - 0.10.0 起桌面端提供原生导航/查找/缩放/下载能力，老客户端保持原样
   const controls = transport.controls;
   const hasPageOverlay = usePageOverlayOpen();
@@ -305,7 +304,8 @@ const BuiltinBrowserPanelBody = ({
     () => (typeof window === 'undefined' ? undefined : window.lugangDesktop?.library),
     []
   );
-  const currentTabUrl = tabs.find((tab) => tab.current)?.url;
+  const currentTab = tabs.find((tab) => tab.current);
+  const currentTabUrl = currentTab?.url;
   const panelView = resolveDocPanelView({ activeDocToken, status, currentTabUrl, libraryOpen });
 
   const { runAsync: openSession } = useRequest(transport.open, {
@@ -643,6 +643,17 @@ const BuiltinBrowserPanelBody = ({
   useEffect(() => {
     if (panelView === 'landing') urlInputRef.current?.focus();
   }, [panelView]);
+
+  // 鲁港通 - 场景入口请求：每次 nonce 只消费一次，滚动到场景区后清除请求
+  useEffect(() => {
+    const focus = builtinBrowser?.scenarioFocus;
+    if (!focus || focus.nonce === consumedScenarioNonceRef.current) return;
+    consumedScenarioNonceRef.current = focus.nonce;
+    requestAnimationFrame(() => {
+      scenarioSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    builtinBrowser?.consumeScenarioFocus();
+  }, [builtinBrowser?.scenarioFocus, builtinBrowser]);
 
   // 鲁港通 - 开台超过 5 秒追加分步提示，让用户知道仍在准备而非卡死
   useEffect(() => {
@@ -1208,9 +1219,7 @@ const BuiltinBrowserPanelBody = ({
     if (isResizing) {
       const el = bodyRef.current;
       if (!freezeRef.current && el && el.clientWidth && el.clientHeight) {
-        const frame = { width: el.clientWidth, height: el.clientHeight, panelWidth };
-        freezeRef.current = frame;
-        setFrozenFrame(frame);
+        freezeRef.current = { width: el.clientWidth, height: el.clientHeight, panelWidth };
       }
       return;
     }
@@ -1230,30 +1239,12 @@ const BuiltinBrowserPanelBody = ({
       }
       if (cancelled) return;
       freezeRef.current = null;
-      setFrozenFrame(null);
     })();
 
     return () => {
       cancelled = true;
     };
   }, [isResizing, panelWidth, measureViewport, resizeViewport, transport.usesNativeView]);
-
-  // 鲁港通 - 重新贴合画面：画面与面板出现错位/深色底时的手动自愈入口
-  const handleRefit = useCallback(async () => {
-    const viewport = measureViewport();
-    if (!viewport) return;
-    try {
-      const resized = await resizeViewport(viewport);
-      if (!resized) {
-        toast({ title: t('common:builtin_browser_refit_failed'), status: 'warning' });
-      }
-    } catch (err) {
-      toast({
-        title: t(getErrText(err, 'common:builtin_browser_refit_failed') as any),
-        status: 'warning'
-      });
-    }
-  }, [measureViewport, resizeViewport, t, toast]);
 
   // 鲁港通 - 网址跳转共用逻辑：当前会话直接跳转，排队首跳就绪后也走这里；
   // 云端跳转是异步的，面板画面会随远端页面刷新，前端无需重载
@@ -1740,8 +1731,6 @@ const BuiltinBrowserPanelBody = ({
   const isExpiringSoon =
     remainingMs !== undefined && remainingMs <= BUILTIN_BROWSER_REMIND_BEFORE_MINUTES * MINUTE_MS;
   const showRemaining = panelWidth >= HEADER_HIDE_REMAINING_WIDTH;
-  const frozenScaleX =
-    frozenFrame && frozenFrame.panelWidth > 0 ? panelWidth / frozenFrame.panelWidth : 1;
   const aiBadge =
     isNative && status === 'active' ? resolveBuiltinBrowserAiBadge(aiState) : undefined;
   // 鲁港通 - 窄面板状态条只留圆点，按钮只留图标（悬停给文字提示）
@@ -1822,21 +1811,8 @@ const BuiltinBrowserPanelBody = ({
         )}
         <Box flex={'1 1 0'} />
 
-        {!isNative && status === 'active' && (
-          <MyTooltip label={t('common:builtin_browser_refit')}>
-            <MyIcon
-              name={'core/modules/fitView'}
-              w={'15px'}
-              h={'15px'}
-              color={LG.muted}
-              cursor={'pointer'}
-              _hover={{ color: LG.mountain }}
-              onClick={() => void handleRefit()}
-            />
-          </MyTooltip>
-        )}
-        {/* 鲁港通 - 新桌面端刷新在网址栏，云端与尚无 P0 能力的老客户端保留顶部刷新 */}
-        {(!isNative || !controls) && status === 'active' && panelView === 'browser' && (
+        {/* 鲁港通 - 新桌面端刷新在网址栏，尚无 P0 能力的老桌面端保留顶部刷新；网页版只读不提供 */}
+        {isNative && !controls && status === 'active' && panelView === 'browser' && (
           <MyTooltip label={t('common:builtin_browser_refresh')}>
             <MyIcon
               name={'common/refresh'}
@@ -1862,6 +1838,49 @@ const BuiltinBrowserPanelBody = ({
           />
         </MyTooltip>
       </Flex>
+
+      {/* 鲁港通 - 网页版只读提示：不展示云端画面，当前页只以文本呈现 */}
+      {cloudReadOnly && status === 'active' && (
+        <Flex
+          flexShrink={0}
+          flexDirection={'column'}
+          gap={'4px'}
+          px={'10px'}
+          py={'8px'}
+          borderBottom={'1px solid'}
+          borderBottomColor={LG.lineSoft}
+          bgGradient={'linear(to-r, #F1F8FF, #FAFCFF)'}
+        >
+          <Flex alignItems={'center'} gap={'6px'}>
+            <MyIcon
+              name={'common/viewLight'}
+              w={'13px'}
+              h={'13px'}
+              color={LG.mountain}
+              flexShrink={0}
+            />
+            <Text fontSize={'13px'} fontWeight={600} color={LG.mountain} whiteSpace={'nowrap'}>
+              {t('common:builtin_browser_web_readonly_title')}
+            </Text>
+          </Flex>
+          <Text fontSize={'12.5px'} color={LG.muted} lineHeight={'1.55'}>
+            {t('common:builtin_browser_web_readonly_desc')}
+          </Text>
+          <Flex alignItems={'center'} gap={'6px'} minW={0} mt={'2px'}>
+            <Text fontSize={'12px'} color={LG.mutedSoft} whiteSpace={'nowrap'}>
+              {t('common:builtin_browser_web_readonly_current_page')}
+            </Text>
+            <Text fontSize={'12.5px'} color={LG.text} noOfLines={1} minW={0}>
+              {currentTab ? tabLabel(currentTab) : t('common:builtin_browser_tab_untitled')}
+            </Text>
+          </Flex>
+          {currentTabUrl && currentTabUrl !== 'about:blank' && (
+            <Text fontSize={'12px'} color={LG.mutedSoft} noOfLines={1} title={currentTabUrl}>
+              {currentTabUrl}
+            </Text>
+          )}
+        </Flex>
+      )}
 
       {/* 鲁港通 - AI 状态条：运行中可接管/停止，接管后可继续/结束，停止后保留原因与操作记录入口 */}
       {aiBadge && (
@@ -1982,19 +2001,20 @@ const BuiltinBrowserPanelBody = ({
         </Flex>
       )}
 
-      {/* 标签条：用户标签从云端 index 1 起（0 为隐藏占位），+ 新建空白标签 */}
-      <Flex
-        flexShrink={0}
-        alignItems={'center'}
-        gap={'4px'}
-        px={2}
-        py={'5px'}
-        bg={'rgba(244,248,254,0.6)'}
-        borderBottom={'1px solid'}
-        borderBottomColor={LG.lineSoft}
-        overflowX={'auto'}
-        css={{ '&::-webkit-scrollbar': { height: '2px' } }}
-      >
+      {/* 标签条：用户标签从云端 index 1 起（0 为隐藏占位），+ 新建空白标签；网页版只读不渲染 */}
+      {isNative && (
+        <Flex
+          flexShrink={0}
+          alignItems={'center'}
+          gap={'4px'}
+          px={2}
+          py={'5px'}
+          bg={'rgba(244,248,254,0.6)'}
+          borderBottom={'1px solid'}
+          borderBottomColor={LG.lineSoft}
+          overflowX={'auto'}
+          css={{ '&::-webkit-scrollbar': { height: '2px' } }}
+        >
         {/* 鲁港通 - 资料库常驻标签：不可关闭，点击切到资料库列表 */}
         {library && (
           <Flex
@@ -2178,10 +2198,11 @@ const BuiltinBrowserPanelBody = ({
             <MyIcon name={'common/addLight'} w={'13px'} h={'13px'} />
           </Flex>
         </MyTooltip>
-      </Flex>
+        </Flex>
+      )}
 
-      {/* 网址栏：左侧后退/前进/刷新，右侧缩放/查找/更多；输入后回车跳转 */}
-      {panelView === 'browser' && (
+      {/* 网址栏：左侧后退/前进/刷新，右侧缩放/查找/更多；输入后回车跳转；网页版只读不渲染 */}
+      {panelView === 'browser' && isNative && (
         <Flex
           flexShrink={0}
           alignItems={'center'}
@@ -2469,12 +2490,19 @@ const BuiltinBrowserPanelBody = ({
             h={'100%'}
             flexDirection={'column'}
             alignItems={'center'}
-            justifyContent={'center'}
+            justifyContent={'flex-start'}
             gap={'12px'}
             px={6}
             py={8}
             overflowY={'auto'}
           >
+            {/* 鲁港通 - P2 场景模板：常用代办场景四卡，提交后由输入区自动发送指令 */}
+            <ScenarioSection
+              ref={scenarioSectionRef}
+              focus={builtinBrowser?.scenarioFocus ?? null}
+              onSubmit={(text) => builtinBrowser?.queueScenarioPrompt(text)}
+            />
+
             <Flex alignItems={'center'} gap={'6px'} mb={'1'}>
               <MyIcon name={'common/globalLine'} w={'16px'} h={'16px'} color={LG.mountain} />
               <Text fontSize={'14.5px'} fontWeight={600} color={LG.ink}>
@@ -2625,35 +2653,34 @@ const BuiltinBrowserPanelBody = ({
           </Flex>
         )}
 
-        {!isNative && status === 'active' && session && (
-          <iframe
-            key={session.resourceUrl}
-            src={session.resourceUrl}
-            title={t('common:builtin_browser')}
-            style={{
-              position: 'absolute',
-              // 鲁港通 - 冻结期按拖拽前像素尺寸渲染并横向缩放，画面铺满新宽度且不触发查看器重排
-              left: frozenFrame
-                ? -BUILTIN_BROWSER_CROP_LEFT_PX * frozenScaleX
-                : -BUILTIN_BROWSER_CROP_LEFT_PX,
-              top: -BUILTIN_BROWSER_CROP_TOP_PX,
-              width: frozenFrame
-                ? frozenFrame.width + BUILTIN_BROWSER_CROP_LEFT_PX
-                : `calc(100% + ${BUILTIN_BROWSER_CROP_LEFT_PX}px)`,
-              height: frozenFrame
-                ? frozenFrame.height + BUILTIN_BROWSER_CROP_TOP_PX
-                : `calc(100% + ${BUILTIN_BROWSER_CROP_TOP_PX}px)`,
-              transform: frozenFrame ? `scaleX(${frozenScaleX})` : undefined,
-              transformOrigin: 'left top',
-              border: 'none',
-              display: 'block'
-            }}
-            sandbox={
-              'allow-scripts allow-same-origin allow-forms allow-popups allow-downloads allow-presentation allow-storage-access-by-user-activation'
-            }
-            referrerPolicy={'no-referrer'}
-            allow={'clipboard-read; clipboard-write'}
-          />
+        {/* 鲁港通 - 网页版只读：不嵌入云端画面，避免伪装成可手动操作的浏览器 */}
+        {cloudReadOnly && status === 'active' && (
+          <Flex
+            h={'100%'}
+            flexDirection={'column'}
+            alignItems={'center'}
+            justifyContent={'center'}
+            gap={'10px'}
+            px={6}
+            textAlign={'center'}
+          >
+            <Flex
+              w={'44px'}
+              h={'44px'}
+              borderRadius={'full'}
+              bg={'rgba(111,157,208,0.12)'}
+              alignItems={'center'}
+              justifyContent={'center'}
+            >
+              <MyIcon name={'common/globalLine'} w={'20px'} h={'20px'} color={LG.mountain} />
+            </Flex>
+            <Text fontSize={'14px'} fontWeight={600} color={LG.ink}>
+              {t('common:builtin_browser_web_readonly_title')}
+            </Text>
+            <Text fontSize={'13px'} color={LG.muted} maxW={'320px'} lineHeight={'1.6'}>
+              {t('common:builtin_browser_web_readonly_desc')}
+            </Text>
+          </Flex>
         )}
 
         {isNative && status === 'active' && (
