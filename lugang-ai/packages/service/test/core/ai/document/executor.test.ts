@@ -8,10 +8,17 @@ vi.mock('@fastgpt/service/common/s3/sources/chat', () => ({
   getS3ChatSource: mockGetS3ChatSource
 }));
 
+import { ChatFileTypeEnum } from '@fastgpt/global/core/chat/constants';
 import { createDocumentOperationExecutor } from '@fastgpt/service/core/ai/document/executor';
+import { generateDocx } from '@fastgpt/service/core/ai/document/generate/docx';
 import { createDocumentOperationTool } from '@fastgpt/service/core/ai/llm/agentLoop/interface';
 import { getToolsForFastAgentLoop } from '@fastgpt/service/core/ai/llm/agentLoop/provider/fastAgent/tools';
 import { createAgentLoopCoreSystemTools } from '@fastgpt/service/core/workflow/dispatch/ai/agentLoopCore/application/runtime/systemTools';
+import { runWithContext } from '@fastgpt/service/core/workflow/utils/context';
+import type {
+  WorkflowFileContext,
+  WorkflowFileRef
+} from '@fastgpt/service/core/workflow/utils/fileContext';
 
 const SOURCE_ID = '507f1f77bcf86cd799439011';
 
@@ -32,6 +39,41 @@ const makeCall = (args: unknown) => ({
 });
 
 const getUploadArgs = (index = 0) => mockUploadChatFile.mock.calls[index][0];
+
+const DOCX_URL = 'https://files.example/upload.docx';
+
+const runWithDocxFile = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const buffer = await generateDocx({
+    format: 'docx',
+    fileName: '家长会通知',
+    title: '家长会通知',
+    blocks: [
+      { type: 'paragraph', text: '尊敬的家长：' },
+      { type: 'paragraph', text: '本周五下午召开家长会。' }
+    ]
+  });
+  const ref: WorkflowFileRef = {
+    name: '家长会通知.docx',
+    type: ChatFileTypeEnum.file,
+    modelUrl: DOCX_URL,
+    source: { type: 'externalHttp', url: DOCX_URL }
+  };
+  const fileContext = {
+    limits: { maxFileAmount: 5, maxBytesPerFile: 20 * 1024 * 1024 },
+    resolve: (url: string) => (url === DOCX_URL ? ref : undefined),
+    getSource: async () => ({
+      source: {
+        kind: 'externalHttp' as const,
+        maxSizeBytes: 20 * 1024 * 1024,
+        metadata: { filename: '家长会通知.docx' },
+        materialize: async () => ({ buffer, metadata: { filename: '家长会通知.docx' } })
+      },
+      sourceKind: 'internal' as const
+    })
+  } as unknown as WorkflowFileContext;
+
+  return runWithContext({ mcpClientMemory: {}, fileContext }, fn);
+};
 
 describe('createDocumentOperationExecutor', () => {
   beforeEach(() => {
@@ -136,6 +178,20 @@ describe('createDocumentOperationExecutor', () => {
       expect(mockUploadChatFile).not.toHaveBeenCalled();
     }
   );
+
+  it('读取本次对话文件时返回可定位的提纲', async () => {
+    const result = await runWithDocxFile(() =>
+      executor({
+        call: makeCall({ action: 'read', sourceUrl: DOCX_URL }),
+        messages: []
+      })
+    );
+
+    expect(result.response).toContain('家长会通知.docx');
+    expect(result.response).toContain('[0]');
+    expect(result.response).toContain('尊敬的家长：');
+    expect(mockUploadChatFile).not.toHaveBeenCalled();
+  });
 
   it('格式与内容字段不匹配时返回 schema 的具体提示', async () => {
     const result = await executor({

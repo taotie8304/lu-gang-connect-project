@@ -17,8 +17,9 @@ import { generateMarkdown } from './generate/markdown';
 import { generatePdf } from './generate/pdf';
 import { generatePptx } from './generate/pptx';
 import { generateXlsx } from './generate/xlsx';
+import { formatDocumentOutline, inspectDocument } from './inspect';
 import { DocumentSourceError, resolveDocumentSource } from './source';
-import { DocumentGenerationError } from './types';
+import { DocumentGenerationError, DocumentReadError } from './types';
 import { uploadDocumentFile } from './upload';
 
 const logger = getLogger(LogCategories.MODULE.AI.AGENT);
@@ -89,12 +90,14 @@ export const createDocumentOperationExecutor = ({
       }
 
       const source = await resolveDocumentSource(parsed.args.sourceUrl);
-      return {
-        response: `已找到文件「${source.filename}」。读取提纲与编辑功能正在升级中，暂时还不能直接修改；你可以先生成一份新文件，或直接告诉我需要改哪些内容。`,
-        usages: []
-      };
+      const outline = await inspectDocument(source);
+      return { response: formatDocumentOutline(outline), usages: [] };
     } catch (error) {
-      if (error instanceof DocumentGenerationError || error instanceof DocumentSourceError) {
+      if (
+        error instanceof DocumentGenerationError ||
+        error instanceof DocumentSourceError ||
+        error instanceof DocumentReadError
+      ) {
         return { response: error.message, usages: [] };
       }
 

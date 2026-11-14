@@ -2,15 +2,14 @@
 import path from 'node:path';
 import { materializeFileSource } from '../../../common/file/read/source';
 import { getWorkflowFileContext } from '../../workflow/utils/context';
+import { MAX_DOCUMENT_SOURCE_BYTES, SOURCE_TOO_LARGE_MESSAGE } from './limits';
 
-export const MAX_DOCUMENT_SOURCE_BYTES = 20 * 1024 * 1024;
 const SOURCE_READ_TIMEOUT_MS = 60 * 1000;
 
 const MISSING_FILE_CONTEXT_MESSAGE =
   '只能修改本次对话里上传的文件，请先上传文件后再让我读取或修改。';
 const UNREGISTERED_FILE_MESSAGE =
   '这个文件不在本次对话的文件清单里，只能读取或修改本次对话上传的文件。请重新上传后再试。';
-const FILE_TOO_LARGE_MESSAGE = '文件超过 20MB，暂时无法读取或修改。请压缩到 20MB 以内再上传。';
 const FILE_READ_FAILED_MESSAGE = '读取文件内容失败，请重新上传后再试。';
 
 /** 鲁港通 - 面向用户的源文件错误：message 为可直接展示的中文说明 */
@@ -47,14 +46,14 @@ export const resolveDocumentSource = async (
   });
 
   if (source.kind === 's3' && source.sizeBytes > MAX_DOCUMENT_SOURCE_BYTES) {
-    throw new DocumentSourceError(FILE_TOO_LARGE_MESSAGE);
+    throw new DocumentSourceError(SOURCE_TOO_LARGE_MESSAGE);
   }
 
   const { buffer, metadata } = await materializeFileSource(source, {
     signal: AbortSignal.timeout(SOURCE_READ_TIMEOUT_MS),
     onReadBytes: (readBytes) => {
       if (readBytes > MAX_DOCUMENT_SOURCE_BYTES) {
-        throw new DocumentSourceError(FILE_TOO_LARGE_MESSAGE);
+        throw new DocumentSourceError(SOURCE_TOO_LARGE_MESSAGE);
       }
     }
   }).catch((error) => {
@@ -63,7 +62,7 @@ export const resolveDocumentSource = async (
   });
 
   if (buffer.length > MAX_DOCUMENT_SOURCE_BYTES) {
-    throw new DocumentSourceError(FILE_TOO_LARGE_MESSAGE);
+    throw new DocumentSourceError(SOURCE_TOO_LARGE_MESSAGE);
   }
 
   const filename = metadata.filename || ref.name || 'document';
