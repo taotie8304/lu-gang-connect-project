@@ -3,6 +3,8 @@
   "FAQ.ai_point_expire_a": "不會。Credits 保留在您的帳戶中，方案到期不會清空。",
   "FAQ.ai_point_expire_q": "Credits 會過期嗎？",
   "FAQ.ai_point_q": "什麼是 Credits？",
+  "FAQ.browser_billing_a": "與一般對話相同，依實際用量結算，不按分鐘計費。閒置不計費，單次有上限；失敗或中途停止只結算已產生的用量。桌面客戶端使用本機瀏覽器，不產生雲端瀏覽器費用。",
+  "FAQ.browser_billing_q": "辦事瀏覽器如何計費？",
   "FAQ.check_subscription_a": "在「帳號-個人資訊」頁點擊「套餐詳細資訊」，可查看目前方案、剩餘 Credits 與到期時間；購買記錄可在「我的訂單」中查看。",
   "FAQ.check_subscription_q": "在哪裡可以檢視已訂閱的方案？",
   "FAQ.dataset_compute_a": "1 組知識庫儲存量等於 1 組知識庫索引。一筆分塊資料通常會產生多組索引，可在知識庫集合中看到「n 組索引」。",

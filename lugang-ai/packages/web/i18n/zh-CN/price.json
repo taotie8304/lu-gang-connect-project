@@ -3,6 +3,8 @@
   "FAQ.ai_point_expire_a": "不会。Credits 保留在您的账户中，套餐到期不会清空。",
   "FAQ.ai_point_expire_q": "Credits 会过期么？",
   "FAQ.ai_point_q": "什么是 Credits？",
+  "FAQ.browser_billing_a": "和普通对话一样按实际用量结算，不按分钟扣费。空闲不计费，单次有封顶；失败或中途停止只结算已经产生的用量。桌面客户端使用本机浏览器，不产生云端浏览器费用。",
+  "FAQ.browser_billing_q": "办事浏览器怎么计费？",
   "FAQ.check_subscription_a": "在「账号-个人信息」页点击「套餐详情」，可查看当前套餐、剩余 Credits 与到期时间；购买记录可在「我的订单」中查看。",
   "FAQ.check_subscription_q": "在哪里查看已订阅的套餐？",
   "FAQ.dataset_compute_a": "1条知识库存储等于1条知识库索引。一条分块数据，通常对应多条索引，可以在单个知识库集合中看到\"n组索引\"",

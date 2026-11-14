@@ -22,6 +22,10 @@ const FAQ = () => {
       desc: t('price:FAQ.ai_point_expire_a')
     },
     {
+      title: t('price:FAQ.browser_billing_q'),
+      desc: t('price:FAQ.browser_billing_a')
+    },
+    {
       title: t('price:FAQ.package_overlay_q'),
       desc: t('price:FAQ.package_overlay_a')
     },

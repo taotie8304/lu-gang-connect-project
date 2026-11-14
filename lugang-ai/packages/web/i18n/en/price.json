@@ -3,6 +3,8 @@
   "FAQ.ai_point_expire_a": "No. Your Credits stay in your account and are not cleared when a plan expires.",
   "FAQ.ai_point_expire_q": "Do Credits expire?",
   "FAQ.ai_point_q": "What are Credits?",
+  "FAQ.browser_billing_a": "Like a normal chat, it is billed by actual usage, not by the minute. Idle time is free and each run has a cap; failed or stopped runs only bill for the usage already incurred. The desktop app uses your local browser and incurs no cloud browser fee.",
+  "FAQ.browser_billing_q": "How is the errand browser billed?",
   "FAQ.check_subscription_a": "Go to Account → Personal and click Plan details to view your current plan, remaining Credits and expiration date; purchase records are available under My Orders.",
   "FAQ.check_subscription_q": "Where can I view my subscription plans?",
   "FAQ.dataset_compute_a": "One Dataset storage unit equals one Dataset index. A single chunk usually creates multiple indexes, displayed as \"n index groups\" in its Dataset collection.",

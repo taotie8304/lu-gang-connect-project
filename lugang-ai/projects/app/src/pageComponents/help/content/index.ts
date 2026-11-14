@@ -98,7 +98,9 @@ const mapBlock = (block: HelpBlock, convert: (value: string) => string): HelpBlo
     case 'tip':
     case 'note':
     case 'official':
-      return { ...block, title: block.title ? convert(block.title) : undefined, text: convert(block.text) };
+      return block.title
+        ? { ...block, title: convert(block.title), text: convert(block.text) }
+        : { ...block, text: convert(block.text) };
     case 'table':
       return {
         ...block,
@@ -113,15 +115,22 @@ const mapBlock = (block: HelpBlock, convert: (value: string) => string): HelpBlo
   }
 };
 
-const mapArticle = (article: HelpArticle, convert: (value: string) => string): HelpArticle => ({
-  ...article,
-  title: convert(article.title),
-  summary: convert(article.summary),
-  keywords: article.keywords.map(convert),
-  lead: article.lead.map(convert),
-  blocks: article.blocks.map((block) => mapBlock(block, convert)),
-  faq: article.faq?.map((item) => ({ q: convert(item.q), a: convert(item.a) }))
-});
+const mapArticle = (article: HelpArticle, convert: (value: string) => string): HelpArticle => {
+  const mapped: HelpArticle = {
+    ...article,
+    title: convert(article.title),
+    summary: convert(article.summary),
+    keywords: article.keywords.map(convert),
+    lead: article.lead.map(convert),
+    blocks: article.blocks.map((block) => mapBlock(block, convert))
+  };
+  if (article.faq) {
+    mapped.faq = article.faq.map((item) => ({ q: convert(item.q), a: convert(item.a) }));
+  } else {
+    delete mapped.faq;
+  }
+  return mapped;
+};
 
 /**
  * 生成页面所需的完整内容。
