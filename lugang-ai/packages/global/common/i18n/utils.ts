@@ -34,7 +34,7 @@ export const parseLocale = (value?: string): localeType | undefined => {
   if (
     normalized === LangEnum.zh_Hant.toLowerCase() ||
     normalized.startsWith('zh-hant-') ||
-    ['zh-tw', 'zh-hk'].includes(normalized)
+    ['zh-tw', 'zh-hk', 'zh-mo'].includes(normalized)
   ) {
     return LangEnum.zh_Hant;
   }
@@ -47,6 +47,28 @@ export const parseLocale = (value?: string): localeType | undefined => {
   }
 
   return LocaleList.find((locale) => locale.toLowerCase() === normalized);
+};
+
+/**
+ * 从 Accept-Language 头中按 q 值挑选首个受支持语言。
+ * 非法 q 值按默认权重 1 处理，未知语言与通配符直接跳过。
+ */
+export const parseAcceptLanguage = (header?: string): localeType | undefined => {
+  if (!header) return;
+
+  return header
+    .split(',')
+    .map((part) => {
+      const [tag, ...params] = part.trim().split(';');
+      const qParam = params.find((param) => param.trim().startsWith('q='));
+      const rawQ = qParam ? qParam.trim().slice(2).trim() : '';
+      const q = rawQ === '' ? 1 : Number(rawQ);
+      return { tag: tag?.trim(), q: Number.isFinite(q) ? q : 1 };
+    })
+    .filter((item) => item.tag)
+    .sort((a, b) => b.q - a.q)
+    .map((item) => parseLocale(item.tag))
+    .find(Boolean);
 };
 
 export const parseI18nString = (str: I18nStringLikeType | string = '', lang = 'en') => {

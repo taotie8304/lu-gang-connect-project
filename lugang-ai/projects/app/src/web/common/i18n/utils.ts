@@ -1,3 +1,4 @@
+import { parseAcceptLanguage } from '@fastgpt/global/common/i18n/utils';
 import { type I18nNsType } from '@fastgpt/web/i18n/i18next';
 import { getLangMapping, LANG_KEY } from '@fastgpt/web/i18n/utils';
 import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
@@ -5,6 +6,22 @@ import { serverSideTranslations } from 'next-i18next/serverSideTranslations';
 type ServiceSidePropsOptions = {
   langCookieKey?: string;
   fallbackLangCookieKey?: string;
+};
+
+/** 鲁港通 - 语言由 Cookie / Accept-Language 决定，必须告知 CDN 与浏览器按语言维度缓存 */
+const setLanguageVary = (content: any) => {
+  const res = content.res;
+  if (!res?.setHeader) return;
+
+  const existing = String(res.getHeader?.('Vary') || '');
+  if (existing.split(',').some((item) => item.trim() === '*')) return;
+
+  const values = new Set(
+    [...existing.split(','), 'Accept-Language', 'Cookie']
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
+  res.setHeader('Vary', Array.from(values).join(', '));
 };
 
 export const serviceSideProps = async (
@@ -18,9 +35,11 @@ export const serviceSideProps = async (
       (options.fallbackLangCookieKey
         ? content.req?.cookies?.[options.fallbackLangCookieKey]
         : undefined) ||
+      parseAcceptLanguage(content.req?.headers?.['accept-language']) ||
       content.locale ||
       ''
   );
+  setLanguageVary(content);
   // SSR 只额外预加载中文资源；英文、韩文等语言由客户端按需加载，避免首屏携带全部语言包。
   const extraLng = content.locales?.filter(
     (locale: string) => locale !== lang && locale.toLowerCase().startsWith('zh')

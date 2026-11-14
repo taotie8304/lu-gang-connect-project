@@ -12,7 +12,7 @@ const HomeStats = ({ copy, marquee }: { copy: HomeStatsCopy; marquee: string[] }
     <div className="h5-wrap">
       <div className="h5-stats-grid">
         {copy.items.map((item, index) => (
-          <div key={item.label} className={`h5-stat h5-reveal${REVEAL_DELAYS[index]}`}>
+          <div key={index} className={`h5-stat h5-reveal${REVEAL_DELAYS[index]}`}>
             <b>
               {HOME_STAT_PREFIXES[index]}
               <span data-count={HOME_STAT_COUNTS[index]}>{hasStatsAnimated() ? formatCount(HOME_STAT_COUNTS[index]) : '0'}</span>

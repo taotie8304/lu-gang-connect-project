@@ -24,7 +24,7 @@ export const HOME_CSS = `
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
-    font-size: 15px;
+    font-size: 16px;
     line-height: 1.7;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
@@ -74,12 +74,12 @@ export const HOME_CSS = `
     width: 32px; height: 32px; display: block;
     border-radius: 8px; box-shadow: 0 3px 10px rgba(78, 128, 178, 0.26);
   }
-  .h5-brand-name { font-size: 17px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); }
+  .h5-brand-name { font-size: 18px; font-weight: 600; letter-spacing: 0.12em; color: var(--ink); }
   .h5-brand-name small { display: block; font-size: 8.5px; font-weight: 400; letter-spacing: 0.26em; color: var(--faint); margin-top: 1px; }
   .h5-links { display: flex; align-items: center; gap: 19px; margin-left: 6px; }
   .h5-link {
     position: relative; display: inline-flex; align-items: center; height: 40px;
-    font-size: 15px; color: var(--ink-2);
+    font-size: 16px; color: var(--ink-2);
     padding: 0 2px; letter-spacing: 0.02em; transition: color 0.2s ease;
   }
   .h5-link::after {
@@ -100,14 +100,14 @@ export const HOME_CSS = `
   .h5-nav-lang img, .h5-nav-lang svg { width: 16px; height: 16px; }
   .h5-nav-dl, .h5-nav-login {
     display: inline-flex; align-items: center; height: 40px;
-    font-size: 15px; color: var(--ink-2); transition: color 0.2s ease;
+    font-size: 16px; color: var(--ink-2); transition: color 0.2s ease;
   }
   .h5-nav-dl:hover { color: var(--ink); }
-  .h5-nav .h5-btn { height: 40px; padding: 0 21px; font-size: 14px; }
+  .h5-nav .h5-btn { height: 40px; padding: 0 21px; font-size: 15px; }
   .h5-btn {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
     height: 42px; padding: 0 22px; border-radius: 999px;
-    font-size: 14px; letter-spacing: 0.03em; cursor: pointer;
+    font-size: 15px; letter-spacing: 0.03em; cursor: pointer;
     border: 1px solid transparent;
     transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
     white-space: nowrap;
@@ -118,7 +118,7 @@ export const HOME_CSS = `
   .lg-home a.h5-btn-dark, .lg-home a.h5-btn-dark:hover { color: #f7f4ec; }
   .h5-btn-line { background: transparent; color: var(--ink); border-color: var(--line-2); }
   .h5-btn-line:hover { background: rgba(30, 29, 26, 0.04); border-color: var(--ink); }
-  .h5-nav .h5-btn { height: 36px; padding: 0 18px; font-size: 13px; }
+  .h5-nav .h5-btn { height: 36px; padding: 0 18px; font-size: 15px; }
   .h5-burger {
     display: none; width: 38px; height: 38px; margin-left: 2px; padding: 0;
     align-items: center; justify-content: center; flex-direction: column; gap: 5px;
@@ -173,7 +173,7 @@ export const HOME_CSS = `
   .h5-hero > .h5-wrap { position: relative; z-index: 2; }
   .h5-eyebrow {
     display: inline-flex; align-items: center; gap: 14px;
-    font-size: 11.5px; letter-spacing: 0.2em; color: var(--faint);
+    font-size: 12.5px; letter-spacing: 0.2em; color: var(--faint);
   }
   .h5-eyebrow::before, .h5-eyebrow::after {
     content: ''; width: 28px; height: 1px; background: rgba(30, 29, 26, 0.22);
@@ -194,22 +194,31 @@ export const HOME_CSS = `
   }
   .h5-lede {
     margin: 30px auto 0; max-width: 660px; text-wrap: pretty;
-    font-size: clamp(14.5px, 1.25vw, 17px); line-height: 2.05; color: var(--muted); letter-spacing: 0.02em;
+    font-size: clamp(16px, 1.3vw, 18.5px); line-height: 2.05; color: var(--muted); letter-spacing: 0.02em;
   }
   .h5-cta { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 38px; }
-  .h5-cta .h5-btn { height: 48px; padding: 0 30px; font-size: 14.5px; }
+  .h5-cta .h5-btn { height: 48px; padding: 0 30px; font-size: 16px; }
   .h5-meta {
     display: flex; justify-content: center; flex-wrap: wrap; gap: 10px 22px;
-    margin-top: 30px; font-size: 11.5px; color: var(--faint); letter-spacing: 0.06em;
+    margin-top: 30px; font-size: 13px; color: var(--faint); letter-spacing: 0.06em;
   }
   .h5-meta span { display: inline-flex; align-items: center; gap: 7px; }
   .h5-meta i { width: 3px; height: 3px; border-radius: 50%; background: currentColor; opacity: 0.6; }
   .h5-hero-mascot {
-    position: absolute; right: max(1.6vw, 18px); top: 12%;
-    width: clamp(132px, 14vw, 204px); z-index: 1;
+    position: absolute; left: var(--mx, 90%); top: var(--my, 40%);
+    transform: translate(-50%, -50%);
+    width: clamp(132px, 14vw, 204px); z-index: 3;
+  }
+  /* 鲁港通 - 仅精确指针设备开启拖拽手势，触屏与窄屏保留页面滚动 */
+  @media (hover: hover) and (pointer: fine) and (min-width: 1181px) {
+    .h5-hero-mascot { touch-action: none; cursor: grab; }
+    .h5-hero-mascot.is-dragging { cursor: grabbing; }
+  }
+  .h5-mascot-parallax {
     will-change: transform;
     transition: transform 0.55s cubic-bezier(0.22, 1.35, 0.36, 1);
   }
+  .h5-hero-mascot.is-dragging .h5-mascot-bob { animation-play-state: paused; }
   .h5-mascot-bob { animation: h5-bob 6.5s ease-in-out infinite; }
   .h5-mascot-figure { position: relative; display: block; width: 100%; }
   .h5-mascot-img {
@@ -240,6 +249,26 @@ export const HOME_CSS = `
   .h5-eyes[data-face='wide'] .h5-eye { height: 9.4%; width: 7%; }
   .h5-eyes[data-face='left'] .h5-eye { transform: translate(calc(-50% - 26%), -50%); }
   .h5-eyes[data-face='right'] .h5-eye { transform: translate(calc(-50% + 26%), -50%); }
+  .h5-eyes[data-face='busy'] .h5-eye { height: 2.6%; width: 6.8%; border-radius: 999px; }
+  .h5-sweat {
+    position: absolute; top: 18%; width: 7%; height: 12%;
+    border-radius: 60% 60% 60% 0; background: #8fd3f5;
+    opacity: 0; pointer-events: none;
+  }
+  .h5-sweat.s1 { left: 22%; --dx: -16px; }
+  .h5-sweat.s2 { left: 48%; --dx: 6px; }
+  .h5-sweat.s3 { left: 72%; --dx: 22px; }
+  .h5-hero-mascot.is-dragging .h5-sweat { animation: h5-sweat-fly 0.9s ease-out infinite; }
+  .h5-hero-mascot.is-dragging .h5-sweat.s2 { animation-delay: 0.15s; }
+  .h5-hero-mascot.is-dragging .h5-sweat.s3 { animation-delay: 0.3s; }
+  @keyframes h5-sweat-fly {
+    0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+    25% { opacity: 0.9; }
+    100% { opacity: 0; transform: translate(var(--dx, 18px), -34px) scale(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .h5-hero-mascot.is-dragging .h5-sweat { animation: none; opacity: 0.85; }
+  }
   @keyframes h5-bob {
     0%, 100% { transform: translateY(0) rotate(-1.2deg); }
     50% { transform: translateY(-14px) rotate(1.4deg); }
@@ -249,7 +278,7 @@ export const HOME_CSS = `
     padding: 8px 13px; border-radius: 12px 12px 3px 12px;
     background: var(--card); border: 1px solid var(--line-2);
     box-shadow: var(--shadow-s);
-    font-size: 11.5px; color: var(--muted); letter-spacing: 0.04em; white-space: nowrap;
+    font-size: 13px; color: var(--muted); letter-spacing: 0.04em; white-space: nowrap;
   }
   .h5-mascot-say::after {
     content: ''; position: absolute; right: -5px; bottom: 6px;
@@ -262,7 +291,7 @@ export const HOME_CSS = `
     padding: 7px 13px; border-radius: 999px;
     background: rgba(255, 253, 248, 0.82); border: 1px solid var(--line);
     box-shadow: 0 8px 22px rgba(30, 29, 26, 0.05);
-    font-size: 11px; color: var(--muted); letter-spacing: 0.05em;
+    font-size: 12px; color: var(--muted); letter-spacing: 0.05em;
     animation: h5-floaty 9s ease-in-out infinite;
     will-change: transform;
   }
@@ -321,12 +350,12 @@ export const HOME_CSS = `
     margin-left: 8px; flex: 1; max-width: 320px;
     padding: 5px 12px; border-radius: 999px;
     background: rgba(255, 253, 248, 0.9); border: 1px solid var(--line);
-    font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em;
+    font-size: 11.5px; color: var(--faint); letter-spacing: 0.04em;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .h5-live {
     margin-left: auto; display: inline-flex; align-items: center; gap: 6px;
-    font-size: 10px; letter-spacing: 0.12em; color: var(--jade);
+    font-size: 11px; letter-spacing: 0.12em; color: var(--jade);
   }
   .h5-live i { width: 5px; height: 5px; border-radius: 50%; background: var(--jade); animation: h5-pulse 2.6s ease-in-out infinite; }
   @keyframes h5-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
@@ -355,7 +384,7 @@ export const HOME_CSS = `
     margin-top: 14px; align-self: flex-start; max-width: 92%;
     padding: 16px 18px; border-radius: 14px 14px 14px 4px;
     background: #fbf9f3; border: 1px solid var(--line);
-    font-size: 12.5px; line-height: 1.85; color: var(--ink-2);
+    font-size: 13px; line-height: 1.85; color: var(--ink-2);
   }
   .h5-a strong { font-weight: 600; color: var(--ink); }
   .h5-steps { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 9px; }
@@ -363,17 +392,17 @@ export const HOME_CSS = `
   .h5-steps b {
     flex-shrink: 0; width: 18px; height: 18px; margin-top: 1px;
     display: inline-flex; align-items: center; justify-content: center;
-    border-radius: 50%; font-size: 10px; font-weight: 600;
+    border-radius: 50%; font-size: 11px; font-weight: 600;
     color: var(--blue); background: rgba(30, 123, 255, 0.09);
   }
   .h5-src { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 13px; }
   .h5-src span {
-    font-size: 10px; letter-spacing: 0.03em; color: #2f6f8f;
+    font-size: 11px; letter-spacing: 0.03em; color: #2f6f8f;
     padding: 4px 9px; border-radius: 6px;
     background: rgba(30, 123, 255, 0.06); border: 1px solid rgba(30, 123, 255, 0.16);
   }
   .h5-scene-route { justify-content: center; }
-  .h5-route-cap { display: flex; justify-content: space-between; font-size: 11px; color: var(--faint); letter-spacing: 0.1em; }
+  .h5-route-cap { display: flex; justify-content: space-between; font-size: 12px; color: var(--faint); letter-spacing: 0.1em; }
   .h5-route-line { position: relative; height: 2px; margin-top: 12px; background: rgba(30, 29, 26, 0.1); border-radius: 2px; }
   .h5-route-fill {
     position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 2px;
@@ -390,17 +419,17 @@ export const HOME_CSS = `
   @keyframes h5-dot { from { left: 0; } to { left: 78%; } }
   .h5-route-ends { display: flex; justify-content: space-between; margin-top: 16px; }
   .h5-route-ends b { display: block; font-family: var(--serif); font-size: 19px; font-weight: 600; letter-spacing: 0.04em; }
-  .h5-route-ends small { display: block; margin-top: 2px; font-size: 9.5px; letter-spacing: 0.16em; color: var(--faint); }
+  .h5-route-ends small { display: block; margin-top: 2px; font-size: 10.5px; letter-spacing: 0.16em; color: var(--faint); }
   .h5-route-ends > div:last-child { text-align: right; }
   .h5-route-meta { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 30px; }
   .h5-route-meta span {
-    font-size: 11px; padding: 5px 12px; border-radius: 999px;
+    font-size: 12px; padding: 5px 12px; border-radius: 999px;
     border: 1px solid var(--line); color: var(--muted); background: rgba(255, 253, 248, 0.8);
   }
   .h5-scene-doc { justify-content: center; }
   .h5-doc-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 12px; }
   .h5-doc-head b, .h5-doc-head strong { font-family: var(--serif); font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
-  .h5-doc-head span { font-size: 10px; letter-spacing: 0.12em; color: var(--faint); }
+  .h5-doc-head span { font-size: 11px; letter-spacing: 0.12em; color: var(--faint); }
   .h5-doc-row {
     display: flex; align-items: center; gap: 12px;
     padding: 11px 13px; border-radius: 10px;
@@ -410,14 +439,14 @@ export const HOME_CSS = `
   .h5-doc-check {
     width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
     display: inline-flex; align-items: center; justify-content: center;
-    background: rgba(63, 156, 140, 0.12); color: var(--jade); font-size: 10px; font-weight: 700;
+    background: rgba(63, 156, 140, 0.12); color: var(--jade); font-size: 11px; font-weight: 700;
   }
-  .h5-doc-name { font-size: 12.5px; color: var(--ink); }
-  .h5-doc-meta { margin-left: auto; font-size: 10px; color: var(--faint); letter-spacing: 0.03em; }
+  .h5-doc-name { font-size: 13px; color: var(--ink); }
+  .h5-doc-meta { margin-left: auto; font-size: 11px; color: var(--faint); letter-spacing: 0.03em; }
   .h5-scene-bars { position: absolute; left: 26px; bottom: 22px; display: flex; gap: 6px; z-index: 2; }
   .h5-scene-bars i { width: 22px; height: 3px; border-radius: 2px; background: rgba(30, 29, 26, 0.14); display: block; transition: background 0.3s ease; }
   .h5-scene-bars i.is-on { background: var(--ink); }
-  .h5-stage-note { position: absolute; right: 24px; bottom: 20px; z-index: 2; font-size: 10px; color: var(--faint); letter-spacing: 0.05em; }
+  .h5-stage-note { position: absolute; right: 24px; bottom: 20px; z-index: 2; font-size: 11px; color: var(--faint); letter-spacing: 0.05em; }
 
   /* login + download */
   .h5-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
@@ -426,9 +455,9 @@ export const HOME_CSS = `
     background: var(--card); border: 1px solid var(--line-2); border-radius: 22px;
     padding: 24px 22px 22px; box-shadow: var(--shadow-s);
   }
-  .h5-login h2 { font-family: var(--serif); font-size: 24px; font-weight: 600; letter-spacing: 0.03em; }
-  .h5-login-sub { margin-top: 6px; font-size: 12.5px; color: var(--faint); }
-  .h5-login-body { margin-top: 16px; font-size: 14px; line-height: 1.5; }
+  .h5-login h2 { font-family: var(--serif); font-size: 26px; font-weight: 600; letter-spacing: 0.03em; }
+  .h5-login-sub { margin-top: 6px; font-size: 14px; color: var(--faint); }
+  .h5-login-body { margin-top: 16px; font-size: 15px; line-height: 1.5; }
   /* 鲁港通 - 隐藏 LoginForm 内置的 logo 品牌行，避免与卡片标题「登录鲁港通」重复（body > LoginContainer > LoginFormPanel > FormLayout > 品牌行） */
   .h5-login-body > div > div > div > div:first-child { display: none; }
   .h5-dl { border: 1px solid var(--line-2); border-radius: 18px; padding: 16px 18px; background: rgba(255, 253, 248, 0.5); }
@@ -470,9 +499,9 @@ export const HOME_CSS = `
   @keyframes h5-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
 
   /* ---------- shared section head ---------- */
-  .h5-kicker { font-size: 11px; letter-spacing: 0.24em; color: var(--gold); }
+  .h5-kicker { font-size: 12px; letter-spacing: 0.24em; color: var(--gold); }
   .h5-h2 { margin-top: 12px; font-family: var(--serif); font-weight: 600; font-size: clamp(32px, 4vw, 54px); line-height: 1.22; letter-spacing: 0.02em; text-wrap: balance; }
-  .h5-sub { margin: 16px auto 0; max-width: 660px; font-size: 14.5px; line-height: 1.95; color: var(--muted); }
+  .h5-sub { margin: 16px auto 0; max-width: 660px; font-size: 17px; line-height: 1.95; color: var(--muted); }
   .h5-head-center { text-align: center; }
 
   /* ---------- personas ---------- */
@@ -509,7 +538,7 @@ export const HOME_CSS = `
   .h5-persona-a small { font-size: 10.5px; letter-spacing: 0.2em; color: var(--faint); }
   .h5-persona-a h3 { margin-top: 12px; font-family: var(--serif); font-size: 20px; font-weight: 600; line-height: 1.5; letter-spacing: 0.02em; }
   .h5-persona-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 11px; counter-reset: pa; }
-  .h5-persona-list li { display: grid; grid-template-columns: 22px 1fr; gap: 11px; align-items: start; font-size: 13px; line-height: 1.75; color: var(--muted); counter-increment: pa; }
+  .h5-persona-list li { display: grid; grid-template-columns: 22px 1fr; gap: 11px; align-items: start; font-size: 15px; line-height: 1.75; color: var(--muted); counter-increment: pa; }
   .h5-persona-list li::before {
     content: counter(pa, decimal-leading-zero);
     font-family: var(--serif); font-size: 11.5px; color: var(--blue); padding-top: 2px;
@@ -546,7 +575,7 @@ export const HOME_CSS = `
   .h5-flow-copy { position: relative; min-height: 300px; padding: 30px 30px 28px; border-radius: 20px; background: var(--card); border: 1px solid var(--line-2); box-shadow: var(--shadow-s); }
   .h5-flow-copy small { font-size: 10.5px; letter-spacing: 0.2em; color: var(--faint); }
   .h5-flow-copy h3 { margin-top: 12px; font-family: var(--serif); font-size: clamp(22px, 2.4vw, 30px); font-weight: 600; line-height: 1.4; }
-  .h5-flow-copy p { margin-top: 14px; font-size: 13.5px; line-height: 1.95; color: var(--muted); }
+  .h5-flow-copy p { margin-top: 14px; font-size: 15.5px; line-height: 1.95; color: var(--muted); }
   .h5-flow-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 20px; }
   .h5-flow-tags span { font-size: 10.5px; color: var(--muted); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); }
   .h5-flow-visual {
@@ -560,27 +589,27 @@ export const HOME_CSS = `
   .h5-flow-pane { position: absolute; inset: 24px; opacity: 0; transform: translateY(12px); transition: opacity 0.4s ease, transform 0.4s ease; pointer-events: none; }
   .h5-flow-pane.is-on { opacity: 1; transform: none; }
   .h5-mini { height: 100%; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
-  .h5-mini-q { align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: #1f1e1c; color: #f7f4ec; font-size: 12.5px; }
+  .h5-mini-q { align-self: flex-end; max-width: 82%; padding: 10px 14px; border-radius: 12px 12px 4px 12px; background: #1f1e1c; color: #f7f4ec; font-size: 13px; }
   .h5-mini-query { display: flex; gap: 8px; flex-wrap: wrap; }
-  .h5-mini-query span { font-size: 10.5px; padding: 5px 10px; border-radius: 999px; background: rgba(255, 253, 248, 0.9); border: 1px solid var(--line); color: var(--muted); }
+  .h5-mini-query span { font-size: 11.5px; padding: 5px 10px; border-radius: 999px; background: rgba(255, 253, 248, 0.9); border: 1px solid var(--line); color: var(--muted); }
   .h5-mini-doc { padding: 18px 18px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--line-2); box-shadow: var(--shadow-s); }
-  .h5-mini-doc-head { display: flex; align-items: center; gap: 8px; font-size: 11px; letter-spacing: 0.12em; color: var(--faint); }
-  .h5-mini-stamp { margin-left: auto; font-size: 9px; color: #2f6f8f; border: 1px solid rgba(30, 123, 255, 0.24); border-radius: 4px; padding: 2px 5px; letter-spacing: 0.08em; }
+  .h5-mini-doc-head { display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.12em; color: var(--faint); }
+  .h5-mini-stamp { margin-left: auto; font-size: 10px; color: #2f6f8f; border: 1px solid rgba(30, 123, 255, 0.24); border-radius: 4px; padding: 2px 5px; letter-spacing: 0.08em; }
   .h5-mini-doc b { display: block; margin-top: 12px; font-family: var(--serif); font-size: 17px; font-weight: 600; line-height: 1.5; }
-  .h5-mini-doc p { margin-top: 8px; font-size: 11.5px; line-height: 1.8; color: var(--muted); }
-  .h5-mini-check { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); font-size: 12px; }
+  .h5-mini-doc p { margin-top: 8px; font-size: 12.5px; line-height: 1.8; color: var(--muted); }
+  .h5-mini-check { display: flex; align-items: center; gap: 10px; padding: 11px 13px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); font-size: 13px; }
   .h5-mini-check + .h5-mini-check { margin-top: 8px; }
-  .h5-mini-check i { width: 18px; height: 18px; border-radius: 50%; background: rgba(63, 156, 140, 0.12); color: var(--jade); display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-style: normal; flex-shrink: 0; }
+  .h5-mini-check i { width: 18px; height: 18px; border-radius: 50%; background: rgba(63, 156, 140, 0.12); color: var(--jade); display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-style: normal; flex-shrink: 0; }
   .h5-mini-check.missing { border-color: rgba(169, 133, 63, 0.4); background: rgba(169, 133, 63, 0.06); }
   .h5-mini-check.missing i { background: rgba(169, 133, 63, 0.16); color: var(--gold); }
-  .h5-mini-check em { margin-left: auto; font-style: normal; font-size: 10px; color: var(--faint); }
+  .h5-mini-check em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--faint); }
   .h5-mini-browser { border-radius: 12px; background: var(--card); border: 1px solid var(--line-2); overflow: hidden; box-shadow: var(--shadow-s); }
   .h5-mini-browser-bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: rgba(30, 29, 26, 0.03); }
   .h5-mini-browser-bar span { flex: 1; height: 16px; border-radius: 999px; background: rgba(30, 29, 26, 0.06); }
   .h5-mini-browser-body { padding: 16px; }
   .h5-mini-field { height: 26px; border-radius: 6px; border: 1px solid var(--line); background: #fffefb; margin-top: 8px; }
   .h5-mini-field.short { width: 62%; }
-  .h5-mini-confirm { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 6px 11px; border-radius: 999px; background: rgba(30, 123, 255, 0.08); color: #1a66d0; font-size: 10.5px; }
+  .h5-mini-confirm { display: inline-flex; align-items: center; gap: 6px; margin-top: 14px; padding: 6px 11px; border-radius: 999px; background: rgba(30, 123, 255, 0.08); color: #1a66d0; font-size: 11.5px; }
 
   /* ---------- agent ---------- */
   .h5-agent { padding: 104px 0 100px; background: var(--paper-2); position: relative; overflow: hidden; }
@@ -632,7 +661,7 @@ export const HOME_CSS = `
   }
   .h5-feed li:hover { transform: translateX(4px); box-shadow: var(--shadow-s); }
   .h5-feed time { font-size: 11px; color: var(--faint); letter-spacing: 0.04em; }
-  .h5-feed p { font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+  .h5-feed p { font-size: 15px; line-height: 1.7; color: var(--ink-2); }
   .h5-feed em { font-style: normal; font-size: 9.5px; letter-spacing: 0.08em; color: var(--jade); border: 1px solid rgba(63, 156, 140, 0.3); border-radius: 999px; padding: 3px 8px; white-space: nowrap; }
   .h5-agent-note { margin-top: 16px; font-size: 10.5px; color: var(--faint); letter-spacing: 0.04em; }
 
@@ -644,10 +673,10 @@ export const HOME_CSS = `
   }
   .h5-billing button {
     height: 32px; padding: 0 16px; border: 0; border-radius: 999px; cursor: pointer;
-    background: transparent; font-size: 12.5px; color: var(--muted); transition: background 0.2s ease, color 0.2s ease;
+    background: transparent; font-size: 13.5px; color: var(--muted); transition: background 0.2s ease, color 0.2s ease;
   }
   .h5-billing button.is-on { background: #1f1e1c; color: #f7f4ec; }
-  .h5-billing small { font-size: 10px; opacity: 0.7; margin-left: 4px; }
+  .h5-billing small { font-size: 11px; opacity: 0.7; margin-left: 4px; }
   .h5-price-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 40px; align-items: stretch; }
   .h5-plan {
     display: flex; flex-direction: column; position: relative;
@@ -656,8 +685,8 @@ export const HOME_CSS = `
     transition: transform 0.28s ease, box-shadow 0.28s ease;
   }
   .h5-plan:hover { transform: translateY(-3px); box-shadow: var(--shadow-m); }
-  .h5-plan-name { font-size: 13px; letter-spacing: 0.08em; color: var(--ink); }
-  .h5-plan-desc { margin-top: 4px; font-size: 11.5px; color: var(--faint); }
+  .h5-plan-name { font-size: 14px; letter-spacing: 0.08em; color: var(--ink); }
+  .h5-plan-desc { margin-top: 4px; font-size: 13px; color: var(--faint); }
   .h5-plan-price { display: flex; align-items: baseline; gap: 4px; margin-top: 20px; }
   .h5-plan-price .cur { font-size: 15px; color: var(--ink); }
   .h5-plan-price .num { font-family: var(--serif); font-size: 40px; font-weight: 600; line-height: 1; letter-spacing: -0.01em; }
@@ -670,7 +699,7 @@ export const HOME_CSS = `
   }
   .h5-plan-cta:hover { background: rgba(30, 29, 26, 0.05); border-color: var(--ink); }
   .h5-plan-feats { list-style: none; margin: 20px 0 0; padding: 18px 0 0; border-top: 1px solid var(--line); display: grid; gap: 9px; }
-  .h5-plan-feats li { display: flex; gap: 8px; align-items: flex-start; font-size: 12px; line-height: 1.6; color: var(--muted); }
+  .h5-plan-feats li { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; line-height: 1.6; color: var(--muted); }
   .h5-plan-feats li::before { content: '✓'; color: var(--jade); font-weight: 700; line-height: 1.5; font-size: 11px; }
   .h5-plan-feats li.off { color: var(--faint); }
   .h5-plan-feats li.off::before { content: '—'; color: var(--faint); font-weight: 400; }
@@ -702,15 +731,15 @@ export const HOME_CSS = `
   .h5-service-note i { width: 4px; height: 4px; border-radius: 50%; background: var(--jade); }
   .h5-table-wrap { margin-top: 34px; border: 1px solid var(--line-2); border-radius: 18px; overflow-x: auto; background: var(--card); }
   .h5-table { width: 100%; border-collapse: collapse; min-width: 720px; }
-  .h5-table th, .h5-table td { padding: 14px 18px; text-align: center; border-bottom: 1px solid var(--line); font-size: 12.5px; font-weight: 400; color: var(--muted); }
-  .h5-table thead th { font-size: 11.5px; letter-spacing: 0.08em; color: var(--faint); background: rgba(30, 29, 26, 0.025); }
+  .h5-table th, .h5-table td { padding: 14px 18px; text-align: center; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 400; color: var(--muted); }
+  .h5-table thead th { font-size: 12.5px; letter-spacing: 0.08em; color: var(--faint); background: rgba(30, 29, 26, 0.025); }
   .h5-table thead th:first-child { text-align: left; }
-  .h5-table tbody th { text-align: left; color: var(--ink); font-size: 12.5px; letter-spacing: 0.01em; }
+  .h5-table tbody th { text-align: left; color: var(--ink); font-size: 14px; letter-spacing: 0.01em; }
   .h5-table tbody tr:last-child th, .h5-table tbody tr:last-child td { border-bottom: 0; }
   .h5-table tbody tr:hover { background: rgba(30, 29, 26, 0.015); }
-  .h5-table .yes { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; background: rgba(63, 156, 140, 0.1); color: var(--jade); font-size: 11px; }
+  .h5-table .yes { display: inline-flex; width: 22px; height: 22px; border-radius: 50%; align-items: center; justify-content: center; background: rgba(63, 156, 140, 0.1); color: var(--jade); font-size: 12px; }
   .h5-table .no { color: rgba(30, 29, 26, 0.25); }
-  .h5-table .part { font-size: 10.5px; color: var(--gold); border: 1px solid rgba(169, 133, 63, 0.3); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+  .h5-table .part { font-size: 12px; color: var(--gold); border: 1px solid rgba(169, 133, 63, 0.3); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
   .h5-table-hint { display: none; }
   .h5-enterprise {
     display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
@@ -718,9 +747,9 @@ export const HOME_CSS = `
     border: 1px solid var(--line); background: rgba(255, 253, 248, 0.66);
   }
   .h5-enterprise h3 { font-family: var(--serif); font-size: 18px; font-weight: 600; letter-spacing: 0.03em; }
-  .h5-enterprise p { margin-top: 5px; font-size: 12.5px; color: var(--muted); }
+  .h5-enterprise p { margin-top: 5px; font-size: 14px; color: var(--muted); }
   .h5-enterprise .h5-btn { margin-left: auto; }
-  .h5-price-notes { margin-top: 22px; display: grid; gap: 5px; font-size: 11px; color: var(--faint); line-height: 1.7; }
+  .h5-price-notes { margin-top: 22px; display: grid; gap: 5px; font-size: 13px; color: var(--faint); line-height: 1.7; }
 
   /* ---------- faq ---------- */
   .h5-faq { padding: 8px 0 104px; }
@@ -729,7 +758,7 @@ export const HOME_CSS = `
   .h5-faq-item summary {
     display: flex; align-items: center; gap: 16px;
     padding: 20px 2px; cursor: pointer; list-style: none;
-    font-size: 14.5px; color: var(--ink); letter-spacing: 0.01em;
+    font-size: 17px; color: var(--ink); letter-spacing: 0.01em;
   }
   .h5-faq-item summary::-webkit-details-marker { display: none; }
   .h5-faq-item summary::after {
@@ -737,7 +766,7 @@ export const HOME_CSS = `
     transition: transform 0.25s ease;
   }
   .h5-faq-item[open] summary::after { transform: rotate(45deg); }
-  .h5-faq-a { padding: 0 2px 22px; font-size: 13px; line-height: 1.95; color: var(--muted); max-width: 700px; }
+  .h5-faq-a { padding: 0 2px 22px; font-size: 15.5px; line-height: 1.95; color: var(--muted); max-width: 700px; }
   .h5-faq-more { text-align: center; margin-top: 28px; }
   .h5-faq-more a { font-size: 13px; color: var(--blue); letter-spacing: 0.02em; border-bottom: 1px solid rgba(30, 123, 255, 0.25); padding-bottom: 2px; transition: opacity 0.2s ease; }
   .h5-faq-more a:hover { opacity: 0.75; }
@@ -748,9 +777,9 @@ export const HOME_CSS = `
   .h5-foot-brand { display: flex; align-items: center; gap: 10px; }
   .h5-foot-brand svg { width: 30px; height: 30px; border-radius: 7px; }
   .h5-foot-brand b { font-size: 15px; font-weight: 600; letter-spacing: 0.14em; color: #f7f4ec; }
-  .h5-foot-tag { margin-top: 16px; max-width: 300px; font-size: 12.5px; line-height: 1.9; color: rgba(247, 244, 236, 0.5); }
-  .h5-foot-col h4 { margin: 0 0 14px; font-size: 11px; font-weight: 400; letter-spacing: 0.18em; color: rgba(247, 244, 236, 0.42); }
-  .h5-foot-col a { display: block; padding: 5px 0; font-size: 12.5px; color: rgba(247, 244, 236, 0.76); transition: color 0.2s ease; }
+  .h5-foot-tag { margin-top: 16px; max-width: 300px; font-size: 14px; line-height: 1.9; color: rgba(247, 244, 236, 0.5); }
+  .h5-foot-col h4 { margin: 0 0 14px; font-size: 12px; font-weight: 400; letter-spacing: 0.18em; color: rgba(247, 244, 236, 0.42); }
+  .h5-foot-col a { display: block; padding: 5px 0; font-size: 14px; color: rgba(247, 244, 236, 0.76); transition: color 0.2s ease; }
   .h5-foot-col a:hover { color: #f7f4ec; }
   .h5-foot-bottom {
     display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
@@ -771,7 +800,7 @@ export const HOME_CSS = `
 
   /* ---------- responsive ---------- */
   @media (max-width: 1180px) {
-    .h5-hero-mascot { position: relative; right: auto; top: auto; width: 128px; margin: 0 auto 18px; z-index: 2; }
+    .h5-hero-mascot { position: relative; left: auto; right: auto; top: auto; transform: none; width: 128px; margin: 0 auto 18px; z-index: 2; }
     .h5-mascot-say { display: none; }
     .h5-float { display: none; }
     .h5-hero h1 { margin-top: 18px; }
@@ -840,17 +869,17 @@ export const HOME_CSS = `
     .h5-nav-dl, .h5-nav-login { display: none; }
     .h5-hero { padding: 40px 0 22px; }
     .h5-hero h1 { font-size: clamp(38px, 11vw, 56px); line-height: 1.12; }
-    .h5-lede { margin-top: 20px; font-size: 14px; line-height: 1.95; }
+    .h5-lede { margin-top: 20px; font-size: 16px; line-height: 1.95; }
     .h5-cta { margin-top: 26px; }
-    .h5-cta .h5-btn { height: 44px; padding: 0 22px; font-size: 14px; }
-    .h5-meta { flex-direction: column; align-items: center; gap: 6px; font-size: 11px; margin-top: 22px; }
+    .h5-cta .h5-btn { height: 44px; padding: 0 22px; font-size: 15px; }
+    .h5-meta { flex-direction: column; align-items: center; gap: 6px; font-size: 13px; margin-top: 22px; }
     .h5-meta i { display: none; }
     .h5-scroll-cue { display: none; }
     .h5-peek { width: 64px; top: -40px; right: 20px; }
     .h5-stage { min-height: 390px; padding: 18px 16px 48px; }
     .h5-scene { inset: 18px 16px 48px; }
-    .h5-a { padding: 13px 14px; font-size: 12px; }
-    .h5-q { font-size: 12.5px; max-width: 92%; }
+    .h5-a { padding: 13px 14px; font-size: 13px; }
+    .h5-q { font-size: 13px; max-width: 92%; }
     .h5-scene-bars { left: 16px; bottom: 20px; }
     .h5-stage-note { display: none; }
     .h5-side { grid-template-columns: 1fr; }
@@ -883,7 +912,7 @@ export const HOME_CSS = `
     .h5-enterprise { align-items: flex-start; }
     .h5-enterprise .h5-btn { margin-left: 0; width: 100%; }
     .h5-faq { padding-bottom: 72px; }
-    .h5-faq-item summary { font-size: 13.5px; padding: 17px 2px; }
+    .h5-faq-item summary { font-size: 16px; padding: 17px 2px; }
     .h5-foot { padding-top: 48px; }
     .h5-foot-grid { grid-template-columns: 1fr 1fr; gap: 28px; }
     .h5-foot-intro { grid-column: 1 / -1; }
@@ -901,6 +930,10 @@ export const HOME_CSS = `
     --sans: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
   html[data-lang="en"] .lg-home .h5-brand-name { letter-spacing: .02em; }
+  /* 鲁港通 - 英文吉祥物气泡较长，限制宽度换行避免压住大标题 */
+  html[data-lang="en"] .lg-home .h5-mascot-say {
+    width: 220px; white-space: normal; line-height: 1.6; text-align: left;
+  }
   html[data-lang="en"] .lg-home .h5-link,
   html[data-lang="en"] .lg-home .h5-nav-dl,
   html[data-lang="en"] .lg-home .h5-nav-login,
@@ -912,6 +945,10 @@ export const HOME_CSS = `
     --sans: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", "Microsoft YaHei", sans-serif;
   }
   html[data-lang="ko-KR"] .lg-home .h5-brand-name { letter-spacing: .04em; }
+  /* 鲁港通 - 韩文标题行高更大，气泡整体上移避开标题 */
+  html[data-lang="ko-KR"] .lg-home .h5-mascot-say {
+    top: -20%; width: 210px; white-space: normal; line-height: 1.6; text-align: left;
+  }
   html[data-lang="ko-KR"] .lg-home .h5-link,
   html[data-lang="ko-KR"] .lg-home .h5-nav-dl,
   html[data-lang="ko-KR"] .lg-home .h5-nav-login,

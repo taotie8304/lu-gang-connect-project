@@ -3,7 +3,8 @@ import {
   i18nT,
   parseI18nString,
   formatI18nLocationToZhEn,
-  parseLocale
+  parseLocale,
+  parseAcceptLanguage
 } from '@fastgpt/global/common/i18n/utils';
 import type { I18nStringType } from '@fastgpt/global/common/i18n/type';
 
@@ -27,10 +28,44 @@ describe('parseLocale', () => {
     expect(parseLocale('zh-Hans')).toBe('zh-CN');
   });
 
+  it('should normalize Macau Chinese to traditional Chinese', () => {
+    expect(parseLocale('zh-MO')).toBe('zh-Hant');
+    expect(parseLocale('zh_mo')).toBe('zh-Hant');
+  });
+
   it('should return undefined for empty or unsupported locales', () => {
     expect(parseLocale()).toBeUndefined();
     expect(parseLocale('')).toBeUndefined();
     expect(parseLocale('fr-FR')).toBeUndefined();
+  });
+});
+
+describe('parseAcceptLanguage', () => {
+  it('should pick the first supported language ordered by q value', () => {
+    expect(parseAcceptLanguage('zh-CN,zh;q=0.9,en;q=0.8')).toBe('zh-CN');
+    expect(parseAcceptLanguage('en-US,en;q=0.9')).toBe('en');
+    expect(parseAcceptLanguage('en;q=0.5,zh-CN;q=0.9')).toBe('zh-CN');
+  });
+
+  it('should map regional Chinese variants', () => {
+    expect(parseAcceptLanguage('zh-HK,zh;q=0.9')).toBe('zh-Hant');
+    expect(parseAcceptLanguage('zh-MO')).toBe('zh-Hant');
+  });
+
+  it('should normalize Korean', () => {
+    expect(parseAcceptLanguage('ko-KR')).toBe('ko-KR');
+  });
+
+  it('should skip unsupported languages and wildcard entries', () => {
+    expect(parseAcceptLanguage('fr-FR,zh-CN;q=0.8')).toBe('zh-CN');
+    expect(parseAcceptLanguage('*')).toBeUndefined();
+    expect(parseAcceptLanguage('')).toBeUndefined();
+    expect(parseAcceptLanguage()).toBeUndefined();
+  });
+
+  it('should tolerate malformed q values without throwing', () => {
+    expect(parseAcceptLanguage('zh-CN;q=abc,en;q=0.4')).toBe('zh-CN');
+    expect(parseAcceptLanguage('en;q=,zh-CN')).toBe('en');
   });
 });
 

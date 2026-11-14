@@ -12,8 +12,8 @@ const HomeFaq = ({ copy }: { copy: HomeFaqCopy }) => (
         <h2 className="h5-h2 h5-reveal">{copy.title}</h2>
       </div>
       <div className="h5-faq-list h5-reveal d1">
-        {copy.items.map((item) => (
-          <details className="h5-faq-item" key={item.q}>
+        {copy.items.map((item, index) => (
+          <details className="h5-faq-item" key={index}>
             <summary>{item.q}</summary>
             <p className="h5-faq-a">{item.a}</p>
           </details>

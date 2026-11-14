@@ -60,7 +60,7 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
               : copy.priceUnit[billing];
             return (
               <article
-                key={plan.name}
+                key={index}
                 className={`h5-plan h5-reveal${index === HOME_FEATURED_PLAN ? ' is-featured' : ''}${
                   index > 0 ? ` d${Math.min(index, 3)}` : ''
                 }`}
@@ -82,8 +82,8 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
                 </a>
                 <ul className="h5-plan-feats">
                   <li>{plan.credits}</li>
-                  {plan.feats.map((feat) => (
-                    <li key={feat.text} className={feat.off ? 'off' : undefined}>
+                  {plan.feats.map((feat, featIndex) => (
+                    <li key={featIndex} className={feat.off ? 'off' : undefined}>
                       {feat.text}
                     </li>
                   ))}
@@ -94,8 +94,8 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
         </div>
 
         <div className="h5-service-note h5-reveal">
-          {copy.serviceNote.map((note) => (
-            <span key={note}>
+          {copy.serviceNote.map((note, index) => (
+            <span key={index}>
               <i aria-hidden="true" />
               {note}
             </span>
@@ -107,19 +107,19 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
           <table className="h5-table">
             <thead>
               <tr>
-                {copy.tableHead.map((head) => (
-                  <th key={head} scope="col">
+                {copy.tableHead.map((head, index) => (
+                  <th key={index} scope="col">
                     {head}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {copy.tableRows.map((row) => (
-                <tr key={row.label}>
+              {copy.tableRows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
                   <th scope="row">{row.label}</th>
                   {row.cells.map((cell, index) => (
-                    <td key={`${row.label}-${index}`}>{renderTableCell(cell)}</td>
+                    <td key={index}>{renderTableCell(cell)}</td>
                   ))}
                 </tr>
               ))}
@@ -138,8 +138,8 @@ const HomePricing = ({ copy }: { copy: HomePricingCopy }) => {
         </div>
 
         <div className="h5-price-notes">
-          {copy.notes.map((note) => (
-            <span key={note}>· {note}</span>
+          {copy.notes.map((note, index) => (
+            <span key={index}>· {note}</span>
           ))}
         </div>
       </div>

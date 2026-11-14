@@ -1,14 +1,11 @@
 // 鲁港通 - 首页交互动效：滚动进度、视差、吉祥物表情与跟随、场景轮播、计数与渐入
 import { useEffect } from 'react';
 import type { RefObject } from 'react';
-import {
-  calcDriftOffset,
-  calcScrollOffset,
-  calcScrollProgress,
-  formatCount,
-  shouldRevealImmediately
-} from './homeFx';
+import { calcDriftOffset, calcScrollOffset, calcScrollProgress, formatCount } from './homeFx';
+import { clampMascotPoint, parseMascotPoint, serializeMascotPoint } from './mascotDrag';
+import type { MascotPoint } from './mascotDrag';
 import { hasStatsAnimated, markStatsAnimated } from './homeRuntime';
+import { bindReveal } from '@/web/common/utils/reveal';
 
 const SCENE_INTERVAL = 6400;
 const COUNT_DURATION = 1200;
@@ -104,6 +101,13 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
       updateParallax();
     }
 
+    /* 首屏吉祥物：表情调度与拖拽共享同一元素，拖拽期间暂停写入表情 */
+    const hero = root.querySelector<HTMLElement>('.h5-hero');
+    const heroMascot = root.querySelector<HTMLElement>('#home-hero-mascot');
+    const mascotEyes = heroMascot?.querySelector<HTMLElement>('.h5-eyes') ?? null;
+    const mascotParallax = heroMascot?.querySelector<HTMLElement>('.h5-mascot-parallax') ?? null;
+    let dragging = false;
+
     /* 史莱姆表情：眨眼 / 左右看 / 眯眼 / 圆眼，各元素独立节奏 */
     const faces = Array.from(root.querySelectorAll<HTMLElement>('[data-face]'));
     if (!reduceMotion && faces.length) {
@@ -116,13 +120,17 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
         faceStopped = true;
         faceTimers.forEach((timer) => window.clearTimeout(timer));
       });
+      const applyFace = (el: HTMLElement, face: Face) => {
+        if (dragging && el === mascotEyes) return;
+        el.dataset.face = face;
+      };
       faces.forEach((el) => {
         const hold = (face: Face) => {
           if (faceStopped) return;
-          el.dataset.face = face;
+          applyFace(el, face);
           schedule(() => {
             if (faceStopped) return;
-            el.dataset.face = 'idle';
+            applyFace(el, 'idle');
             schedule(() => hold(pickFace()), randomBetween(FACE_HOLD.idle));
           }, randomBetween(FACE_HOLD[face]));
         };
@@ -130,20 +138,104 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
       });
     }
 
-    /* 首屏吉祥物跟随指针弹跳 */
-    const hero = root.querySelector<HTMLElement>('.h5-hero');
-    const heroMascot = root.querySelector<HTMLElement>('#home-hero-mascot');
-    if (!reduceMotion && finePointer && hero && heroMascot) {
+    /* 鲁港通 - 史莱姆拖拽：仅桌面精确指针启用，落点归一化保存并限制在首屏区域内 */
+    const MASCOT_POS_KEY = 'lg-home-mascot-pos';
+    let mascotPoint = parseMascotPoint(window.localStorage.getItem(MASCOT_POS_KEY));
+    const canDragMascot = finePointer && window.innerWidth > 1180 && hero !== null && heroMascot !== null;
+    const applyMascotPoint = (point: MascotPoint) => {
+      if (!heroMascot) return;
+      heroMascot.style.setProperty('--mx', `${(point.x * 100).toFixed(2)}%`);
+      heroMascot.style.setProperty('--my', `${(point.y * 100).toFixed(2)}%`);
+    };
+    const clampMascot = (pointerX: number, pointerY: number): MascotPoint | null => {
+      if (!hero || !heroMascot) return null;
+      const heroRect = hero.getBoundingClientRect();
+      const mascotSize = { width: heroMascot.offsetWidth, height: heroMascot.offsetHeight };
+      if (mascotSize.width <= 0 || mascotSize.height <= 0) return null;
+      return clampMascotPoint({ pointerX, pointerY, heroRect, mascotSize });
+    };
+    const restoreMascot = () => {
+      if (dragging || !mascotPoint || !hero) return;
+      const rect = hero.getBoundingClientRect();
+      const restored = clampMascot(rect.left + mascotPoint.x * rect.width, rect.top + mascotPoint.y * rect.height);
+      if (!restored) return;
+      mascotPoint = restored;
+      applyMascotPoint(restored);
+    };
+    if (canDragMascot && heroMascot) {
+      restoreMascot();
+      listen(window, 'resize', restoreMascot);
+      // 鲁港通 - 吉祥物图片未加载时高度为 0，恢复落点需等图片就绪后重试
+      const mascotImg = heroMascot.querySelector('img');
+      if (mascotImg && !mascotImg.complete) listen(mascotImg, 'load', restoreMascot);
+
+      let activePointer: number | null = null;
+      let startX = 0;
+      let startY = 0;
+      let pendingDrag = false;
+      const stopDrag = (persist: boolean) => {
+        if (dragging) {
+          dragging = false;
+          heroMascot.classList.remove('is-dragging');
+          if (mascotEyes) mascotEyes.dataset.face = 'idle';
+          if (persist && mascotPoint) {
+            window.localStorage.setItem(MASCOT_POS_KEY, serializeMascotPoint(mascotPoint));
+          }
+        }
+        pendingDrag = false;
+        activePointer = null;
+      };
+      listen(heroMascot, 'pointerdown', (event) => {
+        const pointer = event as PointerEvent;
+        if (pointer.button !== 0 || pointer.pointerType === 'touch') return;
+        activePointer = pointer.pointerId;
+        startX = pointer.clientX;
+        startY = pointer.clientY;
+        pendingDrag = true;
+        heroMascot.setPointerCapture(pointer.pointerId);
+      });
+      listen(heroMascot, 'pointermove', (event) => {
+        const pointer = event as PointerEvent;
+        if (activePointer !== pointer.pointerId) return;
+        if (!dragging) {
+          if (!pendingDrag || Math.hypot(pointer.clientX - startX, pointer.clientY - startY) <= 4) return;
+          dragging = true;
+          pendingDrag = false;
+          heroMascot.classList.add('is-dragging');
+          if (mascotEyes) mascotEyes.dataset.face = 'busy';
+          if (mascotParallax) mascotParallax.style.transform = '';
+        }
+        const next = clampMascot(pointer.clientX, pointer.clientY);
+        if (!next) return;
+        mascotPoint = next;
+        applyMascotPoint(next);
+      });
+      const endDrag = (event: Event) => {
+        const pointer = event as PointerEvent;
+        if (activePointer === null || pointer.pointerId !== activePointer) return;
+        if (heroMascot.hasPointerCapture(activePointer)) {
+          heroMascot.releasePointerCapture(activePointer);
+        }
+        stopDrag(true);
+      };
+      listen(heroMascot, 'pointerup', endDrag);
+      listen(heroMascot, 'pointercancel', endDrag);
+      cleanups.push(() => stopDrag(false));
+    }
+
+    /* 首屏吉祥物跟随指针弹跳：拖拽过（存在落点）后不再位移，避免与悬浮位置打架 */
+    if (!reduceMotion && finePointer && hero && mascotParallax) {
       listen(hero, 'pointermove', (event) => {
+        if (dragging || mascotPoint) return;
         const pointer = event as PointerEvent;
         const rect = hero.getBoundingClientRect();
         const dx = (pointer.clientX - rect.left) / rect.width - 0.5;
         const dy = (pointer.clientY - rect.top) / rect.height - 0.5;
         const lift = Math.min(1, Math.hypot(dx, dy) * 1.8);
-        heroMascot.style.transform = `translate3d(${(dx * -34).toFixed(1)}px, ${(dy * -26 - lift * 8).toFixed(1)}px, 0) rotate(${(dx * 6).toFixed(2)}deg)`;
+        mascotParallax.style.transform = `translate3d(${(dx * -34).toFixed(1)}px, ${(dy * -26 - lift * 8).toFixed(1)}px, 0) rotate(${(dx * 6).toFixed(2)}deg)`;
       });
       listen(hero, 'pointerleave', () => {
-        heroMascot.style.transform = '';
+        mascotParallax.style.transform = '';
       });
     }
 
@@ -222,49 +314,14 @@ export const useHomeEffects = (rootRef: RefObject<HTMLDivElement | null>) => {
     cleanups.push(() => cancelAnimationFrame(countFrame));
     if (hasStatsAnimated()) finishCounters();
 
-    /* 渐入与统计触发：按首页滚动容器位置判定。
-       旧版 IntersectionObserver 在快速滚动或语言切换重挂载时会漏掉回调，导致元素永久隐藏 */
-    const reveals = Array.from(root.querySelectorAll<HTMLElement>('.h5-reveal'));
-    const statsGrid = root.querySelector<HTMLElement>('.h5-stats-grid');
+    /* 渐入与统计触发：语言切换会重建文案节点，交给 bindReveal 持续重扫，避免元素永久隐藏 */
     if (!reduceMotion) {
-      const pending = new Set<HTMLElement>();
-      const rootTop = root.getBoundingClientRect().top;
-      const viewportHeight = root.clientHeight;
-      reveals.forEach((el) => {
-        if (shouldRevealImmediately(el.getBoundingClientRect().top - rootTop, viewportHeight)) {
-          el.classList.add('is-in');
-        } else {
-          pending.add(el);
-        }
-      });
-      let statsPending = Boolean(statsGrid);
-      const syncIndicators = () => {
-        if (!pending.size && !statsPending) return;
-        const top = root.getBoundingClientRect().top;
-        const viewport = root.clientHeight;
-        const revealLine = top + viewport * 0.92;
-        pending.forEach((el) => {
-          if (el.getBoundingClientRect().top < revealLine) {
-            el.classList.add('is-in');
-            pending.delete(el);
-          }
-        });
-        if (statsPending && statsGrid) {
-          const rect = statsGrid.getBoundingClientRect();
-          // 已滚到统计带上方时也直接落终值，避免锚点直达深层页面时数字停留在 0
-          if (rect.top < top + viewport) {
-            statsPending = false;
-            runCounters();
-          }
-        }
-      };
-      listen(root, 'scroll', syncIndicators, { passive: true });
-      listen(window, 'resize', syncIndicators, { passive: true });
-      syncIndicators();
-      const syncFrame = requestAnimationFrame(syncIndicators);
-      cleanups.push(() => cancelAnimationFrame(syncFrame));
+      cleanups.push(bindReveal({ root, selector: '.h5-reveal', activeClass: 'is-in' }));
+      cleanups.push(bindReveal({ root, selector: '.h5-stats-grid', onReveal: runCounters }));
     } else {
-      reveals.forEach((el) => el.classList.add('is-in'));
+      root
+        .querySelectorAll<HTMLElement>('.h5-reveal')
+        .forEach((el) => el.classList.add('is-in'));
       finishCounters();
     }
 

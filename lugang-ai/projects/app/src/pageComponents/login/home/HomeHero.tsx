@@ -27,8 +27,10 @@ const HomeHero = ({ copy }: { copy: HomeHeroCopy }) => (
 
     <div className="h5-hero-mascot" id="home-hero-mascot" aria-hidden="true">
       <div className="h5-mascot-say">{copy.mascotSay}</div>
-      <div className="h5-mascot-bob">
-        <HomeMascot />
+      <div className="h5-mascot-parallax">
+        <div className="h5-mascot-bob">
+          <HomeMascot />
+        </div>
       </div>
     </div>
 

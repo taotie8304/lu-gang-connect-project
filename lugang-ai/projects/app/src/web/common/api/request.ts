@@ -169,7 +169,9 @@ function responseError(err: any) {
   const isOutlinkPage = {
     [`${subRoute}/chat/share`]: true,
     [`${subRoute}/price`]: true,
-    [`${subRoute}/login`]: true
+    [`${subRoute}/login`]: true,
+    // 鲁港通 - 关于页内嵌登录卡，游客可浏览，不能因未登录接口报错被踢回登录页
+    [`${subRoute}/about`]: true
   }[pathname];
 
   const data = err?.response?.data || err;

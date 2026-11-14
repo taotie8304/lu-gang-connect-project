@@ -1,9 +1,15 @@
 // 鲁港通 - 关于页 v3（纸本 +《鹊华秋色图》，与 about-v3-preview 一致）
 // 全局 body 已锁定滚动，本页自带滚动容器；进度条、导航吸顶、视差、路径与计数均由本页驱动。
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import NextLink from 'next/link';
+import { useRouter } from 'next/router';
 import { useTranslation } from 'next-i18next';
+import type { LoginSuccessResponseType } from '@fastgpt/global/openapi/support/user/account/login/api';
 import I18nLngSelector from '@/components/Select/I18nLngSelector';
+import { LoginContainer } from '@/pageComponents/login';
+import { useUserStore } from '@/web/support/user/useUserStore';
+import { bindReveal } from '@/web/common/utils/reveal';
+import { resolveAboutEntry } from './aboutEntry';
 import { ABOUT_V3_CSS } from './AboutV3Css';
 
 type AboutStat = { count?: number; suffix?: string; value?: string; unit: string; desc: string };
@@ -31,6 +37,9 @@ type AboutContent = {
     meta: string[];
     painting: string;
     scroll: string;
+    loginTitle: string;
+    loginSub: string;
+    enterChat: string;
   };
   manifesto: {
     no: string;
@@ -121,14 +130,39 @@ const COUNT_DURATION = 1200;
 
 const formatCount = (value: number) => value.toLocaleString('en-US');
 
-const AboutPage = () => {
+const AboutPage = ({ defaultAppId }: { defaultAppId: string }) => {
+  const router = useRouter();
   const { t } = useTranslation('about3');
+  const { userInfo, initUserInfo, setUserInfo } = useUserStore();
   const translateSection = t as unknown as (
     key: string,
     options: { returnObjects: true }
   ) => unknown;
   const content = translateSection('content', { returnObjects: true }) as AboutContent;
   const { nav, hero, manifesto, caps, cities, tech, proof, contact } = content;
+
+  const entry = resolveAboutEntry({ username: userInfo?.username, defaultAppId });
+  const enterHref = entry.kind === 'href' ? entry.href : '#a3Login';
+
+  const focusLogin = () => {
+    const target = document.getElementById('a3Login');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => {
+      target?.querySelector<HTMLInputElement>('input')?.focus({ preventScroll: true });
+    }, 420);
+  };
+
+  const handleEntryClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (entry.kind === 'href') return;
+    event.preventDefault();
+    focusLogin();
+  };
+
+  const loginSuccess = async (res: LoginSuccessResponseType) => {
+    setUserInfo(res.user);
+    const next = resolveAboutEntry({ username: res.user.username, defaultAppId });
+    router.replace(next.kind === 'href' ? next.href : '/dashboard/agent');
+  };
 
   const rootRef = useRef<HTMLDivElement>(null);
   const navRef = useRef<HTMLElement>(null);
@@ -140,6 +174,11 @@ const AboutPage = () => {
   const routeDotRef = useRef<HTMLDivElement>(null);
 
   const [statCounts, setStatCounts] = useState<number[]>(() => manifesto.stats.map(() => 0));
+
+  // 鲁港通 - 已登录用户需要先取回身份，英雄区才会把登录卡换成「进入对话」
+  useEffect(() => {
+    void initUserInfo();
+  }, [initUserInfo]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -188,35 +227,19 @@ const AboutPage = () => {
       countFrames.push(window.requestAnimationFrame(tick));
     };
 
-    // 鲁港通 - 入场观察：进入视口加 .in，数字牌同时触发计数
-    let observer: IntersectionObserver | undefined;
-    if (!reduceMotion && typeof IntersectionObserver !== 'undefined') {
-      observer = new IntersectionObserver(
-        (entries) => {
-          entries.forEach((entry) => {
-            if (!entry.isIntersecting) return;
-            const el = entry.target as HTMLElement;
-            el.classList.add('in');
-            const statEl = el.querySelector<HTMLElement>('[data-stat-index]');
-            if (statEl) {
-              const index = Number(statEl.dataset.statIndex);
-              const target = Number(statEl.dataset.count);
-              if (Number.isInteger(index) && Number.isFinite(target)) {
-                animateStat(index, target);
-              }
-            }
-            observer?.unobserve(el);
-          });
-        },
-        { root, threshold: 0.18, rootMargin: '0px 0px -6% 0px' }
-      );
-      root.querySelectorAll('.reveal').forEach((el) => observer?.observe(el));
-    } else {
-      root.querySelectorAll('.reveal').forEach((el) => el.classList.add('in'));
-      setStatCounts(
-        manifesto.stats.map((stat) => (typeof stat.count === 'number' ? stat.count : 0))
-      );
-    }
+    // 鲁港通 - 入场渐入：语言切换会重建节点，交给 bindReveal 持续重扫；数字牌同步触发计数
+    const disposeReveal = bindReveal({
+      root,
+      selector: '.reveal',
+      activeClass: 'in',
+      onReveal: (el) => {
+        const statEl = el.querySelector<HTMLElement>('[data-stat-index]');
+        if (!statEl) return;
+        const index = Number(statEl.dataset.statIndex);
+        const target = Number(statEl.dataset.count);
+        if (Number.isInteger(index) && Number.isFinite(target)) animateStat(index, target);
+      }
+    });
 
     const render = () => {
       const sy = root.scrollTop;
@@ -268,7 +291,7 @@ const AboutPage = () => {
       window.clearTimeout(timer);
       if (raf) window.cancelAnimationFrame(raf);
       countFrames.forEach((frame) => window.cancelAnimationFrame(frame));
-      observer?.disconnect();
+      disposeReveal();
       root.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', onScroll);
     };
@@ -300,21 +323,21 @@ const AboutPage = () => {
       <div className="progress" ref={progressRef} />
 
       <header className="nav" ref={navRef}>
-        <a className="brand" href="#a3Top" aria-label={nav.brandAria}>
+        <NextLink className="brand" href="/" aria-label={nav.brandAria}>
           <BrandFace />
           <span>
             <b>{nav.brandName}</b>
             <small>{nav.brandSub}</small>
           </span>
-        </a>
+        </NextLink>
         <div className="nav-right">
           <nav className="links">
             <a href="#a3Caps">{nav.caps}</a>
             <a href="#a3Cities">{nav.cities}</a>
             <a href="#a3Tech">{nav.tech}</a>
-            <a href="#a3Contact" className="cta">
+            <NextLink href={enterHref} className="cta" onClick={handleEntryClick}>
               {nav.cta}
-            </a>
+            </NextLink>
           </nav>
           <div className="lang" aria-label={nav.langAria}>
             <I18nLngSelector />
@@ -327,32 +350,48 @@ const AboutPage = () => {
         <div className="hero-shade" />
         <div className="hero-noise" />
         <div className="hero-inner" ref={heroInnerRef}>
-          <div className="eyebrow">{hero.eyebrow}</div>
-          <h1>
-            {hero.titleLead}
-            <br />
-            <em>{hero.titleAccent}</em>
-          </h1>
-          <p className="lede">
-            {hero.ledeLead}
-            <strong>{hero.ledeStrong}</strong>
-            {hero.ledeTail}
-          </p>
-          <div className="hero-actions">
-            <a className="btn dark" href="#a3Contact">
-              {hero.ctaTalk} <span>→</span>
-            </a>
-            <a className="btn ghost" href="#a3Caps">
-              {hero.ctaExplore}
-            </a>
+          <div className="hero-copy">
+            <div className="eyebrow">{hero.eyebrow}</div>
+            <h1>
+              {hero.titleLead}
+              <br />
+              <em>{hero.titleAccent}</em>
+            </h1>
+            <p className="lede">
+              {hero.ledeLead}
+              <strong>{hero.ledeStrong}</strong>
+              {hero.ledeTail}
+            </p>
+            <div className="hero-actions">
+              <NextLink className="btn dark" href={enterHref} onClick={handleEntryClick}>
+                {hero.ctaTalk} <span>→</span>
+              </NextLink>
+              <a className="btn ghost" href="#a3Caps">
+                {hero.ctaExplore}
+              </a>
+            </div>
+            <div className="hero-meta">
+              {hero.meta.map((item) => (
+                <span key={item}>
+                  <i />
+                  {item}
+                </span>
+              ))}
+            </div>
           </div>
-          <div className="hero-meta">
-            {hero.meta.map((item) => (
-              <span key={item}>
-                <i />
-                {item}
-              </span>
-            ))}
+
+          <div className="hero-login" id="a3Login">
+            <h2>{hero.loginTitle}</h2>
+            <p className="hero-login-sub">{hero.loginSub}</p>
+            {entry.kind === 'href' ? (
+              <NextLink className="btn dark hero-login-enter" href={entry.href}>
+                {hero.enterChat} <span>→</span>
+              </NextLink>
+            ) : (
+              <div className="hero-login-body">
+                <LoginContainer onSuccess={loginSuccess} />
+              </div>
+            )}
           </div>
         </div>
         <div className="painting-note">{hero.painting}</div>
@@ -640,7 +679,11 @@ const AboutPage = () => {
             {contact.titleAccent}
           </h2>
           <p className="reveal d1">{contact.p}</p>
-          <NextLink className="btn light reveal d2" href="/login">
+          <NextLink
+            className="btn light reveal d2"
+            href={enterHref}
+            onClick={handleEntryClick}
+          >
             {contact.cta} <span>→</span>
           </NextLink>
           <div className="addr reveal d3">

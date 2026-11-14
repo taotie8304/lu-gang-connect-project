@@ -13,6 +13,9 @@ const HomeMascot = ({ className }: { className?: string }) => (
       <i className="h5-eye left" />
       <i className="h5-eye right" />
     </span>
+    <i className="h5-sweat s1" aria-hidden="true" />
+    <i className="h5-sweat s2" aria-hidden="true" />
+    <i className="h5-sweat s3" aria-hidden="true" />
   </span>
 );
 
