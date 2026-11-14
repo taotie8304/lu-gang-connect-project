@@ -84,6 +84,38 @@ describe('PDF 生成器', () => {
     expect(tableDoc.getPageCount()).toBeGreaterThan(1);
   });
 
+  it('正文从页面顶部向下排版，不会挤在页面底部', async () => {
+    const buffer = await generatePdf({
+      format: 'pdf',
+      fileName: '排版',
+      blocks: [
+        { type: 'paragraph', text: '第一段内容' },
+        { type: 'paragraph', text: '第二段内容' }
+      ]
+    });
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const doc = await pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      useWorkerFetch: false,
+      isEvalSupported: false
+    }).promise;
+    const page = await doc.getPage(1);
+    const content = await page.getTextContent();
+    const findBaseline = (needle: string) => {
+      const item = content.items.find(
+        (raw) => 'str' in raw && String(raw.str).includes(needle)
+      ) as { transform: number[] } | undefined;
+      expect(item).toBeTruthy();
+      return item!.transform[5];
+    };
+    const firstY = findBaseline('第一段内容');
+    const secondY = findBaseline('第二段内容');
+    // 鲁港通 - PDFKit 以左上角为原点：首段应落在页面上半部，后续段落基线更低
+    expect(firstY).toBeGreaterThan(841.89 * 0.75);
+    expect(secondY).toBeLessThan(firstY);
+    await doc.destroy();
+  });
+
   it('没有 blocks 时按行渲染 content，并支持空标题', async () => {
     const buffer = await generatePdf({
       format: 'pdf',

@@ -16,7 +16,8 @@ const PAGE_HEIGHT = 841.89;
 const PAGE_MARGIN = 36;
 const CONTENT_WIDTH = PAGE_WIDTH - PAGE_MARGIN * 2;
 const FOOTER_HEIGHT = 24;
-const CONTENT_BOTTOM = PAGE_MARGIN + FOOTER_HEIGHT;
+// 鲁港通 - PDFKit 以左上角为原点向下排版，底部需为页脚预留空间
+const CONTENT_BOTTOM = PAGE_HEIGHT - PAGE_MARGIN - FOOTER_HEIGHT;
 
 const BODY_FONT_SIZE = 10.5;
 const BODY_LINE_HEIGHT = BODY_FONT_SIZE * 1.6;
@@ -150,31 +151,31 @@ const renderParagraph = (
   options: { indentChars?: number; size?: number; bold?: boolean; color?: string } = {}
 ) => {
   const size = options.size ?? BODY_FONT_SIZE;
-  const indent = '　'.repeat(options.indentChars ?? 2);
-  const lines = wrapText(layout.doc, indent + text, size, CONTENT_WIDTH);
+  const indentWidth = measure(layout.doc, '　'.repeat(options.indentChars ?? 2), size);
+  const lines = wrapText(layout.doc, text, size, CONTENT_WIDTH - indentWidth);
   const lineHeight = size * 1.6;
-  for (const line of lines) {
+  lines.forEach((line, index) => {
     layout.ensureSpace(lineHeight);
-    drawLine(layout, line, PAGE_MARGIN, layout.y, {
+    drawLine(layout, line, PAGE_MARGIN + (index === 0 ? indentWidth : 0), layout.y, {
       size,
       bold: options.bold,
       color: options.color
     });
-    layout.y -= lineHeight;
-  }
+    layout.y += lineHeight;
+  });
 };
 
 const renderHeading = (layout: Layout, level: number, text: string) => {
   const size = HEADING_SIZES[(level as 1 | 2 | 3) in HEADING_SIZES ? (level as 1 | 2 | 3) : 2];
   const lineHeight = size * 1.35;
-  if (layout.y < PAGE_HEIGHT - PAGE_MARGIN - 1) layout.y -= 8;
+  if (layout.y > PAGE_MARGIN + 1) layout.y += 8;
   const lines = wrapText(layout.doc, text, size, CONTENT_WIDTH);
   for (const line of lines) {
     layout.ensureSpace(lineHeight);
     drawLine(layout, line, PAGE_MARGIN, layout.y, { size, bold: true });
-    layout.y -= lineHeight;
+    layout.y += lineHeight;
   }
-  layout.y -= 3;
+  layout.y += 3;
 };
 
 const renderList = (layout: Layout, ordered: boolean, items: string[]) => {
@@ -186,10 +187,10 @@ const renderList = (layout: Layout, ordered: boolean, items: string[]) => {
       layout.ensureSpace(BODY_LINE_HEIGHT);
       if (lineIndex === 0) drawLine(layout, prefix, PAGE_MARGIN, layout.y);
       drawLine(layout, line, PAGE_MARGIN + prefixWidth, layout.y);
-      layout.y -= BODY_LINE_HEIGHT;
+      layout.y += BODY_LINE_HEIGHT;
     });
   });
-  layout.y -= 2;
+  layout.y += 2;
 };
 
 const renderTableRow = (
@@ -242,7 +243,7 @@ const renderTableRow = (
     });
   });
 
-  layout.y = top - rowHeight;
+  layout.y = top + rowHeight;
 };
 
 const renderTable = (
@@ -258,19 +259,19 @@ const renderTable = (
   for (const row of rows) {
     renderTableRow(layout, row, columns, false);
   }
-  layout.y -= 6;
+  layout.y += 6;
 };
 
 const renderDivider = (layout: Layout) => {
   layout.ensureSpace(14);
-  layout.y -= 6;
+  layout.y += 6;
   layout.doc
     .moveTo(PAGE_MARGIN, layout.y)
     .lineTo(PAGE_WIDTH - PAGE_MARGIN, layout.y)
     .strokeColor(BORDER_COLOR)
     .lineWidth(0.8)
     .stroke();
-  layout.y -= 8;
+  layout.y += 8;
 };
 
 const renderBlocks = (layout: Layout, blocks: GeneratedBlock[]) => {
@@ -281,7 +282,7 @@ const renderBlocks = (layout: Layout, blocks: GeneratedBlock[]) => {
         break;
       case 'paragraph':
         renderParagraph(layout, block.text);
-        layout.y -= 4;
+        layout.y += 4;
         break;
       case 'list':
         renderList(layout, Boolean(block.ordered), block.items);
@@ -315,12 +316,12 @@ const createLayout = (doc: PDFKit.PDFDocument): Layout => {
   const layout: Layout = {
     doc,
     pageCount: 1,
-    y: PAGE_HEIGHT - PAGE_MARGIN,
-    canFit: (height) => layout.y - height >= CONTENT_BOTTOM,
+    y: PAGE_MARGIN,
+    canFit: (height) => layout.y + height <= CONTENT_BOTTOM,
     newPage: () => {
       doc.addPage();
       layout.pageCount += 1;
-      layout.y = PAGE_HEIGHT - PAGE_MARGIN;
+      layout.y = PAGE_MARGIN;
     },
     ensureSpace: (height) => {
       if (!layout.canFit(height)) layout.newPage();
@@ -370,9 +371,9 @@ export const generatePdf = async (input: DocumentGenerateInput): Promise<Buffer>
         size: HEADING_SIZES[1],
         bold: true
       });
-      layout.y -= HEADING_SIZES[1] * 1.35;
+      layout.y += HEADING_SIZES[1] * 1.35;
     }
-    layout.y -= 10;
+    layout.y += 10;
   }
 
   if (blocks.length) {
@@ -380,11 +381,11 @@ export const generatePdf = async (input: DocumentGenerateInput): Promise<Buffer>
   } else {
     for (const line of content.split('\n')) {
       if (!line.trim()) {
-        layout.y -= BODY_LINE_HEIGHT * 0.6;
+        layout.y += BODY_LINE_HEIGHT * 0.6;
         continue;
       }
       renderParagraph(layout, line.trim());
-      layout.y -= 2;
+      layout.y += 2;
     }
   }
 
