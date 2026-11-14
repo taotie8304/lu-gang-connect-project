@@ -354,6 +354,7 @@ export class S3BaseBucket {
     try {
       const {
         expiredHours,
+        ttlExpiredHours,
         maxFileSize = getSystemMaxFileSize(),
         uploadPolicy
       } = CreatePostPresignedUrlOptionsSchema.parse(options);
@@ -385,11 +386,12 @@ export class S3BaseBucket {
         uploadTime: new Date().toISOString()
       };
 
-      if (expiredHours) {
+      if (expiredHours || ttlExpiredHours) {
+        // 鲁港通 - 对象保留期与上传 URL 有效期解耦：URL 短时有效，对象按 ttlExpiredHours 到期清理
         await MongoS3TTL.create({
           minioKey: parsedParams.rawKey,
           bucketName: this.bucketName,
-          expiredTime: addHours(new Date(), expiredHours)
+          expiredTime: addHours(new Date(), ttlExpiredHours ?? expiredHours ?? 1)
         });
       }
 
@@ -465,6 +467,7 @@ export class S3BaseBucket {
     try {
       const {
         expiredHours = S3_MULTIPART_SESSION_EXPIRE_HOURS,
+        ttlExpiredHours,
         maxFileSize = getSystemMaxFileSize(),
         uploadPolicy,
         partSize = S3_MULTIPART_PART_SIZE_BYTES,
@@ -516,10 +519,11 @@ export class S3BaseBucket {
       });
 
       // 先保存 uploadId，再创建 session。若进程在 session 创建前退出，cron 仍能凭 TTL Abort 分片。
+      // 鲁港通 - TTL 使用对象保留期；上传会话与完成后的对象存在期内均可继续操作
       await MongoS3TTL.create({
         minioKey: parsedParams.rawKey,
         bucketName: this.bucketName,
-        expiredTime: addHours(new Date(), expiredHours),
+        expiredTime: addHours(new Date(), ttlExpiredHours ?? expiredHours),
         multipart: {
           uploadId: multipartUpload.uploadId,
           objectMarker: multipartObjectMarker,

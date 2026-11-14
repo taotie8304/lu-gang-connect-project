@@ -4,7 +4,9 @@ export const MAX_CHAT_FILE_RETENTION_DAYS = 7;
 export const MIN_CHAT_FILE_RETENTION_DAYS = 1;
 
 export const getChatFileRetentionDays = (): number => {
-  const raw = Number(process.env.LUGANG_CHAT_FILE_RETENTION_DAYS);
+  const rawText = process.env.LUGANG_CHAT_FILE_RETENTION_DAYS?.trim();
+  if (!rawText) return DEFAULT_CHAT_FILE_RETENTION_DAYS;
+  const raw = Number(rawText);
   if (!Number.isFinite(raw)) return DEFAULT_CHAT_FILE_RETENTION_DAYS;
   return Math.min(
     MAX_CHAT_FILE_RETENTION_DAYS,

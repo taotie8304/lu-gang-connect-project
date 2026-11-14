@@ -73,6 +73,7 @@ export type CreatePostPresignedUrlParams = z.infer<typeof CreatePostPresignedUrl
 
 export const CreatePostPresignedUrlOptionsSchema = z.object({
   expiredHours: z.number().positive().optional().describe('小时'),
+  ttlExpiredHours: z.number().positive().optional().describe('对象保留小时，缺省同 expiredHours'),
   maxFileSize: z.number().positive().optional().describe('MB'),
   uploadPolicy: UploadPolicySchema.optional()
 });

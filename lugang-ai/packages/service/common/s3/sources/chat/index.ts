@@ -8,7 +8,7 @@ import {
   UploadChatFileSchema,
   type UploadFileParams
 } from './type';
-import { differenceInHours } from 'date-fns';
+import { addDays } from 'date-fns';
 import { S3Buckets } from '../../config/constants';
 import path from 'path';
 import { createOpaqueS3FileKey, getS3ParsedPrefix, isOpaqueS3FileKey } from '../../opaqueKey';
@@ -18,6 +18,7 @@ import { createUploadConstraints } from '../../utils/uploadConstraints';
 import { encodeS3ObjectKeySegment } from '../../keySanitizer';
 import { CommonErrEnum } from '@fastgpt/global/common/error/code/common';
 import { getLogger, LogCategories } from '../../../logger';
+import { getChatFileRetentionDays } from './retention';
 
 const logger = getLogger(LogCategories.INFRA.S3);
 const getChatFileScope = ({
@@ -162,6 +163,10 @@ export class S3ChatSource extends S3PrivateBucket {
         extensionRules
       }
     });
+    // 鲁港通 - 对象按对话文件保留期清理；上传地址本身最多 24 小时有效
+    const retentionHours = expiredTime
+      ? Math.max(1, Math.round((expiredTime.getTime() - Date.now()) / 3_600_000))
+      : getChatFileRetentionDays() * 24;
     return await this.createUploadAccessUrl(
       {
         rawKey: fileKey,
@@ -172,7 +177,8 @@ export class S3ChatSource extends S3PrivateBucket {
         ...(size !== undefined ? { size } : {})
       },
       {
-        expiredHours: expiredTime ? differenceInHours(expiredTime, new Date()) : 1,
+        expiredHours: Math.min(retentionHours, 24),
+        ttlExpiredHours: retentionHours,
         maxFileSize,
         uploadPolicy
       }
@@ -210,8 +216,16 @@ export class S3ChatSource extends S3PrivateBucket {
   }
 
   async uploadChatFile(params: UploadFileParams) {
-    const { sourceType, sourceId, chatId, uId, filename, body, contentType, expiredTime } =
-      UploadChatFileSchema.parse(params);
+    const {
+      sourceType,
+      sourceId,
+      chatId,
+      uId,
+      filename,
+      body,
+      contentType,
+      expiredTime = addDays(new Date(), getChatFileRetentionDays())
+    } = UploadChatFileSchema.parse(params);
     const { fileKey } = getChatFileS3Key({
       sourceType,
       sourceId,

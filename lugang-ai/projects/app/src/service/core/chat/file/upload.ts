@@ -1,8 +1,10 @@
+import { addDays } from 'date-fns';
 import type { CreatePostPresignedUrlResponseType } from '@fastgpt/global/common/file/s3/type';
 import { S3ErrEnum } from '@fastgpt/global/common/error/code/s3';
 import type { AppFileSelectConfigType } from '@fastgpt/global/core/app/type/config.schema';
 import type { ChatSourceTypeEnum } from '@fastgpt/global/core/chat/constants';
 import { getS3ChatSource } from '@fastgpt/service/common/s3/sources/chat';
+import { getChatFileRetentionDays } from '@fastgpt/service/common/s3/sources/chat/retention';
 import {
   getAllowedExtensionsFromFileSelectConfig,
   getUploadExtensionRulesFromFileSelectConfig
@@ -62,6 +64,8 @@ export const createAuthorizedChatFileUploadUrl = async ({
     declaredExtension,
     declaredFilename,
     size,
+    // 鲁港通 - 用户上传的文件与模型生成文件同一保留期，到期由每小时清理任务删除
+    expiredTime: addDays(new Date(), getChatFileRetentionDays()),
     uId: uid,
     allowedExtensions,
     extensionRules,
