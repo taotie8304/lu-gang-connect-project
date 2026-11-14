@@ -10,6 +10,7 @@ import type { SandboxClient } from '../../../../../sandbox/interface/runtime';
 import type { AgentLoopToolCatalog } from '../tools';
 import type { AgentLoopDatasetSearchExecutor } from '../../../domain/systemTool/datasetSearch';
 import type { AgentLoopBrowserOperationExecutor } from '../../../domain/systemTool/browserOperation';
+import type { AgentLoopDocumentExecutor } from '../../../domain/systemTool/document';
 import type {
   AgentLoopChildrenInteractiveParams,
   AgentLoopEvent,
@@ -65,6 +66,7 @@ export type AgentLoopRuntime<TChildrenResponse = unknown> = {
   executeDatasetSearchTool?: AgentLoopDatasetSearchExecutor;
   datasetSearchCurrentInputFiles?: string[];
   executeBrowserOperationTool?: AgentLoopBrowserOperationExecutor;
+  executeDocumentOperationTool?: AgentLoopDocumentExecutor;
   usagePush?: (usages: AgentLoopUsage[]) => void;
   emitEvent?: (event: AgentLoopEvent) => void;
 };

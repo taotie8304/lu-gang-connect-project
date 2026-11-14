@@ -21,6 +21,7 @@ import {
 import { createToolCallToolProvider } from './toolProvider';
 import { createDesktopBrowserOperationExecutor } from '../../../../../support/desktopCommand/browserOperation';
 import { isDesktopBrowserEnabledForUserAsync } from '../../../../../support/desktopCommand/settings';
+import { createDocumentOperationExecutor } from '../../../../ai/document/executor';
 
 type ResponseType = {
   requestIds: string[];
@@ -161,6 +162,15 @@ export const runToolCall = async (props: DispatchToolModuleProps): Promise<Respo
                 execute: toolProvider.datasetSearchExecutor
               }
             : undefined,
+          document: {
+            enabled: true,
+            execute: createDocumentOperationExecutor({
+              sourceType: workflowProps.runningAppInfo.sourceType,
+              sourceId: workflowProps.runningAppInfo.sourceId,
+              uid: workflowProps.uid,
+              chatId: workflowProps.chatId
+            })
+          },
           browserOperation: browserOperationEnabled
             ? {
                 enabled: true,

@@ -3,6 +3,7 @@ import type { SandboxClient } from '../../../../../../ai/sandbox/interface/runti
 import type { AgentLoopDatasetSearchExecutor } from '../../../../../../ai/llm/agentLoop/interface';
 import type { AgentLoopReadFileExecutor } from '../../../../../../ai/llm/agentLoop/interface';
 import type { AgentLoopBrowserOperationExecutor } from '../../../../../../ai/llm/agentLoop/interface';
+import type { AgentLoopDocumentExecutor } from '../../../../../../ai/llm/agentLoop/interface';
 
 export type CreateAgentLoopCoreSystemToolsParams = {
   planEnabled: boolean;
@@ -22,6 +23,10 @@ export type CreateAgentLoopCoreSystemToolsParams = {
     enabled: boolean;
     execute: AgentLoopBrowserOperationExecutor;
   };
+  document?: {
+    enabled: boolean;
+    execute: AgentLoopDocumentExecutor;
+  };
 };
 
 /**
@@ -36,7 +41,8 @@ export const createAgentLoopCoreSystemTools = ({
   sandboxClient,
   readFile,
   datasetSearch,
-  browserOperation
+  browserOperation,
+  document
 }: CreateAgentLoopCoreSystemToolsParams): AgentLoopSystemTools => ({
   plan: {
     enabled: planEnabled
@@ -75,6 +81,14 @@ export const createAgentLoopCoreSystemTools = ({
         browserOperation: {
           enabled: true,
           execute: browserOperation.execute
+        }
+      }
+    : {}),
+  ...(document?.enabled
+    ? {
+        document: {
+          enabled: true,
+          execute: document.execute
         }
       }
     : {})

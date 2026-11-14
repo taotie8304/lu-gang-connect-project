@@ -204,6 +204,7 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
   const readFileToolName = runtime.toolCatalog.readFileTool?.function.name;
   const datasetSearchToolName = runtime.toolCatalog.datasetSearchTool?.function.name;
   const browserOperationToolName = runtime.toolCatalog.browserOperationTool?.function.name;
+  const documentToolName = runtime.toolCatalog.documentTool?.function.name;
   const sandboxToolNames = new Set(
     (runtime.toolCatalog.sandboxTools ?? []).map((tool) => tool.function.name)
   );
@@ -218,6 +219,7 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
       readFileToolName,
       datasetSearchToolName,
       browserOperationToolName,
+      documentToolName,
       ...sandboxToolNames
     ].filter(Boolean)
   );
@@ -517,6 +519,25 @@ export const runFastAgentMainLoop = async <TChildrenResponse = unknown>({
           skipResponseCompress: true,
           errorMessage: browserResult.error ? getErrText(browserResult.error) : undefined,
           metadata: browserResult.metadata
+        });
+      }
+
+      if (call.function.name === documentToolName) {
+        if (!runtime.executeDocumentOperationTool) {
+          const response = 'Document operation executor is not available.';
+          return createToolResponse(response, { skipResponseCompress: true });
+        }
+
+        const documentResult = await runtime.executeDocumentOperationTool({
+          call,
+          messages
+        });
+
+        return createToolResponse(documentResult.response, {
+          usages: documentResult.usages,
+          skipResponseCompress: true,
+          errorMessage: documentResult.error ? getErrText(documentResult.error) : undefined,
+          metadata: documentResult.metadata
         });
       }
 

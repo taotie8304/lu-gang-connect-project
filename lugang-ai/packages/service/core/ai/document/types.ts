@@ -19,6 +19,14 @@ import {
 
 export type DocumentFormat = 'docx' | 'xlsx' | 'pdf' | 'md' | 'pptx';
 
+/** 鲁港通 - 工具返回给聊天文件卡片的最小字段；与 AIChatItemValue.files 的结构保持一致 */
+export type DocumentFileCard = {
+  key: string;
+  name: string;
+  format: DocumentFormat;
+  size?: number;
+};
+
 export type DocumentGenerateInput = {
   format: DocumentFormat;
   fileName: string;

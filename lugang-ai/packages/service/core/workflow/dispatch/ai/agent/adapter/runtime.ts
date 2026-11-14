@@ -19,6 +19,7 @@ import { createWorkflowAgentToolProvider } from '../toolProvider';
 import {
   createDesktopBrowserOperationExecutor
 } from '../../../../../../support/desktopCommand/browserOperation';
+import { createDocumentOperationExecutor } from '../../../../../ai/document/executor';
 
 type WorkflowAgentLoopRuntimeContext = ToolDispatchContext & {
   node: {
@@ -162,6 +163,15 @@ export const createWorkflowAgentLoopRuntime = ({
               execute: toolProvider.readFileExecutor
             }
           : undefined,
+        document: {
+          enabled: true,
+          execute: createDocumentOperationExecutor({
+            sourceType: context.runningAppInfo.sourceType,
+            sourceId: context.runningAppInfo.sourceId,
+            uid: context.uid,
+            chatId: context.chatId
+          })
+        },
         browserOperation: browserOperationEnabled
           ? {
               enabled: true,

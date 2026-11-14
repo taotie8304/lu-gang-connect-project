@@ -6,6 +6,7 @@ import type {
 import type { SandboxClient } from '../../../sandbox/interface/runtime';
 import type { AgentLoopDatasetSearchExecutor } from './systemTool/datasetSearch';
 import type { AgentLoopBrowserOperationExecutor } from './systemTool/browserOperation';
+import type { AgentLoopDocumentExecutor } from './systemTool/document';
 import type { AgentLoopUsage } from './usage';
 
 export type AgentLoopToolCatalog = {
@@ -70,5 +71,9 @@ export type AgentLoopSystemTools = {
   browserOperation?: {
     enabled: boolean;
     execute: AgentLoopBrowserOperationExecutor;
+  };
+  document?: {
+    enabled: boolean;
+    execute: AgentLoopDocumentExecutor;
   };
 };

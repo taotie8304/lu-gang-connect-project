@@ -25,6 +25,7 @@ import {
   patchDatasetSearchParams
 } from '../../../domain/systemTool/datasetSearch';
 import { createBrowserOperationTool } from '../../../domain/systemTool/browserOperation';
+import { createDocumentOperationTool } from '../../../domain/systemTool/document';
 import {
   normalizeAgentLoopUsages,
   type AgentLoopEvent,
@@ -377,6 +378,47 @@ export const buildPiAgentTools = async <TChildrenResponse = unknown>({
               usages: browserResult.usages,
               errorMessage: browserResult.error ? getErrText(browserResult.error) : undefined,
               metadata: browserResult.metadata
+            };
+          }
+        });
+        return { content: [{ type: 'text' as const, text: result.response }], details: {} };
+      }
+    });
+  }
+
+  if (runtime.systemTools?.document?.enabled) {
+    const documentTool = createDocumentOperationTool();
+    tools.push({
+      name: documentTool.function.name,
+      label: documentTool.function.name,
+      description: documentTool.function.description || '',
+      parameters: Type.Unsafe<any>(
+        (documentTool.function.parameters as Record<string, unknown>) ?? {}
+      ),
+      execute: async (callId: string, args: unknown) => {
+        const call = createToolCall({
+          id: callId,
+          name: documentTool.function.name,
+          args: normalizeToolArgs(args)
+        });
+        const result = await executeOrdinaryTool({
+          call,
+          execute: async () => {
+            const executeDocumentOperation = runtime.systemTools?.document?.execute;
+            if (!executeDocumentOperation) {
+              const response = 'Document operation executor is not available.';
+              return { response, assistantMessages: [], usages: [], errorMessage: response };
+            }
+            const documentResult = await executeDocumentOperation({
+              call,
+              messages: [...getMessages()]
+            });
+            return {
+              response: documentResult.response,
+              assistantMessages: [],
+              usages: documentResult.usages,
+              errorMessage: documentResult.error ? getErrText(documentResult.error) : undefined,
+              metadata: documentResult.metadata
             };
           }
         });

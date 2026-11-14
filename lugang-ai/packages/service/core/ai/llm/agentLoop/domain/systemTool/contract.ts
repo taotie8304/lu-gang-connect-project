@@ -25,6 +25,7 @@ export {
   type AgentLoopDocumentExecutionResult,
   type AgentLoopDocumentExecutor,
   type DocumentEditOperation,
+  type DocumentGenerateArgs,
   type DocumentOperationArgs
 } from './document';
 export {

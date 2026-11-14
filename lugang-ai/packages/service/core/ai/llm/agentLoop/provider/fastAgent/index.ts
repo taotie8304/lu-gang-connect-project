@@ -13,6 +13,7 @@ import { createReadFilesTool } from '../../domain/systemTool/readFile';
 import { createAgentLoopSandboxTools } from '../../domain/systemTool/sandbox';
 import { createDatasetSearchTool } from '../../domain/systemTool/datasetSearch';
 import { createBrowserOperationTool } from '../../domain/systemTool/browserOperation';
+import { createDocumentOperationTool } from '../../domain/systemTool/document';
 import { AgentUsageModuleName } from '../../domain/usage';
 
 export type FastAgentProviderState = {
@@ -108,6 +109,9 @@ export const runFastAgentLoop = async <TChildrenResponse = unknown>({
         : {}),
       ...(runtime.systemTools?.browserOperation?.enabled
         ? { browserOperationTool: createBrowserOperationTool() }
+        : {}),
+      ...(runtime.systemTools?.document?.enabled
+        ? { documentTool: createDocumentOperationTool() }
         : {})
     },
     executeTool: runtime.executeTool,
@@ -122,6 +126,7 @@ export const runFastAgentLoop = async <TChildrenResponse = unknown>({
     executeDatasetSearchTool: runtime.systemTools?.datasetSearch?.execute,
     datasetSearchCurrentInputFiles: runtime.systemTools?.datasetSearch?.currentInputFiles,
     executeBrowserOperationTool: runtime.systemTools?.browserOperation?.execute,
+    executeDocumentOperationTool: runtime.systemTools?.document?.execute,
     usagePush: runtime.usagePush,
     emitEvent: runtime.emitEvent
   };
