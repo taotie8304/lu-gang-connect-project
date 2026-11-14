@@ -18,6 +18,8 @@ type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<voi
 interface Props {
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
   loginSuccess: LoginSuccessHandler;
+  // 鲁港通 - LoginFormPanel 统一透传的嵌入标记（找回密码页无品牌行，接受即可）
+  hideBrand?: boolean;
 }
 
 interface RegisterType {

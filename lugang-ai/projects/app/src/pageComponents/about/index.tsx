@@ -379,20 +379,6 @@ const AboutPage = ({ defaultAppId }: { defaultAppId: string }) => {
               ))}
             </div>
           </div>
-
-          <div className="hero-login" id="a3Login">
-            <h2>{hero.loginTitle}</h2>
-            <p className="hero-login-sub">{hero.loginSub}</p>
-            {entry.kind === 'href' ? (
-              <NextLink className="btn dark hero-login-enter" href={entry.href}>
-                {hero.enterChat} <span>→</span>
-              </NextLink>
-            ) : (
-              <div className="hero-login-body">
-                <LoginContainer onSuccess={loginSuccess} />
-              </div>
-            )}
-          </div>
         </div>
         <div className="painting-note">{hero.painting}</div>
         <div className="scroll-cue">
@@ -404,40 +390,58 @@ const AboutPage = ({ defaultAppId }: { defaultAppId: string }) => {
       <section className="manifesto">
         <div className="wrap">
           <div className="section-no reveal">{manifesto.no}</div>
-          <h2 className="statement reveal">
-            {manifesto.titleLead}
-            <br />
-            <span className="dim">{manifesto.titleDim}</span>
-          </h2>
-          <p className="statement-sub reveal d1">{manifesto.sub}</p>
-          <div className="stats">
-            {manifesto.stats.map((stat, index) => (
-              <div
-                className={`stat reveal${index === 1 ? ' d1' : index === 2 ? ' d2' : ''}`}
-                key={index}
-              >
-                <b>
-                  {typeof stat.count === 'number' ? (
-                    <>
-                      <span
-                        data-stat-index={index}
-                        data-count={stat.count}
-                      >
-                        {formatCount(statCounts[index] ?? 0)}
-                      </span>
-                      {stat.suffix}
-                      <small>{stat.unit}</small>
-                    </>
-                  ) : (
-                    <>
-                      {stat.value}
-                      <small>{stat.unit}</small>
-                    </>
-                  )}
-                </b>
-                <span>{stat.desc}</span>
+          <div className="manifesto-grid">
+            <div className="manifesto-main">
+              <h2 className="statement reveal">
+                {manifesto.titleLead}
+                <br />
+                <span className="dim">{manifesto.titleDim}</span>
+              </h2>
+              <p className="statement-sub reveal d1">{manifesto.sub}</p>
+              <div className="stats">
+                {manifesto.stats.map((stat, index) => (
+                  <div
+                    className={`stat reveal${index === 1 ? ' d1' : index === 2 ? ' d2' : ''}`}
+                    key={index}
+                  >
+                    <b>
+                      {typeof stat.count === 'number' ? (
+                        <>
+                          <span
+                            data-stat-index={index}
+                            data-count={stat.count}
+                          >
+                            {formatCount(statCounts[index] ?? 0)}
+                          </span>
+                          {stat.suffix}
+                          <small>{stat.unit}</small>
+                        </>
+                      ) : (
+                        <>
+                          {stat.value}
+                          <small>{stat.unit}</small>
+                        </>
+                      )}
+                    </b>
+                    <span>{stat.desc}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+
+            <div className="about-login reveal d1" id="a3Login">
+              <h2>{hero.loginTitle}</h2>
+              <p className="about-login-sub">{hero.loginSub}</p>
+              {entry.kind === 'href' ? (
+                <NextLink className="btn dark about-login-enter" href={entry.href}>
+                  {hero.enterChat} <span>→</span>
+                </NextLink>
+              ) : (
+                <div className="about-login-body">
+                  <LoginContainer onSuccess={loginSuccess} embedded />
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>

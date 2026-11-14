@@ -32,6 +32,8 @@ type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<voi
 interface Props {
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
   loginSuccess: LoginSuccessHandler;
+  // 鲁港通 - 嵌入关于页登录卡时去掉顶部品牌行
+  hideBrand?: boolean;
 }
 
 interface LoginFormType {
@@ -39,7 +41,7 @@ interface LoginFormType {
   password: string;
 }
 
-const LoginForm = ({ setPageType, loginSuccess }: Props) => {
+const LoginForm = ({ setPageType, loginSuccess, hideBrand }: Props) => {
   const { t, i18n } = useTranslation();
   const { feConfigs } = useSystemStore();
   const query = useSearchParams();
@@ -119,9 +121,13 @@ const LoginForm = ({ setPageType, loginSuccess }: Props) => {
   });
 
   return (
-    <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.passwordLogin}>
+    <FormLayout
+      setPageType={setPageType}
+      pageType={LoginPageTypeEnum.passwordLogin}
+      hideBrand={hideBrand}
+    >
       <Box
-        mt={[0, 8]}
+        mt={hideBrand ? 0 : [0, 8]}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey && !requesting) {
             handleSubmit(onclickLogin)();

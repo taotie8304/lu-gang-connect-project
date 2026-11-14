@@ -23,6 +23,8 @@ type Props = {
   children: React.ReactNode;
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
   pageType: `${LoginPageTypeEnum}`;
+  // 鲁港通 - 嵌入关于页登录卡时不显示顶部品牌行
+  hideBrand?: boolean;
 };
 
 type OAuthItem = {
@@ -33,7 +35,7 @@ type OAuthItem = {
   redirectUrl?: string;
 };
 
-const FormLayout = ({ children, setPageType, pageType }: Props) => {
+const FormLayout = ({ children, setPageType, pageType, hideBrand }: Props) => {
   const { t } = useTranslation();
   const router = useRouter();
   const rootLogin = router.query.rootLogin === '1';
@@ -235,31 +237,38 @@ const FormLayout = ({ children, setPageType, pageType }: Props) => {
       alignItems={['center', 'stretch']}
       justifyContent={['center', 'flex-start']}
     >
-      <Flex
-        alignItems={'center'}
-        justifyContent={['flex-start', 'center']}
-        w={['fit-content', '100%']}
-        alignSelf={['flex-start', 'auto']}
-      >
-        <Flex alignItems={'center'} pr={['0', '4']} w={'fit-content'} justifyContent={'flex-start'}>
+      {!hideBrand && (
+        <Flex
+          alignItems={'center'}
+          justifyContent={['flex-start', 'center']}
+          w={['fit-content', '100%']}
+          alignSelf={['flex-start', 'auto']}
+        >
           <Flex
-            w={['42px', '56px']}
-            h={['42px', '56px']}
-            bg={'white'}
-            borderRadius={['semilg', 'lg']}
-            borderWidth={['1px', '1.5px']}
-            borderColor={'myGray.200'}
             alignItems={'center'}
-            justifyContent={'center'}
+            pr={['0', '4']}
+            w={'fit-content'}
+            justifyContent={'flex-start'}
           >
-            <MyImage src={LOGO_ICON} w={['22.5px', '36px']} alt={'icon'} />
+            <Flex
+              w={['42px', '56px']}
+              h={['42px', '56px']}
+              bg={'white'}
+              borderRadius={['semilg', 'lg']}
+              borderWidth={['1px', '1.5px']}
+              borderColor={'myGray.200'}
+              alignItems={'center'}
+              justifyContent={'center'}
+            >
+              <MyImage src={LOGO_ICON} w={['22.5px', '36px']} alt={'icon'} />
+            </Flex>
+            <Box ml={[3, 5]} fontSize={['lg', 'xl']} fontWeight={'bold'} color={'myGray.900'}>
+              {feConfigs?.systemTitle}
+            </Box>
           </Flex>
-          <Box ml={[3, 5]} fontSize={['lg', 'xl']} fontWeight={'bold'} color={'myGray.900'}>
-            {feConfigs?.systemTitle}
-          </Box>
         </Flex>
-      </Flex>
-      <Box w={'100%'} mt={[8, 0]}>
+      )}
+      <Box w={'100%'} mt={hideBrand ? 0 : [8, 0]}>
         {children}
       </Box>
       {show_oauth && (

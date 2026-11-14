@@ -14,12 +14,15 @@ import { useSystem } from '@fastgpt/web/hooks/useSystem';
 type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<void>;
 
 // login container component
+// 鲁港通 - embedded：嵌入关于页卡片时，隐藏语言切换、表单铺满卡片宽度并去掉品牌行
 export const LoginContainer = ({
   children,
-  onSuccess
+  onSuccess,
+  embedded
 }: {
   children?: React.ReactNode;
   onSuccess: LoginSuccessHandler;
+  embedded?: boolean;
 }) => {
   const { t } = useTranslation();
   const { feConfigs } = useSystemStore();
@@ -53,7 +56,7 @@ export const LoginContainer = ({
         flexDirection={'column'}
         justifyContent={['center', 'flex-start']}
       >
-        {!isPc && (
+        {!isPc && !embedded && (
           <Box mb={8} alignSelf={'flex-start'}>
             <I18nLngSelector />
           </Box>
@@ -64,6 +67,7 @@ export const LoginContainer = ({
           pageType={pageType}
           setPageType={setPageType}
           loginSuccess={loginSuccess}
+          embedded={embedded}
           reserveLoginGuideSpace={
             pageType === LoginPageTypeEnum.passwordLogin && !!loginGuideDocUrl
           }

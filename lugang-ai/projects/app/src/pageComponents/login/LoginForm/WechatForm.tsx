@@ -27,9 +27,11 @@ type LoginSuccessHandler = (res: LoginSuccessResponseType) => void | Promise<voi
 interface Props {
   loginSuccess: LoginSuccessHandler;
   setPageType: Dispatch<`${LoginPageTypeEnum}`>;
+  // 鲁港通 - 嵌入关于页登录卡时去掉顶部品牌行
+  hideBrand?: boolean;
 }
 
-const WechatForm = ({ setPageType, loginSuccess }: Props) => {
+const WechatForm = ({ setPageType, loginSuccess, hideBrand }: Props) => {
   const { t, i18n } = useTranslation();
   const { toast } = useToast();
 
@@ -73,7 +75,11 @@ const WechatForm = ({ setPageType, loginSuccess }: Props) => {
   );
 
   return (
-    <FormLayout setPageType={setPageType} pageType={LoginPageTypeEnum.wechat}>
+    <FormLayout
+      setPageType={setPageType}
+      pageType={LoginPageTypeEnum.wechat}
+      hideBrand={hideBrand}
+    >
       <Box>
         <Box w={'full'} textAlign={'center'} pt={8} fontWeight={'medium'} fontSize={['sm', 'md']}>
           {t('common:support.user.login.wx_qr_login')}

@@ -99,24 +99,9 @@ export const ABOUT_V3_CSS = `
 .lg-a3 .hero-inner {
   position: relative; z-index: 2; width: 100%; max-width: 1220px; margin: 0 auto;
   padding: 150px clamp(22px, 5vw, 64px) 110px;
-  display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px);
-  gap: clamp(32px, 5vw, 72px); align-items: center;
   will-change: transform, opacity;
 }
-.lg-a3 .hero-copy { min-width: 0; }
-.lg-a3 .hero-login {
-  background: rgba(255, 253, 248, .92);
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  padding: 28px 26px 24px;
-  box-shadow: 0 24px 60px -28px rgba(30, 29, 26, .35);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-}
-.lg-a3 .hero-login h2 { font-family: var(--serif); font-size: 26px; font-weight: 600; line-height: 1.3; }
-.lg-a3 .hero-login-sub { margin-top: 10px; font-size: 14px; line-height: 1.8; color: var(--muted); }
-.lg-a3 .hero-login-body { margin-top: 4px; }
-.lg-a3 .hero-login-enter { margin-top: 22px; }
+.lg-a3 .hero-copy { min-width: 0; max-width: 980px; }
 .lg-a3 .eyebrow {
   display: inline-flex; align-items: center; gap: 10px;
   font-size: 12px; letter-spacing: .3em; text-transform: uppercase; color: var(--blue);
@@ -185,10 +170,30 @@ export const ABOUT_V3_CSS = `
 .lg-a3 .d3 { transition-delay: .3s; }
 
 .lg-a3 .manifesto { padding: clamp(90px, 12vw, 160px) 0 clamp(70px, 9vw, 120px); background: var(--paper); }
+/* 鲁港通 - 01 节右侧内嵌登录卡：加宽容器，卡片顶与 statement 顶对齐 */
+.lg-a3 .manifesto .wrap { max-width: 1240px; padding-inline: clamp(22px, 4vw, 48px); }
+.lg-a3 .manifesto-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 380px);
+  gap: clamp(36px, 4vw, 60px); align-items: start;
+}
+.lg-a3 .manifesto-main { min-width: 0; }
 .lg-a3 .statement {
   font-family: var(--serif); font-weight: 600; letter-spacing: .01em;
   font-size: clamp(30px, 4.6vw, 62px); line-height: 1.32; max-width: 980px;
 }
+/* 鲁港通 - 两栏并排时略降字号，保证每句标题仍单行显示 */
+.lg-a3 .manifesto-grid .statement { font-size: clamp(28px, 4.1vw, 56px); }
+.lg-a3 .about-login {
+  background: rgba(255, 253, 248, .94);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 28px 26px 24px;
+  box-shadow: 0 24px 60px -28px rgba(30, 29, 26, .35);
+}
+.lg-a3 .about-login h2 { font-family: var(--serif); font-size: 26px; font-weight: 600; line-height: 1.3; }
+.lg-a3 .about-login-sub { margin-top: 10px; font-size: 14px; line-height: 1.8; color: var(--muted); }
+.lg-a3 .about-login-body { margin-top: 10px; }
+.lg-a3 .about-login-enter { margin-top: 22px; }
 .lg-a3 .statement .dim { color: rgba(30,29,26,.34); }
 .lg-a3 .statement-sub { margin-top: 34px; max-width: 640px; font-size: 17px; line-height: 2; color: var(--muted); }
 .lg-a3 .stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 64px; }
@@ -424,13 +429,17 @@ export const ABOUT_V3_CSS = `
   font-size: 12.5px; color: rgba(255,255,255,.36);
 }
 
+/* 鲁港通 - 平板及以下登录卡与正文堆叠，避免多语言长句在双栏里换行过多 */
+@media (max-width: 1080px) {
+  .lg-a3 .manifesto-grid { grid-template-columns: 1fr; }
+  .lg-a3 .manifesto-grid .statement { font-size: clamp(30px, 4.6vw, 62px); }
+  .lg-a3 .about-login { max-width: 440px; }
+}
 @media (max-width: 920px) {
   .lg-a3 .links a:not(.cta) { display: none; }
   .lg-a3 .hero-inner {
     padding-top: 130px; padding-bottom: 90px;
-    grid-template-columns: 1fr; align-items: start;
   }
-  .lg-a3 .hero-login { max-width: 440px; }
   .lg-a3 .hero h1 { font-size: clamp(36px, 10vw, 56px); }
   .lg-a3 .stats { grid-template-columns: 1fr; gap: 0; }
   .lg-a3 .stat { padding: 18px 0; }
