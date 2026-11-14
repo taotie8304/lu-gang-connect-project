@@ -12,7 +12,9 @@ export enum SubAppIds {
   ask = 'ask_agent',
   model = 'model_agent',
   readFiles = 'read_files',
-  datasetSearch = 'dataset_search'
+  datasetSearch = 'dataset_search',
+  // 鲁港通 - 文档生成/编辑系统工具
+  documentOperation = 'document_operation'
 }
 
 // TODO: 移除部分
@@ -38,6 +40,15 @@ export const systemSubInfo: Record<
     avatar: 'core/workflow/template/datasetSearch',
     toolDescription:
       '检索平台收录的官方参考资料，当需要专业知识、官方文档或历史内容时可以使用此工具'
+  },
+  [SubAppIds.documentOperation]: {
+    name: {
+      'zh-CN': '文档处理',
+      'zh-Hant': '文檔處理',
+      en: 'Document'
+    },
+    avatar: 'core/workflow/template/readFiles',
+    toolDescription: '生成、读取和修改对话中的文档文件'
   },
   [AGENT_SANDBOX_TOOLSET_ID]: {
     name: SANDBOX_NAME,

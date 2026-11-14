@@ -34,6 +34,14 @@ export type ChatHistoryItemResType = z.infer<typeof ChatHistoryItemResSchema>;
 
 /* One tool run response  */
 export type ToolRunResponseItemType = any;
+/* 鲁港通 - 聊天内生成/编辑后的文件卡片，仅保留展示与下载所需的最小字段 */
+export const ChatFileCardSchema = z.object({
+  key: z.string().min(1),
+  name: z.string().min(1),
+  format: z.enum(['docx', 'xlsx', 'pdf', 'md', 'pptx']),
+  size: z.number().nonnegative().optional()
+});
+export type ChatFileCardType = z.infer<typeof ChatFileCardSchema>;
 /* tool module response */
 export const ToolModuleResponseItemSchema = z.object({
   id: z.string(),
@@ -41,7 +49,9 @@ export const ToolModuleResponseItemSchema = z.object({
   toolAvatar: z.string(),
   params: z.string(),
   response: z.string().nullish(),
-  functionName: z.string()
+  functionName: z.string(),
+  // 鲁港通 - 工具执行产物随 toolResponse 一并下发，前端据此渲染文件卡片
+  files: z.array(ChatFileCardSchema).nullish()
 });
 export type ToolModuleResponseItemType = z.infer<typeof ToolModuleResponseItemSchema>;
 
@@ -225,6 +235,8 @@ export const AIChatItemValueSchema = z.object({
     .nullish(),
   tools: z.array(ToolModuleResponseItemSchema).nullish(),
   skills: z.array(SkillModuleResponseItemSchema).nullish(),
+  // 鲁港通 - 文件卡片独立成块，避免被「处理过程」折叠面板隐藏
+  files: z.array(ChatFileCardSchema).nullish(),
   interactive: WorkflowInteractiveResponseTypeSchema.optional(),
   plan: AgentPlanReadSchema.nullish(),
   planStatus: AgentPlanStatusSchema.nullish(),

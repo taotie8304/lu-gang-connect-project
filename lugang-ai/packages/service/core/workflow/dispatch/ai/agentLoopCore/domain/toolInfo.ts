@@ -6,7 +6,7 @@ export type AgentLoopCoreToolDisplayInfo = {
   toolDescription?: string;
 };
 
-export type AgentLoopCoreSystemToolType = 'file' | 'sandbox' | 'datasetSearch';
+export type AgentLoopCoreSystemToolType = 'file' | 'sandbox' | 'datasetSearch' | 'document';
 
 export type AgentLoopCoreSystemToolInfo = AgentLoopCoreToolDisplayInfo & {
   type: AgentLoopCoreSystemToolType;

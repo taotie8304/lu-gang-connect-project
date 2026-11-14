@@ -96,6 +96,8 @@ export type FastGPTFeConfigsType = {
   show_publish_offiaccount?: boolean;
   show_publish_wechat?: boolean;
   show_agent_sandbox?: boolean;
+  // 鲁港通 - 聊天内生成文件的保留天数（1..7，缺省 7），前端用于文件卡片过期提示
+  lugangChatFileRetentionDays?: number;
   pluginRemoteDebug?: boolean;
   enable_team_plugin_upload?: boolean;
 

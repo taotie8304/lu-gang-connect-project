@@ -2,6 +2,7 @@ import { getSystemToolInfo } from '@fastgpt/global/core/workflow/node/agent/cons
 import { getSandboxToolInfo } from '../../../../../../ai/sandbox/interface/toolCall';
 import { READ_FILES_TOOL_NAME } from '../../../../../../ai/llm/agentLoop/interface';
 import { DATASET_SEARCH_TOOL_NAME } from '../../../../../../ai/llm/agentLoop/interface';
+import { DOCUMENT_OPERATION_TOOL_NAME } from '../../../../../../ai/llm/agentLoop/domain/systemTool/document';
 import type {
   AgentLoopCoreSystemToolInfo,
   GetAgentLoopCoreToolInfoParams
@@ -27,10 +28,19 @@ export const getAgentLoopCoreSystemToolInfo = ({
     };
   }
 
-  if (name === READ_FILES_TOOL_NAME || name === DATASET_SEARCH_TOOL_NAME) {
+  if (
+    name === READ_FILES_TOOL_NAME ||
+    name === DATASET_SEARCH_TOOL_NAME ||
+    name === DOCUMENT_OPERATION_TOOL_NAME
+  ) {
     const info = getSystemToolInfo(name, lang);
     return {
-      type: name === READ_FILES_TOOL_NAME ? 'file' : 'datasetSearch',
+      type:
+        name === READ_FILES_TOOL_NAME
+          ? 'file'
+          : name === DATASET_SEARCH_TOOL_NAME
+            ? 'datasetSearch'
+            : 'document',
       name: info?.name || name,
       avatar: info?.avatar,
       toolDescription: info?.toolDescription || info?.name || name

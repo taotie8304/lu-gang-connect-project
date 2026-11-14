@@ -7,6 +7,7 @@ import {
   getAgentSandboxSkillMaxBytes
 } from '../../core/ai/sandbox/interface/config';
 import { hasAgentSandboxConfig, serviceEnv } from '../../env';
+import { getChatFileRetentionDays } from '../../common/s3/sources/chat/retention';
 
 const logger = getLogger(LogCategories.ERROR);
 
@@ -27,6 +28,8 @@ export const initFastGPTConfig = (config?: FastGPTConfigFileType) => {
     !!config.systemEnv.customPdfParse?.doc2xKey;
   config.feConfigs.customPdfParsePrice = config.systemEnv.customPdfParse?.price || 0;
   config.feConfigs.show_agent_sandbox = hasAgentSandboxConfig();
+  // 鲁港通 - 聊天文件保留天数公开给前端，供文件卡片展示与实际清理口径一致
+  config.feConfigs.lugangChatFileRetentionDays = getChatFileRetentionDays();
   config.feConfigs.uploadFileMaxSize = serviceEnv.UPLOAD_FILE_MAX_SIZE;
   config.feConfigs.uploadFileMaxAmount = serviceEnv.UPLOAD_FILE_MAX_AMOUNT;
   config.feConfigs.limit = {

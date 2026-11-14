@@ -82,7 +82,8 @@ export const createAgentLoopCoreEventStream = ({
 
   const streamToolResponse: AgentLoopCoreEventStream['streamToolResponse'] = ({
     toolCallId,
-    response
+    response,
+    files
   }) => {
     if (!streamAnswer) return;
 
@@ -97,7 +98,9 @@ export const createAgentLoopCoreEventStream = ({
           params: '',
           response: sliceToolResponse
             ? sliceStrStartEnd(response || '', 5000, 5000)
-            : response || ''
+            : response || '',
+          // 鲁港通 - 文件卡片独立于工具响应正文，前端按 key 合并去重
+          ...(files?.length ? { files } : {})
         }
       }
     });

@@ -14,6 +14,7 @@ import ChatItem from './ChatItem';
 import type { ChatBoxInputType } from '../type';
 import {
   hasAiAnswerContent,
+  hasAiFilesContent,
   hasAiInteractiveContent,
   hasAiProcessingContent
 } from './AIChatBubble/utils';
@@ -100,7 +101,11 @@ const ChatRecordsList = ({
       if (aiValue.hideInUI) return false;
 
       hasProcessing = hasProcessing || hasAiProcessingContent(aiValue);
-      return hasAiAnswerContent(aiValue) || hasAiInteractiveContent(aiValue);
+      return (
+        hasAiAnswerContent(aiValue) ||
+        hasAiInteractiveContent(aiValue) ||
+        hasAiFilesContent(aiValue)
+      );
     });
 
     return hasProcessing && !hasBlockingContent;

@@ -21,6 +21,7 @@ import {
   appendNodeResponseByParent,
   mergeNodeResponseDataByIdAndParent
 } from '@fastgpt/global/core/chat/utils/mergeNode';
+import { mergeChatFileCardsIntoValues } from '@fastgpt/global/core/chat/utils/files';
 import { SseResponseEventEnum } from '@fastgpt/global/core/workflow/runtime/constants';
 import { AuxiliaryGenerationEventEnum } from '@fastgpt/global/core/ai/auxiliaryGeneration/constants';
 import { TeamErrEnum } from '@fastgpt/global/common/error/code/team';
@@ -432,24 +433,31 @@ export const useChatGenerate = ({
           }
           return item;
         }
-        if (event === SseResponseEventEnum.toolResponse && tool && updateValue.tools) {
-          if (tool.response) {
-            updateValue.tools = updateValue.tools.map((item) =>
-              item.id === tool.id
-                ? { ...item, response: `${item.response || ''}${tool.response}` }
-                : item
-            );
-
-            return {
-              ...item,
-              value: [
-                ...item.value.slice(0, updateIndex),
-                updateValue,
-                ...item.value.slice(updateIndex + 1)
-              ]
-            };
+        if (event === SseResponseEventEnum.toolResponse && tool) {
+          // 鲁港通 - 工具产物文件以独立 value 即时展示；文件合并与工具正文更新互不依赖
+          let nextValues = item.value;
+          if (tool.files?.length) {
+            nextValues = mergeChatFileCardsIntoValues(nextValues, tool.files);
           }
-          return item;
+
+          const toolResponseTarget = nextValues[updateIndex];
+          if (tool.response && toolResponseTarget?.tools) {
+            const nextValue: AIChatItemValueItemType = {
+              ...toolResponseTarget,
+              tools: toolResponseTarget.tools.map((toolItem) =>
+                toolItem.id === tool.id
+                  ? { ...toolItem, response: `${toolItem.response || ''}${tool.response}` }
+                  : toolItem
+              )
+            };
+            nextValues = [
+              ...nextValues.slice(0, updateIndex),
+              nextValue,
+              ...nextValues.slice(updateIndex + 1)
+            ];
+          }
+
+          return nextValues === item.value ? item : { ...item, value: nextValues };
         }
 
         if (event === SseResponseEventEnum.planStatus && planStatus) {

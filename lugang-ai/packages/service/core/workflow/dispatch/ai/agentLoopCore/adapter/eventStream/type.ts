@@ -1,4 +1,5 @@
 import type { ChatCompletionMessageToolCall } from '@fastgpt/global/core/ai/llm/type';
+import type { ChatFileCardType } from '@fastgpt/global/core/chat/type';
 import type { WorkflowResponseType } from '../../../../type';
 import type { AgentLoopCoreToolDisplayInfo } from '../../domain/toolInfo';
 
@@ -15,7 +16,11 @@ export type AgentLoopCoreEventStream = {
   streamAnswer: (text: string) => void;
   streamToolCall: (call: ChatCompletionMessageToolCall) => void;
   streamToolParams: (args: { callId: string; argsDelta: string }) => void;
-  streamToolResponse: (args: { toolCallId: string; response?: string }) => void;
+  streamToolResponse: (args: {
+    toolCallId: string;
+    response?: string;
+    files?: ChatFileCardType[];
+  }) => void;
   streamPlanStatus: (status: 'generating' | 'updating') => void;
   streamPlan: (plan: unknown) => void;
   streamFlowNodeStatus: (args: { status: 'running'; name: string }) => void;

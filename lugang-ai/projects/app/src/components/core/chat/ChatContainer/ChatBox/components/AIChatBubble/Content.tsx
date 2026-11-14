@@ -14,6 +14,7 @@ import RenderProcessingPreview, {
 } from '../../../../components/AIResponseBox/RenderProcessingPreview';
 import {
   hasAiAnswerContent,
+  hasAiFilesContent,
   hasAiFoldableProcessingContent,
   hasAiInteractiveContent,
   hasAiProcessingContent,
@@ -123,7 +124,8 @@ const AIChatBubbleContent = ({
     processingGroup = [];
     const previewItem = group[group.length - 1];
     const hasFinishedContent = group.some(
-      ({ value }) => hasAiAnswerContent(value) || hasAiInteractiveContent(value)
+      ({ value }) =>
+        hasAiAnswerContent(value) || hasAiInteractiveContent(value) || hasAiFilesContent(value)
     );
     const isProcessing =
       isChatting &&
@@ -168,8 +170,9 @@ const AIChatBubbleContent = ({
     const hasStandaloneProcessing = hasAiStandaloneProcessingContent(value);
     const hasAnswer = hasAiAnswerContent(value);
     const hasInteractive = hasAiInteractiveContent(value);
+    const hasFiles = hasAiFilesContent(value);
 
-    if (!hasProcessing && !hasAnswer && !hasInteractive) return;
+    if (!hasProcessing && !hasAnswer && !hasInteractive && !hasFiles) return;
 
     if (hasFoldableProcessing) {
       processingGroup.push({ value, index });

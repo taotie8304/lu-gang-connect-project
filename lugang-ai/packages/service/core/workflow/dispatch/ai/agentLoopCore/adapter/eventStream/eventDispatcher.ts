@@ -2,6 +2,7 @@ import {
   normalizeAgentLoopUsages,
   type AgentLoopEvent
 } from '../../../../../../ai/llm/agentLoop/interface';
+import { readChatFileCardsFromMetadata } from '@fastgpt/global/core/chat/utils/files';
 import type { AgentLoopCoreEventStream } from './type';
 import type { createAgentLoopCoreToolRunResponseCollector } from '../nodeResponse';
 import type { ChatHistoryItemResType } from '@fastgpt/global/core/chat/type';
@@ -87,7 +88,9 @@ export const createAgentLoopCoreEventDispatcher = ({
         if (shouldStreamTool(functionName)) {
           eventStream.streamToolResponse({
             toolCallId: event.call.id,
-            response: event.response
+            response: event.response,
+            // 鲁港通 - 文档工具产物随 toolResponse 下发，前端即时渲染文件卡片
+            files: readChatFileCardsFromMetadata(event.metadata)
           });
         }
         toolRunCollector?.appendToolNodeResponse({

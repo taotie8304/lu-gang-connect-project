@@ -2,6 +2,10 @@ import type {
   AIChatItemValueItemType,
   ToolModuleResponseItemType
 } from '@fastgpt/global/core/chat/type';
+import {
+  mergeChatFileCardsIntoValues,
+  readChatFileCardsFromMetadata
+} from '@fastgpt/global/core/chat/utils/files';
 import type { AgentLoopEvent } from '../../../../../../ai/llm/agentLoop/interface';
 import {
   appendAgentLoopCoreAssistantResponseFromEvent,
@@ -34,6 +38,7 @@ const isPlainAssistantOutput = (value?: AIChatItemValueItemType) =>
   !value.id &&
   !value.tools?.length &&
   !value.skills?.length &&
+  !value.files?.length &&
   !value.interactive &&
   !value.plan &&
   !value.planStatus &&
@@ -363,6 +368,13 @@ export const createAgentLoopCoreAssistantEventCollector = ({
             ...tool,
             response: appendUniqueDelta(tool.response, event.response)
           }));
+        }
+
+        // 鲁港通 - 工具产物（如生成的文档）以独立文件 value 落库，刷新历史后仍可下载
+        const files = readChatFileCardsFromMetadata(event.metadata);
+        if (files.length) {
+          const nextValues = mergeChatFileCardsIntoValues(assistantResponses, files);
+          assistantResponses.splice(0, assistantResponses.length, ...nextValues);
         }
 
         return;

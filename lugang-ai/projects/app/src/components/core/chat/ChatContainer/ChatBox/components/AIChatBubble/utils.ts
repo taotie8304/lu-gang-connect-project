@@ -6,6 +6,9 @@ export const hasAiAnswerContent = (item: AIChatItemValueItemType) =>
 
 export const hasAiInteractiveContent = (item: AIChatItemValueItemType) => Boolean(item.interactive);
 
+// 鲁港通 - 文件卡片是独立的成品内容块，不属于「处理过程」
+export const hasAiFilesContent = (item: AIChatItemValueItemType) => Boolean(item.files?.length);
+
 export const hasAiProcessingContent = (item: AIChatItemValueItemType) => {
   if (item.hideInUI) return false;
 
@@ -41,6 +44,7 @@ export const shouldFilterAiValue = (item: AIChatItemValueItemType) => {
     item.tools?.length ||
     item.tool ||
     item.skills?.length ||
+    item.files?.length ||
     item.interactive ||
     item.plan ||
     item.planStatus ||

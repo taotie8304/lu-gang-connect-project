@@ -13,6 +13,7 @@ import {
 // 鲁港通 - 深度思考仅对 root 用户展示
 import { useUserStore } from '@/web/support/user/useUserStore';
 import RenderAgentAskInteractive from './RenderAgentAskInteractive';
+import RenderFiles from './RenderFiles';
 import RenderPaymentPauseInteractive from './RenderPaymentPauseInteractive';
 import RenderPlan from './RenderPlan';
 import RenderPlanStatus from './RenderPlanStatus';
@@ -159,6 +160,11 @@ const AIResponseBox = ({
         isDisabled={disableStreamingInteraction}
       />
     );
+  }
+
+  // 鲁港通 - 文件卡片不受 showAnswer 门控：独立成块，处理折叠场景也必须可见
+  if (value.files?.length) {
+    responseBlocks.push(<RenderFiles key="files" files={value.files} />);
   }
 
   if (showInteractive && 'interactive' in value && value.interactive) {
