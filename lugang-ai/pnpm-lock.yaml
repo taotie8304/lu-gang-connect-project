@@ -442,6 +442,9 @@ importers:
       '@opentelemetry/api':
         specifier: ^1.9.0
         version: 1.9.0
+      '@pdf-lib/fontkit':
+        specifier: 'catalog:'
+        version: 1.1.1
       '@t3-oss/env-core':
         specifier: 'catalog:'
         version: 0.13.10(typescript@6.0.3)(zod@4.1.12)

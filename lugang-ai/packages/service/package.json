@@ -29,6 +29,7 @@
     "@modelcontextprotocol/sdk": "catalog:",
     "@node-rs/jieba": "catalog:",
     "@opentelemetry/api": "^1.9.0",
+    "@pdf-lib/fontkit": "catalog:",
     "@t3-oss/env-core": "catalog:",
     "@xmldom/xmldom": "^0.8.10",
     "@zilliz/milvus2-sdk-node": "^2.6.17",
