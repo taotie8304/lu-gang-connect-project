@@ -16,6 +16,18 @@ export {
   type BrowserOperationArgs
 } from './browserOperation';
 export {
+  DOCUMENT_OPERATION_ACTIONS,
+  DOCUMENT_OPERATION_TOOL_NAME,
+  DocumentOperationArgsSchema,
+  createDocumentOperationTool,
+  parseDocumentOperationArgs,
+  type AgentLoopDocumentExecuteParams,
+  type AgentLoopDocumentExecutionResult,
+  type AgentLoopDocumentExecutor,
+  type DocumentEditOperation,
+  type DocumentOperationArgs
+} from './document';
+export {
   DATASET_SEARCH_TOOL_NAME,
   type AgentLoopDatasetSearchExecutor,
   type AgentLoopDatasetSearchExecutionResult,

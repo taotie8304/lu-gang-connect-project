@@ -95,7 +95,9 @@ const nextConfig: NextConfig = {
     '*': [
       '../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*',
       // 鲁港通 - playwright-core 启动时动态 require browsers.json，静态追踪收集不到（办事浏览器 SDK 依赖）：
-      '../../node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/browsers.json'
+      '../../node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/browsers.json',
+      // 鲁港通 - PDF 中文字体通过运行时路径读取，静态追踪收集不到（文档生成/填写依赖）：
+      '../../packages/service/core/ai/document/assets/**/*'
     ]
   },
   // Exclude build-time-only packages from standalone output file tracing

@@ -27,10 +27,11 @@ catalog:
   '@emotion/react': ^11
   '@emotion/styled': ^11
   '@fastgpt-sdk/anydoc': 0.2.5
+  '@hono/node-server': ^2.0.10
+  '@jspawn/qpdf-wasm': 0.0.2
   '@llamaindex/liteparse-wasm': 2.17.0
   '@modelcontextprotocol/sdk': ^1
   '@node-rs/jieba': 2.0.1
-  '@jspawn/qpdf-wasm': 0.0.2
   '@pdf-lib/fontkit': ^1.1.1
   '@svgr/webpack': ^6.5.1
   '@t3-oss/env-core': 0.13.10
@@ -46,9 +47,9 @@ catalog:
   '@types/react-dom': ^18
   '@types/request-ip': ^0.0.38
   '@vitest/coverage-v8': ^4.1.5
+  '@xmldom/xmldom': ^0.8.11
   '@xterm/addon-fit': ^0.10.0
   '@xterm/xterm': ^5.5.0
-  '@xmldom/xmldom': ^0.8.11
   adm-zip: ^0.5.16
   ahooks: ^3.9.5
   ajv: ^8.17.1
@@ -63,13 +64,14 @@ catalog:
   file-type: 21.3.0
   gpt-tokenizer: 3.4.0
   hono: 4.12.27
-  '@hono/node-server': ^2.0.10
   i18next: 23.16.8
   ipaddr.js: ^2.4.0
   js-yaml: ^4.1.1
   json5: ^2.2.3
   jsonwebtoken: ^9.0.3
   lodash-es: ^4.17.21
+  marked: ^18.0.9
+  mermaid: ^11.16.1
   mime: ^4.1.0
   mime-types: 3.0.2
   minio: 8.0.7
@@ -80,6 +82,8 @@ catalog:
   next-i18next: 15.4.2
   pdf-lib: ^1.17.1
   pdfjs-dist: 4.10.38
+  postcss: ^8.5.12
+  pptxgenjs: 3.12.0
   proxy-addr: 2.0.7
   proxy-agent: ^6
   react: ^18
@@ -99,9 +103,6 @@ catalog:
   vaul: ^1.1.2
   vitest: ^4.1.5
   zod: ^4
-  postcss: ^8.5.12
-  marked: ^18.0.9
-  mermaid: ^11.16.1
 
 catalogMode: prefer
 
@@ -132,11 +133,11 @@ onlyBuiltDependencies:
   - vue-demi
 
 overrides:
-  '@tootallnate/once': 2.0.1
-  'proxy-agent>pac-proxy-agent': 7.2.0
   '@swc/helpers': ^0.5.23
+  '@tootallnate/once': 2.0.1
   '@types/react': ^18
   '@types/react-dom': ^18
+  'proxy-agent>pac-proxy-agent': 7.2.0
   react: ^18
   react-dom: ^18
 
