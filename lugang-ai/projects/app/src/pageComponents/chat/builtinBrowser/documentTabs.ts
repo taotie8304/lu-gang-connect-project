@@ -11,7 +11,7 @@ export type DocPanelView = 'doc' | 'library' | 'landing' | 'browser';
 // 鲁港通 - 内容区路由：文件优先，其次常驻资料库；原生空白页显示落地页，其余保持浏览器画面
 export const resolveDocPanelView = (input: {
   activeDocToken: string | null;
-  status: 'loading' | 'active' | 'error';
+  status: 'idle' | 'loading' | 'active' | 'error';
   currentTabUrl?: string;
   libraryOpen?: boolean;
 }): DocPanelView => {

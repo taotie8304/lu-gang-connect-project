@@ -1,5 +1,6 @@
-// 鲁港通 - 单张场景卡：标题行点击展开，展开后填表并提交
-import { Box, Button, Flex, Text } from '@chakra-ui/react';
+// 鲁港通 - 单张场景卡：标题行点击展开，展开后填表并提交；
+// 网页端办事类场景只展开说明与客户端下载入口，不进入填表
+import { Box, Button, Flex, Link, Text } from '@chakra-ui/react';
 import { useTranslation } from 'next-i18next';
 import MyIcon from '@fastgpt/web/components/common/Icon';
 import { LG } from '@/pageComponents/chat/lugangTheme';
@@ -9,9 +10,12 @@ import type { ScenarioFormValues, ScenarioTemplate } from './types';
 type Props = {
   template: ScenarioTemplate;
   expanded: boolean;
+  desktopOnly?: boolean;
+  desktopOnlyOpen?: boolean;
   values: ScenarioFormValues;
   error: string | null;
   onToggle: () => void;
+  onDesktopOnlyToggle?: () => void;
   onChange: (key: string, value: string) => void;
   onErrorClear: () => void;
   onSubmit: () => void;
@@ -20,9 +24,12 @@ type Props = {
 const ScenarioCard = ({
   template,
   expanded,
+  desktopOnly = false,
+  desktopOnlyOpen = false,
   values,
   error,
   onToggle,
+  onDesktopOnlyToggle,
   onChange,
   onErrorClear,
   onSubmit
@@ -32,15 +39,16 @@ const ScenarioCard = ({
     template.id === 'generic'
       ? 'common:builtin_browser_scenario_plan'
       : 'common:builtin_browser_scenario_start';
+  const opened = desktopOnly ? desktopOnlyOpen : expanded;
 
   return (
     <Box
       w={'100%'}
       bg={'white'}
       border={'1px solid'}
-      borderColor={expanded ? LG.lineStrong : LG.line}
+      borderColor={opened ? LG.lineStrong : LG.line}
       borderRadius={'10px'}
-      boxShadow={expanded ? '0 6px 22px rgba(78,128,178,0.08)' : '0 2px 10px rgba(78,128,178,0.04)'}
+      boxShadow={opened ? '0 6px 22px rgba(78,128,178,0.08)' : '0 2px 10px rgba(78,128,178,0.04)'}
       overflow={'hidden'}
       transition={'border-color .15s ease'}
     >
@@ -54,9 +62,9 @@ const ScenarioCard = ({
         py={'10px'}
         textAlign={'left'}
         cursor={'pointer'}
-        aria-expanded={expanded}
+        aria-expanded={opened}
         _hover={{ bg: 'rgba(231,241,251,0.35)' }}
-        onClick={onToggle}
+        onClick={desktopOnly ? onDesktopOnlyToggle : onToggle}
       >
         <Flex
           w={'26px'}
@@ -71,9 +79,27 @@ const ScenarioCard = ({
           <MyIcon name={template.icon} w={'14px'} h={'14px'} color={'currentColor'} />
         </Flex>
         <Box flex={1} minW={0}>
-          <Text fontSize={'13px'} fontWeight={600} color={LG.text} lineHeight={'1.35'}>
-            {t(template.titleKey)}
-          </Text>
+          <Flex alignItems={'center'} gap={'6px'} flexWrap={'wrap'}>
+            <Text fontSize={'13px'} fontWeight={600} color={LG.text} lineHeight={'1.35'}>
+              {t(template.titleKey)}
+            </Text>
+            {desktopOnly && (
+              <Text
+                px={'6px'}
+                h={'18px'}
+                lineHeight={'18px'}
+                fontSize={'11px'}
+                color={LG.mountain}
+                bg={LG.paleSoft}
+                border={'1px solid'}
+                borderColor={LG.line}
+                borderRadius={'999px'}
+                whiteSpace={'nowrap'}
+              >
+                {t('common:builtin_browser_scenario_desktop_only')}
+              </Text>
+            )}
+          </Flex>
           <Text mt={'2px'} fontSize={'11.5px'} color={LG.muted} lineHeight={'1.45'}>
             {t(template.descKey)}
           </Text>
@@ -83,12 +109,34 @@ const ScenarioCard = ({
           w={'12px'}
           h={'12px'}
           color={LG.mutedSoft}
-          transform={expanded ? 'rotate(90deg)' : 'none'}
+          transform={opened ? 'rotate(90deg)' : 'none'}
           transition={'transform .15s ease'}
         />
       </Flex>
 
-      {expanded && (
+      {/* 鲁港通 - 网页端办事类场景：只解释能力差异并给客户端下载入口，不渲染表单 */}
+      {desktopOnly && desktopOnlyOpen && (
+        <Box px={'12px'} pt={'10px'} pb={'12px'} borderTop={'1px solid'} borderColor={LG.lineSoft}>
+          <Text fontSize={'12.5px'} color={LG.muted} lineHeight={'1.6'}>
+            {t('common:builtin_browser_scenario_desktop_only_desc')}
+          </Text>
+          <Flex alignItems={'center'} gap={'4px'} mt={'8px'}>
+            <Link
+              href={'/#home-download'}
+              target={'_blank'}
+              rel={'noopener noreferrer'}
+              fontSize={'12.5px'}
+              fontWeight={600}
+              color={LG.mountain}
+              textDecoration={'underline'}
+            >
+              {t('common:builtin_browser_scenario_download_client')}
+            </Link>
+          </Flex>
+        </Box>
+      )}
+
+      {!desktopOnly && expanded && (
         <Box px={'12px'} pt={'10px'} pb={'12px'} borderTop={'1px solid'} borderColor={LG.lineSoft}>
           <ScenarioFields
             template={template}

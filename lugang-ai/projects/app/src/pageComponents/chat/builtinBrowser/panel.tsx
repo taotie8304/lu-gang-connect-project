@@ -59,6 +59,13 @@ import type {
   DesktopLibraryItem
 } from './desktopBridge';
 import { resolveActiveDocToken, resolveDocPanelView, shouldHandleLibraryRequest } from './documentTabs';
+import {
+  connectActionLabelKey,
+  connectErrorTextKey,
+  initialConnectPhase,
+  shouldAutoConnectOnMount
+} from './connection';
+import type { BrowserConnectPhase } from './connection';
 import DocumentPreviewPanel, { DocumentFormatChip } from './documentPreview';
 import LibraryPanel, { LibraryDocToolbar } from './libraryPanel';
 import type { LibraryItemActions, LibraryPreview } from './libraryPanel';
@@ -232,7 +239,14 @@ const BuiltinBrowserPanelBody = ({
   const { openConfirm, ConfirmModal } = useConfirm({ type: 'common' });
   const builtinBrowser = useContext(BuiltinBrowserContext);
 
-  const [status, setStatus] = useState<'loading' | 'active' | 'error'>('loading');
+  // 鲁港通 - 桌面桥可用时走本地浏览器，否则保持云端 AgentBay
+  const transport = useMemo(() => createBuiltinBrowserTransport(), []);
+  const isNative = transport.usesNativeView;
+  // 鲁港通 - 网页版云端浏览器只读：不渲染画面与手动浏览控件，只展示进度与当前页
+  const cloudReadOnly = !isNative;
+
+  // 鲁港通 - 桌面端挂载即开台；网页端先空闲，等用户点击「连接办事浏览器」再建会话
+  const [status, setStatus] = useState<BrowserConnectPhase>(() => initialConnectPhase(isNative));
   const [session, setSession] = useState<BuiltinBrowserSessionState>();
   const [errorMessage, setErrorMessage] = useState('');
   const [remainingMs, setRemainingMs] = useState<number>();
@@ -285,11 +299,6 @@ const BuiltinBrowserPanelBody = ({
   const freezeRef = useRef<{ width: number; height: number; panelWidth: number } | null>(null);
   const tabsSchedulerRef = useRef<ReturnType<typeof createTabRefreshScheduler>>();
 
-  // 鲁港通 - 桌面桥可用时走本地浏览器，否则保持云端 AgentBay
-  const transport = useMemo(() => createBuiltinBrowserTransport(), []);
-  const isNative = transport.usesNativeView;
-  // 鲁港通 - 网页版云端浏览器只读：不渲染画面与手动浏览控件，只展示进度与当前页
-  const cloudReadOnly = !isNative;
   // 鲁港通 - 0.10.0 起桌面端提供原生导航/查找/缩放/下载能力，老客户端保持原样
   const controls = transport.controls;
   const hasPageOverlay = usePageOverlayOpen();
@@ -379,10 +388,11 @@ const BuiltinBrowserPanelBody = ({
     return requestOpenSession();
   }, [requestOpenSession]);
 
-  // 鲁港通 - 打开面板即开台；已有进行中的会话时服务端直接复用（不重复建台）
+  // 鲁港通 - 桌面端打开面板即开台；网页端等用户点击连接，避免打开右栏就空跑云端会话
   useEffect(() => {
+    if (!shouldAutoConnectOnMount(isNative)) return;
     void requestOpenSession();
-  }, [requestOpenSession]);
+  }, [isNative, requestOpenSession]);
 
   // 鲁港通 - 把右栏当前文件标签同步给主进程，AI 读取时优先读这份文件
   useEffect(() => {
@@ -2499,10 +2509,14 @@ const BuiltinBrowserPanelBody = ({
             {/* 鲁港通 - P2 场景模板：常用代办场景四卡，提交后由输入区自动发送指令 */}
             <ScenarioSection
               ref={scenarioSectionRef}
+              platform={isNative ? 'desktop' : 'web'}
               focus={builtinBrowser?.scenarioFocus ?? null}
               onSubmit={(text) => builtinBrowser?.queueScenarioPrompt(text)}
             />
 
+            {/* 鲁港通 - 网页版看不到网页画面：隐藏打开网址入口，只保留可用的查询类场景卡 */}
+            {isNative && (
+              <>
             <Flex alignItems={'center'} gap={'6px'} mb={'1'}>
               <MyIcon name={'common/globalLine'} w={'16px'} h={'16px'} color={LG.mountain} />
               <Text fontSize={'14.5px'} fontWeight={600} color={LG.ink}>
@@ -2573,6 +2587,8 @@ const BuiltinBrowserPanelBody = ({
                 </Button>
               </Flex>
             </Box>
+              </>
+            )}
 
             {documents && (
               <Box
@@ -2624,9 +2640,13 @@ const BuiltinBrowserPanelBody = ({
           >
             <MyIcon name={'common/loading'} w={'22px'} h={'22px'} color={LG.lake} />
             <Text fontSize={'14px'} color={LG.muted}>
-              {t('common:builtin_browser_loading')}
+              {t(
+                cloudReadOnly
+                  ? 'common:builtin_browser_web_connect_loading'
+                  : 'common:builtin_browser_loading'
+              )}
             </Text>
-            {loadingSlow && (
+            {loadingSlow && !cloudReadOnly && (
               <Text fontSize={'13px'} color={LG.mutedSoft} textAlign={'center'} px={6}>
                 {t('common:builtin_browser_loading_slow')}
               </Text>
@@ -2645,11 +2665,69 @@ const BuiltinBrowserPanelBody = ({
           >
             <MyIcon name={'common/error'} w={'22px'} h={'22px'} color={'red.500'} />
             <Text fontSize={'14px'} color={LG.text} textAlign={'center'}>
-              {errorMessage}
+              {errorMessage ||
+                (connectErrorTextKey('error')
+                  ? t(connectErrorTextKey('error') as any)
+                  : t('common:builtin_browser_open_failed'))}
             </Text>
             <Button size={'sm'} variant={'primary'} onClick={() => void loadSession()}>
               {t('common:builtin_browser_retry')}
             </Button>
+          </Flex>
+        )}
+
+        {/* 鲁港通 - 网页版空闲：查询类场景可直接使用；查看办理进度需要主动连接云端会话 */}
+        {cloudReadOnly && status === 'idle' && (
+          <Flex
+            h={'100%'}
+            flexDirection={'column'}
+            alignItems={'center'}
+            justifyContent={'flex-start'}
+            gap={'12px'}
+            px={6}
+            py={8}
+            overflowY={'auto'}
+          >
+            <ScenarioSection
+              ref={scenarioSectionRef}
+              platform={'web'}
+              focus={builtinBrowser?.scenarioFocus ?? null}
+              onSubmit={(text) => builtinBrowser?.queueScenarioPrompt(text)}
+            />
+            <Box
+              w={'100%'}
+              maxW={'380px'}
+              px={'14px'}
+              py={'12px'}
+              bg={'white'}
+              border={'1px solid'}
+              borderColor={LG.line}
+              borderRadius={'10px'}
+              boxShadow={'0 6px 22px rgba(78,128,178,0.06)'}
+              textAlign={'center'}
+            >
+              <Flex alignItems={'center'} justifyContent={'center'} gap={'6px'} mb={'6px'}>
+                <MyIcon name={'common/globalLine'} w={'15px'} h={'15px'} color={LG.mountain} />
+                <Text fontSize={'13px'} fontWeight={600} color={LG.ink}>
+                  {t('common:builtin_browser_web_readonly_title')}
+                </Text>
+              </Flex>
+              <Text fontSize={'12.5px'} color={LG.muted} lineHeight={'1.6'}>
+                {t('common:builtin_browser_web_readonly_desc')}
+              </Text>
+              <Button
+                size={'sm'}
+                variant={'primary'}
+                h={'30px'}
+                px={'14px'}
+                mt={'10px'}
+                fontSize={'12.5px'}
+                borderRadius={'7px'}
+                onClick={() => void loadSession()}
+              >
+                {t(connectActionLabelKey('idle') as any)}
+              </Button>
+            </Box>
           </Flex>
         )}
 

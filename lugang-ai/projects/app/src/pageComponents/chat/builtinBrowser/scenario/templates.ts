@@ -2,6 +2,7 @@
 import type {
   ScenarioFormValues,
   ScenarioId,
+  ScenarioPlatform,
   ScenarioTemplate
 } from './types';
 
@@ -50,6 +51,38 @@ const buildGenericPrompt = (values: ScenarioFormValues) => `【场景模板】�
 ${COMMON_RULES}
 5. 计划里不要包含代替我登录、接收验证码、付款或提交个人资料的步骤。`;
 
+// 鲁港通 - 网页/手机端只能查询：不操作网页，只给官方信息与本人办理入口
+const QUERY_COMMON_RULES = `要求：
+1. 只使用政府官方来源（gov.hk、td.gov.hk、immd.gov.hk、cr.gov.hk 等）与知识库内容，不引用转载站或营销内容，不编造链接；
+2. 只查询公开信息，不要尝试操作网页或代办线上流程，也不要假装已经查到实时结果；
+3. 遇到需要登录、预约、填表、付款或提交个人资料的步骤，请标明“这一步需要你本人到官网完成”，并给出官方入口；
+4. 用简体中文总结，写清办理条件、所需材料、费用与官方入口链接。`;
+
+const buildQueryTransportPrompt = (values: ScenarioFormValues) => `【场景模板】查询运输署牌照与驾驶事务
+主题：${valueOf(values, 'topic', '（未填写）')}
+请通过联网搜索与知识库查询该事项的公开信息，写清办理条件、所需材料、费用与官方入口。
+无法确认最新费用或办理要求时，请说明以官网为准，不要编造。
+${QUERY_COMMON_RULES}`;
+
+const buildQueryServicePrompt = (values: ScenarioFormValues) => `【场景模板】预约办理香港身份证
+地区偏好：${valueOf(values, 'region', '不限')}
+请通过联网搜索与知识库查询香港身份证预约的公开信息：预约所需证件与材料、费用、可办理地点与官方预约入口，以及预约操作步骤。
+可预约时段以官网实时显示为准，不要编造具体日期或时段。
+${QUERY_COMMON_RULES}`;
+
+// 鲁港通 - 办事类场景在网页端不提交；若被直接调用，也只返回说明，不生成浏览器指令
+const buildDesktopOnlyWebPrompt = () =>
+  `【场景模板】这个场景需要桌面客户端操作网页。
+网页版只能先查询公开信息，无法代替你操作网页或下载文件；如需办理，请使用桌面客户端。`;
+
+const buildPlatformPrompt =
+  (
+    desktopPrompt: (values: ScenarioFormValues) => string,
+    webPrompt?: (values: ScenarioFormValues) => string
+  ): ScenarioTemplate['buildPrompt'] =>
+  (values, platform: ScenarioPlatform = 'desktop') =>
+    platform === 'web' ? (webPrompt ?? buildDesktopOnlyWebPrompt)(values) : desktopPrompt(values);
+
 export const scenarioTemplates: ScenarioTemplate[] = [
   {
     id: 'forms',
@@ -70,7 +103,8 @@ export const scenarioTemplates: ScenarioTemplate[] = [
         placeholderKey: 'builtin_browser_scenario_forms_field_name_ph'
       }
     ],
-    buildPrompt: buildFormsPrompt
+    availability: 'desktop-only',
+    buildPrompt: buildPlatformPrompt(buildFormsPrompt)
   },
   {
     id: 'transport',
@@ -103,7 +137,8 @@ export const scenarioTemplates: ScenarioTemplate[] = [
         ]
       }
     ],
-    buildPrompt: buildTransportPrompt
+    availability: 'all',
+    buildPrompt: buildPlatformPrompt(buildTransportPrompt, buildQueryTransportPrompt)
   },
   {
     id: 'service',
@@ -124,7 +159,8 @@ export const scenarioTemplates: ScenarioTemplate[] = [
         ]
       }
     ],
-    buildPrompt: buildServicePrompt
+    availability: 'all',
+    buildPrompt: buildPlatformPrompt(buildServicePrompt, buildQueryServicePrompt)
   },
   {
     id: 'generic',
@@ -165,7 +201,8 @@ export const scenarioTemplates: ScenarioTemplate[] = [
         ]
       }
     ],
-    buildPrompt: buildGenericPrompt
+    availability: 'desktop-only',
+    buildPrompt: buildPlatformPrompt(buildGenericPrompt)
   }
 ];
 

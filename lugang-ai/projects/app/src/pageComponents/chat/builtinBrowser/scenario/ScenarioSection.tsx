@@ -10,36 +10,49 @@ import type {
   ScenarioFocus,
   ScenarioFormValues,
   ScenarioId,
+  ScenarioPlatform,
   ScenarioTemplate
 } from './types';
 
 type Props = {
   onSubmit: (promptText: string) => void;
   focus?: ScenarioFocus | null;
+  /** 鲁港通 - 缺省按桌面端：桌面端四卡照常，网页端查询卡走查询提示词、办事卡显示说明 */
+  platform?: ScenarioPlatform;
 };
 
 const buildDefaultValues = (template: ScenarioTemplate): ScenarioFormValues =>
   Object.fromEntries(template.fields.map((field) => [field.key, field.defaultValue ?? '']));
 
 const ScenarioSection = forwardRef<HTMLDivElement, Props>(function ScenarioSection(
-  { onSubmit, focus },
+  { onSubmit, focus, platform = 'desktop' },
   ref
 ) {
   const { t } = useTranslation();
   const [expandedId, setExpandedId] = useState<ScenarioId | null>(null);
+  // 鲁港通 - 网页端办事卡的说明区独立展开，不进入填表流程
+  const [desktopOnlyId, setDesktopOnlyId] = useState<ScenarioId | null>(null);
   const [valuesById, setValuesById] = useState<Partial<Record<ScenarioId, ScenarioFormValues>>>({});
   const [errorById, setErrorById] = useState<Partial<Record<ScenarioId, string | null>>>({});
 
   useEffect(() => {
     if (!focus) return;
     setExpandedId(focus.id ?? null);
+    setDesktopOnlyId(null);
   }, [focus?.nonce]);
 
   const valuesOf = (template: ScenarioTemplate) =>
     valuesById[template.id] ?? buildDefaultValues(template);
 
+  const isDesktopOnlyOnWeb = (template: ScenarioTemplate) =>
+    platform === 'web' && template.availability === 'desktop-only';
+
   const handleToggle = (id: ScenarioId) => {
     setExpandedId((prev) => (prev === id ? null : id));
+  };
+
+  const handleDesktopOnlyToggle = (id: ScenarioId) => {
+    setDesktopOnlyId((prev) => (prev === id ? null : id));
   };
 
   const handleChange = (template: ScenarioTemplate, key: string, value: string) => {
@@ -50,11 +63,12 @@ const ScenarioSection = forwardRef<HTMLDivElement, Props>(function ScenarioSecti
   };
 
   const handleSubmit = (template: ScenarioTemplate) => {
+    if (isDesktopOnlyOnWeb(template)) return;
     const values = valuesOf(template);
     const error = validateScenarioValues(template, values);
     setErrorById((prev) => ({ ...prev, [template.id]: error }));
     if (error) return;
-    onSubmit(template.buildPrompt(values));
+    onSubmit(template.buildPrompt(values, platform));
   };
 
   return (
@@ -71,9 +85,12 @@ const ScenarioSection = forwardRef<HTMLDivElement, Props>(function ScenarioSecti
             key={template.id}
             template={template}
             expanded={expandedId === template.id}
+            desktopOnly={isDesktopOnlyOnWeb(template)}
+            desktopOnlyOpen={desktopOnlyId === template.id}
             values={valuesOf(template)}
             error={errorById[template.id] ?? null}
             onToggle={() => handleToggle(template.id)}
+            onDesktopOnlyToggle={() => handleDesktopOnlyToggle(template.id)}
             onChange={(key, value) => handleChange(template, key, value)}
             onErrorClear={() =>
               setErrorById((prev) => (prev[template.id] ? { ...prev, [template.id]: null } : prev))
