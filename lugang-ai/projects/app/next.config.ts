@@ -94,6 +94,18 @@ const nextConfig: NextConfig = {
     // Node 24 resolves @swc/helpers through module-sync, but Next 16.3 does not trace all ESM helpers.
     '*': [
       '../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/esm/**/*',
+      '../../node_modules/.pnpm/@swc+helpers@*/node_modules/@swc/helpers/cjs/**/*',
+      // 鲁港通 - 文档工具（exceljs / pdf-lib 字体链 / date-fns）依赖的包在 Node 24 下按 exports
+      // 的 module-sync 等条件加载，static tracing 只收集到部分文件，运行期 require 时会因缺文件
+      // 导致整个聊天路由 500（2026-11-14 生产实证），这里按包补全运行时文件。
+      '../../node_modules/.pnpm/async-function@*/node_modules/async-function/**/*',
+      '../../node_modules/.pnpm/es-object-atoms@*/node_modules/es-object-atoms/**/*',
+      '../../node_modules/.pnpm/@noble+ciphers@*/node_modules/@noble/ciphers/**/*',
+      '../../node_modules/.pnpm/@noble+hashes@*/node_modules/@noble/hashes/**/*',
+      '../../node_modules/.pnpm/linebreak@*/node_modules/linebreak/**/*',
+      '../../node_modules/.pnpm/restructure@*/node_modules/restructure/**/*',
+      '../../node_modules/.pnpm/unicode-properties@*/node_modules/unicode-properties/**/*',
+      '../../node_modules/.pnpm/date-fns@*/node_modules/date-fns/**/*',
       // 鲁港通 - playwright-core 启动时动态 require browsers.json，静态追踪收集不到（办事浏览器 SDK 依赖）：
       '../../node_modules/.pnpm/playwright-core@*/node_modules/playwright-core/browsers.json',
       // 鲁港通 - PDF 中文字体通过运行时路径读取，静态追踪收集不到（文档生成/填写依赖）：
