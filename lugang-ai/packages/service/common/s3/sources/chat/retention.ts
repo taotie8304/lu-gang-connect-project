@@ -1,5 +1,5 @@
-// 鲁港通 - 对话文件保留期：环境变量可调 1..7 天，缺省 7 天，供上传 TTL 与清理口径复用。
-export const DEFAULT_CHAT_FILE_RETENTION_DAYS = 7;
+// 鲁港通 - 对话文件保留期：环境变量可调 1..7 天，缺省 3 天（上限 7 天），供上传 TTL 与清理口径复用。
+export const DEFAULT_CHAT_FILE_RETENTION_DAYS = 3;
 export const MAX_CHAT_FILE_RETENTION_DAYS = 7;
 export const MIN_CHAT_FILE_RETENTION_DAYS = 1;
 

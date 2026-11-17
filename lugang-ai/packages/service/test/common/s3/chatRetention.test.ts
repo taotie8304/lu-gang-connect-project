@@ -1,4 +1,5 @@
-// 鲁港通 - 对话文件 7 天保留：环境变量边界、用户上传 TTL 与预签名解耦
+// @vitest-environment node
+// 鲁港通 - 对话文件默认为 3 天保留（上限 7）：环境变量边界、用户上传 TTL 与预签名解耦
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { addDays, addHours, differenceInHours } from 'date-fns';
 import { createVitestStorageMock } from '@fastgpt-sdk/storage';
@@ -44,6 +45,12 @@ afterEach(() => {
 });
 
 describe('getChatFileRetentionDays', () => {
+  it('defaults to 3 days when the variable is unset', () => {
+    setRetention(undefined);
+    expect(DEFAULT_CHAT_FILE_RETENTION_DAYS).toBe(3);
+    expect(getChatFileRetentionDays()).toBe(3);
+  });
+
   it('keeps 1..7 days as configured', () => {
     setRetention('1');
     expect(getChatFileRetentionDays()).toBe(1);
