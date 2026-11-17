@@ -128,10 +128,54 @@ describe('场景卡平台分支', () => {
     expect(prompt).not.toContain('办事浏览器');
   });
 
+  it('网页端办事卡片标注「进阶版及以上」并给出套餐入口', async () => {
+    const { container } = await renderSection('web');
+
+    expect(container.textContent).toContain('common:builtin_browser_scenario_plan_required');
+
+    await click(findLeaf(container, 'builtin_browser_scenario_forms_title'));
+
+    expect(container.textContent).toContain(
+      'common:builtin_browser_scenario_plan_required_desc'
+    );
+    const planLink = container.querySelector('a[href="/price"]');
+    expect(planLink).toBeTruthy();
+    expect(planLink?.textContent).toBe('common:builtin_browser_scenario_view_plan');
+  });
+
+  it('网页端查询卡片不标注会员要求', async () => {
+    const { container } = await renderSection('web');
+
+    const badgeOwners = Array.from(container.querySelectorAll<HTMLElement>('*'))
+      .filter(
+        (node) =>
+          node.children.length === 0 &&
+          node.textContent === 'common:builtin_browser_scenario_plan_required'
+      )
+      .map((badge) => {
+        let node: HTMLElement = badge;
+        while (
+          node.parentElement &&
+          !/scenario_(forms|generic|transport|service)_title/.test(node.textContent ?? '')
+        ) {
+          node = node.parentElement;
+        }
+        return node.textContent ?? '';
+      });
+
+    expect(badgeOwners).toHaveLength(2);
+    expect(
+      badgeOwners.every(
+        (text) => text.includes('forms_title') || text.includes('generic_title')
+      )
+    ).toBe(true);
+  });
+
   it('桌面端不出现「需桌面客户端」，办事卡片照常展开表单', async () => {
     const { container } = await renderSection('desktop');
 
     expect(container.textContent).not.toContain('common:builtin_browser_scenario_desktop_only');
+    expect(container.textContent).not.toContain('common:builtin_browser_scenario_plan_required');
 
     await click(findLeaf(container, 'builtin_browser_scenario_forms_title'));
     expect(container.textContent).toContain('common:builtin_browser_scenario_privacy_note');

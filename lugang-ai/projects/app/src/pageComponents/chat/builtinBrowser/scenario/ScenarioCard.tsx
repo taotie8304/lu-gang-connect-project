@@ -84,20 +84,36 @@ const ScenarioCard = ({
               {t(template.titleKey)}
             </Text>
             {desktopOnly && (
-              <Text
-                px={'6px'}
-                h={'18px'}
-                lineHeight={'18px'}
-                fontSize={'11px'}
-                color={LG.mountain}
-                bg={LG.paleSoft}
-                border={'1px solid'}
-                borderColor={LG.line}
-                borderRadius={'999px'}
-                whiteSpace={'nowrap'}
-              >
-                {t('common:builtin_browser_scenario_desktop_only')}
-              </Text>
+              <>
+                <Text
+                  px={'6px'}
+                  h={'18px'}
+                  lineHeight={'18px'}
+                  fontSize={'11px'}
+                  color={LG.mountain}
+                  bg={LG.paleSoft}
+                  border={'1px solid'}
+                  borderColor={LG.line}
+                  borderRadius={'999px'}
+                  whiteSpace={'nowrap'}
+                >
+                  {t('common:builtin_browser_scenario_desktop_only')}
+                </Text>
+                <Text
+                  px={'6px'}
+                  h={'18px'}
+                  lineHeight={'18px'}
+                  fontSize={'11px'}
+                  color={LG.mountain}
+                  bg={LG.paleSoft}
+                  border={'1px solid'}
+                  borderColor={LG.line}
+                  borderRadius={'999px'}
+                  whiteSpace={'nowrap'}
+                >
+                  {t('common:builtin_browser_scenario_plan_required')}
+                </Text>
+              </>
             )}
           </Flex>
           <Text mt={'2px'} fontSize={'11.5px'} color={LG.muted} lineHeight={'1.45'}>
@@ -120,7 +136,10 @@ const ScenarioCard = ({
           <Text fontSize={'12.5px'} color={LG.muted} lineHeight={'1.6'}>
             {t('common:builtin_browser_scenario_desktop_only_desc')}
           </Text>
-          <Flex alignItems={'center'} gap={'4px'} mt={'8px'}>
+          <Text mt={'6px'} fontSize={'12.5px'} color={LG.muted} lineHeight={'1.6'}>
+            {t('common:builtin_browser_scenario_plan_required_desc')}
+          </Text>
+          <Flex alignItems={'center'} gap={'12px'} mt={'8px'} flexWrap={'wrap'}>
             <Link
               href={'/#home-download'}
               target={'_blank'}
@@ -131,6 +150,17 @@ const ScenarioCard = ({
               textDecoration={'underline'}
             >
               {t('common:builtin_browser_scenario_download_client')}
+            </Link>
+            <Link
+              href={'/price'}
+              target={'_blank'}
+              rel={'noopener noreferrer'}
+              fontSize={'12.5px'}
+              fontWeight={600}
+              color={LG.mountain}
+              textDecoration={'underline'}
+            >
+              {t('common:builtin_browser_scenario_view_plan')}
             </Link>
           </Flex>
         </Box>
