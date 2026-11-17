@@ -87,13 +87,18 @@ export const persistChatFiles = async ({
   contents,
   variables,
   variableList,
-  session
+  session,
+  sourceType
 }: {
   contents: (UserChatItemType | AIChatItemType)[];
   variables?: Record<string, any>;
   variableList?: VariableItemType[];
   session: ClientSession;
+  sourceType: `${ChatSourceTypeEnum}`;
 }) => {
+  // 鲁港通 - 普通对话的上传文件按保留期（默认 3 天）自动清理；仅技能编辑产物随对话长期保留
+  if (sourceType !== ChatSourceTypeEnum.skillEdit) return;
+
   // 移除 s3 ttl
   {
     const contentFileKeys = contents
@@ -381,7 +386,8 @@ export const finalizeChatRound = async (props: Props) => {
       contents: processedContent,
       variables,
       variableList,
-      session
+      session,
+      sourceType: chatSource.sourceType
     });
 
     if (chatSource.sourceType === ChatSourceTypeEnum.app) {
@@ -616,7 +622,8 @@ export const pushChatRecords = async (props: Props) => {
         contents: processedContent,
         variables,
         variableList,
-        session
+        session,
+        sourceType: chatSource.sourceType
       });
 
       if (chatSource.sourceType === ChatSourceTypeEnum.app) {
@@ -1025,7 +1032,8 @@ export const updateInteractiveChat = async ({
       contents: [userContent, aiContent],
       variables,
       variableList,
-      session
+      session,
+      sourceType: chatSource.sourceType
     });
   });
 

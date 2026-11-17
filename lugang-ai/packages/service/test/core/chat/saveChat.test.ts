@@ -732,6 +732,87 @@ describe('pushChatRecords', () => {
       });
     });
 
+    it('should keep S3 TTL for app chat uploaded files after finalization', async () => {
+      const responseChatItemId = 'app-chat-file-keep-ttl';
+      const fileKey = `chat/${ChatSourceTypeEnum.app}/${testAppId}/${testTmbId}/test-chat-id/file/app-chat.docx`;
+      const props = createMockProps(
+        {
+          userContent: {
+            dataId: responseChatItemId,
+            obj: ChatRoleEnum.Human,
+            value: [
+              {
+                file: {
+                  type: ChatFileTypeEnum.file,
+                  name: 'app-chat.docx',
+                  url: 'https://example.com/temp-preview',
+                  key: fileKey
+                }
+              }
+            ]
+          },
+          aiContent: {
+            dataId: responseChatItemId,
+            obj: ChatRoleEnum.AI,
+            value: [
+              {
+                text: {
+                  content: 'App chat answer'
+                }
+              }
+            ]
+          }
+        },
+        { appId: testAppId, teamId: testTeamId, tmbId: testTmbId }
+      );
+
+      await MongoS3TTL.create({
+        bucketName: S3Buckets.private,
+        minioKey: fileKey,
+        expiredTime: new Date(Date.now() + 60 * 60 * 1000)
+      });
+      await MongoChat.create({
+        appId: testAppId,
+        chatId: props.chatId,
+        teamId: testTeamId,
+        tmbId: testTmbId,
+        sourceType: ChatSourceTypeEnum.app,
+        source: props.source,
+        chatGenerateStatus: ChatGenerateStatusEnum.generating,
+        hasBeenRead: false
+      });
+      await MongoChatItem.create([
+        {
+          teamId: testTeamId,
+          tmbId: testTmbId,
+          sourceType: ChatSourceTypeEnum.app,
+          appId: testAppId,
+          chatId: props.chatId,
+          dataId: responseChatItemId,
+          obj: ChatRoleEnum.Human,
+          value: []
+        },
+        {
+          teamId: testTeamId,
+          tmbId: testTmbId,
+          sourceType: ChatSourceTypeEnum.app,
+          appId: testAppId,
+          chatId: props.chatId,
+          dataId: responseChatItemId,
+          obj: ChatRoleEnum.AI,
+          value: []
+        }
+      ]);
+
+      await finalizeChatRound(props);
+
+      const ttl = await MongoS3TTL.findOne({
+        bucketName: S3Buckets.private,
+        minioKey: fileKey
+      }).lean();
+      expect(ttl).not.toBeNull();
+    });
+
     it('should mark prepared round as error and keep ai placeholder', async () => {
       const responseChatItemId = 'prepared-ai-error';
       const props = createMockProps({}, { appId: testAppId, teamId: testTeamId, tmbId: testTmbId });
