@@ -76,6 +76,7 @@ export type DocumentOutline = {
   slides?: DocumentOutlineSlide[];
   slideCount?: number;
   slidesTruncated?: boolean;
+  images?: string[];
   pages?: number;
   hasTextLayer?: boolean;
   labels?: string[];

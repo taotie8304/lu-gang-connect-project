@@ -76,6 +76,90 @@ describe('document_operation generate 内容字段与格式匹配', () => {
   });
 });
 
+describe('PPT 幻灯片六种版式', () => {
+  const pptxBase = { action: 'generate', format: 'pptx', fileName: '演示' } as const;
+  const parseSlides = (slides: unknown[]) =>
+    DocumentOperationArgsSchema.safeParse({ ...pptxBase, slides });
+
+  const oneTable = (rows: number, cols = 2) => ({
+    header: Array.from({ length: cols }, (_, index) => `列${index}`),
+    rows: Array.from({ length: rows }, (_, row) =>
+      Array.from({ length: cols }, (_, col) => `r${row}c${col}`)
+    )
+  });
+  const oneChart = {
+    type: 'bar' as const,
+    categories: ['一月', '二月'],
+    series: [{ name: '销量', values: [10, 20] }]
+  };
+
+  it('六种版式都能解析', () => {
+    const result = parseSlides([
+      { layout: 'cover', title: '年度汇报', subtitle: '2026 年第二季度' },
+      { layout: 'section', title: '第一部分', subtitle: '工作回顾' },
+      { layout: 'bullets', title: '要点页', bullets: ['甲', '乙'] },
+      {
+        layout: 'image',
+        title: '图示页',
+        image: { sourceUrl: 'https://files.example.com/a.png', caption: '示意图' }
+      },
+      { layout: 'table', title: '对照页', table: oneTable(2) },
+      { layout: 'chart', title: '趋势页', chart: oneChart }
+    ]);
+    expect(result.success).toBe(true);
+  });
+
+  it('版式缺少对应内容或一页堆多种内容时拒绝', () => {
+    expect(parseSlides([{ layout: 'image', title: '图示页' }]).success).toBe(false);
+    expect(parseSlides([{ layout: 'table', title: '对照页' }]).success).toBe(false);
+    expect(parseSlides([{ layout: 'chart', title: '趋势页' }]).success).toBe(false);
+    expect(
+      parseSlides([{ layout: 'bullets', title: '要点页', table: oneTable(1) }]).success
+    ).toBe(false);
+    expect(
+      parseSlides([{ title: '混合页', table: oneTable(1), chart: oneChart }]).success
+    ).toBe(false);
+  });
+
+  it('表格行列、图表数值与图片地址受控', () => {
+    expect(parseSlides([{ title: '表格', table: oneTable(8) }]).success).toBe(true);
+    expect(parseSlides([{ title: '表格', table: oneTable(9) }]).success).toBe(false);
+    expect(
+      parseSlides([
+        { title: '表格', table: { header: ['列A', '列B'], rows: [['只有一列']] } }
+      ]).success
+    ).toBe(false);
+
+    const chartWith = (patch: Record<string, unknown>) => ({
+      title: '图表',
+      chart: { ...oneChart, ...patch }
+    });
+    expect(
+      parseSlides([
+        chartWith({ categories: Array.from({ length: 13 }, (_, index) => `分类${index}`) })
+      ]).success
+    ).toBe(false);
+    expect(
+      parseSlides([chartWith({ series: [{ name: '销量', values: [10] }] })]).success
+    ).toBe(false);
+    expect(
+      parseSlides([
+        chartWith({
+          type: 'pie',
+          series: [
+            { name: '甲', values: [1, 2] },
+            { name: '乙', values: [3, 4] }
+          ]
+        })
+      ]).success
+    ).toBe(false);
+
+    expect(
+      parseSlides([{ title: '图片', image: { sourceUrl: 'file:///C:/a.png' } }]).success
+    ).toBe(false);
+  });
+});
+
 describe('document_operation edit 组合上限', () => {
   it('替换类改动最多 50 条', () => {
     expect(editOps(Array.from({ length: 50 }, () => replaceOp)).success).toBe(true);
@@ -146,6 +230,43 @@ describe('document_operation edit 组合上限', () => {
 
   it('空改动清单被拒绝', () => {
     expect(editOps([]).success).toBe(false);
+  });
+});
+
+describe('document_operation PPT 图片与页结构调整', () => {
+  it('replace_image、delete_slide、move_slide 可以解析', () => {
+    const result = editOps([
+      { op: 'replace_image', image: 'image1.png', sourceUrl },
+      { op: 'delete_slide', slide: 2 },
+      { op: 'move_slide', from: 3, to: 1 }
+    ]);
+
+    expect(result.success).toBe(true);
+  });
+
+  it('幻灯片页码从 1 开始，0 被拒绝', () => {
+    expect(editOps([{ ...replaceOp, slide: 1 }]).success).toBe(true);
+    expect(editOps([{ ...replaceOp, slide: 0 }]).success).toBe(false);
+    expect(editOps([{ op: 'delete_slide', slide: 0 }]).success).toBe(false);
+    expect(editOps([{ op: 'move_slide', from: 0, to: 1 }]).success).toBe(false);
+    expect(editOps([{ op: 'move_slide', from: 1, to: 0 }]).success).toBe(false);
+  });
+
+  it('替换图片的新图地址必须是 http(s)，图片名不能带路径', () => {
+    expect(
+      editOps([{ op: 'replace_image', image: 'image1.png', sourceUrl: 'file:///C:/a.png' }]).success
+    ).toBe(false);
+    expect(
+      editOps([{ op: 'replace_image', image: '../image1.png', sourceUrl }]).success
+    ).toBe(false);
+  });
+
+  it('删除页与调整页序合计最多 30 条', () => {
+    const deletes = Array.from({ length: 30 }, () => ({ op: 'delete_slide', slide: 1 }));
+    expect(editOps(deletes).success).toBe(true);
+    expect(
+      editOps([...deletes, { op: 'move_slide', from: 1, to: 2 }]).success
+    ).toBe(false);
   });
 });
 

@@ -1,5 +1,6 @@
 // @vitest-environment node
 // 鲁港通 - 文档编辑端到端：五种格式产出副本并上传，未命中不产出，部分成功汇总原因
+import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockUploadChatFile = vi.hoisted(() => vi.fn());
@@ -72,6 +73,50 @@ const runWithFile = async <T>(
   } as unknown as WorkflowFileContext;
 
   return runWithContext({ mcpClientMemory: {}, fileContext }, () => fn(url));
+};
+
+// 鲁港通 - 多文件上下文：编辑 PPT 时需要同时提供原件与对话里的新图片
+const runWithFiles = async <T>(
+  files: Array<{ name: string; buffer: Buffer }>,
+  fn: (urls: Record<string, string>) => Promise<T>
+): Promise<T> => {
+  const entries = files.map((file) => ({
+    ...file,
+    url: `https://files.example/${encodeURIComponent(file.name)}`
+  }));
+  const findEntry = (target: string) => entries.find((entry) => entry.url === target);
+  const fileContext = {
+    limits: { maxFileAmount: 5, maxBytesPerFile: 20 * 1024 * 1024 },
+    resolve: (target: string) => {
+      const entry = findEntry(target);
+      return entry
+        ? {
+            name: entry.name,
+            type: ChatFileTypeEnum.file,
+            modelUrl: entry.url,
+            source: { type: 'externalHttp', url: entry.url }
+          }
+        : undefined;
+    },
+    getSource: async (target: string | WorkflowFileRef) => {
+      const url = typeof target === 'string' ? target : target.modelUrl ?? '';
+      const entry = findEntry(url);
+      if (!entry) throw new Error('file not found');
+      return {
+        source: {
+          kind: 'externalHttp' as const,
+          maxSizeBytes: 20 * 1024 * 1024,
+          metadata: { filename: entry.name },
+          materialize: async () => ({ buffer: entry.buffer, metadata: { filename: entry.name } })
+        },
+        sourceKind: 'internal' as const
+      };
+    }
+  } as unknown as WorkflowFileContext;
+
+  return runWithContext({ mcpClientMemory: {}, fileContext }, () =>
+    fn(Object.fromEntries(entries.map((entry) => [entry.name, entry.url])))
+  );
 };
 
 const fixtures = {
@@ -207,6 +252,59 @@ describe('文档编辑端到端', () => {
       expect(original.equals(snapshot)).toBe(true);
     }
   );
+
+  it('编辑 PPT 时把对话里的新图片替换进副本', async () => {
+    const oldPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const newPng = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 21, 22, 23]);
+    const deck = await generatePptx(
+      {
+        format: 'pptx',
+        fileName: '图文汇报',
+        slides: [
+          {
+            layout: 'image',
+            title: '现场照片',
+            image: { sourceUrl: 'https://files.example/old.png', caption: '旧图说明' }
+          }
+        ]
+      },
+      { loadImage: async () => ({ buffer: oldPng, extension: 'png' }) }
+    );
+    const zip = await JSZip.loadAsync(deck);
+    const mediaPath = Object.keys(zip.files).find((name) =>
+      /^ppt\/media\/image.*\.png$/.test(name)
+    )!;
+    const mediaName = mediaPath.slice(mediaPath.lastIndexOf('/') + 1);
+
+    await runWithFiles(
+      [
+        { name: '图文汇报.pptx', buffer: deck },
+        { name: '新图.png', buffer: newPng }
+      ],
+      async (urls) => {
+        const result = await executor({
+          call: makeCall({
+            action: 'edit',
+            sourceUrl: urls['图文汇报.pptx'],
+            operations: [
+              { op: 'replace_image', image: mediaName, sourceUrl: urls['新图.png'] }
+            ]
+          }),
+          messages: []
+        });
+        expect(result.response).toContain('（修改版）');
+      }
+    );
+
+    expect(mockUploadChatFile).toHaveBeenCalledTimes(1);
+    const outputZip = await JSZip.loadAsync(getUploadArgs().body);
+    expect(
+      Buffer.compare(await outputZip.file(`ppt/media/${mediaName}`)!.async('nodebuffer'), newPng)
+    ).toBe(0);
+  });
 
   it('指定 outputName 时按新名称生成副本', async () => {
     await runWithFile('家长会通知.docx', await fixtures.docx(), (sourceUrl) =>

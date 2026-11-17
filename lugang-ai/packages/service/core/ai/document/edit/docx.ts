@@ -319,6 +319,15 @@ export const editDocxXml = (
       continue;
     }
 
+    if (
+      operation.op === 'replace_image' ||
+      operation.op === 'delete_slide' ||
+      operation.op === 'move_slide'
+    ) {
+      skipped.push('图片替换、删除页与页序调整只适用于 PowerPoint，已跳过');
+      continue;
+    }
+
     skipped.push('填写表单与叠加文字只适用于 PDF，已跳过');
   }
 

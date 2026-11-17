@@ -1,16 +1,18 @@
 // 鲁港通 - PowerPoint 提纲：按页序给出每页标题与文字行，供模型按页码替换文字
 import { DOMParser } from '@xmldom/xmldom';
 import { hasZipMagic, loadDocumentArchive } from '../limits';
+import { readPptxSlideOrder } from '../pptxOrder';
 import {
   DocumentReadError,
   type DocumentOutline,
   type DocumentOutlineSlide
 } from '../types';
 
-const SLIDE_PART_PATTERN = /^ppt\/slides\/slide(\d+)\.xml$/;
+const MEDIA_PART_PATTERN = /^ppt\/media\/([^/]+)$/;
 const MAX_SLIDES = 60;
 const MAX_SLIDE_LINES = 12;
 const MAX_LINE_CHARS = 120;
+const MAX_MEDIA_FILES = 40;
 
 const INVALID_PPTX_MESSAGE =
   '无法读取这个文件，它不是有效的 PowerPoint（.pptx）演示文稿；请确认文件没有损坏或被改过后缀名。';
@@ -78,22 +80,25 @@ export const inspectPptx = async (
   const zip = await loadDocumentArchive(buffer);
   if (!zip.file('ppt/presentation.xml')) throw new DocumentReadError(INVALID_PPTX_MESSAGE);
 
-  const slideParts = Object.keys(zip.files)
-    .map((name) => {
-      const match = SLIDE_PART_PATTERN.exec(name);
-      return match ? { name, index: Number(match[1]) } : undefined;
-    })
-    .filter((part): part is { name: string; index: number } => part !== undefined)
-    .sort((first, second) => first.index - second.index);
+  const slideParts = (await readPptxSlideOrder(zip)).slides;
 
   if (slideParts.length === 0) throw new DocumentReadError(INVALID_PPTX_MESSAGE);
 
   const slides: NonNullable<DocumentOutline['slides']> = [];
   for (const [order, part] of slideParts.slice(0, MAX_SLIDES).entries()) {
-    const entry = zip.file(part.name);
+    const entry = zip.file(part.partPath);
     if (!entry) continue;
     const slide = inspectSlide(await entry.async('string'), order + 1);
     if (slide) slides.push(slide);
+  }
+
+  const mediaFiles = Object.keys(zip.files)
+    .map((name) => MEDIA_PART_PATTERN.exec(name)?.[1])
+    .filter((name): name is string => Boolean(name))
+    .sort((left, right) => left.localeCompare(right, 'zh-CN', { numeric: true }));
+  const warnings = [...common.warnings];
+  if (mediaFiles.length > MAX_MEDIA_FILES) {
+    warnings.push(`图片较多，只列出前 ${MAX_MEDIA_FILES} 张，其余仍可按文件名替换。`);
   }
 
   return {
@@ -102,7 +107,8 @@ export const inspectPptx = async (
     sizeBytes: common.sizeBytes,
     slides,
     slideCount: slideParts.length,
+    images: mediaFiles.slice(0, MAX_MEDIA_FILES),
     ...(slideParts.length > slides.length ? { slidesTruncated: true } : {}),
-    warnings: [...common.warnings]
+    warnings
   };
 };

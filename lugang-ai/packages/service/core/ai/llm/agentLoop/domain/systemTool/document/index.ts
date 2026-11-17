@@ -1,5 +1,5 @@
 // 鲁港通 - 文档操作工具（第二批：生成；第三批：读取与编辑）：
-// 任何端都可用，产物上传到对话文件目录，由聊天里的下载卡片交付（保留 7 天）。
+// 任何端都可用，产物上传到对话文件目录，由聊天里的下载卡片交付（默认保留 3 天）。
 import type {
   ChatCompletionMessageParam,
   ChatCompletionMessageToolCall,
@@ -7,7 +7,11 @@ import type {
 } from '@fastgpt/global/core/ai/llm/type';
 import { parseJsonArgs } from '../../../../../utils';
 import type { AgentLoopUsage } from '../../usage';
-import { DOCUMENT_GENERATE_FORMATS, DocumentOperationArgsSchema } from './schema';
+import {
+  DOCUMENT_GENERATE_FORMATS,
+  DocumentOperationArgsSchema,
+  SLIDE_LAYOUTS
+} from './schema';
 import type { DocumentOperationArgs } from './schema';
 
 export const DOCUMENT_OPERATION_TOOL_NAME = 'document_operation';
@@ -35,7 +39,7 @@ export type AgentLoopDocumentExecutor = (
 ) => Promise<AgentLoopDocumentExecutionResult>;
 
 const DOCUMENT_OPERATION_DESCRIPTION =
-  '生成、读取和修改文档文件。产物保存在本次对话的文件目录里，由聊天的下载卡片交付，7 天内可重复下载。用户要 Word、Excel、PDF、PPT 或 Markdown 文件时用 generate：format 选 docx/xlsx/pdf/md/pptx，fileName 不含扩展名；Word/PDF/Markdown 用 blocks 按顺序组织多级标题、正文段落、列表、表格、分隔线、分页（只有一两段简单内容时才用 content 纯文本，md 也可直接用 content 写原文），Excel 用 sheets 组织最多 5 个工作表（表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式），PPT 用 slides 组织最多 30 页（每页标题、最多 6 条要点、可选演讲者备注）。要修改本次对话里的已有文件时，先 read 读取提纲，再按提纲用 edit 提交修改；sourceUrl 只能取对话文件清单里的地址，不得编造，也不能用本机路径。编辑一律另存为新文件，不覆盖原件。编辑不支持增删页、改版式、扫描件改稿；受限于格式能力时应直接说明并给出替代方案。不要声称「已发送邮件」「已同步网盘」等未发生的行为；交付方式只有下载卡片。';
+  '生成、读取和修改文档文件。产物保存在本次对话的文件目录里，由聊天的下载卡片交付，默认保留 3 天内可重复下载。用户要 Word、Excel、PDF、PPT 或 Markdown 文件时用 generate：format 选 docx/xlsx/pdf/md/pptx，fileName 不含扩展名；Word/PDF/Markdown 用 blocks 按顺序组织多级标题、正文段落、列表、表格、分隔线、分页（只有一两段简单内容时才用 content 纯文本，md 也可直接用 content 写原文），Excel 用 sheets 组织最多 5 个工作表（表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式），PPT 用 slides 组织最多 30 页（每页用 layout 选版式：cover 封面、section 章节、bullets 要点、image 图文、table 表格、chart 图表；图文页的图片只能取本次对话文件清单里的地址；可选演讲者备注）。要修改本次对话里的已有文件时，先 read 读取提纲，再按提纲用 edit 提交修改；sourceUrl 只能取对话文件清单里的地址，不得编造，也不能用本机路径。编辑一律另存为新文件，不覆盖原件。编辑可以替换文字或图片清单里的已有图片、删除页、调整页序，不能新增页、插入全新图片、改版式或主题色，扫描件也不能改稿；受限于格式能力时应直接说明并给出替代方案。不要声称「已发送邮件」「已同步网盘」等未发生的行为；交付方式只有下载卡片。';
 
 export const createDocumentOperationTool = (): ChatCompletionTool => ({
   type: 'function',
@@ -163,18 +167,97 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
         },
         slides: {
           type: 'array',
-          description: 'generate 生成 PPT 时的幻灯片，最多 30 页，按数组顺序排列',
+          description:
+            'generate 生成 PPT 时的幻灯片，最多 30 页，按数组顺序排列；每页用 layout 选版式',
           items: {
             type: 'object',
             properties: {
+              layout: {
+                type: 'string',
+                enum: [...SLIDE_LAYOUTS],
+                description:
+                  '版式：cover 封面、section 章节、bullets 要点（默认）、image 图文、table 表格、chart 图表'
+              },
               title: {
                 type: 'string',
                 description: '该页标题，最多 120 字'
+              },
+              subtitle: {
+                type: 'string',
+                description: '封面或章节页的副标题，最多 200 字'
               },
               bullets: {
                 type: 'array',
                 items: { type: 'string' },
                 description: '该页要点，最多 6 条，每条最多 300 字'
+              },
+              image: {
+                type: 'object',
+                description: 'layout 为 image 时的图片：只能取本次对话文件清单里的地址',
+                properties: {
+                  sourceUrl: {
+                    type: 'string',
+                    description: '对话文件清单里的图片地址（http/https），不得编造'
+                  },
+                  caption: {
+                    type: 'string',
+                    description: '图片说明，最多 200 字'
+                  }
+                },
+                required: ['sourceUrl']
+              },
+              table: {
+                type: 'object',
+                description: 'layout 为 table 时的表格：最多 8 行 6 列',
+                properties: {
+                  header: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '表头，最多 6 列，每格最多 80 字'
+                  },
+                  rows: {
+                    type: 'array',
+                    items: {
+                      type: 'array',
+                      items: { type: 'string' }
+                    },
+                    description: '数据行，最多 8 行，每行列数需与表头一致'
+                  }
+                },
+                required: ['header', 'rows']
+              },
+              chart: {
+                type: 'object',
+                description: 'layout 为 chart 时的图表：柱状、折线或饼图，最多 3 个系列',
+                properties: {
+                  type: {
+                    type: 'string',
+                    enum: ['bar', 'line', 'pie'],
+                    description: '图表类型：bar 柱状、line 折线、pie 饼图（饼图只能一组数据）'
+                  },
+                  categories: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: '分类标签，最多 12 个，每个最多 30 字'
+                  },
+                  series: {
+                    type: 'array',
+                    items: {
+                      type: 'object',
+                      properties: {
+                        name: { type: 'string', description: '系列名称，最多 30 字' },
+                        values: {
+                          type: 'array',
+                          items: { type: 'number' },
+                          description: '数值，个数要与分类数量一致'
+                        }
+                      },
+                      required: ['name', 'values']
+                    },
+                    description: '数据系列，最多 3 个'
+                  }
+                },
+                required: ['type', 'categories', 'series']
               },
               notes: {
                 type: 'string',
@@ -191,7 +274,7 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
         operations: {
           type: 'array',
           description:
-            'edit 的修改清单，按数组顺序执行，最多 60 条；替换/改写合计最多 50 处、插入追加最多 20 段、Excel 单元格合计最多 200 个、PDF 填写最多 40 项，超出请分次修改。段落序号、表格序号与工作表名称来自 read 返回的提纲',
+            'edit 的修改清单，按数组顺序执行，最多 60 条；替换/改写合计最多 50 处、插入追加最多 20 段、Excel 单元格合计最多 200 个、PDF 填写最多 40 项、PPT 删页与调序合计最多 30 条，超出请分次修改。段落序号、表格序号与工作表名称来自 read 返回的提纲',
           items: {
             type: 'object',
             properties: {
@@ -206,10 +289,13 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
                   'set_cell',
                   'append_row',
                   'fill_field',
-                  'add_text'
+                  'add_text',
+                  'replace_image',
+                  'delete_slide',
+                  'move_slide'
                 ],
                 description:
-                  '操作类型：replace_text 替换文字（可限定段落、工作表或幻灯片）、set_paragraph 整段改写、insert_paragraph 在某段后插入、append_paragraph 文末追加、set_table_cell 改 Word 表格单元格、set_cell 改 Excel 单元格、append_row 工作表追加一行、fill_field 填写 PDF 表单字段、add_text 在 PDF 标签旁叠加文字'
+                  '操作类型：replace_text 替换文字（可限定段落、工作表或幻灯片）、set_paragraph 整段改写、insert_paragraph 在某段后插入、append_paragraph 文末追加、set_table_cell 改 Word 表格单元格、set_cell 改 Excel 单元格、append_row 工作表追加一行、fill_field 填写 PDF 表单字段、add_text 在 PDF 标签旁叠加文字、replace_image 替换 PPT 里的已有图片、delete_slide 删除 PPT 页、move_slide 调整 PPT 页序'
               },
               find: {
                 type: 'string',
@@ -229,7 +315,26 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
               },
               slide: {
                 type: 'number',
-                description: '幻灯片页码（0 开始）；replace_text 限定范围时可选'
+                description:
+                  '幻灯片页码（从 1 开始）；replace_text 限定范围时可选，delete_slide 时必填'
+              },
+              image: {
+                type: 'string',
+                description:
+                  'replace_image 要替换的图片文件名，来自 read 返回的图片清单，例如 image1.png；不能带路径'
+              },
+              sourceUrl: {
+                type: 'string',
+                description:
+                  'replace_image 的新图片地址，只能取本次对话文件清单里的 http(s) 地址'
+              },
+              from: {
+                type: 'number',
+                description: 'move_slide 要移动的幻灯片页码（从 1 开始）'
+              },
+              to: {
+                type: 'number',
+                description: 'move_slide 移动后的目标页码（从 1 开始）'
               },
               after: {
                 type: 'number',

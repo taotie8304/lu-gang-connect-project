@@ -1,4 +1,5 @@
 // @vitest-environment node
+import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockUploadChatFile = vi.hoisted(() => vi.fn());
@@ -41,6 +42,37 @@ const makeCall = (args: unknown) => ({
 const getUploadArgs = (index = 0) => mockUploadChatFile.mock.calls[index][0];
 
 const DOCX_URL = 'https://files.example/upload.docx';
+const PNG_URL = 'https://files.example/diagram.png';
+const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64'
+);
+
+const buildFileContext = (params: {
+  url: string;
+  filename: string;
+  buffer: Buffer;
+}): WorkflowFileContext => {
+  const ref: WorkflowFileRef = {
+    name: params.filename,
+    type: ChatFileTypeEnum.file,
+    modelUrl: params.url,
+    source: { type: 'externalHttp', url: params.url }
+  };
+  return {
+    limits: { maxFileAmount: 5, maxBytesPerFile: 20 * 1024 * 1024 },
+    resolve: (url: string) => (url === params.url ? ref : undefined),
+    getSource: async () => ({
+      source: {
+        kind: 'externalHttp' as const,
+        maxSizeBytes: 20 * 1024 * 1024,
+        metadata: { filename: params.filename },
+        materialize: async () => ({ buffer: params.buffer, metadata: { filename: params.filename } })
+      },
+      sourceKind: 'internal' as const
+    })
+  } as unknown as WorkflowFileContext;
+};
 
 const runWithDocxFile = async <T>(fn: () => Promise<T>): Promise<T> => {
   const buffer = await generateDocx({
@@ -75,6 +107,15 @@ const runWithDocxFile = async <T>(fn: () => Promise<T>): Promise<T> => {
   return runWithContext({ mcpClientMemory: {}, fileContext }, fn);
 };
 
+const runWithImageFile = async <T>(fn: () => Promise<T>): Promise<T> => {
+  const fileContext = buildFileContext({
+    url: PNG_URL,
+    filename: '示意图.png',
+    buffer: PNG_1PX
+  });
+  return runWithContext({ mcpClientMemory: {}, fileContext }, fn);
+};
+
 describe('createDocumentOperationExecutor', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -84,7 +125,7 @@ describe('createDocumentOperationExecutor', () => {
     });
   });
 
-  it('生成 Markdown 后只上传一次，返回文件卡片元数据与 7 天保留时间', async () => {
+  it('生成 Markdown 后只上传一次，返回文件卡片元数据与 3 天保留时间', async () => {
     const result = await executor({
       call: makeCall({
         action: 'generate',
@@ -106,8 +147,8 @@ describe('createDocumentOperationExecutor', () => {
     });
 
     const retentionDays = (getUploadArgs().expiredTime.getTime() - Date.now()) / 86400000;
-    expect(retentionDays).toBeGreaterThan(6.9);
-    expect(retentionDays).toBeLessThan(7.1);
+    expect(retentionDays).toBeGreaterThan(2.9);
+    expect(retentionDays).toBeLessThan(3.1);
 
     expect(result.response).toContain('香港 办事指南.md');
     expect(result.usages).toEqual([]);
@@ -142,6 +183,29 @@ describe('createDocumentOperationExecutor', () => {
     expect(result.metadata).toMatchObject({
       files: [{ name: '人员名单.xlsx', format: 'xlsx', size: expect.any(Number) }]
     });
+  });
+
+  it('生成图文 PPT 时从本次对话文件读取图片并打进演示文稿', async () => {
+    const result = await runWithImageFile(() =>
+      executor({
+        call: makeCall({
+          action: 'generate',
+          format: 'pptx',
+          fileName: '图文演示',
+          slides: [{ layout: 'image', title: '图示页', image: { sourceUrl: PNG_URL } }]
+        }),
+        messages: []
+      })
+    );
+
+    expect(result.metadata).toMatchObject({
+      files: [{ name: '图文演示.pptx', format: 'pptx', size: expect.any(Number) }]
+    });
+    const body = getUploadArgs().body as Buffer;
+    const zip = await JSZip.loadAsync(body);
+    expect(Object.keys(zip.files).some((name) => /^ppt\/media\/image.*\.png$/.test(name))).toBe(
+      true
+    );
   });
 
   it('同一对话重复生成同名文件时自动追加序号', async () => {

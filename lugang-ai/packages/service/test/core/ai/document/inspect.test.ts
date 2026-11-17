@@ -230,6 +230,21 @@ describe('inspectDocument PowerPoint', () => {
     expect(outline.slidesTruncated).toBe(true);
     expect(outline.slides?.[0]).toMatchObject({ index: 1, title: '第 1 页标题' });
   });
+
+  it('列出演示文稿里的图片清单', async () => {
+    const buffer = await buildZip({
+      'ppt/presentation.xml':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"/>',
+      'ppt/slides/slide1.xml':
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree/></p:cSld></p:sld>',
+      'ppt/media/image1.png': 'png',
+      'ppt/media/image10.jpeg': 'jpeg',
+      'ppt/media/thumb.png': 'png'
+    });
+    const outline = await inspectDocument(source(buffer, '图集.pptx'));
+
+    expect(outline.images).toEqual(['image1.png', 'image10.jpeg', 'thumb.png']);
+  });
 });
 
 describe('inspectDocument PDF', () => {
@@ -390,5 +405,23 @@ describe('formatDocumentOutline', () => {
 
     expect(text.length).toBeLessThanOrEqual(12200);
     expect(text).toContain('提纲较长');
+  });
+
+  it('PPT 提纲附图片清单与可用的编辑动作', () => {
+    const text = formatDocumentOutline({
+      format: 'pptx',
+      fileName: '图集.pptx',
+      sizeBytes: 1024,
+      warnings: [],
+      slides: [{ index: 1, title: '封面', lines: [] }],
+      slideCount: 1,
+      images: ['image1.png']
+    });
+
+    expect(text).toContain('image1.png');
+    expect(text).toContain('replace_image');
+    expect(text).toContain('delete_slide');
+    expect(text).toContain('move_slide');
+    expect(text).toContain('从 1 开始');
   });
 });

@@ -213,6 +213,81 @@ describe('PPT 生成器', () => {
     expect(slide1).toContain('第一段摘要');
   });
 
+  it('六种版式生成封面、章节、要点、图文、表格与图表页', async () => {
+    const pngBuffer = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64'
+    );
+    const buffer = await generatePptx(
+      {
+        format: 'pptx',
+        fileName: '全版式',
+        title: '全版式示例',
+        slides: [
+          { layout: 'cover', title: '年度汇报', subtitle: '2026 年第二季度' },
+          { layout: 'section', title: '第一部分', subtitle: '工作回顾' },
+          { layout: 'bullets', title: '要点页', bullets: ['甲要点', '乙要点'] },
+          {
+            layout: 'image',
+            title: '图示页',
+            image: { sourceUrl: 'https://files.example.com/a.png', caption: '示意图说明' }
+          },
+          { layout: 'table', title: '对照页', table: { header: ['项目', '说明'], rows: [['A', '说明A']] } },
+          {
+            layout: 'chart',
+            title: '趋势页',
+            chart: {
+              type: 'bar',
+              categories: ['一月', '二月'],
+              series: [{ name: '销量', values: [10, 20] }]
+            }
+          }
+        ]
+      },
+      { loadImage: async () => ({ buffer: pngBuffer, extension: 'png' }) }
+    );
+
+    const zip = await JSZip.loadAsync(buffer);
+    const names = Object.keys(zip.files);
+    const slideNames = names.filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name));
+    expect(slideNames).toHaveLength(6);
+
+    const slidesXml = (
+      await Promise.all(slideNames.map((name) => zip.file(name)!.async('string')))
+    ).join('');
+    expect(slidesXml).toContain('年度汇报');
+    expect(slidesXml).toContain('2026 年第二季度');
+    expect(slidesXml).toContain('第一部分');
+    expect(slidesXml).toContain('甲要点');
+    expect(slidesXml).toContain('示意图说明');
+    expect(slidesXml).toContain('说明A');
+    expect(slidesXml).toContain('<a:tbl>');
+    expect(names.some((name) => /^ppt\/media\/image.*\.png$/.test(name))).toBe(true);
+
+    const chartNames = names.filter((name) => /^ppt\/charts\/chart\d+\.xml$/.test(name));
+    expect(chartNames).toHaveLength(1);
+    const chartXml = await zip.file(chartNames[0])!.async('string');
+    expect(chartXml).toContain('一月');
+    expect(chartXml).toMatch(/barChart/);
+  });
+
+  it('图文页没有图片读取通道时给出可操作提示', async () => {
+    await expect(
+      generatePptx({
+        format: 'pptx',
+        fileName: '缺图',
+        title: '缺图',
+        slides: [
+          {
+            layout: 'image',
+            title: '图示页',
+            image: { sourceUrl: 'https://files.example.com/a.png' }
+          }
+        ]
+      })
+    ).rejects.toThrow('本次对话上传');
+  });
+
   it('超限或空内容返回可操作错误', async () => {
     await expect(
       generatePptx({

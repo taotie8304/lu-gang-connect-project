@@ -105,7 +105,14 @@ const formatSlides = (outline: DocumentOutline): string[] => {
   if (outline.slidesTruncated) {
     lines.push('（页数较多，仅列出前面这些页；其余页仍可用页码替换。）');
   }
-  lines.push('可改动用 edit 动作：replace_text（可带 slide 指定页码，从 1 开始）。');
+  const images = outline.images ?? [];
+  if (images.length > 0) {
+    lines.push('图片清单（按文件名替换，新图须与原图格式一致）：');
+    for (const image of images) lines.push(`- ${image}`);
+  }
+  lines.push(
+    '可改动用 edit 动作：replace_text（可带 slide 指定页码，从 1 开始）、replace_image（image 填图片清单里的文件名，sourceUrl 填对话文件清单里的新图地址）、delete_slide（按页码删除，至少保留 1 页）、move_slide（from/to 调整页序）。'
+  );
   return lines;
 };
 

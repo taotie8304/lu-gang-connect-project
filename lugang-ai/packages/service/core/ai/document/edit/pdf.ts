@@ -563,7 +563,10 @@ const PDF_OP_SKIP_NOTES: Partial<Record<DocumentEditOperation['op'], string>> = 
   append_paragraph: '段落操作只适用于 Word，已跳过',
   set_table_cell: '表格单元格操作只适用于 Word，已跳过',
   set_cell: '单元格操作只适用于 Excel，已跳过',
-  append_row: '追加行操作只适用于 Excel，已跳过'
+  append_row: '追加行操作只适用于 Excel，已跳过',
+  replace_image: '图片替换只适用于 PowerPoint，已跳过',
+  delete_slide: '删除页只适用于 PowerPoint，已跳过',
+  move_slide: '页序调整只适用于 PowerPoint，已跳过'
 };
 
 export const editPdf = async ({

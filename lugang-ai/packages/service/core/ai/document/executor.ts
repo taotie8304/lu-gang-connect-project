@@ -58,7 +58,8 @@ const generateDocumentBuffer = (args: DocumentGenerateArgs): Promise<Buffer> | B
     case 'pdf':
       return generatePdf(args);
     case 'pptx':
-      return generatePptx(args);
+      // 鲁港通 - 图文页的图片只允许来自本次对话文件清单
+      return generatePptx(args, { loadImage: (sourceUrl) => resolveDocumentSource(sourceUrl) });
     case 'md':
       return generateMarkdown(args);
   }
@@ -95,7 +96,11 @@ const editDocumentBuffer = ({
     case 'pdf':
       return editPdf({ buffer, operations });
     case 'pptx':
-      return editPptx({ buffer, operations });
+      return editPptx({
+        buffer,
+        operations,
+        loadImage: (sourceUrl) => resolveDocumentSource(sourceUrl)
+      });
     case 'md':
       return editMarkdown({ buffer, operations });
   }

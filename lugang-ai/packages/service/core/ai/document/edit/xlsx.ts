@@ -41,6 +41,13 @@ const applyOperation = async (
   if (operation.op === 'set_table_cell') {
     return workbook.noteSkipped('表格单元格操作只适用于 Word，已跳过');
   }
+  if (
+    operation.op === 'replace_image' ||
+    operation.op === 'delete_slide' ||
+    operation.op === 'move_slide'
+  ) {
+    return workbook.noteSkipped('图片替换、删除页与页序调整只适用于 PowerPoint，已跳过');
+  }
   return workbook.noteSkipped('填写表单与叠加文字只适用于 PDF，已跳过');
 };
 
