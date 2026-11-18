@@ -418,7 +418,7 @@ export class PptxPatchDeck {
     const moves = this.pendingMoves.filter((move) => {
       if (deleted.has(move.from.partPath) || deleted.has(move.to.partPath)) {
         this.skippedNotes.push(
-          `第 ${this.slides.indexOf(move.from) + 1} 页已被删除，页序调整已跳过`
+          `第 ${this.slides.indexOf(move.from) + 1} 页已被删除，页序调整已跳过；页码按本次读取的原始页序计算，如需调整请按原始页序重新提交 move_slide`
         );
         return false;
       }

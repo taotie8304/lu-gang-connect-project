@@ -365,4 +365,21 @@ describe('PPT 组合操作', () => {
     const order = [...presentation.matchAll(/r:id="(rId\d+)"/g)].map((match) => match[1]);
     expect(order).toEqual(['rId3', 'rId2']);
   });
+
+  it('删页与调序同调触及已删页时提示原始页序与重试方式', async () => {
+    const result = await editPptx({
+      buffer: await createFixture(),
+      operations: [
+        { op: 'delete_slide', slide: 2 },
+        { op: 'move_slide', from: 2, to: 1 }
+      ]
+    });
+
+    expect(result.applied).toBe(1);
+    const note = result.skipped.join('');
+    expect(note).toContain('第 2 页已被删除');
+    // 鲁港通 - 模型需明确页码按原始页序解释，并按原始页序重新提交调序
+    expect(note).toContain('原始页序');
+    expect(note).toContain('重新提交');
+  });
 });

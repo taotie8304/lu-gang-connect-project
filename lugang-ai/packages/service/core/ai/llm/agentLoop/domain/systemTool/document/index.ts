@@ -39,7 +39,7 @@ export type AgentLoopDocumentExecutor = (
 ) => Promise<AgentLoopDocumentExecutionResult>;
 
 const DOCUMENT_OPERATION_DESCRIPTION =
-  '生成、读取和修改文档文件。产物保存在本次对话的文件目录里，由聊天的下载卡片交付，默认保留 3 天内可重复下载。用户要 Word、Excel、PDF、PPT 或 Markdown 文件时用 generate：format 选 docx/xlsx/pdf/md/pptx，fileName 不含扩展名；Word/PDF/Markdown 用 blocks 按顺序组织多级标题、正文段落、列表、表格、分隔线、分页（只有一两段简单内容时才用 content 纯文本，md 也可直接用 content 写原文），Excel 用 sheets 组织最多 5 个工作表（表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式），PPT 用 slides 组织最多 30 页（每页用 layout 选版式：cover 封面、section 章节、bullets 要点、image 图文、table 表格、chart 图表；图文页的图片只能取本次对话文件清单里的地址；可选演讲者备注）。要修改本次对话里的已有文件时，先 read 读取提纲，再按提纲用 edit 提交修改；sourceUrl 只能取对话文件清单里的地址，不得编造，也不能用本机路径。编辑一律另存为新文件，不覆盖原件。编辑可以替换文字或图片清单里的已有图片、删除页、调整页序，不能新增页、插入全新图片、改版式或主题色，扫描件也不能改稿；受限于格式能力时应直接说明并给出替代方案。不要声称「已发送邮件」「已同步网盘」等未发生的行为；交付方式只有下载卡片。';
+  '生成、读取和修改文档文件。产物保存在本次对话的文件目录里，由聊天的下载卡片交付，默认保留 3 天内可重复下载。用户要 Word、Excel、PDF、PPT 或 Markdown 文件时用 generate：format 选 docx/xlsx/pdf/md/pptx，fileName 不含扩展名；Word/PDF/Markdown 用 blocks 按顺序组织多级标题、正文段落、列表、表格、分隔线、分页（只有一两段简单内容时才用 content 纯文本，md 也可直接用 content 写原文），Excel 用 sheets 组织最多 5 个工作表（表头会自动加粗并冻结，可指定合并单元格、列宽，单元格以 = 开头会写成公式），PPT 用 slides 组织最多 30 页（每页用 layout 选版式：cover 封面、section 章节、bullets 要点、image 图文、table 表格、chart 图表；图文页的图片只能取本次对话文件清单里的地址；可选演讲者备注）。要修改本次对话里的已有文件时，先 read 读取提纲，再按提纲用 edit 提交修改；sourceUrl 只能取对话文件清单里的地址，不得编造，也不能用本机路径。编辑一律另存为新文件，不覆盖原件。编辑可以替换文字或图片清单里的已有图片、删除页、调整页序（页码一律按本次 read 返回的原始页序计算，删除页不会让后续页码前移；同一轮不要先删页再按删后序号调序），不能新增页、插入全新图片、改版式或主题色，扫描件也不能改稿；受限于格式能力时应直接说明并给出替代方案。不要声称「已发送邮件」「已同步网盘」等未发生的行为；交付方式只有下载卡片。';
 
 export const createDocumentOperationTool = (): ChatCompletionTool => ({
   type: 'function',
@@ -295,7 +295,7 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
                   'move_slide'
                 ],
                 description:
-                  '操作类型：replace_text 替换文字（可限定段落、工作表或幻灯片）、set_paragraph 整段改写、insert_paragraph 在某段后插入、append_paragraph 文末追加、set_table_cell 改 Word 表格单元格、set_cell 改 Excel 单元格、append_row 工作表追加一行、fill_field 填写 PDF 表单字段、add_text 在 PDF 标签旁叠加文字、replace_image 替换 PPT 里的已有图片、delete_slide 删除 PPT 页、move_slide 调整 PPT 页序'
+                  '操作类型：replace_text 替换文字（可限定段落、工作表或幻灯片）、set_paragraph 整段改写、insert_paragraph 在某段后插入、append_paragraph 文末追加、set_table_cell 改 Word 表格单元格、set_cell 改 Excel 单元格、append_row 工作表追加一行、fill_field 填写 PDF 表单字段、add_text 在 PDF 标签旁叠加文字、replace_image 替换 PPT 里的已有图片、delete_slide 删除 PPT 页、move_slide 调整 PPT 页序（页码均按本次读取的原始页序）'
               },
               find: {
                 type: 'string',
@@ -316,7 +316,7 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
               slide: {
                 type: 'number',
                 description:
-                  '幻灯片页码（从 1 开始）；replace_text 限定范围时可选，delete_slide 时必填'
+                  '幻灯片页码（从 1 开始，按本次 read 的原始页序）；replace_text 限定范围时可选，delete_slide 时必填'
               },
               image: {
                 type: 'string',
@@ -330,11 +330,11 @@ export const createDocumentOperationTool = (): ChatCompletionTool => ({
               },
               from: {
                 type: 'number',
-                description: 'move_slide 要移动的幻灯片页码（从 1 开始）'
+                description: 'move_slide 要移动的幻灯片页码（按本次 read 的原始页序，删除页不会让后续页码前移）'
               },
               to: {
                 type: 'number',
-                description: 'move_slide 移动后的目标页码（从 1 开始）'
+                description: 'move_slide 移动后的目标页码（按原始页序，第 1 页表示最前）'
               },
               after: {
                 type: 'number',
