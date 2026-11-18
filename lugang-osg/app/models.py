@@ -213,7 +213,8 @@ class ImportMap(Base):
     """FastGPT 导入映射（design.md §7.3.5）：document ↔ collection 幂等记录。
 
     status: imported（已导入最新版本）/ skipped_duplicate（同源同内容重复未导入）/
-    failed（导入失败，下轮重试）。版本变化重建后仍记 imported（sha 更新为新版本）。
+    failed（导入失败，下轮重试）/ removed（文档被排除，集合已下线）。
+    版本变化重建后仍记 imported（sha 更新为新版本）。
     """
 
     __tablename__ = "import_map"

@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.fastgpt.client import FastGPTClient, FastGPTError
 from app.fastgpt.formatting import build_import_text
 from app.fastgpt.mapping import MappingError, resolve_route
-from app.models import Document, DocumentVersion, ImportMap, Source
+from app.models import AuditLog, Document, DocumentVersion, ImportMap, Source
 
 logger = logging.getLogger(__name__)
 
@@ -67,15 +67,21 @@ class ImportReport:
     duplicates: int = 0
     filtered: int = 0
     failed: int = 0
+    removed: int = 0
+    removal_failed: int = 0
     errors: list[str] = field(default_factory=list)
 
     def summary_line(self) -> str:
         """单行摘要（CLI 输出用）。"""
-        return (
+        line = (
             f"总计 {self.total}｜新建 {self.imported}｜重建 {self.rebuilt}"
             f"｜跳过(未变) {self.skipped}｜重复未导 {self.duplicates}"
-            f"｜拦截(索引页) {self.filtered}｜失败 {self.failed}"
+            f"｜拦截(索引页) {self.filtered}｜下线 {self.removed}"
+            f"｜失败 {self.failed}"
         )
+        if self.removal_failed:
+            line += f"｜下线失败 {self.removal_failed}"
+        return line
 
 
 @dataclass
@@ -204,6 +210,100 @@ def _record_failure(
     db.commit()
 
 
+AUDIT_EVENT_SYNC = "fastgpt_collection_sync"
+
+
+def _write_audit(
+    db: Session,
+    *,
+    source_id,
+    document_id,
+    action: str,
+    dataset_id: str | None,
+    collection_id: str | None,
+    version_id,
+    content_sha256: str | None = None,
+    reason: str | None = None,
+    replaced_collection_id: str | None = None,
+) -> None:
+    """P0-2 审计链：记录 document ↔ collection ↔ version 映射（不含正文）。"""
+    detail: dict = {
+        "action": action,
+        "datasetId": dataset_id,
+        "collectionId": collection_id,
+        "versionId": str(version_id) if version_id else None,
+    }
+    if content_sha256:
+        detail["contentSha256"] = content_sha256
+    if reason:
+        detail["reason"] = reason
+    if replaced_collection_id:
+        detail["replacedCollectionId"] = replaced_collection_id
+    db.add(
+        AuditLog(
+            event_type=AUDIT_EVENT_SYNC,
+            actor="system",
+            source_id=source_id,
+            document_id=document_id,
+            detail=detail,
+        )
+    )
+
+
+def _remove_excluded_documents(
+    db: Session,
+    client: FastGPTClient,
+    source: Source,
+    report: ImportReport,
+    *,
+    dry_run: bool,
+    interval: float,
+) -> None:
+    """P0-2 下线同步：文档被排除后删除其已导入集合（含失败重试遗留的旧集合）。
+
+    删除成功才落库（status=removed、collection_id 置空），失败保留原记录下轮重试；
+    dry-run 仅计数不调用接口。
+    """
+    rows = db.execute(
+        select(ImportMap, Document)
+        .join(Document, Document.id == ImportMap.document_id)
+        .where(Document.source_id == source.id)
+        .where(Document.status.in_(EXCLUDED_STATUSES))
+        .where(ImportMap.collection_id.isnot(None))
+        .order_by(Document.created_at.asc(), Document.id.asc())
+    ).all()
+
+    for record, doc in rows:
+        if dry_run:
+            report.removed += 1
+            continue
+        title = doc.title or doc.canonical_url
+        try:
+            client.delete_collections([record.collection_id])
+        except FastGPTError as exc:
+            report.removal_failed += 1
+            report.errors.append(f"{title}：下线删除失败（{exc}），下轮重试")
+            continue
+        _write_audit(
+            db,
+            source_id=source.id,
+            document_id=doc.id,
+            action="remove",
+            dataset_id=record.dataset_id,
+            collection_id=record.collection_id,
+            version_id=record.version_id,
+            content_sha256=record.content_sha256,
+            reason=f"文档状态 {doc.status}",
+        )
+        record.status = "removed"
+        record.error = f"文档状态 {doc.status}，已从知识库下线"
+        record.collection_id = None
+        db.commit()
+        report.removed += 1
+        if interval:
+            time.sleep(interval)
+
+
 def run_import(
     db: Session,
     client: FastGPTClient,
@@ -221,6 +321,8 @@ def run_import(
     dry_run 仅预演统计、不调用写接口；失败记录 failed 供下轮重试。
     rebuild=True 时忽略「已导入且指纹未变」的跳过，强制重建已导入集合
     （用于分块参数调整后的存量重建；skipped_duplicate 去重记录不受影响）。
+    P0-2：每次新建/重建/下线写 audit_log（document ↔ collection ↔ version 映射）；
+    收尾对排除状态文档执行下线同步，删除其已导入集合并标记 removed。
     """
     source = db.execute(
         select(Source).where(Source.code == source_code)
@@ -340,6 +442,7 @@ def run_import(
                     f"{title}：旧集合清理失败（{exc}），请在后台手动删除 {record.collection_id}"
                 )
 
+        replaced_collection_id = record.collection_id if is_rebuild else None
         if record is None:
             db.add(
                 ImportMap(
@@ -358,6 +461,17 @@ def run_import(
             record.content_sha256 = sha
             record.status = "imported"
             record.error = None
+        _write_audit(
+            db,
+            source_id=source.id,
+            document_id=doc.id,
+            action="rebuild" if is_rebuild else "import",
+            dataset_id=route.dataset_id,
+            collection_id=collection_id,
+            version_id=version.id,
+            content_sha256=sha,
+            replaced_collection_id=replaced_collection_id,
+        )
         db.commit()
 
         if is_rebuild:
@@ -368,6 +482,10 @@ def run_import(
 
         if interval:
             time.sleep(interval)
+
+    _remove_excluded_documents(
+        db, client, source, report, dry_run=dry_run, interval=interval
+    )
 
     return report
 

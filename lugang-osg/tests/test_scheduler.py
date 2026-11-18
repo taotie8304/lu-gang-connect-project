@@ -37,13 +37,23 @@ class _FakeSession:
         self.closed = True
 
 
-def _patch_sync_env(monkeypatch, src, ran, lock=None):
+def _patch_sync_env(monkeypatch, src, ran, lock=None, import_after_sync=False):
     monkeypatch.setattr(
         "app.database.SessionLocal", lambda: _FakeSession(src=src)
     )
     monkeypatch.setattr(
         "app.ingest.pipeline.sync_source",
         lambda session, source: ran.append(source.code),
+    )
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: SimpleNamespace(
+            fastgpt_import_after_sync=import_after_sync,
+            fastgpt_api_key="test-key" if import_after_sync else "",
+            fastgpt_base_url="http://127.0.0.1:3210",
+            fastgpt_interval_s=0.0,
+            fastgpt_chunk_size=512,
+        ),
     )
     if lock is not None:
         monkeypatch.setattr("app.api.admin._sync_lock", lock)
@@ -121,6 +131,75 @@ def test_trigger_sync_allow_disabled_flag(monkeypatch):
             allow_disabled=False, actor="test", db=_FakeDB(),
         )
     assert ei.value.status_code == 409
+
+
+# --- P0-2 采集完成后即时导入（事件触发，日报仍作兜底） ---
+
+
+def test_sync_job_imports_source_after_sync(monkeypatch):
+    """采集完成后对本来源立即执行增量导入（已配置路由的源）。"""
+    ran, imports = [], []
+    _patch_sync_env(
+        monkeypatch,
+        SimpleNamespace(code="hk_edb", enabled=True),
+        ran,
+        import_after_sync=True,
+    )
+    monkeypatch.setattr(
+        "app.fastgpt.client.FastGPTClient",
+        lambda base_url, key: SimpleNamespace(close=lambda: None),
+    )
+    monkeypatch.setattr(
+        "app.fastgpt.importer.run_import",
+        lambda session, client, code, **kw: (
+            imports.append(code) or SimpleNamespace(summary_line=lambda: "ok")
+        ),
+    )
+
+    scheduler_mod._make_job("hk_edb")()
+
+    assert ran == ["hk_edb"]
+    assert imports == ["hk_edb"]
+
+
+def test_sync_job_skips_import_for_deferred_source(monkeypatch):
+    """高校暂缓源（未配路由）采集后不触发导入。"""
+    ran, imports = [], []
+    _patch_sync_env(
+        monkeypatch,
+        SimpleNamespace(code="sd_sdu", enabled=True),
+        ran,
+        import_after_sync=True,
+    )
+    monkeypatch.setattr(
+        "app.fastgpt.importer.run_import",
+        lambda *args, **kwargs: imports.append(args),
+    )
+
+    scheduler_mod._make_job("sd_sdu")()
+
+    assert ran == ["sd_sdu"]
+    assert imports == []
+
+
+def test_sync_job_skips_import_when_disabled(monkeypatch):
+    """OSG_IMPORT_AFTER_SYNC 关闭时仅采集不导入（依赖每日批量导入）。"""
+    ran, imports = [], []
+    _patch_sync_env(
+        monkeypatch,
+        SimpleNamespace(code="hk_edb", enabled=True),
+        ran,
+        import_after_sync=False,
+    )
+    monkeypatch.setattr(
+        "app.fastgpt.importer.run_import",
+        lambda *args, **kwargs: imports.append(args),
+    )
+
+    scheduler_mod._make_job("hk_edb")()
+
+    assert ran == ["hk_edb"]
+    assert imports == []
 
 
 def _patch_import_env(monkeypatch, sources, calls):

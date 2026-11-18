@@ -92,6 +92,7 @@ def _make_job(code: str):
         if not _sync_lock.acquire(timeout=_SYNC_WAIT_TIMEOUT_S):
             logger.info("skip scheduled sync %s: lock wait timeout", code)
             return
+        synced = False
         try:
             session = SessionLocal()
             try:
@@ -101,12 +102,55 @@ def _make_job(code: str):
                 if src is None or not src.enabled:
                     return
                 sync_source(session, src)
+                synced = True
             finally:
                 session.close()
         finally:
             _sync_lock.release()
+        # 鲁港通 - P0-2 事件触发：采集完成后立即增量导入本来源；导入不抓外网，
+        # 放在同步锁释放之后执行，不阻塞下一来源的采集
+        if synced:
+            _import_after_sync(code)
 
     return _run
+
+
+def _import_after_sync(code: str) -> None:
+    """单源增量导入（采集完成后触发；失败只记日志，不影响采集结果）。"""
+    from app.config import get_settings
+    from app.database import SessionLocal
+    from app.fastgpt.client import FastGPTClient
+    from app.fastgpt.importer import run_import
+    from app.fastgpt.mapping import is_routable
+
+    settings = get_settings()
+    if not settings.fastgpt_import_after_sync or not is_routable(code):
+        return
+    if not settings.fastgpt_api_key:
+        logger.warning("skip post-sync import %s: OSG_FASTGPT_API_KEY not configured", code)
+        return
+    if not _import_lock.acquire(blocking=False):
+        logger.info("skip post-sync import %s: import still running", code)
+        return
+    try:
+        client = FastGPTClient(settings.fastgpt_base_url, settings.fastgpt_api_key)
+        session = SessionLocal()
+        try:
+            report = run_import(
+                session,
+                client,
+                code,
+                interval=settings.fastgpt_interval_s,
+                chunk_size=settings.fastgpt_chunk_size,
+            )
+            logger.info("post-sync import %s: %s", code, report.summary_line())
+        finally:
+            session.close()
+            client.close()
+    except Exception:
+        logger.exception("post-sync import failed: %s", code)
+    finally:
+        _import_lock.release()
 
 
 def _make_import_job():

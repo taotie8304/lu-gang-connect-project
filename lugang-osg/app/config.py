@@ -81,6 +81,8 @@ class Settings(BaseSettings):
     fastgpt_api_key: str = ""
     fastgpt_chunk_size: int = 512          # 分块大小（spec：≤ 512 tokens）
     fastgpt_interval_s: float = 0.2        # 串行导入间隔（限流，spec 12.2）
+    # 鲁港通 - P0-2 时效增强：采集完成后立即增量导入本来源；关闭时仅保留每日批量兜底
+    fastgpt_import_after_sync: bool = True
 
 
 @lru_cache

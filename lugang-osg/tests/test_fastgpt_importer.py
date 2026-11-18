@@ -9,7 +9,7 @@ from app.fastgpt.importer import (
     sync_names,
 )
 from app.fastgpt.mapping import HK_DATASET_ID
-from app.models import Document, DocumentVersion, ImportMap, Source
+from app.models import AuditLog, Document, DocumentVersion, ImportMap, Source
 
 SHA1 = "a" * 64
 SHA2 = "b" * 64
@@ -26,6 +26,7 @@ class FakeClient:
         self.last_text_id: str | None = None
         self.fail_next_create_text = False
         self.fail_next_rename = False
+        self.fail_next_delete = False
         self._seq = 0
         # {(dataset_id, parent_id): [{"_id": ..., "name": ...}]}
         self.existing_folders = existing_folders or {}
@@ -67,6 +68,9 @@ class FakeClient:
 
     def delete_collections(self, collection_ids):
         self.calls.append(("delete", tuple(collection_ids)))
+        if self.fail_next_delete:
+            self.fail_next_delete = False
+            raise FastGPTError("模拟删除失败")
 
 
 def make_source(db, code="hk_tid", name="工业贸易署", organization="工业贸易署"):
@@ -683,3 +687,166 @@ def test_dry_run_counts_filtered_without_writes(db):
     assert report.imported == 0
     assert fake.calls == []
     assert db.query(ImportMap).count() == 0
+
+
+# --- P0-2 审计链：document ↔ collection ↔ version 映射 ---
+
+
+def test_import_writes_audit_mapping(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    fake = FakeClient()
+
+    run_import(db, fake, "hk_tid")
+
+    log = db.query(AuditLog).one()
+    assert log.event_type == "fastgpt_collection_sync"
+    assert log.actor == "system"
+    assert log.source_id == src.id
+    assert log.document_id == doc.id
+    assert log.detail["action"] == "import"
+    assert log.detail["datasetId"] == HK_DATASET_ID
+    assert log.detail["collectionId"] == fake.last_text_id
+    assert log.detail["versionId"] == str(ver.id)
+    assert log.detail["contentSha256"] == SHA1
+
+
+def test_rebuild_writes_audit_mapping(db):
+    src = make_source(db)
+    doc, ver1 = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver1)
+    ver2 = add_new_version(db, doc, sha=SHA2)
+    fake = FakeClient(
+        existing_folders={
+            (HK_DATASET_ID, None): [{"_id": "D1", "name": "工业贸易署"}],
+            (HK_DATASET_ID, "D1"): [{"_id": "D2", "name": "CEPA"}],
+        }
+    )
+
+    run_import(db, fake, "hk_tid")
+
+    log = db.query(AuditLog).one()
+    assert log.detail["action"] == "rebuild"
+    assert log.detail["collectionId"] == fake.last_text_id
+    assert log.detail["replacedCollectionId"] == "OLD1"
+    assert log.detail["versionId"] == str(ver2.id)
+    assert log.detail["contentSha256"] == SHA2
+
+
+def test_dry_run_writes_no_audit(db):
+    src = make_source(db)
+    make_document(db, src, TID_URL)
+
+    run_import(db, FakeClient(), "hk_tid", dry_run=True)
+
+    assert db.query(AuditLog).count() == 0
+
+
+# --- P0-2 下线同步：排除状态的文档从知识库剔除 ---
+
+
+def test_excluded_document_removed_from_kb(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver)
+    doc.status = "archived"
+    db.flush()
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.removed == 1
+    assert report.removal_failed == 0
+    assert ("delete", ("OLD1",)) in fake.calls
+    rec = db.query(ImportMap).one()
+    assert rec.status == "removed"
+    assert rec.collection_id is None
+    log = db.query(AuditLog).one()
+    assert log.detail["action"] == "remove"
+    assert log.detail["collectionId"] == "OLD1"
+    assert log.detail["versionId"] == str(ver.id)
+    assert "archived" in log.detail["reason"]
+
+
+def test_excluded_failed_record_with_old_collection_removed(db):
+    """失败重试记录保留的旧集合，在文档被排除后同样下线。"""
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    db.add(
+        ImportMap(
+            document_id=doc.id,
+            dataset_id=HK_DATASET_ID,
+            collection_id="OLD1",
+            version_id=ver.id,
+            content_sha256=SHA1,
+            status="failed",
+            error="上次创建失败",
+        )
+    )
+    doc.status = "rejected"
+    db.flush()
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.removed == 1
+    assert ("delete", ("OLD1",)) in fake.calls
+    rec = db.query(ImportMap).one()
+    assert rec.status == "removed"
+    assert rec.collection_id is None
+
+
+def test_removal_dry_run_counts_without_calls(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver)
+    doc.status = "superseded"
+    db.flush()
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", dry_run=True)
+
+    assert report.removed == 1
+    assert fake.calls == []
+    rec = db.query(ImportMap).one()
+    assert rec.status == "imported"
+    assert rec.collection_id == "OLD1"
+    assert db.query(AuditLog).count() == 0
+
+
+def test_removal_failure_keeps_record_for_retry(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver)
+    doc.status = "fetch_failed"
+    db.flush()
+    fake = FakeClient()
+    fake.fail_next_delete = True
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.removed == 0
+    assert report.removal_failed == 1
+    assert any("下线删除失败" in e for e in report.errors)
+    rec = db.query(ImportMap).one()
+    assert rec.status == "imported"
+    assert rec.collection_id == "OLD1"
+
+
+def test_removed_document_reimports_after_restore(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver)
+    doc.status = "archived"
+    db.flush()
+    run_import(db, FakeClient(), "hk_tid")
+
+    doc.status = "candidate"
+    db.flush()
+    fake2 = FakeClient()
+    report = run_import(db, fake2, "hk_tid")
+
+    assert report.imported == 1
+    rec = db.query(ImportMap).one()
+    assert rec.status == "imported"
+    assert rec.collection_id == fake2.last_text_id
