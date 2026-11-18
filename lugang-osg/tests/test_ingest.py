@@ -518,6 +518,21 @@ class TestExtract:
         out = extract_html(html, title_strip_prefixes=["工業貿易署 - "])
         assert out.title == "取消許可證"
 
+    def test_extract_html_keep_form_for_aspnet_wrapped_pages(self):
+        """HKEAA 实测：ASP.NET 把整个 body 包进 <form>，默认丢 form 会让整页正文为 0；
+        来源配置 keep_form=true 时保留 form 内文本。"""
+        html = (
+            "<html><head><title>香港中學文憑簡介</title></head><body>"
+            "<form id='aspnetForm'>"
+            "<p>香港中學文憑簡介：所有學生可修畢三年初中及三年高中課程，"
+            "完成六年中學課程後可參加香港中學文憑考試。</p>"
+            "</form></body></html>"
+        ).encode("utf-8")
+        default_out = extract_html(html)
+        assert default_out.text is None or "香港中學文憑簡介" not in default_out.text
+        out = extract_html(html, keep_form=True)
+        assert out.text and "香港中學文憑簡介" in out.text
+
 
 # ---------------------------------------------------------------------------
 # pipeline 全流程（假 fetcher）
@@ -2398,3 +2413,68 @@ class TestTitleSuffixCleanup:
         ).encode("utf-8")
         out = extract_html(html, title_strip_suffixes=[" | InvestHK"])
         assert out.title == "政策新聞"
+
+
+# ---------------------------------------------------------------------------
+# 来源级 keep_form：ASP.NET 整页包在 <form> 内（HKEAA 实测）
+# ---------------------------------------------------------------------------
+
+_KEEP_FORM_YAML_TMPL = r"""
+sources:
+  - id: hkeaa_form_test
+    name: HKEAA 形态测试
+    group: hk_education
+    organization: 香港考试及评核局
+    base_domains: [www.hkeaa.edu.hk]
+    allowed_path_prefixes: [/tc/hkdse/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.hkeaa.edu.hk/tc/hkdse/"
+    link_pattern: 'https?://www\.hkeaa\.edu\.hk/tc/hkdse/'
+{keep_form_line}    rate_limit_per_minute: 600
+    max_pages_per_run: 10
+    enabled: true
+"""
+
+_FORM_LISTING = (
+    b"<html><body><a href='/tc/hkdse/introduction/'>introduction</a></body></html>"
+)
+_FORM_ARTICLE = (
+    "<html><head><meta charset='utf-8'><title>香港中學文憑簡介</title></head>"
+    "<body><form id='aspnetForm'>"
+    "<div class='nav'>主頁 &gt; 香港中學文憑</div>"
+    f"<p>{_LONG_ZH}</p></form></body></html>"
+).encode("utf-8")
+
+
+class TestPipelineKeepForm:
+    """keep_form 白名单贯通 + 整页 form 包裹站点的正文入库。"""
+
+    def _sync(self, db, keep_form: bool):
+        line = "    keep_form: true\n" if keep_form else ""
+        import_sources_yaml(_KEEP_FORM_YAML_TMPL.format(keep_form_line=line), db)
+        src = db.execute(select(Source).where(Source.code == "hkeaa_form_test")).scalar_one()
+        fetcher = _FakeFetcher({
+            "https://www.hkeaa.edu.hk/tc/hkdse/": _FORM_LISTING,
+            "https://www.hkeaa.edu.hk/tc/hkdse/introduction/": _FORM_ARTICLE,
+        })
+        return src, sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                                sleeper=lambda s: None, resolver=fake_resolver)
+
+    def test_keep_form_config_flows_and_indexes_wrapped_body(self, db):
+        src, stats = self._sync(db, keep_form=True)
+        # 鲁港通 - 新配置键必须登记 _DISCOVERY_KEYS，否则导入静默丢字段
+        assert src.discovery_config["keep_form"] is True
+        assert stats.new_docs == 1
+        version = db.execute(select(DocumentVersion)).scalar_one()
+        # 正文（form 内）确实被保留：既含导航行也含长正文
+        assert "香港中學文憑" in (version.extracted_text or "")
+        assert _LONG_ZH[:12] in (version.extracted_text or "")
+        assert version.extracted_metadata["title"] == "香港中學文憑簡介"
+
+    def test_without_keep_form_wrapped_page_is_low_content(self, db):
+        src, stats = self._sync(db, keep_form=False)
+        assert "keep_form" not in (src.discovery_config or {})
+        assert stats.new_docs == 0
+        tasks = db.execute(select(CrawlTask)).scalars().all()
+        assert any(t.status == "skipped_low_content" for t in tasks)

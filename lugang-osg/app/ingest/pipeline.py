@@ -730,6 +730,7 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
             organization=source.organization,
             title_strip_prefixes=cfg.get("title_strip_prefixes"),
             title_strip_suffixes=cfg.get("title_strip_suffixes"),
+            keep_form=bool(cfg.get("keep_form")),
         )
     )
 

@@ -380,6 +380,8 @@ sources:
       - "https://www.hkeaa.edu.hk/tc/hkdse/"
       - "https://www.hkeaa.edu.hk/en/hkdse/"
     link_pattern: "https?://www\\.hkeaa\\.edu\\.hk/(tc|en)/hkdse/"
+    # 鲁港通 - ASP.NET 整页 form 包裹（2026-11-18 实测零正文修复）
+    keep_form: true
     schedule: "20 3 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 80

@@ -43,21 +43,24 @@ class _TextExtractor(HTMLParser):
     鲁港通 - 配置了容器选择器时额外收集容器内正文（如山东政务站实测的 `#zoom`），
     可剔除面包屑、字号控件、相关报道等 UI 噪声；容器未命中则回退全文，
     避免站点改版导致正文为空。
+    鲁港通 - keep_form（HKEAA 实测）：ASP.NET 站点把整个 body 包进 <form>，
+    默认丢 form 会把整页正文清空；来源开启后 form 不再计入噪声标签。
     """
 
-    def __init__(self, selector: tuple[str, str] | None = None) -> None:
+    def __init__(self, selector: tuple[str, str] | None = None, keep_form: bool = False) -> None:
         super().__init__(convert_charrefs=True)
         self.title_parts: list[str] = []
         self.text_parts: list[str] = []
         self.container_parts: list[str] = []
         self._selector = selector
+        self._drop = _DROP_TAGS - {"form"} if keep_form else _DROP_TAGS
         self._skip_depth = 0
         self._in_title = False
         self._container_depth = 0   # >0 表示当前在目标容器内
         self._nested_div = 0        # 容器内嵌套标签计数（用于定位容器结束）
 
     def handle_starttag(self, tag: str, attrs) -> None:
-        if tag in _DROP_TAGS:
+        if tag in self._drop:
             self._skip_depth += 1
             return
         if tag == "title":
@@ -74,7 +77,7 @@ class _TextExtractor(HTMLParser):
                 self.container_parts.append("\n")
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in _DROP_TAGS and self._skip_depth > 0:
+        if tag in self._drop and self._skip_depth > 0:
             self._skip_depth -= 1
             return
         if tag == "title":
@@ -135,6 +138,7 @@ def extract_html(
     organization: str | None = None,
     title_strip_prefixes: list[str] | None = None,
     title_strip_suffixes: list[str] | None = None,
+    keep_form: bool = False,
 ) -> ExtractedContent:
     """提取 HTML 标题与净化正文。
 
@@ -144,8 +148,9 @@ def extract_html(
     title_strip_prefixes：显式标题前缀（如 TID 繁体「工業貿易署 - 」——与简体 org
     匹配不上），命中即剥离。
     title_strip_suffixes：显式标题后缀（如 InvestHK「标题 | InvestHK」）。
+    keep_form：ASP.NET 整页 form 包裹站点（HKEAA 实测）保留 form 内文本。
     """
-    parser = _TextExtractor(_parse_selector(content_selector))
+    parser = _TextExtractor(_parse_selector(content_selector), keep_form=keep_form)
     parser.feed(_decode_html(content))
     raw_title = "".join(parser.title_parts).strip() or None
     # 鲁港通 - 容器正文优先（剔除面包屑/字号控件/相关报道），未命中回退全文
