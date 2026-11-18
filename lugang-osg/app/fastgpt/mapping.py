@@ -1,12 +1,14 @@
 # 鲁港通 - FastGPT 导入分类映射（design.md §7.2）：
 # 香港源 → 香港政府各部门知识库（部门文件夹；TID 按 URL 分 6 个栏目子文件夹）；
 # 山东源 → 山东省各地市综合政策知识库（「省级部门」与「济南市」下再分机构）；
+# 教育源 → 香港教育中心知识库（学段/院校文件夹；教育局按 URL 分学段，2026-11-18）；
 # 高校源暂缓（用户 2026-09-13 决策）；未知源报错。
 from dataclasses import dataclass
 from typing import Literal
 
 HK_DATASET_ID = "6aa65d90429fb6770923e91f"  # 鲁港通 - 香港政府各部门知识库
 SD_DATASET_ID = "6aa65dd8429fb6770923ea6a"  # 鲁港通 - 山东省各地市综合政策知识库
+EDU_DATASET_ID = "69674f94fa58c162073713be"  # 鲁港通 - 香港教育中心知识库（原「香港教育相关」）
 
 
 class MappingError(Exception):
@@ -17,7 +19,7 @@ class MappingError(Exception):
 class KbRoute:
     """一个文档的导入目标：知识库 + 数据集内文件夹路径。"""
 
-    kb_key: Literal["hk", "sd"]
+    kb_key: Literal["hk", "sd", "edu"]
     dataset_id: str
     region: str  # 标签用：香港 / 山东
     department: str  # 标签用：部门（末级机构）
@@ -111,12 +113,71 @@ def tid_column_folder(url: str) -> str:
     return _TID_FALLBACK
 
 
+# 鲁港通 - 香港教育中心来源 → (标签部门, 文件夹路径)
+# 入口与路径均取自 2026-11-18 服务器实测（.qoder/specs/hk-edu-center/probe1–5）
+_HK_EDU_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "hk_edu_hkeaa": ("考评局", ("40 文凭试与大学联招", "文凭试")),
+    "hk_edu_jupas": ("大学联招", ("40 文凭试与大学联招", "大学联招")),
+    "hk_edu_ugc": ("教资会", ("50 专上教育", "资助大学总览")),
+    "hk_edu_vtc": ("职业训练局", ("50 专上教育", "职业训练局")),
+    "hk_edu_hku": ("香港大学", ("60 院校档案", "香港大学")),
+    "hk_edu_hku_admissions": ("香港大学", ("60 院校档案", "香港大学")),
+    "hk_edu_cuhk": ("香港中文大学", ("60 院校档案", "香港中文大学")),
+    "hk_edu_hkust": ("香港科技大学", ("60 院校档案", "香港科技大学")),
+    "hk_edu_hkust_join": ("香港科技大学", ("60 院校档案", "香港科技大学")),
+    "hk_edu_polyu": ("香港理工大学", ("60 院校档案", "香港理工大学")),
+    "hk_edu_hkbu": ("香港浸会大学", ("60 院校档案", "香港浸会大学")),
+    "hk_edu_lingnan": ("岭南大学", ("60 院校档案", "岭南大学")),
+}
+
+_EDU_OVERVIEW = "00 教育体系总览"
+
+
+def edu_edb_folder(url: str) -> tuple[str, ...]:
+    """教育局文档按 URL 学段路由（路径白名单见 spec design §3.3）。"""
+    u = url.lower()
+    if "/spa-systems/primary-1-admission" in u:
+        return ("20 小学", "小一入学统筹办法")
+    if "/spa-systems/secondary-" in u:
+        return ("30 中学", "中一派位")
+    if "/applicable-to-secondary/" in u:
+        return ("30 中学", "课程与教学语言")
+    if "/applicable-to-primary-secondary/direct-subsidy-scheme/" in u:
+        return ("80 办学类型与学校资料", "办学类型")
+    if "/edu-system/primary-secondary/primary.html" in u:
+        return ("20 小学",)
+    if "/edu-system/primary-secondary/secondary.html" in u:
+        return ("30 中学",)
+    if "/preprimary-kindergarten/kindergarten-k1-admission-arrangements/" in u:
+        return ("10 学前教育", "幼稚园入学")
+    if "/preprimary-kindergarten/" in u:
+        return ("10 学前教育", "幼稚园教育计划")
+    if "/edu-system/postsecondary/" in u:
+        return ("50 专上教育", "专上政策与资助")
+    if "/student-parents/sch-info/" in u:
+        return ("80 办学类型与学校资料", "学校概览与校网")
+    if "/student-parents/support-subsidies/" in u:
+        return ("90 学生资助与奖学",)
+    if (
+        "/student-parents/placement-assistance/" in u
+        or "/student-parents/newly-arrived-children/" in u
+    ):
+        return ("70 非本地学生来港", "新来港儿童入学")
+    return (_EDU_OVERVIEW,)
+
+
 def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
     """返回文档导入路由；未知源/暂缓源抛 MappingError（消息面向使用者，中文可操作）。"""
     if source_code in _ACADEMIC_DEFERRED:
         raise MappingError(
             f"高校源暂缓导入：{source_code}（用户 2026-09-13 决策，待内容扩充再定）"
         )
+    if source_code == "hk_edu_edb":
+        folder = edu_edb_folder(canonical_url)
+        return KbRoute("edu", EDU_DATASET_ID, "香港", "教育局", folder, folder[-1])
+    if source_code in _HK_EDU_SOURCES:
+        dept, folder = _HK_EDU_SOURCES[source_code]
+        return KbRoute("edu", EDU_DATASET_ID, "香港", dept, folder)
     if source_code in _HK_DEPARTMENTS:
         dept = _HK_DEPARTMENTS[source_code]
         if source_code == "hk_tid":
@@ -138,6 +199,8 @@ def is_routable(source_code: str) -> bool:
     """该源是否配置了导入路由（高校源为暂缓导入、未知源无路由，均返回 False）。"""
     return (
         source_code in _HK_DEPARTMENTS
+        or source_code in _HK_EDU_SOURCES
+        or source_code == "hk_edu_edb"
         or source_code in _SD_PROVINCIAL
         or source_code in _SD_JINAN
     )

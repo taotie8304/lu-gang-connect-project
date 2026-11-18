@@ -171,3 +171,118 @@ def test_is_routable_academic_and_unknown_false():
     assert is_routable("sd_sdu") is False
     assert is_routable("sd_ouc") is False
     assert is_routable("no_such_source") is False
+
+
+# 鲁港通 - 香港教育中心（2026-11-18）：教育库路由
+from app.fastgpt.mapping import EDU_DATASET_ID  # noqa: E402
+
+
+def test_edu_university_sources_route_to_college_folders():
+    cases = {
+        "hk_edu_hkeaa": ("40 文凭试与大学联招", "文凭试"),
+        "hk_edu_jupas": ("40 文凭试与大学联招", "大学联招"),
+        "hk_edu_ugc": ("50 专上教育", "资助大学总览"),
+        "hk_edu_vtc": ("50 专上教育", "职业训练局"),
+        "hk_edu_hku": ("60 院校档案", "香港大学"),
+        "hk_edu_hku_admissions": ("60 院校档案", "香港大学"),
+        "hk_edu_cuhk": ("60 院校档案", "香港中文大学"),
+        "hk_edu_hkust": ("60 院校档案", "香港科技大学"),
+        "hk_edu_hkust_join": ("60 院校档案", "香港科技大学"),
+        "hk_edu_polyu": ("60 院校档案", "香港理工大学"),
+        "hk_edu_hkbu": ("60 院校档案", "香港浸会大学"),
+        "hk_edu_lingnan": ("60 院校档案", "岭南大学"),
+    }
+    for code, folder in cases.items():
+        route = resolve_route(code, "https://example.edu.hk/x.html")
+        assert route.kb_key == "edu", code
+        assert route.dataset_id == EDU_DATASET_ID, code
+        assert route.region == "香港", code
+        assert route.folder_path == folder, code
+        assert route.column is None, code
+
+
+def test_edu_edb_primary_1_admission():
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/primary-secondary/spa-systems/"
+        "primary-1-admission/school-lists/index.html",
+    )
+    assert route.dataset_id == EDU_DATASET_ID
+    assert route.department == "教育局"
+    assert route.folder_path == ("20 小学", "小一入学统筹办法")
+    assert route.column == "小一入学统筹办法"
+
+
+def test_edu_edb_secondary_placement():
+    for path in (
+        "/sc/edu-system/primary-secondary/spa-systems/secondary-spa/general-info/FAQs.html",
+        "/sc/edu-system/primary-secondary/spa-systems/secondary-4-placement/index.html",
+    ):
+        route = resolve_route("hk_edu_edb", "https://www.edb.gov.hk" + path)
+        assert route.folder_path == ("30 中学", "中一派位"), path
+
+
+def test_edu_edb_kindergarten_and_postsecondary():
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/preprimary-kindergarten/"
+        "kindergarten-k1-admission-arrangements/2728_admission_arrangements.html",
+    )
+    assert route.folder_path == ("10 学前教育", "幼稚园入学")
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/preprimary-kindergarten/"
+        "preprimary-voucher/index.html",
+    )
+    assert route.folder_path == ("10 学前教育", "幼稚园教育计划")
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/postsecondary/policy-doc/Scheme_2026/index.html",
+    )
+    assert route.folder_path == ("50 专上教育", "专上政策与资助")
+
+
+def test_edu_edb_student_parents_branches():
+    cases = {
+        "/sc/student-parents/sch-info/sch-search/schlist-by-district/school-list-cw.html":
+            ("80 办学类型与学校资料", "学校概览与校网"),
+        "/sc/student-parents/support-subsidies/assistance-scheme/index.html":
+            ("90 学生资助与奖学",),
+        "/sc/student-parents/placement-assistance/about-placement-assistance/faq.html":
+            ("70 非本地学生来港", "新来港儿童入学"),
+        "/sc/student-parents/newly-arrived-children/overview/index.html":
+            ("70 非本地学生来港", "新来港儿童入学"),
+        "/sc/student-parents/spa-systems/overview/index.html":
+            ("00 教育体系总览",),
+    }
+    for path, folder in cases.items():
+        route = resolve_route("hk_edu_edb", "https://www.edb.gov.hk" + path)
+        assert route.folder_path == folder, path
+
+
+def test_edu_edb_moi_and_direct_subsidy():
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/primary-secondary/applicable-to-secondary/"
+        "moi/index.html",
+    )
+    assert route.folder_path == ("30 中学", "课程与教学语言")
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/primary-secondary/"
+        "applicable-to-primary-secondary/direct-subsidy-scheme/index.html",
+    )
+    assert route.folder_path == ("80 办学类型与学校资料", "办学类型")
+
+
+def test_edu_edb_fallback_overview():
+    route = resolve_route(
+        "hk_edu_edb",
+        "https://www.edb.gov.hk/sc/edu-system/primary-secondary/spa-systems/index.html",
+    )
+    assert route.folder_path == ("00 教育体系总览",)
+
+
+def test_edu_sources_routable():
+    for code in ("hk_edu_edb", "hk_edu_hku", "hk_edu_hkust_join", "hk_edu_lingnan"):
+        assert is_routable(code) is True, code

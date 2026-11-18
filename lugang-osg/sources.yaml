@@ -339,6 +339,7 @@ sources:
     enabled: true
 
   - id: hk_edb
+    # 鲁港通 - 2026-11-18 收窄重采为 hk_edu_edb（入香港教育中心库），原文保留供存量维护
     name: 教育局
     group: hk_education
     organization: 香港教育局
@@ -349,6 +350,221 @@ sources:
       - "https://www.edb.gov.hk/sitemap.xml"
     schedule: "0 4 * * *"
     rate_limit_per_minute: 4
+    enabled: false
+
+  # 鲁港通 - 香港教育中心（2026-11-18）：以下 13 源入口均在服务器实测，
+  # 路由见 app/fastgpt/mapping.py；教育局只采简体并限定 5 个学段子树。
+  - id: hk_edu_edb
+    name: 教育局（教育中心）
+    group: hk_education
+    organization: 香港教育局
+    base_domains: [www.edb.gov.hk]
+    allowed_path_prefixes: [/sc/edu-system/, /sc/student-parents/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.edb.gov.hk/sitemap.xml"
+    sitemap_url_pattern: "/sc/edu-system/(primary-secondary/((primary|secondary)\\.html|spa-systems/|applicable-to-secondary/|applicable-to-primary-secondary/direct-subsidy-scheme/)|preprimary-kindergarten/|postsecondary/)|/sc/student-parents/(sch-info/|support-subsidies/|spa-systems/|placement-assistance/|newly-arrived-children/)"
+    schedule: "10 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 150
+    enabled: true
+
+  - id: hk_edu_hkeaa
+    name: 香港考试及评核局
+    group: hk_education
+    organization: 香港考试及评核局
+    base_domains: [www.hkeaa.edu.hk]
+    allowed_path_prefixes: [/tc/hkdse/, /en/hkdse/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.hkeaa.edu.hk/tc/hkdse/"
+      - "https://www.hkeaa.edu.hk/en/hkdse/"
+    link_pattern: "https?://www\\.hkeaa\\.edu\\.hk/(tc|en)/hkdse/"
+    schedule: "20 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 80
+    enabled: true
+
+  - id: hk_edu_jupas
+    name: 大学联合招生办法
+    group: hk_education
+    organization: 大学联合招生办法 JUPAS
+    base_domains: [www.jupas.edu.hk]
+    allowed_path_prefixes: [/tc/, /en/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.jupas.edu.hk/tc/"
+      - "https://www.jupas.edu.hk/en/"
+    link_pattern: "https?://www\\.jupas\\.edu\\.hk/(tc|en)/(about-jupas|programmes-offered|applicants-user-guide-faq)/"
+    schedule: "30 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 80
+    enabled: true
+
+  - id: hk_edu_ugc
+    name: 大学教育资助委员会
+    group: hk_education
+    organization: 大学教育资助委员会 UGC
+    base_domains: [www.ugc.edu.hk]
+    allowed_path_prefixes: [/eng/ugc/, /eng/rgc/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ugc.edu.hk/eng/ugc/sitemap.html"
+    link_pattern: "https?://www\\.ugc\\.edu\\.hk/eng/(ugc|rgc)/(?!(?:about/press_speech_other))"
+    schedule: "40 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_vtc
+    name: 职业训练局
+    group: hk_education
+    organization: 职业训练局 VTC
+    base_domains: [www.vtc.edu.hk]
+    allowed_path_prefixes: [/admission/tc/, /admission/en/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.vtc.edu.hk/admission/tc/"
+      - "https://www.vtc.edu.hk/admission/en/"
+    link_pattern: "https?://www\\.vtc\\.edu\\.hk/admission/(tc|en)/(study/|degree/|higher-diploma/|diploma/|certificate/|s6/|s3/|top-up-degree/|part-time-(evening|day)/|tuition-fees-|admission-|social-programmes/|other-professional-programmes/|professional-examinations)"
+    schedule: "50 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_hku
+    name: 香港大学
+    group: hk_education
+    organization: 香港大学 HKU
+    base_domains: [www.hku.hk]
+    allowed_path_prefixes: [/en/, /tc/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.hku.hk/sitemap-index.xml"
+    sitemap_url_pattern: "https?://www\\.hku\\.hk/(en|tc)/(admission-aid|academics)/"
+    schedule: "5 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_hku_admissions
+    name: 香港大学（招生处）
+    group: hk_education
+    organization: 香港大学 HKU
+    base_domains: [admissions.hku.hk]
+    allowed_path_prefixes: [/programmes/, /fees-and-scholarships/, /zh-hans/, /apply/, /experience/]
+    discovery_method: listing
+    listing_urls:
+      - "https://admissions.hku.hk/zh-hans/apply/mainland"
+      - "https://admissions.hku.hk/programmes/undergraduate-programmes"
+      - "https://admissions.hku.hk/fees-and-scholarships/fees"
+    link_pattern: "https?://admissions\\.hku\\.hk/(programmes|fees-and-scholarships|zh-hans|apply|experience)"
+    schedule: "15 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_cuhk
+    name: 香港中文大学
+    group: hk_education
+    organization: 香港中文大学 CUHK
+    base_domains: [admission.cuhk.edu.hk, www.cuhk.edu.hk, www.gs.cuhk.edu.hk]
+    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/]
+    discovery_method: listing
+    listing_urls:
+      - "https://admission.cuhk.edu.hk/tc/"
+      - "https://admission.cuhk.edu.hk/sc/"
+      - "https://admission.cuhk.edu.hk/programmes/list/"
+      - "https://www.gs.cuhk.edu.hk/admissions/"
+      - "https://www.cuhk.edu.hk/english/faculties/arts.html"
+    link_pattern: "https?://(admission\\.cuhk\\.edu\\.hk|www\\.gs\\.cuhk\\.edu\\.hk|www\\.cuhk\\.edu\\.hk)/"
+    schedule: "25 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 100
+    enabled: true
+
+  - id: hk_edu_hkust
+    name: 香港科技大学
+    group: hk_education
+    organization: 香港科技大学 HKUST
+    base_domains: [www.hkust.edu.hk, hkust.edu.hk]
+    allowed_path_prefixes: [/admissions, /our-faculty, /zh-hans/admissions]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.hkust.edu.hk/sitemap.xml"
+    sitemap_url_pattern: "https?://hkust\\.edu\\.hk/(admissions|our-faculty|zh-hans/admissions)"
+    schedule: "35 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_edu_hkust_join
+    name: 香港科技大学（本科招生）
+    group: hk_education
+    organization: 香港科技大学 HKUST
+    base_domains: [join.hkust.edu.hk]
+    allowed_path_prefixes: [/zh-hans/, /fees-and-scholarships, /our-programs, /admissions/gaokao, /pre-university]
+    discovery_method: listing
+    listing_urls:
+      - "https://join.hkust.edu.hk/zh-hans"
+      - "https://join.hkust.edu.hk/zh-hans/our-programs"
+      - "https://join.hkust.edu.hk/zh-hans/admissions/gaokao"
+      - "https://join.hkust.edu.hk/fees-and-scholarships"
+    link_pattern: "https?://join\\.hkust\\.edu\\.hk/(zh-hans|fees-and-scholarships|our-programs|admissions|pre-university)"
+    schedule: "45 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_edu_polyu
+    name: 香港理工大学
+    group: hk_education
+    organization: 香港理工大学 PolyU
+    base_domains: [www.polyu.edu.hk]
+    allowed_path_prefixes: [/study/, /tc/study/, /sc/study/, /education/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.polyu.edu.hk/home.xml"
+    sitemap_url_pattern: "https?://www\\.polyu\\.edu\\.hk/(study/(ug|pg)|tc/study/(ug|pg)|sc/study/(ug|pg)|education/)"
+    schedule: "55 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 100
+    enabled: true
+
+  - id: hk_edu_hkbu
+    name: 香港浸会大学
+    group: hk_education
+    organization: 香港浸会大学 HKBU
+    base_domains: [admissions.hkbu.edu.hk, www.hkbu.edu.hk]
+    allowed_path_prefixes: [/en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/]
+    discovery_method: listing
+    listing_urls:
+      - "https://admissions.hkbu.edu.hk/en/"
+      - "https://admissions.hkbu.edu.hk/fees-and-scholarships.html"
+      - "https://admissions.hkbu.edu.hk/admissions/mainland-jee.html"
+      - "https://www.hkbu.edu.hk/en/about/faculties.html"
+    link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk|www\\.hkbu\\.edu\\.hk)/(en/|admissions/|programmes|fees-and-scholarships\\.html|en/about/)"
+    schedule: "5 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_lingnan
+    name: 岭南大学
+    group: hk_education
+    organization: 岭南大学 Lingnan University
+    base_domains: [www.ln.edu.hk]
+    allowed_path_prefixes: [/admissions/, /academics/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ln.edu.hk/admissions/undergrad"
+      - "https://www.ln.edu.hk/academics/faculty-of-arts"
+      - "https://www.ln.edu.hk/academics/faculty-of-business"
+      - "https://www.ln.edu.hk/academics/faculty-of-social-sciences"
+    link_pattern: "https?://www\\.ln\\.edu\\.hk/(admissions|academics)/"
+    schedule: "15 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
     enabled: true
 
   - id: hk_hkma
