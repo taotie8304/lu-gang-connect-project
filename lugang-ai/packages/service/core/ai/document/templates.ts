@@ -23,6 +23,11 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
     url: 'https://www.airscend.com/form-templates/hk-study-facts-intake.pdf',
     fileName: '香港留学申请事实采集表.pdf',
     assetName: 'hk-study-facts-intake.pdf'
+  },
+  {
+    url: 'https://www.airscend.com/form-templates/hk-company-setup-checklist.pdf',
+    fileName: '香港公司设立信息与确认表.pdf',
+    assetName: 'hk-company-setup-checklist.pdf'
   }
 ];
 

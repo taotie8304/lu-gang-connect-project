@@ -117,3 +117,45 @@ describe('模板表单回填', () => {
     expect(form.getTextField('申报年度').getText()).toBe('2026');
   });
 });
+
+describe('香港公司设立确认表模板', () => {
+  const HK_COMPANY_URL = 'https://www.airscend.com/form-templates/hk-company-setup-checklist.pdf';
+
+  it('按固定地址精确匹配公司设立确认表', () => {
+    const template = findDocumentTemplate(HK_COMPANY_URL);
+    expect(template?.assetName).toBe('hk-company-setup-checklist.pdf');
+    expect(template?.fileName).toContain('香港公司设立');
+  });
+
+  it('模板包含完整表单域与公司类型下拉', async () => {
+    const buffer = await loadDocumentTemplate(findDocumentTemplate(HK_COMPANY_URL)!);
+    const doc = await PDFDocument.load(buffer);
+    const form = doc.getForm();
+    const names = form.getFields().map((field) => field.getName());
+    expect(names.length).toBeGreaterThanOrEqual(25);
+    expect(names).toContain('拟用英文名称');
+    expect(names).toContain('董事姓名');
+    expect(names).toContain('公司类型');
+    expect(names).toContain('待确认事项');
+    expect(form.getDropdown('公司类型').getOptions()).toContain('私人股份有限公司');
+  });
+
+  it('fill_field 写入公司设立模板并可从产物读回', async () => {
+    const buffer = await loadDocumentTemplate(findDocumentTemplate(HK_COMPANY_URL)!);
+    const result = await editPdf({
+      buffer,
+      operations: [
+        { op: 'fill_field', label: '拟用英文名称', value: 'Bright Harbour Trading Limited' },
+        { op: 'fill_field', label: '公司类型', value: '私人股份有限公司' },
+        { op: 'fill_field', label: '股东姓名/名称', value: '张伟' }
+      ]
+    });
+
+    expect(result.applied).toBe(3);
+    const filled = await PDFDocument.load(new Uint8Array(result.buffer));
+    const form = filled.getForm();
+    expect(form.getTextField('拟用英文名称').getText()).toBe('Bright Harbour Trading Limited');
+    expect(form.getDropdown('公司类型').getSelected()).toEqual(['私人股份有限公司']);
+    expect(form.getTextField('股东姓名/名称').getText()).toBe('张伟');
+  });
+});
