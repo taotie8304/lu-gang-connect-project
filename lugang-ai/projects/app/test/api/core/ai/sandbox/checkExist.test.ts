@@ -74,4 +74,20 @@ describe('sandbox checkExist API', () => {
     });
     expect(mocks.checkSandboxSessionExist).toHaveBeenCalledOnce();
   });
+
+  // 鲁港通 - 系统未开启 Sandbox 时未配置 provider，存在性检查必然抛错；
+  // 应短路返回不可用原因，保证聊天页加载稳定（生产 500 修复）
+  it('skips instance check and reports unavailable when system disabled', async () => {
+    mocks.resolveSandboxSessionAvailability.mockResolvedValueOnce({
+      available: false,
+      reason: SandboxUnavailableReasonEnum.systemDisabled
+    });
+
+    await expect(handler({ body: { appId, chatId: 'chat-1' } } as any)).resolves.toEqual({
+      exists: false,
+      unavailableReason: SandboxUnavailableReasonEnum.systemDisabled
+    });
+    expect(mocks.checkSandboxSessionExist).not.toHaveBeenCalled();
+    expect(mocks.buildSandboxClientQueryFromChatSource).not.toHaveBeenCalled();
+  });
 });
