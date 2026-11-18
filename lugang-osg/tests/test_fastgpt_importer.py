@@ -27,6 +27,7 @@ class FakeClient:
         self.fail_next_create_text = False
         self.fail_next_rename = False
         self.fail_next_delete = False
+        self.delete_not_exist = False
         self._seq = 0
         # {(dataset_id, parent_id): [{"_id": ..., "name": ...}]}
         self.existing_folders = existing_folders or {}
@@ -68,6 +69,11 @@ class FakeClient:
 
     def delete_collections(self, collection_ids):
         self.calls.append(("delete", tuple(collection_ids)))
+        if self.delete_not_exist:
+            raise FastGPTError(
+                "FastGPT 接口错误（code=501003）：common:error_collection_not_exist",
+                code=501003,
+            )
         if self.fail_next_delete:
             self.fail_next_delete = False
             raise FastGPTError("模拟删除失败")
@@ -831,6 +837,29 @@ def test_removal_failure_keeps_record_for_retry(db):
     rec = db.query(ImportMap).one()
     assert rec.status == "imported"
     assert rec.collection_id == "OLD1"
+
+
+def test_removal_collection_not_exist_treated_as_removed(db):
+    """集合已在知识库被人工删除（501003）时按已下线处理，避免无限重试。"""
+    src = make_source(db)
+    doc, ver = make_document(db, src, TID_URL)
+    write_imported(db, doc, ver)
+    doc.status = "archived"
+    db.flush()
+    fake = FakeClient()
+    fake.delete_not_exist = True
+
+    report = run_import(db, fake, "hk_tid")
+
+    assert report.removed == 1
+    assert report.removal_failed == 0
+    rec = db.query(ImportMap).one()
+    assert rec.status == "removed"
+    assert rec.collection_id is None
+    log = db.query(AuditLog).one()
+    assert log.detail["action"] == "remove"
+    assert log.detail["collectionId"] == "OLD1"
+    assert "已不存在" in log.detail["reason"]
 
 
 def test_removed_document_reimports_after_restore(db):

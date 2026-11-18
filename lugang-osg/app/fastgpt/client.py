@@ -9,7 +9,14 @@ PAGE_SIZE = 100
 
 
 class FastGPTError(Exception):
-    """FastGPT 接口异常（非 200 业务码 / 响应不可解析 / 连接失败），消息面向使用者。"""
+    """FastGPT 接口异常（非 200 业务码 / 响应不可解析 / 连接失败），消息面向使用者。
+
+    code 为 FastGPT 业务错误码（如 501003 集合不存在），非业务错误时为 None。
+    """
+
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class FastGPTClient:
@@ -48,7 +55,10 @@ class FastGPTClient:
         code = body.get("code")
         if code != 200:
             message = body.get("message") or body.get("statusText") or "未知错误"
-            raise FastGPTError(f"FastGPT 接口错误（code={code}）：{message}")
+            raise FastGPTError(
+                f"FastGPT 接口错误（code={code}）：{message}",
+                code=code if isinstance(code, int) else None,
+            )
         return body.get("data")
 
     # --- 数据集 ---

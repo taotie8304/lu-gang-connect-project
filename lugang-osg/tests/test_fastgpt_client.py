@@ -41,6 +41,24 @@ def test_error_code_raises_chinese_message():
         make_client(handler).list_datasets()
 
 
+def test_error_exposes_business_code():
+    # 鲁港通 - 下线同步需按错误码区分「集合已不存在」(501003) 等可幂等场景
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "code": 501003,
+                "statusText": "error_collection_not_exist",
+                "message": "common:error_collection_not_exist",
+            },
+        )
+
+    with pytest.raises(FastGPTError) as excinfo:
+        make_client(handler).delete_collections(["gone"])
+
+    assert excinfo.value.code == 501003
+
+
 def test_non_json_response_raises():
     def handler(request):
         return httpx.Response(502, text="<html>bad gateway</html>")

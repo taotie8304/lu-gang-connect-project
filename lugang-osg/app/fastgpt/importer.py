@@ -212,6 +212,9 @@ def _record_failure(
 
 AUDIT_EVENT_SYNC = "fastgpt_collection_sync"
 
+# 鲁港通 - FastGPT 删除接口对不存在的集合不幂等（实测 501003），下线同步按已下线处理
+COLLECTION_NOT_EXIST_CODE = 501003
+
 
 def _write_audit(
     db: Session,
@@ -262,7 +265,7 @@ def _remove_excluded_documents(
     """P0-2 下线同步：文档被排除后删除其已导入集合（含失败重试遗留的旧集合）。
 
     删除成功才落库（status=removed、collection_id 置空），失败保留原记录下轮重试；
-    dry-run 仅计数不调用接口。
+    集合已不存在（历史人工清理）按已下线处理；dry-run 仅计数不调用接口。
     """
     rows = db.execute(
         select(ImportMap, Document)
@@ -278,12 +281,18 @@ def _remove_excluded_documents(
             report.removed += 1
             continue
         title = doc.title or doc.canonical_url
+        already_gone = False
         try:
             client.delete_collections([record.collection_id])
         except FastGPTError as exc:
-            report.removal_failed += 1
-            report.errors.append(f"{title}：下线删除失败（{exc}），下轮重试")
-            continue
+            if exc.code != COLLECTION_NOT_EXIST_CODE:
+                report.removal_failed += 1
+                report.errors.append(f"{title}：下线删除失败（{exc}），下轮重试")
+                continue
+            already_gone = True
+        reason = f"文档状态 {doc.status}"
+        if already_gone:
+            reason += "（集合此前已不存在）"
         _write_audit(
             db,
             source_id=source.id,
@@ -293,7 +302,7 @@ def _remove_excluded_documents(
             collection_id=record.collection_id,
             version_id=record.version_id,
             content_sha256=record.content_sha256,
-            reason=f"文档状态 {doc.status}",
+            reason=reason,
         )
         record.status = "removed"
         record.error = f"文档状态 {doc.status}，已从知识库下线"
