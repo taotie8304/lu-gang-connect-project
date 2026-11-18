@@ -18,6 +18,11 @@ export const DOCUMENT_TEMPLATES: DocumentTemplate[] = [
     url: 'https://www.airscend.com/form-templates/jinan-subsidy-intake.pdf',
     fileName: '济南市外资与人才补贴自评及申报基础信息表.pdf',
     assetName: 'jinan-subsidy-intake.pdf'
+  },
+  {
+    url: 'https://www.airscend.com/form-templates/hk-study-facts-intake.pdf',
+    fileName: '香港留学申请事实采集表.pdf',
+    assetName: 'hk-study-facts-intake.pdf'
   }
 ];
 

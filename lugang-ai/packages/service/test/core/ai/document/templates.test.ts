@@ -56,6 +56,47 @@ describe('文档源解析的模板回退', () => {
   });
 });
 
+describe('香港留学事实采集表模板', () => {
+  const HK_STUDY_URL = 'https://www.airscend.com/form-templates/hk-study-facts-intake.pdf';
+
+  it('按固定地址精确匹配留学事实采集表', () => {
+    const template = findDocumentTemplate(HK_STUDY_URL);
+    expect(template?.assetName).toBe('hk-study-facts-intake.pdf');
+    expect(template?.fileName).toContain('香港留学');
+  });
+
+  it('模板包含完整表单域与学位层次下拉', async () => {
+    const buffer = await loadDocumentTemplate(findDocumentTemplate(HK_STUDY_URL)!);
+    const doc = await PDFDocument.load(buffer);
+    const form = doc.getForm();
+    const names = form.getFields().map((field) => field.getName());
+    expect(names.length).toBeGreaterThanOrEqual(25);
+    expect(names).toContain('姓名（中文）');
+    expect(names).toContain('目标学位层次');
+    expect(names).toContain('意向院校');
+    expect(form.getDropdown('目标学位层次').getOptions()).toContain('硕士学位');
+  });
+
+  it('fill_field 写入留学模板并可从产物读回', async () => {
+    const buffer = await loadDocumentTemplate(findDocumentTemplate(HK_STUDY_URL)!);
+    const result = await editPdf({
+      buffer,
+      operations: [
+        { op: 'fill_field', label: '姓名（中文）', value: '陈小明' },
+        { op: 'fill_field', label: '目标学位层次', value: '硕士学位' },
+        { op: 'fill_field', label: '意向院校', value: '香港大学、香港中文大学' }
+      ]
+    });
+
+    expect(result.applied).toBe(3);
+    const filled = await PDFDocument.load(new Uint8Array(result.buffer));
+    const form = filled.getForm();
+    expect(form.getTextField('姓名（中文）').getText()).toBe('陈小明');
+    expect(form.getDropdown('目标学位层次').getSelected()).toEqual(['硕士学位']);
+    expect(form.getTextField('意向院校').getText()).toContain('香港大学');
+  });
+});
+
 describe('模板表单回填', () => {
   it('fill_field 写入模板表单域并可从产物读回', async () => {
     const template = findDocumentTemplate(TEMPLATE_URL)!;
