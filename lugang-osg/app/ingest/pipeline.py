@@ -537,7 +537,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
     entry_urls = _entry_urls(source)
     # 鲁港通 - fixed_url 入口即目标文档；api_json 的 canonical_url 是详情 API 端点
     # （/prod-api/...getInfo?id=），网页形态规则对它无意义，两者均豁免栏目页形态过滤。
-    shape_filter = source.discovery_method not in ("fixed_url", "api_json")
+    # allow_index_pages：香港部分站点（EDB 实测）核心办事页以 /index.html 结尾
+    # （小一入学统筹办法、小一学校网），形态过滤会整片漏采；放行后靠低内容门槛兜底。
+    shape_filter = (source.discovery_method not in ("fixed_url", "api_json")
+                    and not cfg.get("allow_index_pages"))
 
     for idx, item in enumerate(candidates):
         # 鲁港通 - 连续被拒熔断（济南三站加固）：对方已明确拒绝 _BLOCK_CUTOFF 次，继续

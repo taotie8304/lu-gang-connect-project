@@ -365,6 +365,9 @@ sources:
     sitemap_urls:
       - "https://www.edb.gov.hk/sitemap.xml"
     sitemap_url_pattern: "/sc/edu-system/(primary-secondary/((primary|secondary)\\.html|spa-systems/|applicable-to-secondary/|applicable-to-primary-secondary/direct-subsidy-scheme/)|preprimary-kindergarten/|postsecondary/)|/sc/student-parents/(sch-info/|support-subsidies/|spa-systems/|placement-assistance/|newly-arrived-children/)"
+    # 鲁港通 - EDB 核心办事页以 /index.html 结尾（小一入学统筹办法 1481 字、小一学校网 25662 字），
+    # 形态过滤会整片漏采；放行后纯导航页（128/168 字）由低内容门槛兜底剔除（2026-11-19 实测）
+    allow_index_pages: true
     schedule: "10 3 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 150

@@ -36,6 +36,9 @@ _DISCOVERY_KEYS = (
     "title_strip_prefixes",
     # 鲁港通 - ASP.NET 整页 form 包裹站点（HKEAA 实测）：提取时保留 form 内文本
     "keep_form",
+    # 鲁港通 - index 形态页放行（EDB 实测）：核心办事页以 /index.html 结尾，
+    # 形态过滤整片漏采；放行后由 MIN_CONTENT_CHARS 兜底剔除纯导航页
+    "allow_index_pages",
     # 鲁港通 - 商务厅 xxgk 检索式列表页：请求方法（POST）与 {currpage} 翻页参数
     "method",
     "paginate",

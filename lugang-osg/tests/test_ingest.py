@@ -827,6 +827,39 @@ class TestPipeline:
         assert stats.skipped_non_article == 0
         assert stats.new_docs == 1
 
+    def test_allow_index_pages_exemption_with_low_content_backstop(self, db):
+        """allow_index_pages：index 形态页放行，纯导航页由低内容门槛兜底。
+
+        鲁港通 - EDB 实测（2026-11-19）：sitemap 核心页大量以 /index.html 结尾
+        （小一入学统筹办法 1481 字含年度申请时间表、小一学校网 25662 字），
+        一刀切形态过滤会整片漏掉办事主页面；同形态中也混有 128/168 字的纯导航
+        入口页，放行后靠 MIN_CONTENT_CHARS 剔除。
+        """
+        src = self._setup_source(db, code="sd_test")
+        src.discovery_config = {**src.discovery_config, "allow_index_pages": True}
+        db.commit()
+        listing = (
+            "<html><body>"
+            "<a href='/col/col1234/index.html'>小一入学</a>"
+            "<a href='/col/col1234/nav/index.html'>导航页</a>"
+            "</body></html>"
+        ).encode("utf-8")
+        fetcher = _FakeFetcher({
+            "http://commerce.shandong.gov.cn/": listing,
+            "http://commerce.shandong.gov.cn/col/col1234/index.html": _article_html(
+                "山东省商务厅 小一入学统筹办法", _LONG_ZH
+            ),
+            "http://commerce.shandong.gov.cn/col/col1234/nav/index.html": _article_html(
+                "山东省商务厅 导航", "短正文"
+            ),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats.skipped_non_article == 0
+        assert stats.new_docs == 1
+        tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
+        assert tasks["http://commerce.shandong.gov.cn/col/col1234/nav/index.html"] == "skipped_low_content"
+
     def test_limit_reached_stops_creating_tasks(self, db):
         """达到单轮上限后立即结束，不再为剩余候选逐条建 crawl_task。
 
