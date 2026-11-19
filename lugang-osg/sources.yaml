@@ -2214,3 +2214,271 @@ sources:
     rate_limit_per_minute: 4
     max_pages_per_run: 10
     enabled: true
+
+  - id: hk_med_ha_overview
+    name: 医管局就医流程与电子证明
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=269708&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214184&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=221223&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214186&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=269708&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "医院管理局电子医生证明书"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214184&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "白内障手术预约安排"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=221223&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "全关节置换术预约安排"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214186&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊轮候时间补充资料"
+    content_selector: "#contentarea"
+    schedule: "5 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_med_ha_ae
+    name: 医管局急症室服务
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10051&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10051&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "急症室服务与收费"
+    content_selector: "#contentarea"
+    schedule: "15 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 5
+    enabled: true
+
+  - id: hk_med_ha_gopc
+    name: 医管局家庭医学门诊
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    # /pas_gopc/：130333 筹额概览页 302 到最终页（2026-11-19 首采实测）
+    allowed_path_prefixes: [/visitor/, /haho/ho/, /pas_gopc/]
+    # 鲁港通 - 130333 的 302 Location 为 http://，站点随后自行升级 https（2026-11-20 实测）
+    allow_http: true
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10052&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=200250&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=208211&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=130333&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212848&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=216317&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10052&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "家庭医学门诊（普通科门诊）服务与预约"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=200250&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "家庭医学诊所名单（地址、电话及服务时间）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=208211&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "设有手机短讯预约服务的家庭医学诊所名单"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=130333&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "家庭医学诊所平均诊症名额（筹额）概览"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212848&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "家庭医学门诊服务单张"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=216317&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "恶劣天气下家庭医学诊所服务安排"
+    content_selector: "#contentarea"
+    schedule: "25 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_med_ha_sopc
+    name: 医管局专科门诊
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10053&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=200252&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214177&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214169&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=248298&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282817&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282818&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282819&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282820&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282821&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282822&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282823&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282824&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282825&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10053&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊服务与转介流程"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=200252&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊诊所名单（地址、电话及服务时间）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214177&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=214169&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊分流安排"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=248298&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "恶劣天气下专科门诊服务安排"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282817&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "耳鼻喉科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282818&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "眼科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282819&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "妇科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282820&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "内科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282821&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "骨科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282822&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "儿科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282823&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "精神科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282824&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "外科门诊新症轮候时间"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282825&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专科门诊常见问题"
+    content_selector: "#contentarea"
+    schedule: "35 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 20
+    enabled: true
+
+  - id: hk_med_ha_cm
+    name: 医管局中医诊所暨教研中心
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=277146&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=277146&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "中医诊所暨教研中心名单（地址、电话及服务时间）"
+    content_selector: "#contentarea"
+    schedule: "45 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 5
+    enabled: true
+
+  - id: hk_med_ha_fees
+    name: 医管局医疗收费与费用减免
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10045&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10046&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=259365&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=259367&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=281820&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=206049&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212016&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212018&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212019&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=239522&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=217468&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10045&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "公立医院医疗收费（含非符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10046&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "医疗费用付款方法"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=259365&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "医疗费用减免（适用于符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=259367&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "医疗费用减免（适用于非符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=281820&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "全年收费上限（适用于符合资格人士）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=206049&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "关爱基金医疗援助项目"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212016&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "撒玛利亚基金：病人购买的医疗项目"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212018&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "撒玛利亚基金：申请资格"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=212019&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "撒玛利亚基金：转介程序和申请手续"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=239522&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "撒玛利亚基金：药物检讨和筛选机制"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=217468&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "撒玛利亚基金：已批核个案之复核机制"
+    content_selector: "#contentarea"
+    schedule: "55 3 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 15
+    enabled: true
+
+  - id: hk_med_hago
+    name: 医管局 HA Go 电子服务
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www2.ha.org.hk]
+    allowed_path_prefixes: [/hago/zh-cn/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/what-is-ha-go"
+      - "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/benefits-of-ha-go"
+      - "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/ha-go-membership"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/book-gopc"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/bookha(book-sopc)"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/my-appointments"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/telehealth"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/easyq"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/payment-related/pay-ha"
+      - "https://www2.ha.org.hk/hago/zh-cn/features/health-management/medication"
+    # 鲁港通 - 页面标题已可辨，仍按页固化，避免站方改版后回退为通用标题
+    title_overrides:
+      "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/what-is-ha-go": "HA Go - 何谓 HA Go"
+      "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/benefits-of-ha-go": "HA Go - 好处"
+      "https://www2.ha.org.hk/hago/zh-cn/about-ha-go/ha-go/ha-go-membership": "HA Go - 会员制度"
+      "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/book-gopc": "HA Go - 预约家庭医学诊所"
+      "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/bookha(book-sopc)": "HA Go - 预约专科门诊（预约通）"
+      "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/my-appointments": "HA Go - 预约纪录"
+      "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/telehealth": "HA Go - 遥距医疗"
+      "https://www2.ha.org.hk/hago/zh-cn/features/appointment-related/easyq": "HA Go - 排队易"
+      "https://www2.ha.org.hk/hago/zh-cn/features/payment-related/pay-ha": "HA Go - 缴费服务"
+      "https://www2.ha.org.hk/hago/zh-cn/features/health-management/medication": "HA Go - 药物纪录"
+    schedule: "5 4 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 12
+    enabled: true
+
+  - id: hk_med_ha_clusters
+    name: 医管局联网概览
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282496&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10177&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10178&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10179&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10180&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10181&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=282496&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "港岛联网（联网简介、服务范围及医院）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10177&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "九龙中联网（联网简介、服务范围及医院）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10178&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "九龙东联网（联网简介、服务范围及医院）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10179&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "九龙西联网（联网简介、服务范围及医院）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10180&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "新界东联网（联网简介、服务范围及医院）"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10181&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "新界西联网（联网简介、服务范围及医院）"
+    content_selector: "#contentarea"
+    schedule: "15 4 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_med_ha_other
+    name: 医管局入院与其他服务
+    group: hk_med_guide
+    organization: 香港医院管理局
+    base_domains: [www.ha.org.hk]
+    allowed_path_prefixes: [/visitor/, /haho/ho/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10043&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=242254&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10083&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10071&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10096&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10098&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=279370&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+      - "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=261653&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1"
+    # 鲁港通 - 各页 <title> 多为「HA」，按页指定可读标题，保证引用来源可辨
+    title_overrides:
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10043&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "入院手续及住院须知"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=242254&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "传译服务"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10083&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "病人资源中心"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10071&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "专职医疗服务"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10096&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "纾缓治疗服务"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=10098&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "戒烟辅导服务"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=279370&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "医院管理局精神健康专线"
+      "https://www.ha.org.hk/visitor/ha_view_content.asp?Parent_ID=10042&Content_ID=261653&Dimension=100&Lang=CHIGB&Ver=HTML&Change_Page=1": "赞扬、意见及投诉"
+    content_selector: "#contentarea"
+    schedule: "25 4 * * 1"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 12
+    enabled: true

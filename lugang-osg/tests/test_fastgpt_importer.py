@@ -905,3 +905,19 @@ def test_non_bank_source_header_has_no_verified_on(db):
 
     body = [c for c in fake.calls if c[0] == "text"][0][3]
     assert "核对日期" not in body
+
+
+# 鲁港通 - 就医库导入头带核对日期（2026-11-19）
+def test_med_source_import_header_has_verified_on(db):
+    src = make_source(
+        db, code="hk_med_ha_ae", name="医管局急症室", organization="医院管理局"
+    )
+    url = "https://www.ha.org.hk/visitor/ha_view_content.asp?Content_ID=10051"
+    make_document(db, src, url, title="急症室")
+    fake = FakeClient()
+
+    run_import(db, fake, "hk_med_ha_ae")
+
+    body = [c for c in fake.calls if c[0] == "text"][0][3]
+    assert "核对日期：" in body
+    assert f"原文链接：{url}" in body

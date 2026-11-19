@@ -10,6 +10,7 @@ HK_DATASET_ID = "6aa65d90429fb6770923e91f"  # 鲁港通 - 香港政府各部门�
 SD_DATASET_ID = "6aa65dd8429fb6770923ea6a"  # 鲁港通 - 山东省各地市综合政策知识库
 EDU_DATASET_ID = "69674f94fa58c162073713be"  # 鲁港通 - 香港教育中心知识库（原「香港教育相关」）
 BANK_DATASET_ID = "6afed05e1f0af75b59e136ec"  # 鲁港通 - 香港银行证券开户中心
+MED_DATASET_ID = "6aff10cf1f0af75b59e28b9a"  # 鲁港通 - 香港公立医院就医指引中心
 
 
 class MappingError(Exception):
@@ -20,7 +21,7 @@ class MappingError(Exception):
 class KbRoute:
     """一个文档的导入目标：知识库 + 数据集内文件夹路径。"""
 
-    kb_key: Literal["hk", "sd", "edu", "bank"]
+    kb_key: Literal["hk", "sd", "edu", "bank", "med"]
     dataset_id: str
     region: str  # 标签用：香港 / 山东
     department: str  # 标签用：部门（末级机构）
@@ -180,6 +181,21 @@ _HK_BANK_MAINLAND: dict[str, tuple[str, str]] = {
 }
 
 
+# 鲁港通 - 香港公立医院就医指引中心来源 → (标签部门, 文件夹路径)
+# 医管局服务指引 + HA Go（2026-11-19 批次）
+_HK_MED_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "hk_med_ha_overview": ("医院管理局", ("00 就医总览与流程",)),
+    "hk_med_ha_ae": ("医院管理局", ("10 急症室",)),
+    "hk_med_ha_gopc": ("医院管理局", ("20 家庭医学门诊（普通科门诊）",)),
+    "hk_med_ha_sopc": ("医院管理局", ("30 专科门诊",)),
+    "hk_med_ha_cm": ("医院管理局", ("40 中医服务",)),
+    "hk_med_ha_fees": ("医院管理局", ("50 收费与减免",)),
+    "hk_med_hago": ("医院管理局", ("60 HA Go 与预约",)),
+    "hk_med_ha_clusters": ("医院管理局", ("70 医院联网与医院",)),
+    "hk_med_ha_other": ("医院管理局", ("90 住院与其他服务",)),
+}
+
+
 def edu_edb_folder(url: str) -> tuple[str, ...]:
     """教育局文档按 URL 学段路由（路径白名单见 spec design §3.3）。"""
     u = url.lower()
@@ -239,6 +255,9 @@ def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
     if source_code in _HK_BANK_SOURCES:
         dept, folder = _HK_BANK_SOURCES[source_code]
         return KbRoute("bank", BANK_DATASET_ID, "香港", dept, folder)
+    if source_code in _HK_MED_SOURCES:
+        dept, folder = _HK_MED_SOURCES[source_code]
+        return KbRoute("med", MED_DATASET_ID, "香港", dept, folder)
     if source_code in _SD_PROVINCIAL:
         dept = _SD_PROVINCIAL[source_code]
         return KbRoute("sd", SD_DATASET_ID, "山东", dept, ("省级部门", dept))
@@ -256,6 +275,7 @@ def is_routable(source_code: str) -> bool:
         or source_code == "hk_edu_edb"
         or source_code in _HK_BANK_SOURCES
         or source_code in _HK_BANK_MAINLAND
+        or source_code in _HK_MED_SOURCES
         or source_code in _SD_PROVINCIAL
         or source_code in _SD_JINAN
     )

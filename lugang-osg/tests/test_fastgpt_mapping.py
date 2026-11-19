@@ -5,6 +5,7 @@ import pytest
 
 from app.fastgpt.mapping import (
     HK_DATASET_ID,
+    MED_DATASET_ID,
     SD_DATASET_ID,
     MappingError,
     is_routable,
@@ -392,4 +393,35 @@ def test_bank_mainland_extra_sources_route_to_40():
 
 def test_bank_mainland_and_biz_sources_routable():
     for code in ("hk_bank_hsbc_biz", "hk_bank_bochk_cn", "hk_bank_icbcasia_cn", "hk_vbank_za_cn"):
+        assert is_routable(code) is True, code
+
+
+# 鲁港通 - 香港公立医院就医指引中心（2026-11-19）：就医库路由
+_MED_SOURCES = {
+    "hk_med_ha_overview": ("00 就医总览与流程",),
+    "hk_med_ha_ae": ("10 急症室",),
+    "hk_med_ha_gopc": ("20 家庭医学门诊（普通科门诊）",),
+    "hk_med_ha_sopc": ("30 专科门诊",),
+    "hk_med_ha_cm": ("40 中医服务",),
+    "hk_med_ha_fees": ("50 收费与减免",),
+    "hk_med_hago": ("60 HA Go 与预约",),
+    "hk_med_ha_clusters": ("70 医院联网与医院",),
+    "hk_med_ha_other": ("90 住院与其他服务",),
+}
+
+
+def test_med_sources_route():
+    for code, folder in _MED_SOURCES.items():
+        route = resolve_route(
+            code, "https://www.ha.org.hk/visitor/ha_view_content.asp"
+        )
+        assert route.kb_key == "med", code
+        assert route.dataset_id == MED_DATASET_ID, code
+        assert route.region == "香港", code
+        assert route.department == "医院管理局", code
+        assert route.folder_path == folder, code
+
+
+def test_med_sources_routable():
+    for code in _MED_SOURCES:
         assert is_routable(code) is True, code
