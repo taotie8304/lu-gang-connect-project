@@ -286,3 +286,110 @@ def test_edu_edb_fallback_overview():
 def test_edu_sources_routable():
     for code in ("hk_edu_edb", "hk_edu_hku", "hk_edu_hkust_join", "hk_edu_lingnan"):
         assert is_routable(code) is True, code
+
+
+# 鲁港通 - 香港银行证券开户中心（2026-11-19）：开户库路由
+from app.fastgpt.mapping import BANK_DATASET_ID  # noqa: E402
+
+_BANK_TRADITIONAL = {
+    "hk_bank_hsbc": "汇丰银行",
+    "hk_bank_bochk": "中国银行（香港）",
+    "hk_bank_sc": "渣打银行",
+    "hk_bank_hangseng": "恒生银行",
+    "hk_bank_bea": "东亚银行",
+    "hk_bank_icbcasia": "工银亚洲",
+    "hk_bank_cmbwl": "招商永隆银行",
+    "hk_bank_ocbc": "华侨银行（香港）",
+    "hk_bank_dbs": "星展银行",
+}
+
+_BANK_VIRTUAL = {
+    "hk_vbank_fusion": "富融银行",
+    "hk_vbank_za": "众安银行",
+    "hk_vbank_livi": "理慧银行",
+    "hk_vbank_mox": "Mox Bank",
+    "hk_vbank_welab": "汇立银行",
+    "hk_vbank_ant": "蚂蚁银行",
+    "hk_vbank_elebank": "大象银行",
+    "hk_vbank_paob": "平安壹账通银行",
+}
+
+_BANK_SECURITIES = {
+    "hk_sec_futu": "富途证券",
+    "hk_sec_webull": "微牛证券",
+    "hk_sec_usmart": "盈立证券",
+    "hk_sec_cms": "招商证券国际",
+    "hk_sec_tiger": "老虎证券",
+    "hk_sec_longbridge": "长桥证券",
+    "hk_sec_valuable": "华盛证券",
+    "hk_sec_brightsmart": "耀才证券",
+    "hk_sec_chief": "致富证券",
+    "hk_sec_gtja": "国泰君安国际",
+}
+
+
+def test_bank_traditional_sources_route():
+    for code, dept in _BANK_TRADITIONAL.items():
+        route = resolve_route(code, "https://example.com/x")
+        assert route.kb_key == "bank", code
+        assert route.dataset_id == BANK_DATASET_ID, code
+        assert route.region == "香港", code
+        assert route.department == dept, code
+        assert route.folder_path == ("10 传统银行", dept), code
+
+
+def test_bank_virtual_sources_route():
+    for code, dept in _BANK_VIRTUAL.items():
+        route = resolve_route(code, "https://example.com/x")
+        assert route.dataset_id == BANK_DATASET_ID, code
+        assert route.folder_path == ("20 虚拟银行", dept), code
+
+
+def test_bank_securities_sources_route():
+    for code, dept in _BANK_SECURITIES.items():
+        route = resolve_route(code, "https://example.com/x")
+        assert route.dataset_id == BANK_DATASET_ID, code
+        assert route.folder_path == ("30 证券行", dept), code
+
+
+def test_bank_mainland_sources_route_to_40():
+    route = resolve_route("hk_bank_hsbc_cn", "https://example.com/x")
+    assert route.dataset_id == BANK_DATASET_ID
+    assert route.department == "汇丰银行"
+    assert route.folder_path == ("40 内地居民赴港开户", "银行开户")
+    route = resolve_route("hk_sec_futu_cn", "https://example.com/x")
+    assert route.department == "富途证券"
+    assert route.folder_path == ("40 内地居民赴港开户", "证券开户")
+
+
+def test_bank_sources_routable():
+    for code in ("hk_bank_hsbc", "hk_vbank_za", "hk_sec_futu", "hk_bank_hsbc_cn"):
+        assert is_routable(code) is True, code
+
+
+# 鲁港通 - 2026-11-19：汇丰工商金融独立站 + 内地专题扩充（中银/工银亚洲/ZA）
+def test_bank_hsbc_biz_routes_to_hsbc_folder():
+    route = resolve_route("hk_bank_hsbc_biz", "https://www.business.hsbc.com.hk/zh-cn")
+    assert route.kb_key == "bank"
+    assert route.dataset_id == BANK_DATASET_ID
+    assert route.department == "汇丰银行"
+    assert route.folder_path == ("10 传统银行", "汇丰银行")
+
+
+def test_bank_mainland_extra_sources_route_to_40():
+    cases = {
+        "hk_bank_bochk_cn": ("中国银行（香港）", "银行开户"),
+        "hk_bank_icbcasia_cn": ("工银亚洲", "银行开户"),
+        "hk_vbank_za_cn": ("众安银行", "银行开户"),
+    }
+    for code, (dept, sub) in cases.items():
+        route = resolve_route(code, "https://example.com/x")
+        assert route.kb_key == "bank", code
+        assert route.dataset_id == BANK_DATASET_ID, code
+        assert route.department == dept, code
+        assert route.folder_path == ("40 内地居民赴港开户", sub), code
+
+
+def test_bank_mainland_and_biz_sources_routable():
+    for code in ("hk_bank_hsbc_biz", "hk_bank_bochk_cn", "hk_bank_icbcasia_cn", "hk_vbank_za_cn"):
+        assert is_routable(code) is True, code

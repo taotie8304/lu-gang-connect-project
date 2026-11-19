@@ -52,3 +52,23 @@ def test_body_is_stripped():
     )
     assert text.endswith("正文呢")
     assert "\n\n\n" not in text
+
+
+# 鲁港通 - 开户库导入头「核对日期」（2026-11-19）：资料核对日期=本次同步当日
+def test_verified_on_line_after_link():
+    text = build_import_text(
+        title="開戶所需文件",
+        url="https://example.com/bank/open",
+        organization="某银行",
+        published_at=None,
+        body="正文",
+        verified_on=date(2026, 11, 19),
+    )
+    assert "原文链接：https://example.com/bank/open\n核对日期：2026-11-19\n\n" in text
+
+
+def test_verified_on_absent_by_default():
+    text = build_import_text(
+        title="t", url="u", organization="o", published_at=None, body="b"
+    )
+    assert "核对日期" not in text

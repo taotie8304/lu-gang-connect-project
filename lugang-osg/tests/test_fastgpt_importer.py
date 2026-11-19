@@ -879,3 +879,29 @@ def test_removed_document_reimports_after_restore(db):
     rec = db.query(ImportMap).one()
     assert rec.status == "imported"
     assert rec.collection_id == fake2.last_text_id
+
+
+# 鲁港通 - 开户库导入头带核对日期（2026-11-19）
+def test_bank_source_import_header_has_verified_on(db):
+    src = make_source(db, code="hk_bank_hsbc", name="汇丰银行", organization="汇丰银行")
+    make_document(
+        db, src, "https://www.hsbc.com.hk/zh-cn/accounts/", title="開戶所需文件"
+    )
+    fake = FakeClient()
+
+    run_import(db, fake, "hk_bank_hsbc")
+
+    body = [c for c in fake.calls if c[0] == "text"][0][3]
+    assert "核对日期：" in body
+    assert "原文链接：https://www.hsbc.com.hk/zh-cn/accounts/" in body
+
+
+def test_non_bank_source_header_has_no_verified_on(db):
+    src = make_source(db)
+    make_document(db, src, TID_URL)
+    fake = FakeClient()
+
+    run_import(db, fake, "hk_tid")
+
+    body = [c for c in fake.calls if c[0] == "text"][0][3]
+    assert "核对日期" not in body

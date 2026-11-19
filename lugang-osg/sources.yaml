@@ -1665,3 +1665,552 @@ sources:
     rate_limit_per_minute: 4
     max_pages_per_run: 20
     enabled: true
+
+  # ======================================================================
+  # 鲁港通 - 香港银行证券开户中心（2026-11-19，probe1-6 实测）
+  # 周级增量：周日 02:05-06:35 错峰，单源 4 页/分钟、单轮 40 页
+  # 暂缓：招商永隆（SPA/404）、富融（WAF 567）、蚂蚁（纯 SPA）、长桥（IPv4 不可达/403）
+  # ======================================================================
+
+  # ---------- 10 传统银行 ----------
+  - id: hk_bank_hsbc
+    name: 汇丰银行（香港）
+    group: hk_bank_open
+    organization: 汇丰银行
+    base_domains: [www.hsbc.com.hk]
+    allowed_path_prefixes: [/zh-cn/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.hsbc.com.hk/sitemap.xml"
+    sitemap_url_pattern: "https?://www\\.hsbc\\.com\\.hk/zh-cn/(ways-to-bank/mobile-apps/banking/account-opening/|investments/account-opening/|accounts/(products/(premier|one)/|forms/))$"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "5 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_hsbc_biz
+    name: 汇丰银行（工商金融）
+    group: hk_bank_open
+    organization: 汇丰银行
+    base_domains: [www.business.hsbc.com.hk]
+    allowed_path_prefixes: [/zh-cn]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.business.hsbc.com.hk/zh-cn"
+    link_pattern: "business\\.hsbc\\.com\\.hk/zh-cn/(products/business-integrated-account|regulations/(document-checklist|activating-your-new-account))"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_bochk
+    name: 中国银行（香港）
+    group: hk_bank_open
+    organization: 中国银行（香港）
+    base_domains: [www.bochk.com]
+    allowed_path_prefixes: [/sc/corporate]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.bochk.com/sc/corporate/account.html"
+      - "https://www.bochk.com/sc/corporate.html"
+    link_pattern: "bochk\\.com/sc/corporate/account/bia\\.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "25 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_sc
+    name: 渣打银行（香港）
+    group: hk_bank_open
+    organization: 渣打银行
+    base_domains: [www.sc.com]
+    allowed_path_prefixes: [/hk/deposits/, /hk/business/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.sc.com/hk/deposits/"
+      - "https://www.sc.com/hk/business/"
+    link_pattern: "sc\\.com/hk/(deposits/savings-accounts/mobile-account-opening/|business/(sme-online-account-opening-welcome-offer|gba-one)/)"
+    url_identity_ignore_params: [intcid]
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "35 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_hangseng
+    name: 恒生银行
+    group: hk_bank_open
+    organization: 恒生银行
+    base_domains: [www.hangseng.com]
+    allowed_path_prefixes: [/zh-hk/personal/, /personal/banking-services/, /zh-hk/business/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.hangseng.com/zh-hk/personal/banking-services/"
+      - "https://www.hangseng.com/zh-hk/business/"
+    link_pattern: "hangseng\\.com/zh-hk/(personal/banking-services/(account-opening|integrated-account|accounts-and-deposits)/|business/your-business-essentials/account-(biz-virtual-account|ibs-account|saving-account|current-account)/)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "45 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_bea
+    name: 东亚银行
+    group: hk_bank_open
+    organization: 东亚银行
+    base_domains: [www.hkbea.com]
+    allowed_path_prefixes: [/accountopening/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.hkbea.com/sitemap.xml"
+    sitemap_url_pattern: "hkbea\\.com/accountopening/(sc|tc)/"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "55 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: false  # 鲁港通 - 站点为 JS 跳转壳，静态抓取零正文，暂缓启用
+
+  - id: hk_bank_icbcasia
+    name: 工银亚洲
+    group: hk_bank_open
+    organization: 工银亚洲
+    base_domains: [www.icbcasia.com]
+    allowed_path_prefixes: [/hk/sc/personal/banking/integrated-account/, /hk/sc/commercial/business-account/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.icbcasia.com/hk/sc/personal/banking/integrated-account/default.html"
+      - "https://www.icbcasia.com/hk/sc/commercial/business-account/default.html"
+    link_pattern: "icbcasia\\.com/hk/sc/(personal/banking/integrated-account/|commercial/business-account/)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "5 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_ocbc
+    name: 华侨银行（香港）
+    group: hk_bank_open
+    organization: 华侨银行（香港）
+    base_domains: [www.ocbc.com.hk]
+    allowed_path_prefixes: [/personal-banking/, /business-banking/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.ocbc.com.hk/personal-banking/index.page"
+      - "https://www.ocbc.com.hk/business-banking/index.page"
+    link_pattern: "ocbc\\.com\\.hk/(personal-banking/deposit-services/integrated-account|business-banking/smes\\.page)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_bank_dbs
+    name: 星展银行（香港）
+    group: hk_bank_open
+    organization: 星展银行
+    base_domains: [www.dbs.com.hk]
+    allowed_path_prefixes: [/personal-zh/, /corporate-zh/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.dbs.com.hk/personal-zh/default.page"
+      - "https://www.dbs.com.hk/corporate-zh/default.page"
+    link_pattern: "dbs\\.com\\.hk/personal-zh/deposits/accounts/dbs-account($|[?#])"
+    url_identity_ignore_params: [pid]
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "25 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  # ---------- 7 虚拟银行 ----------
+  - id: hk_vbank_za
+    name: ZA Bank 众安银行
+    group: hk_bank_open
+    organization: 众安银行
+    base_domains: [bank.za.group]
+    allowed_path_prefixes: [/hk/faqs/, /hk/business/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://bank.za.group/sitemap.xml"
+    sitemap_url_pattern: "bank\\.za\\.group/hk/(faqs/(Individuals/Account_opening|Business/Open_account)|business$)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "35 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_vbank_za_cn
+    name: ZA Bank（内地客户服务指南）
+    group: hk_bank_open
+    organization: 众安银行
+    base_domains: [bank.za.group]
+    allowed_path_prefixes: [/mcv-account/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://bank.za.group/mcv-account/hk/guide"
+    schedule: "40 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_vbank_welab
+    name: WeLab Bank 汇立银行
+    group: hk_bank_open
+    organization: 汇立银行
+    base_domains: [www.welab.bank]
+    allowed_path_prefixes: [/zh-CN/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.welab.bank/sitemap.xml"
+    sitemap_url_pattern: "welab\\.bank/zh-CN/feature/(onboarding|2-in-1-welcome-rewards-apr26|ntw-rewards-26)/"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "45 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_vbank_elebank
+    name: EleBank 大象银行
+    group: hk_bank_open
+    organization: 大象银行
+    base_domains: [www.elebank.com]
+    allowed_path_prefixes: [/zh-cn/, /zh-hk/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.elebank.com/sitemap.xml"
+    sitemap_url_pattern: "elebank\\.com/(zh-cn|zh-hk)/(open-account|corporate)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "55 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_vbank_paob
+    name: PAO Bank 平安壹账通银行
+    group: hk_bank_open
+    organization: 平安壹账通银行
+    base_domains: [www.pingandb.com, www.paob.com.hk]
+    allowed_path_prefixes: [/tc/, /en/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.paob.com.hk/sitemap.xml"
+    sitemap_url_pattern: "pingandb\\.com/tc/retail-mobile-account-opening\\.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "5 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_vbank_livi
+    name: livi bank 理慧银行
+    group: hk_bank_open
+    organization: 理慧银行
+    base_domains: [www.livibank.com]
+    allowed_path_prefixes: [/features/, /business/, /help/, /zh_CN/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.livibank.com/features/Account-Opening.html"
+      - "https://www.livibank.com/business/livi-Business.html"
+    link_pattern: "livibank\\.com/(zh_CN/)?(features/Account-Opening\\.html|business/livi-Business\\.html)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_vbank_mox
+    name: Mox Bank
+    group: hk_bank_open
+    organization: Mox Bank
+    base_domains: [mox.com]
+    allowed_path_prefixes: [/new-account-opening/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://mox.com/new-account-opening/"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "25 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  # ---------- 10 证券行 ----------
+  - id: hk_sec_futu
+    name: 富途证券
+    group: hk_bank_open
+    organization: 富途证券
+    base_domains: [www.futuhk.com]
+    allowed_path_prefixes: [/hans/support]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.futuhk.com/hans/support"
+      - "https://www.futuhk.com/hans/support/categories/1592"
+    link_pattern: "futuhk\\.com/hans/support/topic2_(9|10|16|18|22|23|343)(?!\\d)"
+    title_include_patterns:
+      - '开户|開戶|账户|帳戶|入金|身份|证件|證件|银行卡|銀行卡|地址|风险'
+    title_exclude_patterns:
+      - '内地|內地|大陸|大湾|大灣|跨境'
+    force_ipv4: true
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "35 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_futu_cn
+    name: 富途证券（内地用户开户）
+    group: hk_bank_open
+    organization: 富途证券
+    base_domains: [www.futuhk.com]
+    allowed_path_prefixes: [/hans/support]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.futuhk.com/hans/support"
+      - "https://www.futuhk.com/hans/support/categories/1592"
+    link_pattern: "futuhk\\.com/hans/support/topic2_(9|10|16|18|22|23|343)(?!\\d)"
+    title_include_patterns:
+      - '内地|內地|大陸|大湾|大灣|跨境|港澳'
+    force_ipv4: true
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "45 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: false  # 鲁港通 - 分类页无内地专题文章，与主富途源重复，暂缓启用
+
+  - id: hk_sec_webull
+    name: 微牛证券 Webull
+    group: hk_bank_open
+    organization: 微牛证券
+    base_domains: [www.webull.hk]
+    allowed_path_prefixes: [/help]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.webull.hk/help"
+    link_pattern: "webull\\.hk/help/faq/"
+    title_include_patterns:
+      - '開立|開設|開戶|保證金帳戶'
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "55 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_usmart
+    name: 盈立证券 uSMART
+    group: hk_bank_open
+    organization: 盈立证券
+    base_domains: [hk.usmartglobal.com]
+    allowed_path_prefixes: [/zh-hk/, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://hk.usmartglobal.com/sitemap.xml"
+    sitemap_url_pattern: "usmartglobal\\.com/zh-hk/sta-regform"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "5 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_cms
+    name: 招商证券国际
+    group: hk_bank_open
+    organization: 招商证券国际
+    base_domains: [www.cmschina.com.hk]
+    allowed_path_prefixes: [/CS/]
+    keep_form: true
+    discovery_method: listing
+    listing_urls:
+      - "https://www.cmschina.com.hk/CS/AccountOpening"
+    link_pattern: "cmschina\\.com\\.hk/CS/Download(\\?|$)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_tiger
+    name: 老虎证券
+    group: hk_bank_open
+    organization: 老虎证券
+    base_domains: [www.tigersecurities.com]
+    allowed_path_prefixes: [/accounts/open]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.tigersecurities.com/accounts/open"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "25 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: false  # 鲁港通 - 站点为 SPA 渲染，静态抓取零正文，暂缓启用
+
+  - id: hk_sec_valuable
+    name: 华盛证券
+    group: hk_bank_open
+    organization: 华盛证券
+    base_domains: [www.vbkr.com, www.valuable.com.hk]
+    allowed_path_prefixes: [/help/, /guide-open-account, /sitemap]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.valuable.com.hk/sitemap.xml"
+    sitemap_url_pattern: "vbkr\\.com/(help/(cat-account-opening-related|cat-download-forms|topic2-what-is-proof-of-address)|guide-open-account)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "35 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_brightsmart
+    name: 耀才证券
+    group: hk_bank_open
+    organization: 耀才证券
+    base_domains: [www.bsgroup.com.hk]
+    allowed_path_prefixes: [/account, /download/accopenform, /sec/information/additionalaccount]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.bsgroup.com.hk/account/app/"
+      - "https://www.bsgroup.com.hk/download/accopenform/"
+      - "https://www.bsgroup.com.hk/sec/information/additionalaccount/"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "45 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_chief
+    name: 致富证券
+    group: hk_bank_open
+    organization: 致富证券
+    base_domains: [www.chiefgroup.com.hk]
+    allowed_path_prefixes: [/hk/account]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.chiefgroup.com.hk/hk/account"
+    link_pattern: "chiefgroup\\.com\\.hk/hk/account(?:/Index)?(?:\\?|$)"
+    url_identity_ignore_params: [rl]
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "55 5 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
+  - id: hk_sec_gtja
+    name: 国泰君安国际
+    group: hk_bank_open
+    organization: 国泰君安国际
+    base_domains: [www.gtjai.com]
+    allowed_path_prefixes: [/tc/open_account, /tc/online_account, /tc/account]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.gtjai.com/tc/open_account_stock_personal"
+      - "https://www.gtjai.com/tc/online_account_opening"
+    link_pattern: "gtjai\\.com/tc/(open_account|online_account|account)"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "5 6 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: false  # 鲁港通 - 站点为空壳/导航页（5 篇均无开户正文），2026-11-19 停用待人工核查
+
+  - id: hk_bank_hsbc_cn
+    name: 汇丰银行（大湾区开户服务）
+    group: hk_bank_open
+    organization: 汇丰银行
+    base_domains: [www.hsbc.com.hk]
+    allowed_path_prefixes: [/zh-cn/banking/greater-bay-area/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.hsbc.com.hk/zh-cn/banking/greater-bay-area/gba-account-opening-service/"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 6 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_bank_bochk_cn
+    name: 中国银行（香港）跨境专区
+    group: hk_bank_open
+    organization: 中国银行（香港）
+    base_domains: [www.bochk.com]
+    allowed_path_prefixes: [/sc/crossborder]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.bochk.com/sc/crossborder.html"
+    link_pattern: "bochk\\.com/sc/crossborder/(personal|corporate)\\.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "25 6 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 20
+    enabled: false  # 鲁港通 - 两个跨境落地页均为导航枢纽（整屏栏目链接），无可入库正文，2026-11-19 停用
+
+  - id: hk_bank_icbcasia_cn
+    name: 工银亚洲跨境开户（见证/湾区）
+    group: hk_bank_open
+    organization: 工银亚洲
+    base_domains: [www.icbcasia.com]
+    allowed_path_prefixes: [/hk/sc/cross-border/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.icbcasia.com/hk/sc/cross-border/cross-border-account-opening/account-opening-witness-service/default.html"
+      - "https://www.icbcasia.com/hk/sc/cross-border/cross-border-services/greater-bay-financial-services/greater-bay-area-account-opening-service/default.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "35 6 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true

@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -417,6 +418,8 @@ def run_import(
             organization=doc.organization or source.organization,
             published_at=doc.published_at,
             body=version.extracted_text or "",
+            # 鲁港通 - 开户库导入头带「核对日期」=本次同步当日（时效敏感，2026-11-19）
+            verified_on=date.today() if route.kb_key == "bank" else None,
         )
         try:
             parent_id = folders.ensure(route.dataset_id, route.folder_path)

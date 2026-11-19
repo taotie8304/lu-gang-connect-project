@@ -22,8 +22,12 @@ def build_import_text(
     organization: str | None,
     published_at: date | datetime | None,
     body: str,
+    verified_on: date | None = None,
 ) -> str:
-    """拼接导入文本：元数据头（缺失字段整行省略）+ 空行 + strip 后正文。"""
+    """拼接导入文本：元数据头（缺失字段整行省略）+ 空行 + strip 后正文。
+
+    verified_on：资料核对日期（开户库专用，=本次同步当日），输出为「核对日期：YYYY-MM-DD」。
+    """
     lines = [f"标题：{title}"]
     if organization:
         lines.append(f"发布机构：{organization}")
@@ -31,4 +35,6 @@ def build_import_text(
     if publish_date:
         lines.append(f"发布日期：{publish_date}")
     lines.append(f"原文链接：{url}")
+    if verified_on is not None:
+        lines.append(f"核对日期：{verified_on.isoformat()}")
     return "\n".join(lines) + "\n\n" + (body or "").strip()

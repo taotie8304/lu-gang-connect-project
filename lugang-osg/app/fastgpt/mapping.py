@@ -9,6 +9,7 @@ from typing import Literal
 HK_DATASET_ID = "6aa65d90429fb6770923e91f"  # 鲁港通 - 香港政府各部门知识库
 SD_DATASET_ID = "6aa65dd8429fb6770923ea6a"  # 鲁港通 - 山东省各地市综合政策知识库
 EDU_DATASET_ID = "69674f94fa58c162073713be"  # 鲁港通 - 香港教育中心知识库（原「香港教育相关」）
+BANK_DATASET_ID = "6afed05e1f0af75b59e136ec"  # 鲁港通 - 香港银行证券开户中心
 
 
 class MappingError(Exception):
@@ -19,7 +20,7 @@ class MappingError(Exception):
 class KbRoute:
     """一个文档的导入目标：知识库 + 数据集内文件夹路径。"""
 
-    kb_key: Literal["hk", "sd", "edu"]
+    kb_key: Literal["hk", "sd", "edu", "bank"]
     dataset_id: str
     region: str  # 标签用：香港 / 山东
     department: str  # 标签用：部门（末级机构）
@@ -133,6 +134,52 @@ _HK_EDU_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
 _EDU_OVERVIEW = "00 教育体系总览"
 
 
+# 鲁港通 - 香港银行证券开户中心来源 → (标签部门, 文件夹路径)
+# 传统银行 9 家 / 虚拟银行 8 家（个人+企业业务同源采集）/ 证券行 10 家（2026-11-19）
+_HK_BANK_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
+    # 传统银行
+    "hk_bank_hsbc": ("汇丰银行", ("10 传统银行", "汇丰银行")),
+    "hk_bank_hsbc_biz": ("汇丰银行", ("10 传统银行", "汇丰银行")),
+    "hk_bank_bochk": ("中国银行（香港）", ("10 传统银行", "中国银行（香港）")),
+    "hk_bank_sc": ("渣打银行", ("10 传统银行", "渣打银行")),
+    "hk_bank_hangseng": ("恒生银行", ("10 传统银行", "恒生银行")),
+    "hk_bank_bea": ("东亚银行", ("10 传统银行", "东亚银行")),
+    "hk_bank_icbcasia": ("工银亚洲", ("10 传统银行", "工银亚洲")),
+    "hk_bank_cmbwl": ("招商永隆银行", ("10 传统银行", "招商永隆银行")),
+    "hk_bank_ocbc": ("华侨银行（香港）", ("10 传统银行", "华侨银行（香港）")),
+    "hk_bank_dbs": ("星展银行", ("10 传统银行", "星展银行")),
+    # 虚拟银行
+    "hk_vbank_fusion": ("富融银行", ("20 虚拟银行", "富融银行")),
+    "hk_vbank_za": ("众安银行", ("20 虚拟银行", "众安银行")),
+    "hk_vbank_livi": ("理慧银行", ("20 虚拟银行", "理慧银行")),
+    "hk_vbank_mox": ("Mox Bank", ("20 虚拟银行", "Mox Bank")),
+    "hk_vbank_welab": ("汇立银行", ("20 虚拟银行", "汇立银行")),
+    "hk_vbank_ant": ("蚂蚁银行", ("20 虚拟银行", "蚂蚁银行")),
+    "hk_vbank_elebank": ("大象银行", ("20 虚拟银行", "大象银行")),
+    "hk_vbank_paob": ("平安壹账通银行", ("20 虚拟银行", "平安壹账通银行")),
+    # 证券行
+    "hk_sec_futu": ("富途证券", ("30 证券行", "富途证券")),
+    "hk_sec_webull": ("微牛证券", ("30 证券行", "微牛证券")),
+    "hk_sec_usmart": ("盈立证券", ("30 证券行", "盈立证券")),
+    "hk_sec_cms": ("招商证券国际", ("30 证券行", "招商证券国际")),
+    "hk_sec_tiger": ("老虎证券", ("30 证券行", "老虎证券")),
+    "hk_sec_longbridge": ("长桥证券", ("30 证券行", "长桥证券")),
+    "hk_sec_valuable": ("华盛证券", ("30 证券行", "华盛证券")),
+    "hk_sec_brightsmart": ("耀才证券", ("30 证券行", "耀才证券")),
+    "hk_sec_chief": ("致富证券", ("30 证券行", "致富证券")),
+    "hk_sec_gtja": ("国泰君安国际", ("30 证券行", "国泰君安国际")),
+}
+
+# 鲁港通 - 内地居民赴港开户专题源（同一机构的 _cn 开户指引页）→ 40 专题文件夹
+_HK_BANK_MAINLAND: dict[str, tuple[str, str]] = {
+    "hk_bank_hsbc_cn": ("汇丰银行", "银行开户"),
+    "hk_bank_bochk_cn": ("中国银行（香港）", "银行开户"),
+    "hk_bank_icbcasia_cn": ("工银亚洲", "银行开户"),
+    "hk_vbank_za_cn": ("众安银行", "银行开户"),
+    "hk_sec_futu_cn": ("富途证券", "证券开户"),
+}
+
+
 def edu_edb_folder(url: str) -> tuple[str, ...]:
     """教育局文档按 URL 学段路由（路径白名单见 spec design §3.3）。"""
     u = url.lower()
@@ -186,6 +233,12 @@ def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
                 "hk", HK_DATASET_ID, "香港", dept, (dept, column), column
             )
         return KbRoute("hk", HK_DATASET_ID, "香港", dept, (dept,))
+    if source_code in _HK_BANK_MAINLAND:
+        dept, sub = _HK_BANK_MAINLAND[source_code]
+        return KbRoute("bank", BANK_DATASET_ID, "香港", dept, ("40 内地居民赴港开户", sub))
+    if source_code in _HK_BANK_SOURCES:
+        dept, folder = _HK_BANK_SOURCES[source_code]
+        return KbRoute("bank", BANK_DATASET_ID, "香港", dept, folder)
     if source_code in _SD_PROVINCIAL:
         dept = _SD_PROVINCIAL[source_code]
         return KbRoute("sd", SD_DATASET_ID, "山东", dept, ("省级部门", dept))
@@ -201,6 +254,8 @@ def is_routable(source_code: str) -> bool:
         source_code in _HK_DEPARTMENTS
         or source_code in _HK_EDU_SOURCES
         or source_code == "hk_edu_edb"
+        or source_code in _HK_BANK_SOURCES
+        or source_code in _HK_BANK_MAINLAND
         or source_code in _SD_PROVINCIAL
         or source_code in _SD_JINAN
     )

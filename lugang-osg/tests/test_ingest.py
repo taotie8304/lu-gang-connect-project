@@ -533,6 +533,55 @@ class TestExtract:
         out = extract_html(html, keep_form=True)
         assert out.text and "香港中學文憑簡介" in out.text
 
+    def test_extract_html_drops_nav_menu_breadcrumb_footer_blocks(self):
+        """BOCHK 实测：站点菜单、面包屑、收藏控件、页脚链接混进正文。
+
+        鲁港通 - 导航噪声守卫：按 class/id 语义词整块剔除（menu/breadcrumb/
+        footer/sidebar/header/search 等），正文容器不受影响。
+        """
+        body = "真实正文段落，说明开户所需材料与办理流程。" * 30
+        html = (
+            "<html><head><title>企业客户跨境服务</title></head><body>"
+            "<div class='site-menu'><a href='/a'>主页</a> 产品服务</div>"
+            "<div id='breadcrumb'>主页 &gt; 跨境金融 &gt; 企业客户跨境服务</div>"
+            "<div class='article-content'><p>" + body + "</p></div>"
+            "<div class='footer-links'><a href='/x'>隐私政策</a></div>"
+            "</body></html>"
+        ).encode("utf-8")
+        out = extract_html(html)
+        assert out.text and "开户所需材料" in out.text
+        assert "产品服务" not in out.text
+        assert "跨境金融" not in out.text
+        assert "隐私政策" not in out.text
+
+    def test_extract_html_keeps_content_container_with_shared_words(self):
+        """class 含 content 的正文容器不得被噪声词误删。"""
+        html = (
+            "<html><body><div class='article-content'>"
+            "<p>" + "账户开立流程说明。" * 40 + "</p></div></body></html>"
+        ).encode("utf-8")
+        out = extract_html(html)
+        assert out.text and "账户开立流程说明" in out.text
+
+    def test_extract_html_link_text_ratio(self):
+        """链接文字占比：栏目导航页高、文章页低（pipeline 依此拦截纯导航页）。"""
+        hub = (
+            "<html><body>"
+            + "".join(f"<a href='/c{i}'>栏目链接 {i} 号</a>" for i in range(12))
+            + "</body></html>"
+        ).encode("utf-8")
+        hub_out = extract_html(hub)
+        assert hub_out.link_count >= 12
+        assert hub_out.link_text_ratio > 0.9
+
+        article = (
+            "<html><body><div class='article-content'><p>"
+            + "正文内容说明开户所需材料与流程安排。" * 60
+            + "</p><a href='/y'>相关阅读</a></div></body></html>"
+        ).encode("utf-8")
+        art_out = extract_html(article)
+        assert art_out.link_text_ratio < 0.1
+
 
 # ---------------------------------------------------------------------------
 # pipeline 全流程（假 fetcher）
@@ -911,6 +960,63 @@ class TestPipeline:
         assert stats.new_docs == 1
         tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
         assert tasks["http://commerce.shandong.gov.cn/zwgk/redirect.html"] == "skipped_low_content"
+
+    def test_link_dense_hub_page_skipped(self, db):
+        """链接密度守卫：栏目枢纽页（整页链接标题）不入库。
+
+        鲁港通 - BOCHK 跨境专区实测：正文为繁简英三语链接堆叠，越过字数门槛
+        但没有可读内容；按链接文字占比 + 链接数在入库前拦截。
+        """
+        src = self._setup_source(db, code="sd_test")
+        hub_links = "".join(
+            f"<a href='/c/{i}.html'>跨境服务链接 {i} 号</a><br>" for i in range(30)
+        )
+        listing = (
+            "<html><body><a href='/hub.html'>栏目</a>"
+            "<a href='/art/2026/a.html'>文章</a></body></html>"
+        ).encode("utf-8")
+        hub_page = (
+            "<html><head><title>企业客户跨境服务</title></head><body>"
+            + hub_links + "</body></html>"
+        ).encode("utf-8")
+        fetcher = _FakeFetcher({
+            "http://commerce.shandong.gov.cn/": listing,
+            "http://commerce.shandong.gov.cn/hub.html": hub_page,
+            "http://commerce.shandong.gov.cn/art/2026/a.html": _article_html(
+                "山东省商务厅 商务要闻 全省商务工作会议在济南召开", _LONG_ZH
+            ),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats.new_docs == 1
+        assert stats.skipped_nav_page == 1
+        tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
+        assert tasks["http://commerce.shandong.gov.cn/hub.html"] == "skipped_nav_page"
+
+    def test_force_refetch_skips_archived_documents(self, db):
+        """已归档文档重采时跳过：既不入库，也不浪费抓取配额。"""
+        src = self._setup_source(db)
+        article = _article_html("HK News A", _LONG_EN)
+        fetcher = _FakeFetcher({
+            "https://www.news.gov.hk/en/common/html/topstories.rss.xml": RSS_SAMPLE,
+            "https://www.news.gov.hk/en/2026/09/1.html": article,
+            "https://www.news.gov.hk/en/2026/09/2.html": article,
+        })
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+        doc = db.execute(
+            select(Document).where(Document.canonical_url.endswith("1.html"))
+        ).scalar_one()
+        doc.status = "archived"
+        db.commit()
+        url = "https://www.news.gov.hk/en/2026/09/1.html"
+        before = fetcher.calls.count(url)
+
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver,
+                            force_refetch=True)
+        assert stats.already_known >= 1
+        assert fetcher.calls.count(url) == before
 
 
 # ---------------------------------------------------------------------------
@@ -2500,9 +2606,9 @@ class TestPipelineKeepForm:
         assert src.discovery_config["keep_form"] is True
         assert stats.new_docs == 1
         version = db.execute(select(DocumentVersion)).scalar_one()
-        # 正文（form 内）确实被保留：既含导航行也含长正文
-        assert "香港中學文憑" in (version.extracted_text or "")
+        # 正文（form 内）确实被保留；导航行（div.nav）随噪声区块剔除（2026-11-19）
         assert _LONG_ZH[:12] in (version.extracted_text or "")
+        assert "香港中學文憑" not in (version.extracted_text or "")
         assert version.extracted_metadata["title"] == "香港中學文憑簡介"
 
     def test_without_keep_form_wrapped_page_is_low_content(self, db):

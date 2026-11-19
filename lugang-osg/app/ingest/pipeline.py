@@ -54,6 +54,10 @@ _PACE_JITTER = (0.7, 1.6)
 # 立刻收尾，剩余候选留待下轮（旧实现会把 max_pages_per_run 篇一路撞到底，正是被
 # 拉黑整天的成因）。
 _BLOCK_CUTOFF = 3
+# 鲁港通 - 导航枢纽页守卫（2026-11-19 用户反馈：银行/证券站整屏导航被当正文入库）：
+# 正文链接数达到两位数且过半文字都是链接文字时判定为导航页，不入库
+NAV_MIN_LINKS = 10
+NAV_LINK_RATIO = 0.55
 # 鲁港通 - 济南市系政务云（jpaas）栏目单元构建端点：栏目页是 JS 空壳，文章列表由该接口
 # 按栏目（pageId/tagId）异步返回（unitbuild.js 破译 + d4r7~d4r11 七站服务器实测，2026-10-14）。
 _JPAAS_UNIT_API_PATH = "/api-gateway/jpaas-publish-server/front/page/build/unit"
@@ -78,6 +82,8 @@ class SyncStats:
     # 鲁港通 - 栏目/列表页形态过滤与单轮上限截断的候选数（仅计数，不逐条建 crawl_task）
     skipped_non_article: int = 0
     skipped_limit: int = 0
+    # 鲁港通 - 导航枢纽页拦截数（正文几乎全为链接文字，2026-11-19）
+    skipped_nav_page: int = 0
     # 鲁港通 - 标题噪声自动归档的新文档数（status=archived，不进知识库）
     archived_noise: int = 0
     # 鲁港通 - 政策白名单：抓取前跳过与抓取后归档的非政策条目数（P1-A）
@@ -600,8 +606,11 @@ def _process_candidates(db, source, run, candidates, rules, settings,
         # 2) 已知文档：默认跳过；force_refetch 或 RSS 有更新信号时重抓。
         #    鲁港通 - 查表键用「文档身份」而非原始网址：同一份文件换栏目挂载或带上漂移
         #    参数时不再新建第二条文档（否则知识库出现同名多份，且夜间只会越长越多）。
+        #    鲁港通 - 归档/被替换文档永不导入，force_refetch 也跳过（省配额，防回流）
         doc = known.get(identity_key(canonical, cfg))
-        if doc is not None and not force_refetch:
+        if doc is not None and (
+            not force_refetch or doc.status in ("archived", "superseded")
+        ):
             task.status = "skipped_known"
             stats.already_known += 1
             db.commit()
@@ -670,6 +679,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             # 鲁港通 - 抽取成功但正文不足（栏目页/导航页）：计入已处理页数，
             # 保证 max_pages_per_run 上限不被噪声页绕过
             stats.fetched_ok += 1
+        elif action == "skipped_nav_page":
+            # 鲁港通 - 导航枢纽页拦截（正文过半为链接文字）：同 skipped_low_content
+            stats.skipped_nav_page += 1
+            stats.fetched_ok += 1
         db.commit()
 
         # 6) 抓取节奏：同一来源两次请求之间 ≥ source_min_interval_s（spec 12.2）。
@@ -696,7 +709,11 @@ def _known_documents(db, source, cfg) -> dict:
 
 
 def _store_document(db, source, canonical, result: FetchResult, item, known_doc=None) -> str:
-    """sha256 版本化入库。返回 new / archived_noise / updated / unchanged / skipped_low_content。"""
+    """sha256 版本化入库。
+
+    返回 new / archived_noise / archived_offtopic / updated / unchanged /
+    skipped_low_content / skipped_nav_page。
+    """
     content_sha = hashlib.sha256(result.content).hexdigest()
     cfg = source.discovery_config or {}
     # 鲁港通 - 部分站点 <title> 无法区分页面（HA 多页均为「HA」、LD/IPD 多个子页同名），
@@ -741,6 +758,12 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
     # PDF 不做此判定（Phase 2 只登记元信息，正文提取留 RAG 阶段）。
     if not is_pdf and len(extracted.text or "") < MIN_CONTENT_CHARS:
         return "skipped_low_content"
+
+    # 鲁港通 - 导航枢纽页守卫（2026-11-19）：整屏链接文字堆叠（如「企业客户跨境服务」
+    # 五个分块全是栏目链接）字数控过长度门槛仍会入库，靠链接密度兜底拦截。
+    if (not is_pdf and extracted.link_count >= NAV_MIN_LINKS
+            and extracted.link_text_ratio >= NAV_LINK_RATIO):
+        return "skipped_nav_page"
 
     if doc is None:
         # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：列表标题与文章页标题任一命中

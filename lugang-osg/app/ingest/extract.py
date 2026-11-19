@@ -17,6 +17,32 @@ _BLOCK_TAGS = frozenset(
     {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "td"}
 )
 
+# 鲁港通 - 无结束标签的 void 元素：不压栈，否则整页标签栈与容器边界会错位
+_VOID_TAGS = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input",
+     "link", "meta", "param", "source", "track", "wbr"}
+)
+
+# 鲁港通 - 导航/菜单类 class/id 词元（2026-11-19 用户反馈：银行/证券站整屏导航
+# 被当正文入库）：属性值按非字母数字切分后命中任一词元即整块剔除子树。
+# 只做整词匹配，避免误伤 article-header 这类正文块；html/body/head/main 等
+# 骨架标签豁免，防整页误杀。
+_NOISE_ATTR_TOKENS = frozenset({
+    "nav", "navbar", "navigation", "navlist", "topnav", "mainnav", "headnav",
+    "subnav", "sidenav", "leftnav", "rightnav", "footnav",
+    "menu", "submenu", "megamenu", "menubar", "dropdown",
+    "breadcrumb", "breadcrumbs",
+    "header", "footer", "topbar", "sidebar",
+    "sitemap", "skip", "skiplink",
+    "cookie", "cookies", "consent",
+    "share", "sharing", "social",
+    "search", "toolbar", "pagination", "pager", "paging",
+    "related", "recommend", "recommendation",
+    "copyright", "logo",
+})
+_NOISE_EXEMPT_TAGS = frozenset({"html", "body", "head", "main", "article", "section"})
+_ATTR_TOKEN_RE = re.compile(r"[^a-z0-9]+")
+
 # 鲁港通 - 实测正文长度门槛：山东栏目页/首页提取后仅 28~59 字（导航噪声），
 # 真实文章页 900+ 字；低于此值视为非文章页，不入库（避免污染 RAG 语料）。
 MIN_CONTENT_CHARS = 200
@@ -38,13 +64,16 @@ def _parse_selector(selector: str | None) -> tuple[str, str] | None:
 
 
 class _TextExtractor(HTMLParser):
-    """提取 <title> 与净化正文：跳过噪声标签，压缩空白。
+    """提取 <title> 与净化正文：跳过噪声标签/噪声区块，压缩空白。
 
     鲁港通 - 配置了容器选择器时额外收集容器内正文（如山东政务站实测的 `#zoom`），
     可剔除面包屑、字号控件、相关报道等 UI 噪声；容器未命中则回退全文，
     避免站点改版导致正文为空。
     鲁港通 - keep_form（HKEAA 实测）：ASP.NET 站点把整个 body 包进 <form>，
     默认丢 form 会把整页正文清空；来源开启后 form 不再计入噪声标签。
+    鲁港通 - 噪声区块（2026-11-19）：class/id 命中导航词元的元素整块剔除
+    （覆盖 div 菜单、面包屑、页脚链接等非语义标签承载的导航）；同时统计链接
+    文字占比，供上层拦截「整屏链接堆叠」的导航枢纽页。
     """
 
     def __init__(self, selector: tuple[str, str] | None = None, keep_form: bool = False) -> None:
@@ -54,51 +83,87 @@ class _TextExtractor(HTMLParser):
         self.container_parts: list[str] = []
         self._selector = selector
         self._drop = _DROP_TAGS - {"form"} if keep_form else _DROP_TAGS
-        self._skip_depth = 0
         self._in_title = False
-        self._container_depth = 0   # >0 表示当前在目标容器内
-        self._nested_div = 0        # 容器内嵌套标签计数（用于定位容器结束）
+        # 标签栈：(tag, suppressed, container)；suppressed 向下继承，container 标记容器根
+        self._stack: list[tuple[str, bool, bool]] = []
+        self._text_chars = 0
+        self._link_chars = 0
+        self._link_count = 0
+        self._container_chars = 0
+        self._container_link_chars = 0
+        self._container_link_count = 0
+
+    @property
+    def _suppressed(self) -> bool:
+        return bool(self._stack) and self._stack[-1][1]
+
+    @property
+    def _in_container(self) -> bool:
+        return any(c for _, _, c in self._stack)
+
+    def _newline(self) -> None:
+        self.text_parts.append("\n")
+        if self._in_container:
+            self.container_parts.append("\n")
 
     def handle_starttag(self, tag: str, attrs) -> None:
-        if tag in self._drop:
-            self._skip_depth += 1
+        if tag in _VOID_TAGS:
+            if not self._suppressed and tag in _BLOCK_TAGS:
+                self._newline()
+            return
+        suppressed = (
+            self._suppressed
+            or tag in self._drop
+            or _is_noise_element(tag, attrs)
+        )
+        container = (
+            not suppressed
+            and self._selector is not None
+            and not self._in_container
+            and _match_selector(tag, attrs, self._selector)
+        )
+        self._stack.append((tag, suppressed, container))
+        if suppressed:
             return
         if tag == "title":
             self._in_title = True
             return
-        if self._container_depth > 0:
-            self._nested_div += 1
-        elif self._selector and _match_selector(tag, attrs, self._selector):
-            self._container_depth = 1
-            self._nested_div = 0
+        if tag == "a":
+            self._link_count += 1
+            if self._in_container:
+                self._container_link_count += 1
         if tag in _BLOCK_TAGS:
-            self.text_parts.append("\n")
-            if self._container_depth > 0:
-                self.container_parts.append("\n")
+            self._newline()
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in self._drop and self._skip_depth > 0:
-            self._skip_depth -= 1
+        if tag in _VOID_TAGS:
             return
-        if tag == "title":
-            self._in_title = False
+        for i in range(len(self._stack) - 1, -1, -1):
+            if self._stack[i][0] != tag:
+                continue
+            if tag == "title" and not self._stack[i][1]:
+                self._in_title = False
+            del self._stack[i:]
             return
-        if self._container_depth > 0:
-            # 鲁港通 - 容器内嵌套标签逐层抵消，归零时即容器结束
-            if self._nested_div > 0:
-                self._nested_div -= 1
-            else:
-                self._container_depth = 0
 
     def handle_data(self, data: str) -> None:
         if self._in_title:
             self.title_parts.append(data)
             return
-        if self._skip_depth > 0 or not data.strip():
+        stripped = data.strip()
+        if not stripped or self._suppressed:
             return
         self.text_parts.append(data)
-        if self._container_depth > 0:
+        chars = len(stripped)
+        self._text_chars += chars
+        in_link = any(t == "a" and not s for t, s, _ in self._stack)
+        if in_link:
+            self._link_chars += chars
+        if self._in_container:
             self.container_parts.append(data)
+            self._container_chars += chars
+            if in_link:
+                self._container_link_chars += chars
 
     @property
     def container_text(self) -> str | None:
@@ -106,6 +171,41 @@ class _TextExtractor(HTMLParser):
         if not self._selector or not self.container_parts:
             return None
         return _squeeze("".join(self.container_parts)) or None
+
+    @property
+    def link_text_ratio(self) -> float:
+        """全文口径的链接文字占比（0~1）。"""
+        return self._link_chars / self._text_chars if self._text_chars else 0.0
+
+    @property
+    def container_link_text_ratio(self) -> float:
+        """容器口径的链接文字占比（0~1；无容器文本时为 0）。"""
+        if not self._container_chars:
+            return 0.0
+        return self._container_link_chars / self._container_chars
+
+    @property
+    def link_count(self) -> int:
+        """全文口径的链接数。"""
+        return self._link_count
+
+    @property
+    def container_link_count(self) -> int:
+        """容器口径的链接数。"""
+        return self._container_link_count
+
+
+def _is_noise_element(tag: str, attrs) -> bool:
+    """class/id 词元命中导航噪声词即整块剔除（骨架标签豁免）。"""
+    if tag in _NOISE_EXEMPT_TAGS:
+        return False
+    for name, value in attrs:
+        if name not in ("class", "id") or not value:
+            continue
+        for token in _ATTR_TOKEN_RE.split(value.lower()):
+            if token and token in _NOISE_ATTR_TOKENS:
+                return True
+    return False
 
 
 def _match_selector(tag: str, attrs, selector: tuple[str, str]) -> bool:
@@ -129,6 +229,9 @@ class ExtractedContent:
     title: str | None
     text: str | None
     language_hint: str | None = None
+    # 鲁港通 - 链接密度指标（0~1 为链接文字占正文字符比），供导航枢纽页拦截
+    link_text_ratio: float = 0.0
+    link_count: int = 0
 
 
 def extract_html(
@@ -154,11 +257,23 @@ def extract_html(
     parser.feed(_decode_html(content))
     raw_title = "".join(parser.title_parts).strip() or None
     # 鲁港通 - 容器正文优先（剔除面包屑/字号控件/相关报道），未命中回退全文
-    text = parser.container_text or _squeeze("".join(parser.text_parts))
+    container_text = parser.container_text
+    text = container_text or _squeeze("".join(parser.text_parts))
     title = clean_title(raw_title, organization, title_strip_prefixes,
                         title_strip_suffixes)
+    # 鲁港通 - 链接密度按实际采用的正文口径统计（容器命中看容器，否则看全文）
+    if container_text is not None:
+        ratio = parser.container_link_text_ratio
+        count = parser.container_link_count
+    else:
+        ratio = parser.link_text_ratio
+        count = parser.link_count
     return ExtractedContent(
-        title=title, text=text or None, language_hint=_lang_hint(title, text)
+        title=title,
+        text=text or None,
+        language_hint=_lang_hint(title, text),
+        link_text_ratio=ratio,
+        link_count=count,
     )
 
 
