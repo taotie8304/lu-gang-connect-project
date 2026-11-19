@@ -359,7 +359,8 @@ sources:
     group: hk_education
     organization: 香港教育局
     base_domains: [www.edb.gov.hk]
-    allowed_path_prefixes: [/sc/edu-system/, /sc/student-parents/]
+    # 鲁港通 - sitemap 文件路径必须显式放行，否则发现层零结果（2026-11-19 实测）
+    allowed_path_prefixes: [/sc/edu-system/, /sc/student-parents/, /sitemap.xml]
     discovery_method: sitemap
     sitemap_urls:
       - "https://www.edb.gov.hk/sitemap.xml"
@@ -439,7 +440,8 @@ sources:
     group: hk_education
     organization: 香港大学 HKU
     base_domains: [www.hku.hk]
-    allowed_path_prefixes: [/en/, /tc/]
+    # 鲁港通 - /sitemap 前缀同时覆盖 sitemap-index.xml 与 sitemap.<lang>-sitemap.xml 子图
+    allowed_path_prefixes: [/en/, /tc/, /sitemap]
     discovery_method: sitemap
     sitemap_urls:
       - "https://www.hku.hk/sitemap-index.xml"
@@ -490,7 +492,8 @@ sources:
     group: hk_education
     organization: 香港科技大学 HKUST
     base_domains: [www.hkust.edu.hk, hkust.edu.hk]
-    allowed_path_prefixes: [/admissions, /our-faculty, /zh-hans/admissions]
+    # 鲁港通 - 主站 sitemap 是索引，子图在 hkust.edu.hk/default|news/sitemap.xml，须逐个放行
+    allowed_path_prefixes: [/admissions, /our-faculty, /zh-hans/admissions, /sitemap.xml, /default/sitemap.xml, /news/sitemap.xml]
     discovery_method: sitemap
     sitemap_urls:
       - "https://www.hkust.edu.hk/sitemap.xml"
@@ -519,11 +522,13 @@ sources:
     enabled: true
 
   - id: hk_edu_polyu
+    # 鲁港通 - 2026-11-19 实测：study 区为 JS 渲染（原始 HTML 仅 3 链接），home.xml 仅收录
+    # 3 条 education/ 页，无分区 sitemap；暂缓至浏览器渲染方案，先停用避免低价值入库
     name: 香港理工大学
     group: hk_education
     organization: 香港理工大学 PolyU
     base_domains: [www.polyu.edu.hk]
-    allowed_path_prefixes: [/study/, /tc/study/, /sc/study/, /education/]
+    allowed_path_prefixes: [/study/, /tc/study/, /sc/study/, /education/, /home.xml]
     discovery_method: sitemap
     sitemap_urls:
       - "https://www.polyu.edu.hk/home.xml"
@@ -531,7 +536,7 @@ sources:
     schedule: "55 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 100
-    enabled: true
+    enabled: false
 
   - id: hk_edu_hkbu
     name: 香港浸会大学
