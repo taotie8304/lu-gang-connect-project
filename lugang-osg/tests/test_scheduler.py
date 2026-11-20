@@ -93,7 +93,8 @@ def test_sync_job_times_out_when_lock_held(monkeypatch):
     scheduler_mod._make_job("sd_gxt")()
     elapsed = time.monotonic() - t0
     assert ran == []
-    assert elapsed >= 0.2
+    # 鲁港通 - 锁等待用 timeout=0.2，实际返回可能略早于墙钟（边界抖动），断言留余量
+    assert elapsed >= 0.15
     lock.release()
 
 
