@@ -12,3 +12,5 @@ redis>=5.0
 feedparser>=6.0
 APScheduler>=3.10,<4
 PyYAML>=6.0
+# 鲁港通 - PDF 文本层提取（2026-11-20 起导入 PDF 正文；扫描件仍降级为不入库）
+pypdf>=4,<7

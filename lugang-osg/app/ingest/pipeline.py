@@ -755,7 +755,7 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
     )
 
     # 鲁港通 - 噪声页过滤：HTML 正文低于实测门槛则不建文档（栏目页/首页只有导航文字）。
-    # PDF 不做此判定（Phase 2 只登记元信息，正文提取留 RAG 阶段）。
+    # PDF 不做此判定：仍登记文档元信息（无文本层的扫描件 text=None，导入器侧跳过）。
     if not is_pdf and len(extracted.text or "") < MIN_CONTENT_CHARS:
         return "skipped_low_content"
 

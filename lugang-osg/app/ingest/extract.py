@@ -224,7 +224,7 @@ def _match_selector(tag: str, attrs, selector: tuple[str, str]) -> bool:
 
 @dataclass(frozen=True)
 class ExtractedContent:
-    """提取结果（PDF 无 extracted_text，只有 content_type）。"""
+    """提取结果（PDF 仅含文本层；扫描件 text 为 None）。"""
 
     title: str | None
     text: str | None
@@ -340,9 +340,48 @@ def clean_title(
     return rest
 
 
+# 鲁港通 - PDF 文本层提取的页数上限（防超大 PDF 在采集线程里长时间占用 CPU）
+_PDF_MAX_PAGES = 200
+
+
 def extract_pdf(content: bytes) -> ExtractedContent:
-    """PDF：Phase 2 只登记元信息（哈希 + 大小），文本提取在 RAG 阶段做。"""
-    return ExtractedContent(title=None, text=None)
+    """PDF：提取文本层（2026-11-20 起入库，此前只登记元信息）。
+
+    扫描件/图片型 PDF 无文本层时返回 text=None，由导入器跳过（诚实兜底）。
+    解析失败（加密/损坏）同样降级为空结果，不抛异常、不阻断采集。
+    """
+    from io import BytesIO
+
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(BytesIO(content))
+        if reader.is_encrypted:
+            # 鲁港通 - 政府站偶见「仅限复制」类空口令加密，尝试空口令解密
+            try:
+                reader.decrypt("")
+            except Exception:  # noqa: BLE001
+                return ExtractedContent(title=None, text=None)
+        pages = reader.pages[:_PDF_MAX_PAGES]
+        chunks: list[str] = []
+        for page in pages:
+            try:
+                chunks.append(page.extract_text() or "")
+            except Exception:  # noqa: BLE001 - 单页损坏不影响其余页
+                continue
+        text = _squeeze("\n".join(chunks)) or None
+        raw_title = None
+        try:
+            raw_title = (reader.metadata.title or "").strip() or None
+        except Exception:  # noqa: BLE001
+            raw_title = None
+    except Exception:  # noqa: BLE001
+        return ExtractedContent(title=None, text=None)
+    return ExtractedContent(
+        title=raw_title,
+        text=text,
+        language_hint=_lang_hint(raw_title, text),
+    )
 
 
 def _squeeze(text: str) -> str:
