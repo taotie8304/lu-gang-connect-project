@@ -711,7 +711,7 @@ sources:
     group: hk_departments
     organization: 香港公司注册处
     base_domains: [www.cr.gov.hk]
-    allowed_path_prefixes: [/tc/legislation/, /tc/services/]
+    allowed_path_prefixes: [/tc/legislation/, /tc/services/, /tc/compliance/]
     discovery_method: fixed_url
     fixed_urls:
       - "https://www.cr.gov.hk/tc/services/fees.htm"
@@ -725,6 +725,14 @@ sources:
       - "https://www.cr.gov.hk/tc/legislation/co2025/promotepaperless/overview.htm"
       - "https://www.cr.gov.hk/tc/legislation/co2025/redomiciliation/overview.htm"
       - "https://www.cr.gov.hk/tc/legislation/scr/overview.htm"
+      # 鲁港通 - 合规栏目（2026-11-20）：周年申报表 NAR1/NN3、交付规定、执法
+      - "https://www.cr.gov.hk/tc/compliance/obligations.htm"
+      - "https://www.cr.gov.hk/tc/compliance/filing-requirements.htm"
+      - "https://www.cr.gov.hk/tc/compliance/enforcement.htm"
+      - "https://www.cr.gov.hk/tc/compliance/annual-return/private-company.htm"
+      - "https://www.cr.gov.hk/tc/compliance/annual-return/non-hk-company.htm"
+      - "https://www.cr.gov.hk/tc/compliance/annual-return/ereminder.htm"
+      - "https://www.cr.gov.hk/tc/compliance/annual-return/calculator.htm"
     # 鲁港通 - 站点标题前缀混用「註冊處 / 註册處」两种字形，全部剥离
     title_strip_prefixes: ["公司註冊處 - ", "公司註册處 - "]
     # 鲁港通 - 统一为简体可读标题（部分页面残留栏目前缀或问号）
@@ -740,10 +748,17 @@ sources:
       "https://www.cr.gov.hk/tc/legislation/co2025/promotepaperless/overview.htm": "公司注册处 - 2025年公司（修订）条例：无纸化公司通讯"
       "https://www.cr.gov.hk/tc/legislation/co2025/redomiciliation/overview.htm": "公司注册处 - 2025年公司（修订）（第2号）条例：公司迁册制度"
       "https://www.cr.gov.hk/tc/legislation/scr/overview.htm": "公司注册处 - 重要控制人登记册概览"
+      "https://www.cr.gov.hk/tc/compliance/obligations.htm": "公司注册处 - 公司须履行的责任（董事/秘书/注册地址）"
+      "https://www.cr.gov.hk/tc/compliance/filing-requirements.htm": "公司注册处 - 变更须交付的法定文件（董事秘书地址）"
+      "https://www.cr.gov.hk/tc/compliance/enforcement.htm": "公司注册处 - 执法与检控政策（逾期后果）"
+      "https://www.cr.gov.hk/tc/compliance/annual-return/private-company.htm": "公司注册处 - 周年申报表（本地私人公司 NAR1）"
+      "https://www.cr.gov.hk/tc/compliance/annual-return/non-hk-company.htm": "公司注册处 - 周年申报表（注册非香港公司 NN3）"
+      "https://www.cr.gov.hk/tc/compliance/annual-return/ereminder.htm": "公司注册处 - 周年申报表 e 提示服务"
+      "https://www.cr.gov.hk/tc/compliance/annual-return/calculator.htm": "公司注册处 - 周年申报表交付限期（周年日后 42 日）"
     content_selector: .main-block
     schedule: "50 3 * * *"
     rate_limit_per_minute: 6
-    max_pages_per_run: 20
+    max_pages_per_run: 25
     enabled: true
 
   - id: hk_ipd_policy
