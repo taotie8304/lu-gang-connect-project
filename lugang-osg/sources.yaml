@@ -659,6 +659,19 @@ sources:
       - "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/application-guide/index.html"
       - "https://www.housingauthority.gov.hk/tc/home-ownership/information-for-home-owners/resale-restriction/index.html"
       - "https://www.housingauthority.gov.hk/tc/public-housing/flat-in-take/index.html"
+      # 鲁港通 - 2026-11-20 生活办事补全：公屋编配进度 + 居屋/绿置居/白居二/租置
+      - "https://www.housingauthority.gov.hk/tc/flat-application/allocation-status/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-flats/eligibility/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-flats/general-sales-information/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/gsh-ownership/eligibility-gsh/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/gsh-ownership/general-sales-information-gsh/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/buying-a-flat/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-hos-courts/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-gsh-courts/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-tps-estates/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/eligibility/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/mortgage-arrangement/index.html"
+      - "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/list-of-tps-estates/index.html"
     title_strip_suffixes: [" | 香港房屋委員會及房屋署"]
     # 鲁港通 - 多数页面 <title> 只有栏目标题（如「長者」「一般家庭」），按 URL 补全可读标题
     title_overrides:
@@ -673,10 +686,22 @@ sources:
       "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/application-guide/index.html": "房屋署 - 租置计划购买申请指引"
       "https://www.housingauthority.gov.hk/tc/home-ownership/information-for-home-owners/resale-restriction/index.html": "房屋署 - 资助房屋转让限制"
       "https://www.housingauthority.gov.hk/tc/public-housing/flat-in-take/index.html": "房屋署 - 公屋入伙须知"
+      "https://www.housingauthority.gov.hk/tc/flat-application/allocation-status/index.html": "房屋署 - 公屋编配进度"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-flats/eligibility/index.html": "房屋署 - 居屋申请资格（绿表及白表）"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-flats/general-sales-information/index.html": "房屋署 - 居屋一般销售资料"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/gsh-ownership/eligibility-gsh/index.html": "房屋署 - 绿置居申请资格"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/gsh-ownership/general-sales-information-gsh/index.html": "房屋署 - 绿置居一般销售资料"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/buying-a-flat/index.html": "房屋署 - 居屋第二市场（白居二）购买须知"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-hos-courts/index.html": "房屋署 - 可供购买居屋屋苑"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-gsh-courts/index.html": "房屋署 - 可供购买绿置居屋苑"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/hos-secondary-market/available-tps-estates/index.html": "房屋署 - 可供购买租置计划屋邨"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/eligibility/index.html": "房屋署 - 租置计划申请资格"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/mortgage-arrangement/index.html": "房屋署 - 租置计划按揭安排"
+      "https://www.housingauthority.gov.hk/tc/home-ownership/buying-a-flat-under-tps/list-of-tps-estates/index.html": "房屋署 - 租置计划屋邨名单"
     content_selector: .sysThemeColorMainContent
     schedule: "40 3 * * *"
     rate_limit_per_minute: 6
-    max_pages_per_run: 20
+    max_pages_per_run: 30
     enabled: true
 
   - id: hk_cr_policy
@@ -2481,4 +2506,53 @@ sources:
     schedule: "25 4 * * 1"
     rate_limit_per_minute: 4
     max_pages_per_run: 12
+    enabled: true
+
+  # 鲁港通 - 香港生活办事：运输署驾照/车辆/跨境车辆（2026-11-20）
+  # 栏目页与办事页均以 /index.html 结尾；只从栏目页取一层子页，导航页由正文门槛与
+  # 链接密度守卫兜底，避免把牌照服务总览当成文档入库。
+  - id: hk_td
+    name: 香港运输署牌照与车辆服务
+    group: hk_life_services
+    organization: 香港运输署
+    base_domains: [www.td.gov.hk]
+    allowed_path_prefixes: [/tc/public_services/licences_and_permits/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/index.html"
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/driving_licences/index.html"
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/driving_licences/how_to_apply_for_a_driving_licence/index.html"
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/vehicle_licences/index.html"
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/vehicle_first_registration/index.html"
+      - "https://www.td.gov.hk/tc/public_services/licences_and_permits/closed_road_permit_for_cross_boundary_vehicles/index.html"
+    allow_index_pages: true
+    # 鲁港通 - 只保留驾照、车辆登记/牌照、过境车辆与收费；驾驶教师、出租汽车等栏目排除
+    link_pattern: '^https://www\.td\.gov\.hk/tc/public_services/licences_and_permits/(?:driving_licences/|edl/|vehicle_licences/|vehicle_first_registration/|closed_road_permit_for_cross_boundary_vehicles/|ad_hoc_quota_scheme_for_cross_boundary_pcs/|hzmb_macao_port_parknride/|southboundtravel/|fees_and_charges/|registration_marks_and_number_plates/)'
+    title_strip_prefixes: ["運輸署 - "]
+    title_exclude_patterns:
+      - '駕駛教師|傷殘人士|投訴|聯絡我們|牌照事務處|表格|統計|公開資料|招聘|招標'
+    schedule: "5 7 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 50
+    enabled: true
+
+  # 鲁港通 - 香港生活办事：积金局强积金指引（2026-11-20）
+  # 站点默认语言即繁体中文；sitemap 只提供无语言前缀的地址（/tc/ 会 301 回落），
+  # 故按绝对路径限域到强积金制度与 eMPF 两个栏目（约 52 页）。
+  - id: hk_mpfa
+    name: 香港积金局强积金指引
+    group: hk_life_services
+    organization: 香港强制性公积金计划管理局
+    base_domains: [www.mpfa.org.hk]
+    allowed_path_prefixes: [/sitemap.xml, /mpf-system/, /empf/]
+    discovery_method: sitemap
+    sitemap_urls:
+      - "https://www.mpfa.org.hk/sitemap.xml"
+    sitemap_url_pattern: '^https://www\.mpfa\.org\.hk/(?:mpf-system|empf)/'
+    content_selector: "#mainContent"
+    title_strip_suffixes: [" - 積金局"]
+    schedule: "25 8 * * 0"
+    rate_limit_per_minute: 4
+    # sitemap 每轮从头处理，上限小于范围内链接数会让尾部页面永远轮不到
+    max_pages_per_run: 60
     enabled: true

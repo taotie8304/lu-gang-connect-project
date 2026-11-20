@@ -921,3 +921,17 @@ def test_med_source_import_header_has_verified_on(db):
     body = [c for c in fake.calls if c[0] == "text"][0][3]
     assert "核对日期：" in body
     assert f"原文链接：{url}" in body
+
+
+# 鲁港通 - 生活办事库导入头带核对日期（2026-11-20）
+def test_life_source_import_header_has_verified_on(db):
+    src = make_source(db, code="hk_td", name="运输署", organization="香港运输署")
+    url = "https://www.td.gov.hk/tc/public_services/licences_and_permits/edl/index.html"
+    make_document(db, src, url, title="電子駕駛執照")
+    fake = FakeClient()
+
+    run_import(db, fake, "hk_td")
+
+    body = [c for c in fake.calls if c[0] == "text"][0][3]
+    assert "核对日期：" in body
+    assert f"原文链接：{url}" in body

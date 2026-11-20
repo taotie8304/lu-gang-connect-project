@@ -425,3 +425,32 @@ def test_med_sources_route():
 def test_med_sources_routable():
     for code in _MED_SOURCES:
         assert is_routable(code) is True, code
+
+
+# 鲁港通 - 香港生活办事（2026-11-20）：运输署/积金局路由到部门文件夹并带核对日期
+_LIFE_SOURCES = {
+    "hk_td": "运输署",
+    "hk_mpfa": "积金局",
+}
+
+
+def test_life_sources_route():
+    for code, dept in _LIFE_SOURCES.items():
+        route = resolve_route(code, "https://example.com/x")
+        assert route.kb_key == "hk", code
+        assert route.dataset_id == HK_DATASET_ID, code
+        assert route.region == "香港", code
+        assert route.department == dept, code
+        assert route.folder_path == (dept,), code
+        assert route.verified is True, code
+
+
+def test_life_sources_routable():
+    for code in _LIFE_SOURCES:
+        assert is_routable(code) is True, code
+
+
+def test_life_verified_sources_marked():
+    for code in ("hk_td", "hk_mpfa", "hk_hd_policy"):
+        assert resolve_route(code, "https://example.com/x").verified is True, code
+    assert resolve_route("hk_tid", "https://example.com/x").verified is False

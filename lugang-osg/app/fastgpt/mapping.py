@@ -27,6 +27,8 @@ class KbRoute:
     department: str  # 标签用：部门（末级机构）
     folder_path: tuple[str, ...]  # 数据集内文件夹路径（不含数据集根）
     column: str | None = None  # 职能栏目（目前仅 hk_tid 有）
+    # 鲁港通 - 导入头带核对日期（时效敏感的办事类页面，2026-11-20）
+    verified: bool = False
 
 
 # 鲁港通 - 香港源 → 部门文件夹（取自源配置 organization 的简称）
@@ -53,9 +55,14 @@ _HK_DEPARTMENTS: dict[str, str] = {
     "hk_policy_address": "施政报告",
     "hk_smefund": "工业贸易署",
     "hk_swd_policy": "社会福利署",
+    "hk_td": "运输署",
     "hk_tid": "工业贸易署",
     "hk_wfsfaa": "在职家庭及学生资助事务处",
+    "hk_mpfa": "积金局",
 }
+
+# 鲁港通 - 办事类来源：导入头附「核对日期」（额度/资格/流程时效敏感，2026-11-20）
+_VERIFIED_SOURCES = {"hk_td", "hk_mpfa", "hk_hd_policy"}
 
 # 鲁港通 - 山东省级部门源 → 机构文件夹（挂「省级部门」下）
 _SD_PROVINCIAL: dict[str, str] = {
@@ -248,7 +255,10 @@ def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
             return KbRoute(
                 "hk", HK_DATASET_ID, "香港", dept, (dept, column), column
             )
-        return KbRoute("hk", HK_DATASET_ID, "香港", dept, (dept,))
+        return KbRoute(
+            "hk", HK_DATASET_ID, "香港", dept, (dept,),
+            verified=source_code in _VERIFIED_SOURCES,
+        )
     if source_code in _HK_BANK_MAINLAND:
         dept, sub = _HK_BANK_MAINLAND[source_code]
         return KbRoute("bank", BANK_DATASET_ID, "香港", dept, ("40 内地居民赴港开户", sub))
