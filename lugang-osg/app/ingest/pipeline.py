@@ -11,6 +11,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -29,7 +30,12 @@ from app.ingest.discover import (
     parse_sitemap,
     url_publish_year,
 )
-from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf, nav_residue_stats
+from app.ingest.extract import (
+    MIN_CONTENT_CHARS,
+    extract_html,
+    extract_pdf_title,
+    nav_residue_stats,
+)
 from app.ingest.title_filter import first_matching_pattern
 from app.ingest.url_identity import identity_key
 from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
@@ -651,7 +657,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
                 continue
 
         # 5) 提取 + 版本化入库
-        action = _store_document(db, source, canonical, result, item, known_doc=doc)
+        action = _store_document(
+            db, source, canonical, result, item, known_doc=doc,
+            pdf_store_dir=settings.pdf_store_dir,
+        )
         # 鲁港通 - 本轮新建的文档立刻进身份索引：同一轮列表里同一篇文章常同时挂两种网址
         # 形态（起步区裸地址 + 带 type 参数地址），索引不更新则第二条照样建一份文档。
         if doc is None and action in ("new", "archived_noise", "archived_offtopic"):
@@ -719,11 +728,36 @@ def _known_documents(db, source, cfg) -> dict:
     return known
 
 
-def _store_document(db, source, canonical, result: FetchResult, item, known_doc=None) -> str:
+def _store_pdf_raw(content: bytes, content_sha: str, store_dir: str) -> str | None:
+    """PDF 原文件内容寻址落盘（<sha256>.pdf），返回对象键；失败降级 None。
+
+    同名文件已存在时不重写（同内容同 sha，天然幂等）；原子写避免半截文件。
+    """
+    try:
+        root = Path(store_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        key = f"{content_sha}.pdf"
+        target = root / key
+        if not target.is_file():
+            tmp = root / f"{key}.tmp"
+            tmp.write_bytes(content)
+            tmp.replace(target)
+        return key
+    except OSError:
+        logger.exception("PDF 原文件落盘失败（目录 %s）：该文档导入将失败待重抓", store_dir)
+        return None
+
+
+def _store_document(
+    db, source, canonical, result: FetchResult, item, known_doc=None,
+    pdf_store_dir=None,
+) -> str:
     """sha256 版本化入库。
 
     返回 new / archived_noise / archived_offtopic / updated / unchanged /
     skipped_low_content / skipped_nav_page。
+    鲁港通 - PDF 不提取正文（2026-11-20 用户口径）：原文件按内容寻址落盘
+    （pdf_store_dir/<sha256>.pdf），由导入层直传 FastGPT 文件集合。
     """
     content_sha = hashlib.sha256(result.content).hexdigest()
     cfg = source.discovery_config or {}
@@ -752,10 +786,17 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
             return "unchanged"
 
     is_pdf = result.content_type == "application/pdf"
-    extracted = (
-        extract_pdf(result.content)
-        if is_pdf
-        else extract_html(
+    raw_object_key: str | None = None
+    if is_pdf:
+        # 鲁港通 - PDF 原文件直传（2026-11-20 用户口径）：不提取正文；原文件落盘后
+        # 由导入层上传文件集合（图片型扫描件也能入库，原文件可追溯）
+        article_title = extract_pdf_title(result.content)
+        body_text: str | None = None
+        language_hint: str | None = None
+        if pdf_store_dir:
+            raw_object_key = _store_pdf_raw(result.content, content_sha, pdf_store_dir)
+    else:
+        extracted = extract_html(
             result.content,
             content_selector=cfg.get("content_selector"),
             organization=source.organization,
@@ -763,23 +804,23 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
             title_strip_suffixes=cfg.get("title_strip_suffixes"),
             keep_form=bool(cfg.get("keep_form")),
         )
-    )
+        article_title = extracted.title
+        body_text = extracted.text
+        language_hint = extracted.language_hint
 
-    # 鲁港通 - 噪声页过滤：HTML 正文低于实测门槛则不建文档（栏目页/首页只有导航文字）。
-    # PDF 不做此判定：仍登记文档元信息（无文本层的扫描件 text=None，导入器侧跳过）。
-    if not is_pdf and len(extracted.text or "") < MIN_CONTENT_CHARS:
-        return "skipped_low_content"
+        # 鲁港通 - 噪声页过滤：HTML 正文低于实测门槛则不建文档（栏目页/首页只有导航文字）。
+        if len(body_text or "") < MIN_CONTENT_CHARS:
+            return "skipped_low_content"
 
-    # 鲁港通 - 导航枢纽页守卫（2026-11-19）：整屏链接文字堆叠（如「企业客户跨境服务」
-    # 五个分块全是栏目链接）字数控过长度门槛仍会入库，靠链接密度兜底拦截。
-    if (not is_pdf and extracted.link_count >= NAV_MIN_LINKS
-            and extracted.link_text_ratio >= NAV_LINK_RATIO):
-        return "skipped_nav_page"
+        # 鲁港通 - 导航枢纽页守卫（2026-11-19）：整屏链接文字堆叠（如「企业客户跨境服务」
+        # 五个分块全是栏目链接）字数控过长度门槛仍会入库，靠链接密度兜底拦截。
+        if (extracted.link_count >= NAV_MIN_LINKS
+                and extracted.link_text_ratio >= NAV_LINK_RATIO):
+            return "skipped_nav_page"
 
-    # 鲁港通 - 导航残渣壳页守卫（2026-11-20）：剥离链接后仍整页外壳文字
-    # （PreviousNext/请按此查看PDF版本/页尾法务链接），无有效段落即不入库。
-    if not is_pdf:
-        residue_ratio, effective_paras = nav_residue_stats(extracted.text or "")
+        # 鲁港通 - 导航残渣壳页守卫（2026-11-20）：剥离链接后仍整页外壳文字
+        # （PreviousNext/请按此查看PDF版本/页尾法务链接），无有效段落即不入库。
+        residue_ratio, effective_paras = nav_residue_stats(body_text or "")
         if (residue_ratio >= NAV_RESIDUE_RATIO
                 and effective_paras <= NAV_RESIDUE_MAX_PARAS):
             return "skipped_nav_residue"
@@ -789,7 +830,7 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
         # 来源配置的 title_exclude_patterns 即置 archived（不进知识库、可随时恢复）。
         # 只作用于新建文档：已人工恢复（candidate）的存量文档重抓不会被再次归档。
         noise_hit = None
-        for t in (override, item.title, extracted.title):
+        for t in (override, item.title, article_title):
             noise_hit = first_matching_pattern(t, cfg.get("title_exclude_patterns"))
             if noise_hit:
                 break
@@ -798,14 +839,19 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
         include_patterns = cfg.get("title_include_patterns")
         offtopic = bool(include_patterns) and not any(
             first_matching_pattern(t, include_patterns)
-            for t in (override, item.title, extracted.title)
+            for t in (override, item.title, article_title)
         )
-        doc_title = override or item.title or extracted.title
+        # 鲁港通 - PDF 标题优先级（2026-11-20）：元数据标题 > 列表锚文本——列表链接
+        # 常是「请按此查看PDF版本」类残渣，不能压过 PDF 自带标题
+        if is_pdf:
+            doc_title = override or article_title or item.title
+        else:
+            doc_title = override or item.title or article_title
         doc = Document(
             source_id=source.id,
             canonical_url=canonical,
             title=doc_title,
-            language=extracted.language_hint,
+            language=language_hint,
             organization=source.organization,
             status="archived" if (noise_hit or offtopic) else "candidate",
         )
@@ -834,14 +880,15 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
         content_type=result.content_type,
         http_status=result.http_status,
         content_sha256=content_sha,
-        extracted_text=extracted.text,
-        extracted_metadata={"title": override or extracted.title,
-                            "language": extracted.language_hint},
+        extracted_text=body_text,
+        raw_object_key=raw_object_key,
+        extracted_metadata={"title": override or article_title,
+                            "language": language_hint},
         is_current=True,
     )
     db.add(version)
     db.flush()
     doc.latest_version_id = version.id
-    if extracted.title and not doc.title:
-        doc.title = extracted.title
+    if article_title and not doc.title:
+        doc.title = article_title
     return action

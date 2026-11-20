@@ -162,6 +162,7 @@ def _import_after_sync(code: str) -> None:
                 code,
                 interval=settings.fastgpt_interval_s,
                 chunk_size=settings.fastgpt_chunk_size,
+                pdf_store_dir=settings.pdf_store_dir,
             )
             logger.info("post-sync import %s: %s", code, report.summary_line())
         finally:
@@ -211,6 +212,7 @@ def _make_import_job():
                             src.code,
                             interval=settings.fastgpt_interval_s,
                             chunk_size=settings.fastgpt_chunk_size,
+                            pdf_store_dir=settings.pdf_store_dir,
                         )
                         logger.info(
                             "scheduled import %s: %s", src.code, report.summary_line()

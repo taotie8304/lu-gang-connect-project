@@ -201,6 +201,46 @@ class TestFetcherLimits:
         )
         assert result.content.startswith(b"var tc_topMenu")
 
+    def test_extra_octet_stream_pdf_suffix_allowed(self):
+        """鲁港通 - 政务站 PDF 下载端点常回 application/octet-stream（实测多站如此），
+        按 URL .pdf 后缀兜底识别为 application/pdf，否则招生指引类 PDF 全被拒。"""
+        import httpx
+
+        transport = httpx.MockTransport(
+            lambda req: httpx.Response(
+                200,
+                headers={"content-type": "application/octet-stream"},
+                content=b"%PDF-1.4 fake",
+            )
+        )
+        result = fetch_url(
+            "https://www.news.gov.hk/docs/guide.pdf",
+            RULES,
+            self._settings(),
+            transport=transport,
+            resolver=fake_resolver,
+        )
+        assert result.content_type == "application/pdf"
+        assert result.content.startswith(b"%PDF")
+
+    def test_extra_octet_stream_non_pdf_suffix_rejected(self):
+        """非 .pdf 后缀的 octet-stream（未知二进制）仍拒绝。"""
+        import httpx
+
+        transport = httpx.MockTransport(
+            lambda req: httpx.Response(
+                200, headers={"content-type": "application/octet-stream"}, content=b"blob"
+            )
+        )
+        with pytest.raises(FetchAborted):
+            fetch_url(
+                "https://www.news.gov.hk/docs/blob.bin",
+                RULES,
+                self._settings(),
+                transport=transport,
+                resolver=fake_resolver,
+            )
+
     def test_case10_redirect_limit(self):
         """用例 10：重定向次数超上限必须中止。"""
         import httpx

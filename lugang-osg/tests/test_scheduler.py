@@ -53,6 +53,7 @@ def _patch_sync_env(monkeypatch, src, ran, lock=None, import_after_sync=False):
             fastgpt_base_url="http://127.0.0.1:3210",
             fastgpt_interval_s=0.0,
             fastgpt_chunk_size=512,
+            pdf_store_dir="data/pdfs",
         ),
     )
     if lock is not None:
@@ -211,6 +212,7 @@ def _patch_import_env(monkeypatch, sources, calls):
             fastgpt_base_url="http://127.0.0.1:3210",
             fastgpt_interval_s=0.0,
             fastgpt_chunk_size=512,
+            pdf_store_dir="data/pdfs",
         ),
     )
     monkeypatch.setattr(

@@ -401,6 +401,8 @@ def parse_js_menu(content: bytes, cfg: dict) -> list[DiscoveredItem]:
       exclude_substrings 白名单栏目内按文件名片段排除（实测 TID：reference_links /
                         useful_links / mainland_link 等「相關網址」链接集合页散布在
                         多个目录下、无公共前缀，纯外链导航非政策内容）
+      allow_pdf         是否放行 .pdf 链接（默认 False；院校招生指引等栏目 PDF
+                        直挂菜单的来源开启，2026-11-20）
     菜单标题是栏目名不是文章标题，故不带 title（由 extract 从文章页提取）。
     """
     import json
@@ -418,14 +420,16 @@ def parse_js_menu(content: bytes, cfg: dict) -> list[DiscoveredItem]:
     prefixes = [p for p in (cfg.get("allow_prefixes") or []) if isinstance(p, str) and p]
     excludes = [p for p in (cfg.get("exclude_prefixes") or []) if isinstance(p, str) and p]
     exclude_subs = [s for s in (cfg.get("exclude_substrings") or []) if isinstance(s, str) and s]
+    allow_pdf = bool(cfg.get("allow_pdf"))
 
     items: list[DiscoveredItem] = []
     seen: set[str] = set()
     for path in paths:
-        # 站外绝对链接（http(s)://）、查询串跳转（?page=link）与非 .html（PDF 等）排除
+        # 站外绝对链接（http(s)://）、查询串跳转（?page=link）排除
         if path.startswith(("http://", "https://")) or "?" in path:
             continue
-        if not path.lower().endswith(".html"):
+        lower = path.lower()
+        if not (lower.endswith(".html") or (allow_pdf and lower.endswith(".pdf"))):
             continue
         if prefixes and not any(path.startswith(p) for p in prefixes):
             continue

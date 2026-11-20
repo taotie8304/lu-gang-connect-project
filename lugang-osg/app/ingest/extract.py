@@ -385,15 +385,18 @@ def clean_title(
     return rest
 
 
-# 鲁港通 - PDF 文本层提取的页数上限（防超大 PDF 在采集线程里长时间占用 CPU）
-_PDF_MAX_PAGES = 200
+# 鲁港通 - PDF 元数据标题清洗：微软 Office 生成器会写入「Microsoft Word - xxx.docx」，
+# 原样入库会污染知识库集合名（2026-11-20 用户反馈：招生指引集合名不可读）
+_PDF_TITLE_PREFIX_RE = re.compile(
+    r"^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-–—]\s*)", re.IGNORECASE
+)
+_PDF_TITLE_SUFFIX_RE = re.compile(r"\.(?:docx?|pptx?|xlsx?)$", re.IGNORECASE)
 
 
-def extract_pdf(content: bytes) -> ExtractedContent:
-    """PDF：提取文本层（2026-11-20 起入库，此前只登记元信息）。
+def extract_pdf_title(content: bytes) -> str | None:
+    """只读 PDF 元数据标题（不提取正文）。
 
-    扫描件/图片型 PDF 无文本层时返回 text=None，由导入器跳过（诚实兜底）。
-    解析失败（加密/损坏）同样降级为空结果，不抛异常、不阻断采集。
+    无元数据/加密/损坏返回 None，由列表锚文本兜底；标题优先级的取舍在 pipeline。
     """
     from io import BytesIO
 
@@ -402,31 +405,18 @@ def extract_pdf(content: bytes) -> ExtractedContent:
 
         reader = PdfReader(BytesIO(content))
         if reader.is_encrypted:
-            # 鲁港通 - 政府站偶见「仅限复制」类空口令加密，尝试空口令解密
             try:
                 reader.decrypt("")
             except Exception:  # noqa: BLE001
-                return ExtractedContent(title=None, text=None)
-        pages = reader.pages[:_PDF_MAX_PAGES]
-        chunks: list[str] = []
-        for page in pages:
-            try:
-                chunks.append(page.extract_text() or "")
-            except Exception:  # noqa: BLE001 - 单页损坏不影响其余页
-                continue
-        text = _squeeze("\n".join(chunks)) or None
-        raw_title = None
-        try:
-            raw_title = (reader.metadata.title or "").strip() or None
-        except Exception:  # noqa: BLE001
-            raw_title = None
+                return None
+        raw_title = (reader.metadata.title or "").strip() if reader.metadata else ""
     except Exception:  # noqa: BLE001
-        return ExtractedContent(title=None, text=None)
-    return ExtractedContent(
-        title=raw_title,
-        text=text,
-        language_hint=_lang_hint(raw_title, text),
-    )
+        return None
+    if not raw_title:
+        return None
+    title = _PDF_TITLE_PREFIX_RE.sub("", raw_title)
+    title = _PDF_TITLE_SUFFIX_RE.sub("", title)
+    return title.strip(" \t_|·—-") or None
 
 
 def _squeeze(text: str) -> str:

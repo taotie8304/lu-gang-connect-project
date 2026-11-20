@@ -203,5 +203,41 @@ def test_list_collections_folders_only_and_pagination():
     assert calls[1]["offset"] == 100
 
 
+def test_create_file_multipart_payload_and_result():
+    """PDF 原文件直传：multipart 到 localFile，文件名与集合参数同请求送达。"""
+    seen = {}
+
+    def handler(request):
+        seen["path"] = request.url.path
+        seen["content_type"] = request.headers.get("content-type", "")
+        seen["body"] = request.read().decode("latin-1")
+        return ok({"collectionId": "c9", "results": {"insertLen": 1}})
+
+    cid = make_client(handler).create_file(
+        "ds1", "招生指引.pdf", b"%PDF-1.4 fake",
+        parent_id="p1", tags=["香港", "教育局"], chunk_size=512,
+    )
+    assert cid == "c9"
+    assert seen["path"] == "/api/core/dataset/collection/create/localFile"
+    assert seen["content_type"].startswith("multipart/form-data")
+    assert 'name="file"' in seen["body"]
+    assert 'filename="' in seen["body"] and "%PDF-1.4 fake" in seen["body"]
+    # data 字段是 JSON 字符串（FastGPT multer 按字段名 data 解析）
+    assert 'name="data"' in seen["body"]
+    start = seen["body"].index('name="data"')
+    payload_part = seen["body"][start:]
+    assert '"datasetId": "ds1"' in payload_part or '"datasetId":"ds1"' in payload_part
+    assert '"parentId": "p1"' in payload_part or '"parentId":"p1"' in payload_part
+    assert "chunkSettingMode" in payload_part
+
+
+def test_create_file_error_raises_fastgpt_error():
+    def handler(request):
+        return httpx.Response(200, json={"code": 500, "message": "文件过大"})
+
+    with pytest.raises(FastGPTError, match="文件过大"):
+        make_client(handler).create_file("ds1", "a.pdf", b"%PDF")
+
+
 def test_close_releases_client():
     make_client(lambda r: ok([])).close()

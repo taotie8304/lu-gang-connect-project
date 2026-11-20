@@ -227,6 +227,11 @@ def fetch_url(
                 )
 
             content_type = normalize_content_type(response.headers.get("content-type"))
+            # 鲁港通 - PDF 下载端点常以 octet-stream 返回（实测多站如此）：按 URL
+            # .pdf 后缀兜底识别为 application/pdf，否则招生指引类 PDF 全部被拒
+            if (content_type == "application/octet-stream"
+                    and response.url.path.lower().endswith(".pdf")):
+                content_type = "application/pdf"
             if content_type not in settings.allowed_content_types:
                 response.close()
                 raise FetchAborted(

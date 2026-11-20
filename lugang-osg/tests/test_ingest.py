@@ -455,6 +455,19 @@ class TestDiscover:
         assert parse_js_menu(b"<html><body>404 Not Found</body></html>", JS_MENU_CFG) == []
         assert parse_js_menu(b'var x = {"1":["a","b.html"', JS_MENU_CFG) == []
 
+    def test_parse_js_menu_allow_pdf_when_enabled(self):
+        """allow_pdf：院校招生指引等栏目把 PDF 直接挂在菜单里，来源开启后 .pdf 同样
+        进入候选；站外绝对链接与查询串仍照旧排除。"""
+        cfg = {**JS_MENU_CFG, "allow_pdf": True}
+        items = parse_js_menu(JS_MENU_SAMPLE, cfg)
+        urls = [i.url for i in items]
+        assert (
+            "https://www.tid.gov.hk/tc/our_work/import_export_licensing_control/forms.pdf"
+            in urls
+        )
+        assert not any("www.gov.hk" in u for u in urls)
+        assert not any("?" in u for u in urls)
+
     def test_parse_js_menu_excludes_prefixes(self):
         """exclude_prefixes：白名单栏目内仍要排除的子目录（实测 TID 的陈旧链接页与宣传物料）。"""
         cfg = {**JS_MENU_CFG, "exclude_prefixes": ["our_work/support_for_trade_industry/"]}

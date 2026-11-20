@@ -8,6 +8,7 @@ class FakeSettings:
     fastgpt_api_key = "test-key"
     fastgpt_chunk_size = 512
     fastgpt_interval_s = 0.3
+    pdf_store_dir = "data/pdfs"
 
 
 class FakeClient:

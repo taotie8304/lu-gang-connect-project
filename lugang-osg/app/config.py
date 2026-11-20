@@ -84,6 +84,10 @@ class Settings(BaseSettings):
     # 鲁港通 - P0-2 时效增强：采集完成后立即增量导入本来源；关闭时仅保留每日批量兜底
     fastgpt_import_after_sync: bool = True
 
+    # 鲁港通 - PDF 原文件直传（2026-11-20 用户口径）：采集阶段按内容寻址落盘
+    # （<sha256>.pdf），导入阶段以 multipart 上传 FastGPT 文件集合，不再提取正文
+    pdf_store_dir: str = "data/pdfs"
+
 
 @lru_cache
 def get_settings() -> Settings:

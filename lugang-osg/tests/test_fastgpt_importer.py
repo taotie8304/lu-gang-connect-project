@@ -25,6 +25,7 @@ class FakeClient:
         self.ids: dict[str, str] = {}
         self.last_text_id: str | None = None
         self.fail_next_create_text = False
+        self.fail_next_create_file = False
         self.fail_next_rename = False
         self.fail_next_delete = False
         self.delete_not_exist = False
@@ -52,6 +53,20 @@ class FakeClient:
         if self.fail_next_create_text:
             self.fail_next_create_text = False
             raise FastGPTError("模拟网络抖动")
+        self._seq += 1
+        self.last_text_id = f"C{self._seq:03d}"
+        return self.last_text_id
+
+    def create_file(
+        self, dataset_id, name, content, *, parent_id=None, tags=None, chunk_size=512
+    ):
+        # 鲁港通 - PDF 原文件直传（2026-11-20）：文件集合创建即定名，导入侧不再改名
+        self.calls.append(
+            ("file", dataset_id, name, content, parent_id, tuple(tags or ()), chunk_size)
+        )
+        if self.fail_next_create_file:
+            self.fail_next_create_file = False
+            raise FastGPTError("模拟文件上传失败")
         self._seq += 1
         self.last_text_id = f"C{self._seq:03d}"
         return self.last_text_id
@@ -102,6 +117,7 @@ def make_document(
     sha=SHA1,
     text="正文内容",
     status="candidate",
+    raw=None,
 ):
     doc = Document(source_id=source.id, canonical_url=url, title=title, status=status)
     db.add(doc)
@@ -112,6 +128,7 @@ def make_document(
         final_url=url,
         content_sha256=sha,
         extracted_text=text,
+        raw_object_key=raw,
         is_current=True,
     )
     db.add(ver)
@@ -935,3 +952,87 @@ def test_life_source_import_header_has_verified_on(db):
     body = [c for c in fake.calls if c[0] == "text"][0][3]
     assert "核对日期：" in body
     assert f"原文链接：{url}" in body
+
+
+# --- PDF 原文件直传（2026-11-20 用户口径：PDF 不提取正文，原文件上传文件集合） ---
+
+PDF_URL = "https://www.tid.gov.hk/tc/our_work/cepa/guide.pdf"
+
+
+def test_pdf_raw_file_imported_as_file_collection(db, tmp_path):
+    """有落盘原文件的 PDF 走 create_file（集合名=标题.pdf），不走文本集合、不改名。"""
+    src = make_source(db)
+    pdf = b"%PDF-1.4 admission guide"
+    doc, ver = make_document(db, src, PDF_URL, text=None, raw=f"{SHA1}.pdf")
+    (tmp_path / f"{SHA1}.pdf").write_bytes(pdf)
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", pdf_store_dir=str(tmp_path))
+
+    assert (report.imported, report.failed) == (1, 0)
+    kinds = [c[0] for c in fake.calls]
+    assert kinds == ["list", "folder", "list", "folder", "file"]
+    file_call = [c for c in fake.calls if c[0] == "file"][0]
+    assert file_call[1] == HK_DATASET_ID
+    assert file_call[2] == "CEPA 货物贸易协议.pdf"
+    assert file_call[3] == pdf
+    assert file_call[4] == fake.ids["CEPA"]
+    assert file_call[5] == ("香港", "工业贸易署")
+    rec = db.query(ImportMap).one()
+    assert rec.status == "imported"
+    assert rec.collection_id == fake.last_text_id
+
+
+def test_pdf_raw_file_missing_without_text_fails(db, tmp_path):
+    """原文件缺失且无正文（PDF 不再提取文字）→ 明确失败，提示强制重抓。"""
+    src = make_source(db)
+    make_document(db, src, PDF_URL, text=None, raw="missing.pdf")
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", pdf_store_dir=str(tmp_path))
+
+    assert report.failed == 1
+    assert "原文件" in report.errors[0]
+    assert not [c for c in fake.calls if c[0] in ("text", "file")]
+    rec = db.query(ImportMap).one()
+    assert rec.status == "failed"
+
+
+def test_pdf_raw_missing_falls_back_to_legacy_text(db, tmp_path):
+    """旧版 PDF 文档只有文本层、无原文件：继续按文本集合导入（兼容存量）。"""
+    src = make_source(db)
+    make_document(db, src, PDF_URL, text="旧版 PDF 文本层正文", raw=None)
+    fake = FakeClient()
+
+    report = run_import(db, fake, "hk_tid", pdf_store_dir=str(tmp_path))
+
+    assert report.imported == 1
+    kinds = [c[0] for c in fake.calls]
+    assert "text" in kinds and "file" not in kinds
+    text_call = [c for c in fake.calls if c[0] == "text"][0]
+    assert "旧版 PDF 文本层正文" in text_call[3]
+
+
+def test_sync_names_expects_pdf_suffix_for_file_collections(db):
+    """文件集合预期名 = 标题.pdf：人工改掉后缀时按 .pdf 规则校正。"""
+    src = make_source(db)
+    doc, ver = make_document(db, src, PDF_URL, text=None, raw="abc.pdf")
+    write_imported(db, doc, ver, collection_id="C1")
+    fake = FakeClient(existing_folders=_folders_with_c1("CEPA 货物贸易协议"))
+
+    report = sync_names(db, fake, "hk_tid")
+
+    assert (report.checked, report.fixed, report.unfixed) == (1, 1, 0)
+    assert ("rename", "C1", "CEPA 货物贸易协议.pdf") in fake.calls
+
+
+def test_sync_names_pdf_collection_correct_name_noop(db):
+    src = make_source(db)
+    doc, ver = make_document(db, src, PDF_URL, text=None, raw="abc.pdf")
+    write_imported(db, doc, ver, collection_id="C1")
+    fake = FakeClient(existing_folders=_folders_with_c1("CEPA 货物贸易协议.pdf"))
+
+    report = sync_names(db, fake, "hk_tid")
+
+    assert (report.checked, report.fixed, report.unfixed) == (1, 0, 0)
+    assert not [c for c in fake.calls if c[0] == "rename"]

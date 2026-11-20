@@ -1,7 +1,6 @@
-# 鲁港通 - PDF 文本层提取测试（离线，构造最小合法 PDF，不发网络）
+# 鲁港通 - PDF 原文件链路测试（离线，构造最小合法 PDF，不发网络）：
+# 2026-11-20 用户口径——PDF 不提取正文，原文件落盘后直传 FastGPT 文件集合
 from __future__ import annotations
-
-from app.ingest.extract import extract_pdf
 
 # 鲁港通 - 必须先导入 models，conftest 的 create_all 才能建出全套表
 from app.models import DocumentVersion, Source  # noqa: F401
@@ -43,39 +42,12 @@ def _build_pdf(lines: list[str], title: str | None = None) -> bytes:
     return out
 
 
-def test_extract_pdf_reads_text_layer_and_metadata_title():
-    pdf = _build_pdf(
-        [
-            "Corporate account opening document checklist",
-            "Company registration certificate is required.",
-            "Business registration certificate and proof of address are required.",
-        ],
-        title="Account Opening Documents",
-    )
-    result = extract_pdf(pdf)
-    assert result.title == "Account Opening Documents"
-    assert result.text is not None
-    assert "Corporate account opening document checklist" in result.text
-    assert "Business registration certificate" in result.text
-    # 鲁港通 - 多行文本以换行保留、不粘成一串
-    assert "required." in result.text and "\n" in result.text
+def test_store_document_saves_pdf_raw_file_without_text_extraction(db, tmp_path):
+    """pipeline 集成：PDF 原文件落盘（raw_object_key），不再提取正文（2026-11-21 用户口径）。
 
-
-def test_extract_pdf_without_text_layer_returns_no_text():
-    # 扫描件/图片型 PDF：无文本层 → text 为空，交由导入器跳过（诚实兜底）
-    pdf = _build_pdf([])
-    result = extract_pdf(pdf)
-    assert result.text is None
-    assert result.title is None
-
-
-def test_extract_pdf_invalid_bytes_does_not_raise():
-    result = extract_pdf(b"not a pdf at all")
-    assert result.text is None
-
-
-def test_store_document_saves_pdf_text_layer(db):
-    """pipeline 集成：PDF 文本层写入 DocumentVersion.extracted_text（导入器据此入库）。"""
+    导入器随后直传原文件到 FastGPT 文件集合；列表锚文本是「请按此查看PDF版本」这类
+    残渣时，标题必须优先用 PDF 元数据标题。
+    """
     from sqlalchemy import select
 
     from app.ingest.discover import DiscoveredItem
@@ -105,9 +77,36 @@ def test_store_document_saves_pdf_text_layer(db):
     result = FetchResult(
         final_url=url, http_status=200, content_type="application/pdf", content=pdf
     )
-    action = _store_document(db, source, url, result, DiscoveredItem(url=url, title="清单"))
+    action = _store_document(
+        db, source, url, result,
+        DiscoveredItem(url=url, title="请按此查看PDF版本"),
+        pdf_store_dir=str(tmp_path),
+    )
     db.commit()
 
     assert action == "new"
     version = db.execute(select(DocumentVersion)).scalar_one()
-    assert version.extracted_text and "Corporate account opening" in version.extracted_text
+    # 鲁港通 - 不提取正文；原文件内容寻址落盘
+    assert version.extracted_text is None
+    assert version.raw_object_key and version.raw_object_key.endswith(".pdf")
+    saved = tmp_path / version.raw_object_key
+    assert saved.exists() and saved.read_bytes() == pdf
+    # 鲁港通 - PDF 元数据标题优先于列表锚文本残渣
+    from app.models import Document
+    doc = db.execute(select(Document)).scalar_one()
+    assert doc.title == "Checklist"
+
+
+def test_extract_pdf_title_strips_word_prefix():
+    """PDF 元数据标题清洗：微软 Office 生成器前缀不进入知识库集合名。"""
+    from app.ingest.extract import extract_pdf_title
+
+    pdf = _build_pdf(["body"], title="Microsoft Word - Admission Guide 2027.docx")
+    assert extract_pdf_title(pdf) == "Admission Guide 2027"
+
+
+def test_extract_pdf_title_missing_metadata():
+    from app.ingest.extract import extract_pdf_title
+
+    assert extract_pdf_title(_build_pdf(["body"])) is None
+    assert extract_pdf_title(b"not a pdf") is None

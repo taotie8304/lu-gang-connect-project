@@ -1,5 +1,6 @@
 # 鲁港通 - FastGPT 开放 API 客户端（OSG 导入链路，design.md §7.3）：
 # Bearer API Key 鉴权；httpx 实现（transport 可注入，测试走 MockTransport 不发真实网络）。
+import json
 from typing import Any
 
 import httpx
@@ -46,6 +47,9 @@ class FastGPTClient:
             raise FastGPTError(
                 f"连接 FastGPT 失败：{exc}（请检查 OSG_FASTGPT_BASE_URL 与服务状态）"
             ) from exc
+        return self._parse(resp)
+
+    def _parse(self, resp: httpx.Response) -> Any:
         try:
             body = resp.json()
         except ValueError as exc:
@@ -144,6 +148,52 @@ class FastGPTClient:
         if tags:
             payload["tags"] = tags
         data = self._post("/api/core/dataset/collection/create/text", payload)
+        return data["collectionId"]
+
+    def create_file(
+        self,
+        dataset_id: str,
+        name: str,
+        content: bytes,
+        *,
+        parent_id: str | None = None,
+        tags: list[str] | None = None,
+        chunk_size: int = 512,
+        index_size: int = 512,
+        index_prefix_title: bool = True,
+        chunk_setting_mode: str = "custom",
+        chunk_split_mode: str = "paragraph",
+        paragraph_chunk_deep: int = 5,
+    ) -> str:
+        """创建文件集合（PDF 原文件直传，2026-11-20），返回 collectionId。
+
+        multipart 上传到 localFile：file 字段为二进制，data 字段是 JSON 字符串
+        （FastGPT 服务端按字段名解析）；集合名=上传文件名，不会被追加 .txt。
+        """
+        payload: dict[str, Any] = {
+            "datasetId": dataset_id,
+            "chunkSize": chunk_size,
+            "indexSize": index_size,
+            "indexPrefixTitle": index_prefix_title,
+            "chunkSettingMode": chunk_setting_mode,
+            "chunkSplitMode": chunk_split_mode,
+            "paragraphChunkDeep": paragraph_chunk_deep,
+        }
+        if parent_id:
+            payload["parentId"] = parent_id
+        if tags:
+            payload["tags"] = tags
+        try:
+            resp = self._http.post(
+                "/api/core/dataset/collection/create/localFile",
+                data={"data": json.dumps(payload, ensure_ascii=False)},
+                files={"file": (name, content, "application/pdf")},
+            )
+        except httpx.HTTPError as exc:
+            raise FastGPTError(
+                f"连接 FastGPT 失败：{exc}（请检查 OSG_FASTGPT_BASE_URL 与服务状态）"
+            ) from exc
+        data = self._parse(resp)
         return data["collectionId"]
 
     def rename(self, collection_id: str, name: str) -> None:

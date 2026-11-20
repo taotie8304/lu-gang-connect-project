@@ -73,6 +73,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 chunk_size=settings.fastgpt_chunk_size,
                 rebuild=args.rebuild,
+                pdf_store_dir=settings.pdf_store_dir,
             )
     except ImporterError as exc:
         print(f"导入中止：{exc}")

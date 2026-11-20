@@ -7,8 +7,9 @@ import logging
 import time
 from dataclasses import dataclass, field
 from datetime import date
+from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.fastgpt.client import FastGPTClient, FastGPTError
@@ -143,7 +144,7 @@ class _FolderCache:
 def _select_documents(
     db: Session, source_id, limit: int | None
 ) -> list[tuple[Document, DocumentVersion]]:
-    """候选文档：当前版本、正文非空、状态未排除；按创建时间与 id 稳定排序。"""
+    """候选文档：当前版本、正文非空或 PDF 原文件已落盘、状态未排除；稳定排序。"""
     rows = db.execute(
         select(Document, DocumentVersion)
         .join(
@@ -153,10 +154,19 @@ def _select_documents(
         )
         .where(Document.source_id == source_id)
         .where(Document.status.notin_(EXCLUDED_STATUSES))
-        .where(DocumentVersion.extracted_text.isnot(None))
+        .where(
+            or_(
+                DocumentVersion.extracted_text.isnot(None),
+                DocumentVersion.raw_object_key.isnot(None),
+            )
+        )
         .order_by(Document.created_at.asc(), Document.id.asc())
     ).all()
-    picked = [(doc, ver) for doc, ver in rows if (ver.extracted_text or "").strip()]
+    picked = [
+        (doc, ver)
+        for doc, ver in rows
+        if (ver.extracted_text or "").strip() or ver.raw_object_key
+    ]
     if limit is not None:
         picked = picked[:limit]
     return picked
@@ -324,6 +334,7 @@ def run_import(
     interval: float = 0.0,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     rebuild: bool = False,
+    pdf_store_dir: str = "data/pdfs",
 ) -> ImportReport:
     """导入单个源的候选文档到对应知识库；返回统计报告。
 
@@ -412,29 +423,77 @@ def run_import(
             planned_sha.add(sha)
             continue
 
-        text = build_import_text(
-            title=doc.title or "",
-            url=doc.canonical_url,
-            organization=doc.organization or source.organization,
-            published_at=doc.published_at,
-            body=version.extracted_text or "",
-            # 鲁港通 - 开户库导入头带「核对日期」=本次同步当日（时效敏感，2026-11-19）
-            verified_on=(
-                date.today()
-                if route.verified or route.kb_key in ("bank", "med")
-                else None
-            ),
+        # 鲁港通 - PDF 原文件直传（2026-11-20 用户口径）：有落盘原文件的上传文件集合
+        # （集合名=标题.pdf，无需改名）；无原文件的老文档回退文本集合导入。
+        raw_path = (
+            Path(pdf_store_dir) / version.raw_object_key
+            if version.raw_object_key
+            else None
         )
+        use_raw_file = raw_path is not None and raw_path.is_file()
+        if raw_path is not None and not use_raw_file:
+            report.errors.append(
+                f"{title}：PDF 原文件缺失（{raw_path}），请对该文档强制重抓后再导入"
+            )
+            if not (version.extracted_text or "").strip():
+                _record_failure(
+                    db, record, doc, route, version, sha,
+                    "PDF 原文件缺失且无正文文本，未导入（请强制重抓）",
+                )
+                report.failed += 1
+                if interval:
+                    time.sleep(interval)
+                continue
+
+        pdf_bytes: bytes | None = None
+        if use_raw_file:
+            try:
+                pdf_bytes = raw_path.read_bytes()
+            except OSError as exc:
+                _record_failure(
+                    db, record, doc, route, version, sha, f"PDF 原文件读取失败：{exc}"
+                )
+                report.failed += 1
+                report.errors.append(f"{title}：PDF 原文件读取失败（{exc}）")
+                if interval:
+                    time.sleep(interval)
+                continue
+
+        text = ""
+        if not use_raw_file:
+            text = build_import_text(
+                title=doc.title or "",
+                url=doc.canonical_url,
+                organization=doc.organization or source.organization,
+                published_at=doc.published_at,
+                body=version.extracted_text or "",
+                # 鲁港通 - 开户库导入头带「核对日期」=本次同步当日（时效敏感，2026-11-19）
+                verified_on=(
+                    date.today()
+                    if route.verified or route.kb_key in ("bank", "med")
+                    else None
+                ),
+            )
         try:
             parent_id = folders.ensure(route.dataset_id, route.folder_path)
-            collection_id = client.create_text(
-                route.dataset_id,
-                title,
-                text,
-                parent_id=parent_id,
-                tags=[route.region, route.department],
-                chunk_size=chunk_size,
-            )
+            if use_raw_file:
+                collection_id = client.create_file(
+                    route.dataset_id,
+                    f"{title}.pdf",
+                    pdf_bytes,
+                    parent_id=parent_id,
+                    tags=[route.region, route.department],
+                    chunk_size=chunk_size,
+                )
+            else:
+                collection_id = client.create_text(
+                    route.dataset_id,
+                    title,
+                    text,
+                    parent_id=parent_id,
+                    tags=[route.region, route.department],
+                    chunk_size=chunk_size,
+                )
         except FastGPTError as exc:
             _record_failure(db, record, doc, route, version, sha, str(exc))
             report.failed += 1
@@ -443,12 +502,13 @@ def run_import(
                 time.sleep(interval)
             continue
 
-        try:
-            client.rename(collection_id, title)
-        except FastGPTError as exc:
-            # 鲁港通 - 实测：解析阶段完成后会用「标题.txt」回写集合名（覆盖此次改名），
-            # 改名失败不阻断导入，统一由 sync_names 在管线排空后校正
-            report.errors.append(f"{title}：集合改名未生效（{exc}），稍后由名称同步校正")
+        if not use_raw_file:
+            try:
+                client.rename(collection_id, title)
+            except FastGPTError as exc:
+                # 鲁港通 - 实测：解析阶段完成后会用「标题.txt」回写集合名（覆盖此次改名），
+                # 改名失败不阻断导入，统一由 sync_names 在管线排空后校正
+                report.errors.append(f"{title}：集合改名未生效（{exc}），稍后由名称同步校正")
 
         if record is not None and record.collection_id:
             try:
@@ -527,8 +587,9 @@ def sync_names(
         raise ImporterError(f"源不存在：{source_code}（请先确认源已配置并入库）")
 
     rows = db.execute(
-        select(ImportMap, Document)
+        select(ImportMap, Document, DocumentVersion)
         .join(Document, Document.id == ImportMap.document_id)
+        .outerjoin(DocumentVersion, DocumentVersion.id == ImportMap.version_id)
         .where(Document.source_id == source.id)
         .where(ImportMap.status == "imported")
         .where(ImportMap.collection_id.isnot(None))
@@ -539,8 +600,14 @@ def sync_names(
     folders = _FolderCache(client)
     listing: dict[str, dict[str, str]] = {}  # folder_id -> {collection_id: name}
 
-    for record, doc in rows:
+    for record, doc, version in rows:
         title = doc.title or doc.canonical_url
+        # 鲁港通 - 文件集合（PDF 原文件直传）预期名带 .pdf 后缀，文本集合无后缀
+        expected = (
+            f"{title}.pdf"
+            if version is not None and version.raw_object_key
+            else title
+        )
         try:
             route = resolve_route(source_code, doc.canonical_url)
         except MappingError as exc:
@@ -567,16 +634,18 @@ def sync_names(
             )
             continue
         report.checked += 1
-        if current == title:
+        if current == expected:
             continue
-        if current != f"{title}.txt":
+        # 鲁港通 - 可自动修正的两种历史命名：文本集合解析期回写「标题.txt」；
+        # 文件集合被去掉 .pdf 后缀（人工改名）时归位
+        if current not in (f"{title}.txt", title):
             report.unfixed += 1
             report.errors.append(f"{title}：当前名称「{current}」与预期不一致，未自动修正")
             continue
 
         if not dry_run:
             try:
-                client.rename(record.collection_id, title)
+                client.rename(record.collection_id, expected)
             except FastGPTError as exc:
                 report.unfixed += 1
                 report.errors.append(f"{title}：改名失败（{exc}）")
@@ -584,6 +653,6 @@ def sync_names(
             if interval:
                 time.sleep(interval)
         report.fixed += 1
-        listing[folder_id][record.collection_id] = title
+        listing[folder_id][record.collection_id] = expected
 
     return report
