@@ -547,7 +547,7 @@ sources:
     group: hk_education
     organization: 香港浸会大学 HKBU
     base_domains: [admissions.hkbu.edu.hk, www.hkbu.edu.hk]
-    allowed_path_prefixes: [/en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/]
+    allowed_path_prefixes: [/, /en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/]
     discovery_method: listing
     listing_urls:
       # 鲁港通 - /en/ 会 301 到无斜杠根（出白名单），直接以根为入口（2026-11-20）
@@ -2106,16 +2106,18 @@ sources:
     base_domains: [www.cmschina.com.hk]
     allowed_path_prefixes: [/CS/]
     keep_form: true
-    discovery_method: listing
-    listing_urls:
+    # 鲁港通 - 开户页含账户类别/个人与公司所需文件（2026-11-20 实测 2440 字、链接占比 0.32）；
+    # 原 listing 只发现 /CS/Download 下载页（链接占比 0.93 导航枢纽），长期零入库
+    discovery_method: fixed_url
+    fixed_urls:
       - "https://www.cmschina.com.hk/CS/AccountOpening"
-    link_pattern: "cmschina\\.com\\.hk/CS/Download(\\?|$)"
+    title_strip_prefixes: ["招商證券國際有限公司 - 客戶服務 - "]
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     extra_headers:
       Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
     schedule: "15 5 * * 0"
     rate_limit_per_minute: 4
-    max_pages_per_run: 40
+    max_pages_per_run: 10
     enabled: true
 
   - id: hk_sec_tiger

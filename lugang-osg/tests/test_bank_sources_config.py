@@ -37,6 +37,16 @@ def test_cmbwl_only_verified_static_pages():
     assert source["allowed_path_prefixes"] == ["/wlb_corporate/cn/"]
 
 
+def test_cms_account_opening_fixed_url():
+    # 鲁港通 - 原 listing 只发现下载页（导航枢纽长期零入库），改为固定采开户页正文
+    source = _load_sources()["hk_sec_cms"]
+    assert source["discovery_method"] == "fixed_url"
+    assert source["fixed_urls"] == ["https://www.cmschina.com.hk/CS/AccountOpening"]
+    assert source.get("keep_form") is True
+    assert source["title_strip_prefixes"] == ["招商證券國際有限公司 - 客戶服務 - "]
+    assert source["max_pages_per_run"] >= 1
+
+
 def test_cmbwl_maps_to_bank_center_folder():
     route = resolve_route(
         "hk_bank_cmbwl",
