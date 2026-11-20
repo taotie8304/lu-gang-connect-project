@@ -14,9 +14,10 @@ def _load_sources() -> dict[str, dict]:
 
 def test_hkbu_listing_avoids_root_redirect_and_research_news():
     source = _load_sources()["hk_edu_hkbu"]
-    # 鲁港通 - admissions.hkbu.edu.hk/en/ 301 到无斜杠根，直接以根为入口避免出白名单
+    # 鲁港通 - admissions.hkbu.edu.hk/en/ 301 到无斜杠根；根路径本身也须在白名单内
     assert "https://admissions.hkbu.edu.hk" in source["listing_urls"]
     assert "https://admissions.hkbu.edu.hk/en/" not in source["listing_urls"]
+    assert "/" in source["allowed_path_prefixes"]
     # 鲁港通 - 科研新闻（research.hkbu.edu.hk）不属招生内容，www 站只放行关于/院系栏目
     pattern = source["link_pattern"]
     assert "whats-new" not in pattern

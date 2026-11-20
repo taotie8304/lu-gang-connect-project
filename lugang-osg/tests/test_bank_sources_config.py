@@ -72,3 +72,22 @@ def test_bochk_docs_pdf_source_and_route():
     route = resolve_route("hk_bank_bochk_docs", url)
     assert route.kb_key == "bank"
     assert route.folder_path == ("10 传统银行", "中国银行（香港）")
+
+
+def test_bea_corporate_account_fixed_url():
+    # 鲁港通 - 东亚手机开户微站为 JS 壳（零正文）；改采静态「商业户口」页（公司开户流程/文件说明）
+    source = _load_sources()["hk_bank_bea"]
+    url = "https://www.hkbea.com/html/sc/bea-corporate-banking-business-account.html"
+    assert source["discovery_method"] == "fixed_url"
+    assert source["fixed_urls"] == [url]
+    assert source["allowed_path_prefixes"] == [
+        "/html/sc/bea-corporate-banking-business-account.html"
+    ]
+    assert source["enabled"] is True
+    assert source["title_overrides"][url] == "东亚银行 - 企业综合理财户口（公司开户流程与文件）"
+    fields = source["schedule"].split()
+    assert len(fields) == 5 and fields[4] == "0", source["schedule"]
+
+    route = resolve_route("hk_bank_bea", url)
+    assert route.kb_key == "bank"
+    assert route.folder_path == ("10 传统银行", "东亚银行")

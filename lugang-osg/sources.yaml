@@ -1820,18 +1820,21 @@ sources:
     group: hk_bank_open
     organization: 东亚银行
     base_domains: [www.hkbea.com]
-    allowed_path_prefixes: [/accountopening/, /sitemap]
-    discovery_method: sitemap
-    sitemap_urls:
-      - "https://www.hkbea.com/sitemap.xml"
-    sitemap_url_pattern: "hkbea\\.com/accountopening/(sc|tc)/"
+    # 鲁港通 - 手机开户微站（/accountopening/）为 JS 跳转壳零正文（2026-11-20 实测）；
+    # 改采静态「商业户口」页：含公司开户途径、所需文件说明与流程（3,630 字）
+    allowed_path_prefixes: [/html/sc/bea-corporate-banking-business-account.html]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.hkbea.com/html/sc/bea-corporate-banking-business-account.html"
+    title_overrides:
+      "https://www.hkbea.com/html/sc/bea-corporate-banking-business-account.html": "东亚银行 - 企业综合理财户口（公司开户流程与文件）"
     user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
     extra_headers:
       Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
     schedule: "55 2 * * 0"
     rate_limit_per_minute: 4
-    max_pages_per_run: 40
-    enabled: false  # 鲁港通 - 站点为 JS 跳转壳，静态抓取零正文，暂缓启用
+    max_pages_per_run: 5
+    enabled: true
 
   - id: hk_bank_icbcasia
     name: 工银亚洲
