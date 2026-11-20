@@ -254,3 +254,31 @@ def test_import_job_skips_without_api_key(monkeypatch):
     )
     scheduler_mod._make_import_job()()
     assert built == []
+
+
+def test_fail_stale_runs_marks_interrupted(db):
+    """进程重启遗留的 running 记录应标 failed，已完成记录不受影响。"""
+    from app.models import CrawlRun, Source
+    from app.scheduler import fail_stale_runs
+
+    src = Source(
+        code="sd_gxt",
+        name="山东省工业和信息化厅",
+        source_group="shandong",
+        discovery_method="listing",
+    )
+    db.add(src)
+    db.commit()
+    stale = CrawlRun(source_id=src.id, status="running")
+    done = CrawlRun(source_id=src.id, status="finished")
+    db.add_all([stale, done])
+    db.commit()
+
+    assert fail_stale_runs(db) == 1
+    db.refresh(stale)
+    db.refresh(done)
+    assert stale.status == "failed"
+    assert stale.finished_at is not None
+    assert "interrupted" in (stale.error_summary or "")
+    assert done.status == "finished"
+    assert done.finished_at is None

@@ -25,6 +25,20 @@ async def lifespan(app: FastAPI):
     sched = None
     if not settings.debug:
         try:
+            # 鲁港通 - 重启后清点遗留 running 记录（线程已随旧进程消失）
+            from app.database import SessionLocal
+            from app.scheduler import fail_stale_runs
+
+            db = SessionLocal()
+            try:
+                stale = fail_stale_runs(db)
+                if stale:
+                    logger.warning("marked %d interrupted crawl run(s) as failed", stale)
+            finally:
+                db.close()
+        except Exception:  # noqa: BLE001 - 清理失败不阻断启动
+            logger.exception("stale crawl run cleanup failed")
+        try:
             from app.scheduler import shutdown_scheduler, start_scheduler
 
             start_scheduler(app)

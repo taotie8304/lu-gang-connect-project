@@ -24,6 +24,26 @@ _IMPORT_CRON = "30 15 * * *"
 _import_lock = threading.Lock()
 
 
+# 鲁港通 - 进程重启会丢失进行中的同步线程：启动时把遗留 running 记录标 failed，
+# 否则 /admin/runs 与来源观察口径会一直显示「在跑」（2026-11-20）
+def fail_stale_runs(db) -> int:
+    """把 status=running 的遗留运行记录标为 failed，返回处理条数。"""
+    from datetime import datetime, timezone
+
+    from app.models import CrawlRun
+
+    rows = db.execute(
+        select(CrawlRun).where(CrawlRun.status == "running")
+    ).scalars().all()
+    now = datetime.now(timezone.utc)
+    for run in rows:
+        run.status = "failed"
+        run.finished_at = now
+        run.error_summary = "interrupted: 进程重启，本轮未完成"
+    db.commit()
+    return len(rows)
+
+
 def start_scheduler(app) -> None:
     """启动后台调度（FastAPI lifespan 调用）。加载 DB 中全部 enabled 且有 cron 的来源。"""
     global _scheduler
