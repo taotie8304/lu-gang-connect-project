@@ -1756,6 +1756,26 @@ sources:
     max_pages_per_run: 40
     enabled: true
 
+  - id: hk_bank_bochk_docs
+    # 鲁港通 - 中银「开立账户程序及所需文件/资料」为 PDF-only（2026-11-20 随 PDF 文本提取能力入库）
+    name: 中国银行（香港）开户文件
+    group: hk_bank_open
+    organization: 中国银行（香港）
+    base_domains: [www.bochk.com]
+    allowed_path_prefixes: [/dam/bochk/desktop/interface/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.bochk.com/dam/bochk/desktop/interface/AC_Open_sc.pdf"
+    title_overrides:
+      "https://www.bochk.com/dam/bochk/desktop/interface/AC_Open_sc.pdf": "开立账户程序及所需文件及资料"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "45 2 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 5
+    enabled: true
+
   - id: hk_bank_sc
     name: 渣打银行（香港）
     group: hk_bank_open

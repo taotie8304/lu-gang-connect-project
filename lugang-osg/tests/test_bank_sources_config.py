@@ -54,3 +54,21 @@ def test_cmbwl_maps_to_bank_center_folder():
     )
     assert route.kb_key == "bank"
     assert route.folder_path == ("10 传统银行", "招商永隆银行")
+
+
+def test_bochk_docs_pdf_source_and_route():
+    # 鲁港通 - 中银「开立账户程序及所需文件/资料」为 PDF-only，2026-11-20 起随 PDF 文本提取能力入库
+    source = _load_sources()["hk_bank_bochk_docs"]
+    assert source["group"] == "hk_bank_open"
+    assert source["discovery_method"] == "fixed_url"
+    assert source["enabled"] is True
+    url = "https://www.bochk.com/dam/bochk/desktop/interface/AC_Open_sc.pdf"
+    assert source["fixed_urls"] == [url]
+    assert source["allowed_path_prefixes"] == ["/dam/bochk/desktop/interface/"]
+    assert source["title_overrides"][url] == "开立账户程序及所需文件及资料"
+    fields = source["schedule"].split()
+    assert len(fields) == 5 and fields[4] == "0", source["schedule"]
+
+    route = resolve_route("hk_bank_bochk_docs", url)
+    assert route.kb_key == "bank"
+    assert route.folder_path == ("10 传统银行", "中国银行（香港）")
