@@ -47,6 +47,51 @@ _ATTR_TOKEN_RE = re.compile(r"[^a-z0-9]+")
 # 真实文章页 900+ 字；低于此值视为非文章页，不入库（避免污染 RAG 语料）。
 MIN_CONTENT_CHARS = 200
 
+# 鲁港通 - 导航残渣行词典（2026-11-20 用户反馈：HA Go/虚拟银行页面剥离链接后
+# 仍留下一整页站点外壳文字，如 PreviousNext、「请按此查看PDF版本」、页尾
+# 「私隐政策｜免责声明｜使用条款」；这类页面没有足量 <a> 链接，链接密度守卫
+# 统计不到，须按行级命中率判定）。整行匹配，避免误伤正文中的同名词。
+_NAV_RESIDUE_LINE_RE = re.compile(
+    r"^(?:"
+    r"prev(?:ious)?next|prev(?:ious)?|next|back|home|contact us"
+    r"|按此(?:查看|下載|下载|參閱|参阅|參看|登記|登记).*"
+    r"|(?:查看|下載|下载|參閱|参阅)\s*pdf(?:版本|版)?"
+    r"|(?:閱讀更多|阅读更多|read more|learn more|了解更多|更多資訊|更多信息|更多詳情|更多详情|詳情|详情)"
+    r"|(?:課程焦點|课程焦点|重讀課程|重读课程)"
+    r"|(?:首頁|主页|主頁)"
+    r"|(?:登入|登录|login|log in|sign in|註冊|注册|register)"
+    r"|(?:分享|share|列印|打印|print|收藏)"
+    r"|(?:上一頁|下一頁|上一页|下一页|上頁|下頁)"
+    r"|(?:私隐政策|私隱政策|连结政策|連結政策|免责声明|免責聲明|使用条款|使用條款|版权与知识产权|版權與知識產權)(?:\s*\|)?"
+    r"|(?:保安提示|下載中心|下载中心|重要通知|開放銀行|开放银行|产品资料概要|產品資料概要|銀行收費表|银行收费表|利率|匯率|汇率|表格下載|表格下载)"
+    r"|(?:關於我們|关于我们|聯絡我們|联系我们|快速連結|快速链接|相關連結|相关链接|常用連結|常用连结|服務|服务)"
+    r"|(?:搜尋|搜索|search|選單|菜单|menu|網站地圖|网站地图)"
+    r"|(?:語言|语言|language|繁|简|簡|繁中|简中|english|中文)(?:\s*\|.*)?"
+    r")$",
+    re.IGNORECASE,
+)
+# 行内命中即可的残渣（版权行、App 商标声明）
+_NAV_RESIDUE_SUBSTR_RE = re.compile(r"版權所有|版权所有|©\s*\d{4}|(?:商標|商标)")
+
+
+def nav_residue_stats(text: str) -> tuple[float, int]:
+    """返回 (导航残渣行占比, 有效段落数)，供 pipeline 拦截壳页。
+
+    有效段落 = 长度 ≥ 40 字且未命中残渣词典的行；占比分母为非空行。
+    截图实测：HA Go 遥距医疗 65% 行是外壳文字且无有效段落。
+    """
+    lines = [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+    if not lines:
+        return 0.0, 0
+    hits = 0
+    paras = 0
+    for ln in lines:
+        if _NAV_RESIDUE_LINE_RE.match(ln) or _NAV_RESIDUE_SUBSTR_RE.search(ln):
+            hits += 1
+        elif len(ln) >= 40:
+            paras += 1
+    return hits / len(lines), paras
+
 
 def _parse_selector(selector: str | None) -> tuple[str, str] | None:
     """解析极简选择器：`#id` 或 `.class`（实测政务站正文容器均为这两种）。

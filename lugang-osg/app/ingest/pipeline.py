@@ -29,7 +29,7 @@ from app.ingest.discover import (
     parse_sitemap,
     url_publish_year,
 )
-from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf
+from app.ingest.extract import MIN_CONTENT_CHARS, extract_html, extract_pdf, nav_residue_stats
 from app.ingest.title_filter import first_matching_pattern
 from app.ingest.url_identity import identity_key
 from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
@@ -58,6 +58,11 @@ _BLOCK_CUTOFF = 3
 # 正文链接数达到两位数且过半文字都是链接文字时判定为导航页，不入库
 NAV_MIN_LINKS = 10
 NAV_LINK_RATIO = 0.55
+# 鲁港通 - 导航残渣壳页守卫（2026-11-20 用户反馈：HA Go 遥距医疗/虚拟银行主页
+# 整页都是「PreviousNext」「请按此查看PDF版本」等站点外壳文字，没有足量链接，
+# 链接密度守卫漏过）：残渣行占比 ≥35% 且有效段落 ≤1 时判定壳页不入库。
+NAV_RESIDUE_RATIO = 0.35
+NAV_RESIDUE_MAX_PARAS = 1
 # 鲁港通 - 济南市系政务云（jpaas）栏目单元构建端点：栏目页是 JS 空壳，文章列表由该接口
 # 按栏目（pageId/tagId）异步返回（unitbuild.js 破译 + d4r7~d4r11 七站服务器实测，2026-10-14）。
 _JPAAS_UNIT_API_PATH = "/api-gateway/jpaas-publish-server/front/page/build/unit"
@@ -84,6 +89,8 @@ class SyncStats:
     skipped_limit: int = 0
     # 鲁港通 - 导航枢纽页拦截数（正文几乎全为链接文字，2026-11-19）
     skipped_nav_page: int = 0
+    # 鲁港通 - 导航残渣壳页拦截数（外壳文字占比高且无有效段落，2026-11-20）
+    skipped_nav_residue: int = 0
     # 鲁港通 - 标题噪声自动归档的新文档数（status=archived，不进知识库）
     archived_noise: int = 0
     # 鲁港通 - 政策白名单：抓取前跳过与抓取后归档的非政策条目数（P1-A）
@@ -683,6 +690,10 @@ def _process_candidates(db, source, run, candidates, rules, settings,
             # 鲁港通 - 导航枢纽页拦截（正文过半为链接文字）：同 skipped_low_content
             stats.skipped_nav_page += 1
             stats.fetched_ok += 1
+        elif action == "skipped_nav_residue":
+            # 鲁港通 - 导航残渣壳页拦截（外壳文字占比高且无有效段落，2026-11-20）
+            stats.skipped_nav_residue += 1
+            stats.fetched_ok += 1
         db.commit()
 
         # 6) 抓取节奏：同一来源两次请求之间 ≥ source_min_interval_s（spec 12.2）。
@@ -764,6 +775,14 @@ def _store_document(db, source, canonical, result: FetchResult, item, known_doc=
     if (not is_pdf and extracted.link_count >= NAV_MIN_LINKS
             and extracted.link_text_ratio >= NAV_LINK_RATIO):
         return "skipped_nav_page"
+
+    # 鲁港通 - 导航残渣壳页守卫（2026-11-20）：剥离链接后仍整页外壳文字
+    # （PreviousNext/请按此查看PDF版本/页尾法务链接），无有效段落即不入库。
+    if not is_pdf:
+        residue_ratio, effective_paras = nav_residue_stats(extracted.text or "")
+        if (residue_ratio >= NAV_RESIDUE_RATIO
+                and effective_paras <= NAV_RESIDUE_MAX_PARAS):
+            return "skipped_nav_residue"
 
     if doc is None:
         # 鲁港通 - 标题噪声自动归档（2026-10-15 用户批准）：列表标题与文章页标题任一命中

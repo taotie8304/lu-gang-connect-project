@@ -582,6 +582,39 @@ class TestExtract:
         art_out = extract_html(article)
         assert art_out.link_text_ratio < 0.1
 
+    def test_nav_residue_stats_shell_vs_article(self):
+        """导航残渣行判定：HA Go/虚拟银行壳页命中，正常文章不误判。
+
+        鲁港通 - 2026-11-20 用户反馈：站点外壳文字（PreviousNext、请按此查看
+        PDF版本、页尾私隐政策|免责声明|使用条款）剥离链接后仍是纯文本行，
+        链接密度守卫统计不到，需按行级词典命中率 + 有效段落数判定。
+        """
+        from app.ingest.extract import nav_residue_stats
+
+        shell = "\n".join([
+            "遥距医疗", "如何参与子女/照顾者的视像会诊",
+            "PreviousNext", "请按此查看PDF版本",
+            "甚么是HA Go 遥距医疗？", "准备事项",
+            "PreviousNext", "请按此查看PDF版本",
+            "视像会诊日", "PreviousNext", "请按此查看PDF版本",
+            "手机设定 (安卓平台)", "PreviousNext", "请按此查看PDF版本",
+            "版权与知识产权 |", "私隐政策 |", "连结政策 |", "免责声明 |",
+            "使用条款", "© 2021 医院管理局 版权所有",
+        ])
+        ratio, paras = nav_residue_stats(shell)
+        assert ratio >= 0.35 and paras <= 1
+
+        article = "\n".join([
+            "香港银行开户所需文件与流程说明",
+            "内地居民在香港开立个人银行账户，通常需要提供有效身份证明文件、"
+            "往来港澳通行证及入境记录，以及最近三个月内的住址证明。",
+            "开户流程包括预约、面谈、签署文件与存入初始资金，部分银行支持"
+            "线上预填资料后再到分行完成面签，整体耗时约一小时。",
+            "如遇银行要求补充职业或资金来源说明，应如实申报并保留相关凭证。",
+        ])
+        ratio2, paras2 = nav_residue_stats(article)
+        assert not (ratio2 >= 0.35 and paras2 <= 1)
+
 
 # ---------------------------------------------------------------------------
 # pipeline 全流程（假 fetcher）
@@ -992,6 +1025,47 @@ class TestPipeline:
         assert stats.skipped_nav_page == 1
         tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
         assert tasks["http://commerce.shandong.gov.cn/hub.html"] == "skipped_nav_page"
+
+    def test_nav_residue_shell_page_skipped(self, db):
+        """导航残渣壳页守卫：HA Go 式「PreviousNext/请按此查看PDF版本」页不入库。
+
+        鲁港通 - 2026-11-20 用户反馈：HA Go 遥距医疗、ZA Bank 主页等页面正文全是
+        站点外壳文字，没有足量链接可统计（链接密度守卫拦不住），按导航行占比 +
+        有效段落数在入库前拦截。
+        """
+        src = self._setup_source(db, code="sd_test")
+        listing = (
+            "<html><body><a href='/shell.html'>功能页</a>"
+            "<a href='/art/2026/a.html'>文章</a></body></html>"
+        ).encode("utf-8")
+        shell = (
+            "<html><head><title>HA Go - 遥距医疗</title></head><body>"
+            "<div>遥距医疗</div><div>如何参与子女/照顾者的视像会诊</div>"
+            "<div>PreviousNext</div><div>请按此查看PDF版本</div>"
+            "<div>甚么是HA Go 遥距医疗？</div><div>准备事项</div>"
+            "<div>PreviousNext</div><div>请按此查看PDF版本</div>"
+            "<div>视像会诊日</div><div>PreviousNext</div>"
+            "<div>请按此查看PDF版本</div><div>手机设定 (安卓平台)</div>"
+            "<div>PreviousNext</div><div>请按此查看PDF版本</div>"
+            "<div>手机设定 (苹果平台)</div><div>PreviousNext</div>"
+            "<div>请按此查看PDF版本</div><div>版权与知识产权 |</div>"
+            "<div>私隐政策 |</div><div>连结政策 |</div><div>免责声明 |</div>"
+            "<div>使用条款</div><div>© 2021 医院管理局 版权所有</div>"
+            "</body></html>"
+        ).encode("utf-8")
+        fetcher = _FakeFetcher({
+            "http://commerce.shandong.gov.cn/": listing,
+            "http://commerce.shandong.gov.cn/shell.html": shell,
+            "http://commerce.shandong.gov.cn/art/2026/a.html": _article_html(
+                "山东省商务厅 商务要闻 全省商务工作会议在济南召开", _LONG_ZH
+            ),
+        })
+        stats = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                            sleeper=lambda s: None, resolver=fake_resolver)
+        assert stats.new_docs == 1
+        assert stats.skipped_nav_residue == 1
+        tasks = {t.url: t.status for t in db.execute(select(CrawlTask)).scalars()}
+        assert tasks["http://commerce.shandong.gov.cn/shell.html"] == "skipped_nav_residue"
 
     def test_force_refetch_skips_archived_documents(self, db):
         """已归档文档重采时跳过：既不入库，也不浪费抓取配额。"""
