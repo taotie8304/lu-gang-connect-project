@@ -460,7 +460,7 @@ sources:
     group: hk_education
     organization: 香港大学 HKU
     base_domains: [admissions.hku.hk]
-    allowed_path_prefixes: [/programmes/, /fees-and-scholarships/, /zh-hans/, /apply/, /experience/]
+    allowed_path_prefixes: [/programmes/, /fees-and-scholarships/, /zh-hans/, /apply/, /experience/, /node/, /talent_search_scheme_TSS]
     discovery_method: listing
     listing_urls:
       - "https://admissions.hku.hk/zh-hans/apply/mainland"
@@ -550,11 +550,13 @@ sources:
     allowed_path_prefixes: [/en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/]
     discovery_method: listing
     listing_urls:
-      - "https://admissions.hkbu.edu.hk/en/"
+      # 鲁港通 - /en/ 会 301 到无斜杠根（出白名单），直接以根为入口（2026-11-20）
+      - "https://admissions.hkbu.edu.hk"
       - "https://admissions.hkbu.edu.hk/fees-and-scholarships.html"
       - "https://admissions.hkbu.edu.hk/admissions/mainland-jee.html"
       - "https://www.hkbu.edu.hk/en/about/faculties.html"
-    link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk|www\\.hkbu\\.edu\\.hk)/(en/|admissions/|programmes|fees-and-scholarships\\.html|en/about/)"
+    # 鲁港通 - www 站只放行 en/about/（科研新闻 research.hkbu 不属招生内容，不再发现）
+    link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk/(en/|admissions/|programmes|fees-and-scholarships\\.html)|www\\.hkbu\\.edu\\.hk/en/about/)"
     schedule: "5 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
