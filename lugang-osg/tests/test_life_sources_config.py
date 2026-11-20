@@ -6,7 +6,9 @@ from pathlib import Path
 
 import yaml
 
-LIFE_SOURCE_IDS = {"hk_td", "hk_mpfa"}
+from app.fastgpt.mapping import HK_DATASET_ID, resolve_route
+
+LIFE_SOURCE_IDS = {"hk_td", "hk_mpfa", "hk_customs_pc"}
 HOUSING_EXPECTED_URLS = 23
 
 
@@ -98,3 +100,48 @@ def test_housing_fixed_urls_complete_titles():
         "buying-a-flat-under-tps/mortgage-arrangement",
     ):
         assert segment in joined, segment
+
+
+# 鲁港通 - 香港海关旅客清关（2026-11-20）：免税限额/现金申报/禁运物品，固定 7 页
+CUSTOMS_BASE = "https://www.customs.gov.hk/sc/service-enforcement-information"
+CUSTOMS_EXPECTED_URLS = {
+    f"{CUSTOMS_BASE}/passenger-clearance/red-green-channel-system/index.html",
+    f"{CUSTOMS_BASE}/passenger-clearance/duty-free-concessions/index.html",
+    f"{CUSTOMS_BASE}/passenger-clearance/prohibited-controlled-items/index.html",
+    f"{CUSTOMS_BASE}/passenger-clearance/currency-bearer-negotiable-instruments/index.html",
+    f"{CUSTOMS_BASE}/passenger-clearance/faqs/index.html",
+    f"{CUSTOMS_BASE}/passenger-clearance/faqs/common-charges-penalties/index.html",
+    f"{CUSTOMS_BASE}/cargo-clearance/prohibited-articles/index.html",
+}
+
+
+def test_customs_fixed_urls_enabled_and_bounded():
+    source = _load_sources()["hk_customs_pc"]
+    assert source["enabled"] is True
+    assert source["discovery_method"] == "fixed_url"
+    assert source["group"] == "hk_life_services"
+    assert set(source["fixed_urls"]) == CUSTOMS_EXPECTED_URLS
+    # fixed_url 按清单顺序处理，上限小于清单数会让尾部页面永远轮不到
+    assert source["max_pages_per_run"] >= len(source["fixed_urls"])
+    assert source["rate_limit_per_minute"] == 4
+    fields = source["schedule"].split()
+    assert len(fields) == 5 and fields[4] == "0", source["schedule"]
+    # 每页标题需可读（站点 <title> 均带「香港海关 - 」前缀，统一覆盖为可辨识来源名）
+    assert set(source["title_overrides"]) == CUSTOMS_EXPECTED_URLS
+
+
+def test_customs_urls_inside_allowlist():
+    source = _load_sources()["hk_customs_pc"]
+    prefixes = tuple(source["allowed_path_prefixes"])
+    for url in CUSTOMS_EXPECTED_URLS:
+        path = url[len("https://www.customs.gov.hk"):]
+        assert any(path.startswith(p) for p in prefixes), url
+
+
+def test_customs_routes_to_hk_dataset_with_verified_date():
+    url = f"{CUSTOMS_BASE}/passenger-clearance/duty-free-concessions/index.html"
+    route = resolve_route("hk_customs_pc", url)
+    assert route.dataset_id == HK_DATASET_ID
+    assert route.department == "香港海关"
+    assert route.folder_path == ("香港海关",)
+    assert route.verified is True

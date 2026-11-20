@@ -34,6 +34,7 @@ class KbRoute:
 # 鲁港通 - 香港源 → 部门文件夹（取自源配置 organization 的简称）
 _HK_DEPARTMENTS: dict[str, str] = {
     "hk_cr_policy": "公司注册处",
+    "hk_customs_pc": "香港海关",
     "hk_data_gov": "数字政策办公室",
     "hk_dh_policy": "卫生署",
     "hk_edb": "教育局",
@@ -62,7 +63,7 @@ _HK_DEPARTMENTS: dict[str, str] = {
 }
 
 # 鲁港通 - 办事类来源：导入头附「核对日期」（额度/资格/流程时效敏感，2026-11-20）
-_VERIFIED_SOURCES = {"hk_td", "hk_mpfa", "hk_hd_policy"}
+_VERIFIED_SOURCES = {"hk_td", "hk_mpfa", "hk_hd_policy", "hk_customs_pc"}
 
 # 鲁港通 - 山东省级部门源 → 机构文件夹（挂「省级部门」下）
 _SD_PROVINCIAL: dict[str, str] = {

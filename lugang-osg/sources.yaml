@@ -2604,3 +2604,37 @@ sources:
     # sitemap 每轮从头处理，上限小于范围内链接数会让尾部页面永远轮不到
     max_pages_per_run: 60
     enabled: true
+
+  # 鲁港通 - 香港海关旅客清关（2026-11-20）：大陆旅客过关高频——烟酒免税限额、
+  # 现金申报、禁运物品。站点无 sitemap，栏目页为纯链接索引，故按实测固定 7 页采集；
+  # 栏目页 /sc/passenger_clearance/index.html 本身不入库（导航枢纽）。
+  - id: hk_customs_pc
+    name: 香港海关旅客清关
+    group: hk_life_services
+    organization: 香港海关
+    base_domains: [www.customs.gov.hk]
+    allowed_path_prefixes:
+      - /sc/service-enforcement-information/passenger-clearance/
+      - /sc/service-enforcement-information/cargo-clearance/prohibited-articles/
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/red-green-channel-system/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/duty-free-concessions/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/prohibited-controlled-items/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/currency-bearer-negotiable-instruments/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/faqs/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/faqs/common-charges-penalties/index.html"
+      - "https://www.customs.gov.hk/sc/service-enforcement-information/cargo-clearance/prohibited-articles/index.html"
+    # 鲁港通 - 2026-11-20 实测：正文 237–2,011 字，链接占比 0.06–0.30（未触守卫）
+    title_overrides:
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/red-green-channel-system/index.html": "香港海关 - 红绿通道系统（申报通道选择）"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/duty-free-concessions/index.html": "香港海关 - 免税优惠（烟酒入境限额）"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/prohibited-controlled-items/index.html": "香港海关 - 禁运及受管制物品（旅客须知）"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/currency-bearer-negotiable-instruments/index.html": "香港海关 - 现金类物品跨境申报（12 万港元）"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/faqs/index.html": "香港海关 - 旅客清关常见问题"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/passenger-clearance/faqs/common-charges-penalties/index.html": "香港海关 - 常见控罪及刑罚（旅客违规）"
+      "https://www.customs.gov.hk/sc/service-enforcement-information/cargo-clearance/prohibited-articles/index.html": "香港海关 - 禁运物品（进出口管制细目）"
+    schedule: "35 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
