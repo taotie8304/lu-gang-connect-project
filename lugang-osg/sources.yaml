@@ -460,13 +460,15 @@ sources:
     group: hk_education
     organization: 香港大学 HKU
     base_domains: [admissions.hku.hk]
-    allowed_path_prefixes: [/programmes/, /fees-and-scholarships/, /zh-hans/, /apply/, /experience/, /node/, /talent_search_scheme_TSS]
+    # 鲁港通 - 2026-11-20 招生 PDF 直采：内地生页实测挂 /sites/default/files/*.pdf
+    # （如 HKU-JUPAS-Admissions-Information-2027.pdf），放行后按原文件直传文件集合
+    allowed_path_prefixes: [/programmes/, /fees-and-scholarships/, /zh-hans/, /apply/, /experience/, /node/, /talent_search_scheme_TSS, /sites/default/files/]
     discovery_method: listing
     listing_urls:
       - "https://admissions.hku.hk/zh-hans/apply/mainland"
       - "https://admissions.hku.hk/programmes/undergraduate-programmes"
       - "https://admissions.hku.hk/fees-and-scholarships/fees"
-    link_pattern: "https?://admissions\\.hku\\.hk/(programmes|fees-and-scholarships|zh-hans|apply|experience)"
+    link_pattern: "(https?://admissions\\.hku\\.hk/(programmes|fees-and-scholarships|zh-hans|apply|experience|sites/default/files/.+\\.pdf))"
     schedule: "15 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
@@ -576,6 +578,42 @@ sources:
       - "https://www.ln.edu.hk/academics/faculty-of-social-sciences"
     link_pattern: "https?://www\\.ln\\.edu\\.hk/(admissions|academics)/"
     schedule: "15 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  # 鲁港通 - 2026-11-20 用户要求院校补全：THEi 高科院 + 香港教育大学（60 院校档案）
+  - id: hk_edu_thei
+    name: 香港高等教育科技学院
+    group: hk_education
+    organization: 香港高等教育科技学院 THEi
+    base_domains: [thei.edu.hk, www.thei.edu.hk]
+    allowed_path_prefixes: [/admission/, /programmes/, /sc/, /tc/]
+    discovery_method: listing
+    listing_urls:
+      - "https://thei.edu.hk/admission/"
+      - "https://thei.edu.hk/admission/undergraduate/"
+      - "https://thei.edu.hk/admission/postgraduate/"
+      - "https://thei.edu.hk/admission/international-student-fee/programme-information/"
+    link_pattern: "https?://(www\\.)?thei\\.edu\\.hk/(admission|programmes)/"
+    schedule: "25 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: hk_edu_eduhk
+    name: 香港教育大学
+    group: hk_education
+    organization: 香港教育大学 EdUHK
+    base_domains: [www.eduhk.hk]
+    # 鲁港通 - /en/admission 实测 404；招生入口是 prospective-students + 课程目录 acadprog
+    allowed_path_prefixes: [/en/prospective-students, /en/academics, /acadprog/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.eduhk.hk/en/prospective-students"
+      - "https://www.eduhk.hk/acadprog/"
+    link_pattern: "https?://www\\.eduhk\\.hk/(en/(prospective-students|academics)|acadprog/)"
+    schedule: "25 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
     enabled: true
