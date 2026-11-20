@@ -783,6 +783,18 @@ def _store_document(
             )
         ).scalar_one_or_none()
         if existing is not None:
+            # 鲁港通 - 存量 PDF 升级（2026-11-20）：旧版本只有文本层、无原文件时，
+            # 内容未变也补落盘并回填 raw_object_key，免全量强制重抓即可迁移文件集合
+            if (
+                result.content_type == "application/pdf"
+                and existing.raw_object_key is None
+                and pdf_store_dir
+                and doc.latest_version_id in (None, existing.id)
+            ):
+                existing.raw_object_key = _store_pdf_raw(
+                    result.content, content_sha, pdf_store_dir
+                )
+                db.flush()
             return "unchanged"
 
     is_pdf = result.content_type == "application/pdf"

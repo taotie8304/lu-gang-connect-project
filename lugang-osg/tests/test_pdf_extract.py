@@ -97,6 +97,63 @@ def test_store_document_saves_pdf_raw_file_without_text_extraction(db, tmp_path)
     assert doc.title == "Checklist"
 
 
+def test_unchanged_pdf_backfills_raw_file_for_legacy_docs(db, tmp_path):
+    """存量 PDF（旧文本层版本、无原文件）内容未变时补落盘，免重抓即可迁移文件集合。"""
+    import hashlib
+
+    from sqlalchemy import select
+
+    from app.ingest.discover import DiscoveredItem
+    from app.ingest.pipeline import _store_document
+    from app.models import Document, DocumentVersion, Source
+    from app.security.fetcher import FetchResult
+
+    source = Source(
+        code="hk_bank_test",
+        name="测试银行",
+        source_group="hk_bank_open",
+        organization="测试银行",
+        discovery_method="fixed_url",
+        discovery_config={},
+    )
+    db.add(source)
+    db.flush()
+
+    pdf = _build_pdf(["Admission guide"], title="Admission Guide")
+    url = "https://example.com/docs/guide.pdf"
+    doc = Document(source_id=source.id, canonical_url=url, title="招生指引", status="active")
+    db.add(doc)
+    db.flush()
+    legacy = DocumentVersion(
+        document_id=doc.id,
+        fetched_url=url,
+        final_url=url,
+        content_sha256=hashlib.sha256(pdf).hexdigest(),
+        extracted_text="旧文本层正文",
+        raw_object_key=None,
+        is_current=True,
+    )
+    db.add(legacy)
+    db.flush()
+    doc.latest_version_id = legacy.id
+    db.flush()
+
+    result = FetchResult(
+        final_url=url, http_status=200, content_type="application/pdf", content=pdf
+    )
+    action = _store_document(
+        db, source, url, result,
+        DiscoveredItem(url=url, title="请按此查看PDF版本"),
+        pdf_store_dir=str(tmp_path),
+    )
+    db.commit()
+
+    assert action == "unchanged"
+    version = db.execute(select(DocumentVersion)).scalar_one()
+    assert version.raw_object_key and version.raw_object_key.endswith(".pdf")
+    assert (tmp_path / version.raw_object_key).read_bytes() == pdf
+
+
 def test_extract_pdf_title_strips_word_prefix():
     """PDF 元数据标题清洗：微软 Office 生成器前缀不进入知识库集合名。"""
     from app.ingest.extract import extract_pdf_title
