@@ -1694,7 +1694,8 @@ sources:
   # ======================================================================
   # 鲁港通 - 香港银行证券开户中心（2026-11-19，probe1-6 实测）
   # 周级增量：周日 02:05-06:35 错峰，单源 4 页/分钟、单轮 40 页
-  # 暂缓：招商永隆（SPA/404）、富融（WAF 567）、蚂蚁（纯 SPA）、长桥（IPv4 不可达/403）
+  # 2026-11-20：招商永隆已定位为旧版静态 CMS 站（/wlb_corporate/cn/）并启用两页
+  # 暂缓：富融（SPA 壳）、蚂蚁（纯 SPA）、长桥（IPv4 链路不稳/首页超时）
   # ======================================================================
 
   # ---------- 10 传统银行 ----------
@@ -1866,6 +1867,26 @@ sources:
     schedule: "25 3 * * 0"
     rate_limit_per_minute: 4
     max_pages_per_run: 40
+    enabled: true
+
+  # 鲁港通 - 招商永隆：旧版静态 CMS 站（2026-11-20 实测），仅以下两页有实质开户正文，
+  # 其余页面提取后不足 MIN_CONTENT_CHARS 或为导航枢纽，刻意不纳入
+  - id: hk_bank_cmbwl
+    name: 招商永隆银行
+    group: hk_bank_open
+    organization: 招商永隆银行
+    base_domains: [www.cmbwinglungbank.com]
+    allowed_path_prefixes: [/wlb_corporate/cn/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.cmbwinglungbank.com/wlb_corporate/cn/about-us/service-guide/documents-required-for-opening-account.html"
+      - "https://www.cmbwinglungbank.com/wlb_corporate/cn/personal/deposits/wing-lung-all-in-one-card-services.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "50 3 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
     enabled: true
 
   # ---------- 7 虚拟银行 ----------
