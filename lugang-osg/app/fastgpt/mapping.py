@@ -46,6 +46,7 @@ _HK_DEPARTMENTS: dict[str, str] = {
     "hk_immd": "入境事务处",
     "hk_investhk": "投资推广署",
     "hk_ird": "税务局",
+    "hk_gov_tax_cn": "税务局",
     "hk_ipd_policy": "知识产权署",
     "hk_itib": "创新科技及工业局",
     "hk_itf": "创新科技署",
@@ -63,7 +64,7 @@ _HK_DEPARTMENTS: dict[str, str] = {
 }
 
 # 鲁港通 - 办事类来源：导入头附「核对日期」（额度/资格/流程时效敏感，2026-11-20）
-_VERIFIED_SOURCES = {"hk_td", "hk_mpfa", "hk_hd_policy", "hk_customs_pc"}
+_VERIFIED_SOURCES = {"hk_td", "hk_mpfa", "hk_hd_policy", "hk_customs_pc", "hk_gov_tax_cn"}
 
 # 鲁港通 - 山东省级部门源 → 机构文件夹（挂「省级部门」下）
 _SD_PROVINCIAL: dict[str, str] = {

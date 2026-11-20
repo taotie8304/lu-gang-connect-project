@@ -624,6 +624,37 @@ sources:
     rate_limit_per_minute: 4
     enabled: true
 
+  - id: hk_gov_tax_cn
+    # 鲁港通 - 2026-11-20：hk_gov_portal 只采 /en/ 英文页，大陆用户缺中文薪俸税内容；
+    # 本站点 /tc/ 有繁简对照，固定采 /sc/ 简体 14 页（实测正文 616–2,354 字，未触守卫）
+    name: 政府一站通税务（简体）
+    group: hk_livelihood_finance
+    organization: 香港特别行政区政府
+    base_domains: [www.gov.hk]
+    allowed_path_prefixes: [/sc/residents/taxes/]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.gov.hk/sc/residents/taxes/salaries/salariestax/employeeobligations.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/salariestax/chargeable/index.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/salariestax/exemption/index.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/salariestax/jointassessment.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/personal/personaleligibility.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/allowances/allowances/index.htm"
+      - "https://www.gov.hk/sc/residents/taxes/salaries/allowances/deductions/index.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/filing/completion.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/filing/types/index.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/taxrates/salariesrates.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/payment/personpayment.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/consequences/consequencenotpaytax.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/consequences/recovertax.htm"
+      - "https://www.gov.hk/sc/residents/taxes/taxfiling/object/provisional.htm"
+    title_strip_prefixes: ["GovHK 香港政府一站通："]
+    content_selector: .mainHolder
+    schedule: "12 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 16
+    enabled: true
+
   - id: hk_wfsfaa
     name: 在职家庭及学生资助事务处
     group: hk_livelihood_finance
