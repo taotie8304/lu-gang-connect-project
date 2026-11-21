@@ -72,6 +72,12 @@ _NAV_RESIDUE_LINE_RE = re.compile(
 )
 # 行内命中即可的残渣（版权行、App 商标声明）
 _NAV_RESIDUE_SUBSTR_RE = re.compile(r"版權所有|版权所有|©\s*\d{4}|(?:商標|商标)")
+# 鲁港通 - 段尾粘连的「更多」链接文本（2026-11-21 教大课程页实测
+# 「...theory and practice.Read More」与正文同一行，整行匹配删不掉）
+_NAV_INLINE_SUFFIX_RE = re.compile(
+    r"\s*(?:閱讀更多|阅读更多|read more|learn more|了解更多)\s*$",
+    re.IGNORECASE,
+)
 
 
 def nav_residue_stats(text: str) -> tuple[float, int]:
@@ -101,10 +107,12 @@ def strip_nav_residue_lines(text: str | None) -> str | None:
     """
     if not text:
         return text
-    kept = [
-        ln for ln in text.splitlines()
-        if not (_NAV_RESIDUE_LINE_RE.match(ln.strip()) or _NAV_RESIDUE_SUBSTR_RE.search(ln))
-    ]
+    kept = []
+    for ln in text.splitlines():
+        if _NAV_RESIDUE_LINE_RE.match(ln.strip()) or _NAV_RESIDUE_SUBSTR_RE.search(ln):
+            continue
+        # 鲁港通 - 段落行仅剔除行尾「更多」链接文本，正文本身保留
+        kept.append(_NAV_INLINE_SUFFIX_RE.sub("", ln.rstrip()))
     return "\n".join(kept).strip() or None
 
 

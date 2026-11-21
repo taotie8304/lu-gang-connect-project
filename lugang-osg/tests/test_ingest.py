@@ -2725,3 +2725,21 @@ def test_strip_nav_residue_lines_removes_nav_labels():
     assert "版權所有" not in cleaned
     assert "中大排名全港第二，多个学科位列全球前五十。" in cleaned
     assert "課程結構為四年制，須修滿 123 學分方可畢業。" in cleaned
+
+
+def test_strip_nav_residue_lines_removes_inline_read_more_suffix():
+    """鲁港通 - 教大课程页实测正文段尾粘连「Read More」链接文本（2026-11-21）：
+    整行匹配删不掉，须按行尾后缀剔除，正文与句号保留。"""
+    from app.ingest.extract import strip_nav_residue_lines
+
+    text = (
+        "together with a firm and thorough grasp of the interrelationship "
+        "between theory and practice.Read More\n"
+        "Students may also read more about the programme in the handbook."
+    )
+    cleaned = strip_nav_residue_lines(text)
+    assert cleaned is not None
+    assert "Read More" not in cleaned
+    assert "between theory and practice." in cleaned
+    # 句尾带句号的正文 sentence 不受影响
+    assert "handbook." in cleaned
