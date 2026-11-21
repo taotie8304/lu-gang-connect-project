@@ -190,6 +190,7 @@ def test_edu_university_sources_route_to_college_folders():
         "hk_edu_hkust": ("60 院校档案", "香港科技大学"),
         "hk_edu_hkust_join": ("60 院校档案", "香港科技大学"),
         "hk_edu_polyu": ("60 院校档案", "香港理工大学"),
+        "hk_edu_polyu_admissions": ("60 院校档案", "香港理工大学"),
         "hk_edu_hkbu": ("60 院校档案", "香港浸会大学"),
         "hk_edu_lingnan": ("60 院校档案", "岭南大学"),
         "hk_edu_thei": ("60 院校档案", "香港高等教育科技学院"),

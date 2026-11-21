@@ -469,6 +469,11 @@ sources:
       - "https://admissions.hku.hk/programmes/undergraduate-programmes"
       - "https://admissions.hku.hk/fees-and-scholarships/fees"
     link_pattern: "(https?://admissions\\.hku\\.hk/(programmes|fees-and-scholarships|zh-hans|apply|experience|sites/default/files/.+\\.pdf))"
+    # 鲁港通 - PDF 直采排除隐私声明类文件（招生页常挂隐私声明/同意书 PDF，非招生内容）
+    title_exclude_patterns:
+      - "Personal Information Collection"
+      - "Privacy Notice"
+      - "通用数据保障条例"
     schedule: "15 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
@@ -479,12 +484,14 @@ sources:
     group: hk_education
     organization: 香港中文大学 CUHK
     base_domains: [admission.cuhk.edu.hk, www.cuhk.edu.hk, www.gs.cuhk.edu.hk]
-    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/]
+    # 鲁港通 - 2026-11-21 招生 PDF 直采：学费页挂 /wp-content/uploads/*.pdf（实测）
+    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/, /wp-content/uploads/]
     discovery_method: listing
     listing_urls:
       - "https://admission.cuhk.edu.hk/tc/"
       - "https://admission.cuhk.edu.hk/sc/"
       - "https://admission.cuhk.edu.hk/programmes/list/"
+      - "https://admission.cuhk.edu.hk/tc/fees/"
       - "https://www.gs.cuhk.edu.hk/admissions/"
       - "https://www.cuhk.edu.hk/english/faculties/arts.html"
     link_pattern: "https?://(admission\\.cuhk\\.edu\\.hk|www\\.gs\\.cuhk\\.edu\\.hk|www\\.cuhk\\.edu\\.hk)/"
@@ -514,14 +521,15 @@ sources:
     group: hk_education
     organization: 香港科技大学 HKUST
     base_domains: [join.hkust.edu.hk]
-    allowed_path_prefixes: [/zh-hans/, /fees-and-scholarships, /our-programs, /admissions/gaokao, /pre-university]
+    # 鲁港通 - 2026-11-21 招生 PDF 直采：高考页挂 /oas/jee_guide.pdf（实测）
+    allowed_path_prefixes: [/zh-hans/, /fees-and-scholarships, /our-programs, /admissions/gaokao, /pre-university, /oas/]
     discovery_method: listing
     listing_urls:
       - "https://join.hkust.edu.hk/zh-hans"
       - "https://join.hkust.edu.hk/zh-hans/our-programs"
       - "https://join.hkust.edu.hk/zh-hans/admissions/gaokao"
       - "https://join.hkust.edu.hk/fees-and-scholarships"
-    link_pattern: "https?://join\\.hkust\\.edu\\.hk/(zh-hans|fees-and-scholarships|our-programs|admissions|pre-university)"
+    link_pattern: "https?://join\\.hkust\\.edu\\.hk/(zh-hans|fees-and-scholarships|our-programs|admissions|pre-university|oas/.+\\.pdf)"
     schedule: "45 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 40
@@ -544,12 +552,30 @@ sources:
     max_pages_per_run: 100
     enabled: false
 
+  - id: hk_edu_polyu_admissions
+    # 鲁港通 - 2026-11-21 招生 PDF 直采：study 区 JS 渲染不收 HTML，只从 JUPAS 招生页
+    # 抽 /saso/docdrive/*.pdf（admission_figures / leaflet 实测可达），PDF 原文件入库
+    name: 香港理工大学（招生 PDF）
+    group: hk_education
+    organization: 香港理工大学 PolyU
+    base_domains: [www.polyu.edu.hk]
+    allowed_path_prefixes: [/saso/docdrive/, /study/ug/admissions/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.polyu.edu.hk/study/ug/admissions/jupas/"
+    link_pattern: "https?://www\\.polyu\\.edu\\.hk/saso/docdrive/.+\\.pdf"
+    schedule: "55 4 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
   - id: hk_edu_hkbu
     name: 香港浸会大学
     group: hk_education
     organization: 香港浸会大学 HKBU
     base_domains: [admissions.hkbu.edu.hk, www.hkbu.edu.hk]
-    allowed_path_prefixes: [/, /en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/]
+    # 鲁港通 - 2026-11-21 招生 PDF 直采：内地生页挂 /content/dam/ao-assets/*.pdf（实测）
+    allowed_path_prefixes: [/, /en/, /admissions/, /programmes, /fees-and-scholarships.html, /about/, /content/dam/ao-assets/]
     discovery_method: listing
     listing_urls:
       # 鲁港通 - /en/ 会 301 到无斜杠根（出白名单），直接以根为入口（2026-11-20）
@@ -558,7 +584,7 @@ sources:
       - "https://admissions.hkbu.edu.hk/admissions/mainland-jee.html"
       - "https://www.hkbu.edu.hk/en/about/faculties.html"
     # 鲁港通 - www 站只放行 en/about/（科研新闻 research.hkbu 不属招生内容，不再发现）
-    link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk/(en/|admissions/|programmes|fees-and-scholarships\\.html)|www\\.hkbu\\.edu\\.hk/en/about/)"
+    link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk/(en/|admissions/|programmes|fees-and-scholarships\\.html|content/dam/ao-assets/[^?]+\\.pdf)|www\\.hkbu\\.edu\\.hk/en/about/)"
     schedule: "5 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
@@ -607,12 +633,13 @@ sources:
     organization: 香港教育大学 EdUHK
     base_domains: [www.eduhk.hk]
     # 鲁港通 - /en/admission 实测 404；招生入口是 prospective-students + 课程目录 acadprog
-    allowed_path_prefixes: [/en/prospective-students, /en/academics, /acadprog/]
+    # 2026-11-21 招生 PDF 直采：入口页挂 /cms/f/page/*.pdf 与 /gao/uploads/file/*.pdf（实测）
+    allowed_path_prefixes: [/en/prospective-students, /en/academics, /acadprog/, /cms/f/page/, /gao/uploads/file/]
     discovery_method: listing
     listing_urls:
       - "https://www.eduhk.hk/en/prospective-students"
       - "https://www.eduhk.hk/acadprog/"
-    link_pattern: "https?://www\\.eduhk\\.hk/(en/(prospective-students|academics)|acadprog/)"
+    link_pattern: "https?://www\\.eduhk\\.hk/(en/(prospective-students|academics)|acadprog/|cms/f/page/.+\\.pdf|gao/uploads/file/.+\\.pdf)"
     schedule: "25 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
