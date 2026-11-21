@@ -167,3 +167,22 @@ def test_extract_pdf_title_missing_metadata():
 
     assert extract_pdf_title(_build_pdf(["body"])) is None
     assert extract_pdf_title(b"not a pdf") is None
+
+
+def test_pdf_title_falls_back_to_url_filename_when_anchor_is_placeholder():
+    """鲁港通 - 港中文学费表实测：PDF 无元数据标题且链接锚文本是占位词「document」，
+    须退到 URL 文件名生成可读标题，集合名不能叫 document.pdf。"""
+    from app.ingest.extract import is_junk_pdf_title, pdf_title_from_url
+
+    assert is_junk_pdf_title("document")
+    assert is_junk_pdf_title(" Download ")
+    assert is_junk_pdf_title("PDF")
+    assert not is_junk_pdf_title("入學指南 2027")
+    assert not is_junk_pdf_title(None)
+
+    url = ("https://admission.cuhk.edu.hk/wp-content/uploads/2026/10/"
+           "local_students_category_2027-entry.pdf")
+    assert pdf_title_from_url(url) == "Local students category 2027 entry"
+    # 鲁港通 - 查询串不得混进标题；非 PDF 路径也容忍（取末段）
+    assert pdf_title_from_url("https://x/a/Admission_Guide.PDF?from=list") == "Admission Guide"
+    assert pdf_title_from_url("https://x/") is None

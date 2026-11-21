@@ -434,6 +434,35 @@ def extract_pdf_title(content: bytes) -> str | None:
     return title.strip(" \t_|·—-") or None
 
 
+# 鲁港通 - PDF 占位标题词典（2026-11-21 港中文学费表实测）：部分 PDF 无元数据标题、
+# 链接锚文本也只是「document」，不能直接当集合名。
+_JUNK_PDF_TITLES = frozenset({
+    "document", "documents", "untitled", "download", "pdf", "file",
+    "attachment", "slides", "presentation",
+})
+
+
+def is_junk_pdf_title(title: str | None) -> bool:
+    """标题是否 PDF 占位词（document/download 等），不能作为文档标题。"""
+    return (title or "").strip().lower() in _JUNK_PDF_TITLES
+
+
+def pdf_title_from_url(url: str) -> str | None:
+    """从 PDF 链接文件名生成可读标题：去扩展名、分隔符转空格、首字母大写。
+
+    鲁港通 - 元数据与锚文本都不可用时的最后兜底
+    （local_students_category_2027-entry.pdf → Local students category 2027 entry）。
+    """
+    name = (url or "").split("?", 1)[0].split("#", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    if name.lower().endswith(".pdf"):
+        name = name[:-4]
+    name = re.sub(r"[-_]+", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    if len(name) < 4:
+        return None
+    return name[0].upper() + name[1:]
+
+
 def _squeeze(text: str) -> str:
     """压缩空白：连续空白/空行折叠为单个空格/换行，去首尾。"""
     lines = [ln.strip() for ln in text.splitlines()]

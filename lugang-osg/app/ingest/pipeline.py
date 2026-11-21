@@ -34,7 +34,9 @@ from app.ingest.extract import (
     MIN_CONTENT_CHARS,
     extract_html,
     extract_pdf_title,
+    is_junk_pdf_title,
     nav_residue_stats,
+    pdf_title_from_url,
 )
 from app.ingest.title_filter import first_matching_pattern
 from app.ingest.url_identity import identity_key
@@ -855,8 +857,14 @@ def _store_document(
         )
         # 鲁港通 - PDF 标题优先级（2026-11-20）：元数据标题 > 列表锚文本——列表链接
         # 常是「请按此查看PDF版本」类残渣，不能压过 PDF 自带标题
+        # 鲁港通 - 占位词兜底（2026-11-21）：港中文学费表元数据缺失、锚文本仅是
+        # 「document」，退到 URL 文件名，保证知识库集合名可读
         if is_pdf:
-            doc_title = override or article_title or item.title
+            doc_title = next(
+                (t for t in (override, article_title, item.title)
+                 if t and not is_junk_pdf_title(t)),
+                None,
+            ) or pdf_title_from_url(canonical) or item.title
         else:
             doc_title = override or item.title or article_title
         doc = Document(
