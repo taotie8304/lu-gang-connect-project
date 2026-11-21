@@ -31,6 +31,7 @@ from app.ingest.discover import (
     url_publish_year,
 )
 from app.ingest.extract import (
+    EXTRACTOR_VERSION,
     MIN_CONTENT_CHARS,
     extract_html,
     extract_pdf_title,
@@ -40,7 +41,15 @@ from app.ingest.extract import (
 )
 from app.ingest.title_filter import first_matching_pattern
 from app.ingest.url_identity import identity_key
-from app.models import CrawlRun, CrawlTask, Document, DocumentVersion, Source, SourceDomainRule
+from app.models import (
+    CrawlRun,
+    CrawlTask,
+    Document,
+    DocumentVersion,
+    ImportMap,
+    Source,
+    SourceDomainRule,
+)
 from app.security.fetcher import (
     FetchAborted,
     FetchBlocked,
@@ -774,6 +783,9 @@ def _store_document(
             select(Document).where(Document.canonical_url == canonical)
         ).scalar_one_or_none()
 
+    # 鲁港通 - 同内容但提取规则已升级时，走原地重提取（唯一约束
+    # document_id+content_sha256 不允许再插新版本行）
+    stale_version = None
     if doc is not None:
         # 标题覆盖先于「内容未变」短路生效，配置修正后下次同步即可刷新旧文档标题
         if override and doc.title != override:
@@ -797,7 +809,11 @@ def _store_document(
                     result.content, content_sha, pdf_store_dir
                 )
                 db.flush()
-            return "unchanged"
+            if existing.parser_version == EXTRACTOR_VERSION:
+                return "unchanged"
+            # 鲁港通 - 提取规则升级（2026-11-21）：原始内容未变但清洗规则变了，
+            # 按新规则重提取；导入指纹置 stale 触发集合重建
+            stale_version = existing
 
     is_pdf = result.content_type == "application/pdf"
     raw_object_key: str | None = None
@@ -893,6 +909,25 @@ def _store_document(
             DocumentVersion.document_id == doc.id
         ).update({"is_current": False})
 
+    if stale_version is not None:
+        # 鲁港通 - 同内容版本原地刷新：唯一约束不允许再插一行，直接覆盖提取结果
+        stale_version.extracted_text = body_text
+        if raw_object_key:
+            stale_version.raw_object_key = raw_object_key
+        stale_version.extracted_metadata = {
+            "title": override or article_title,
+            "language": language_hint,
+        }
+        stale_version.parser_version = EXTRACTOR_VERSION
+        stale_version.is_current = True
+        # 鲁港通 - 导入指纹置 stale：下次导入据此重建集合，用上重提取后的正文
+        db.query(ImportMap).filter(ImportMap.document_id == doc.id).update(
+            {"content_sha256": "stale"}
+        )
+        db.flush()
+        doc.latest_version_id = stale_version.id
+        return action
+
     version = DocumentVersion(
         document_id=doc.id,
         fetched_url=canonical,
@@ -904,6 +939,7 @@ def _store_document(
         raw_object_key=raw_object_key,
         extracted_metadata={"title": override or article_title,
                             "language": language_hint},
+        parser_version=EXTRACTOR_VERSION,
         is_current=True,
     )
     db.add(version)

@@ -104,6 +104,7 @@ def test_unchanged_pdf_backfills_raw_file_for_legacy_docs(db, tmp_path):
     from sqlalchemy import select
 
     from app.ingest.discover import DiscoveredItem
+    from app.ingest.extract import EXTRACTOR_VERSION
     from app.ingest.pipeline import _store_document
     from app.models import Document, DocumentVersion, Source
     from app.security.fetcher import FetchResult
@@ -131,6 +132,8 @@ def test_unchanged_pdf_backfills_raw_file_for_legacy_docs(db, tmp_path):
         content_sha256=hashlib.sha256(pdf).hexdigest(),
         extracted_text="旧文本层正文",
         raw_object_key=None,
+        # 鲁港通 - 提取器已是当前版本时内容未变才走 unchanged；旧版本会按新规则重提取
+        parser_version=EXTRACTOR_VERSION,
         is_current=True,
     )
     db.add(legacy)

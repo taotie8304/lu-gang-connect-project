@@ -786,6 +786,55 @@ class TestPipeline:
         ).scalar_one()
         assert "Updated paragraph appended" in current.extracted_text
 
+    def test_extractor_version_bump_reextracts_unchanged_content(self, db):
+        """鲁港通 - 提取规则升级（EXTRACTOR_VERSION 变更）后，原始内容未变的存量文档
+        也要按新规则原地重提取，并把导入指纹置 stale，保证下次导入重建集合。"""
+        from app.ingest import pipeline as pipeline_mod
+        from app.models import ImportMap
+
+        src = self._setup_source(db)
+        article = _article_html("HK News A", _LONG_EN)
+        fetcher = _FakeFetcher({
+            "https://www.news.gov.hk/en/common/html/topstories.rss.xml": RSS_SAMPLE,
+            "https://www.news.gov.hk/en/2026/09/1.html": article,
+            "https://www.news.gov.hk/en/2026/09/2.html": article,
+        })
+        sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                    sleeper=lambda s: None, resolver=fake_resolver)
+
+        # 模拟旧提取器产物：版本标记旧版且正文混入残渣行，并已有导入记录
+        versions = db.execute(select(DocumentVersion)).scalars().all()
+        for v in versions:
+            v.parser_version = "old-parser"
+            v.extracted_text = (v.extracted_text or "") + "\n閱讀更多"
+        db.flush()
+        doc = db.execute(
+            select(Document).where(Document.canonical_url.endswith("1.html"))
+        ).scalar_one()
+        db.add(ImportMap(
+            document_id=doc.id, dataset_id="ds", collection_id="col1",
+            version_id=doc.latest_version_id,
+            content_sha256=versions[0].content_sha256, status="imported",
+        ))
+        db.commit()
+
+        stats2 = sync_source(db, src, settings=_mk_settings(), fetcher=fetcher,
+                             sleeper=lambda s: None, resolver=fake_resolver,
+                             force_refetch=True)
+
+        assert stats2.updated_docs == 2
+        assert stats2.unchanged_docs == 0
+        # 原地刷新：版本行数不变（唯一约束 document_id+content_sha256），残渣已清
+        all_versions = db.execute(select(DocumentVersion)).scalars().all()
+        assert len(all_versions) == 2
+        for v in all_versions:
+            assert v.parser_version == pipeline_mod.EXTRACTOR_VERSION
+            assert "閱讀更多" not in (v.extracted_text or "")
+        im = db.execute(
+            select(ImportMap).where(ImportMap.document_id == doc.id)
+        ).scalar_one()
+        assert im.content_sha256 == "stale"
+
     def test_non_allowlist_url_rejected_in_pipeline(self, db):
         # RSS 条目里混入白名单外链接 → pipeline 记 rejected，不抓取
         mixed_rss = RSS_SAMPLE.replace(
