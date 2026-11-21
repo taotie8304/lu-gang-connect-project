@@ -457,3 +457,15 @@ def test_life_verified_sources_marked():
     for code in ("hk_td", "hk_mpfa", "hk_hd_policy"):
         assert resolve_route(code, "https://example.com/x").verified is True, code
     assert resolve_route("hk_tid", "https://example.com/x").verified is False
+
+
+def test_edu_edb_pdf_source_routes_by_policy_page():
+    """鲁港通 - EDB 附件 PDF 来源与 EDB 同规则按 URL 学段路由（2026-11-21 学历评估小册子）。"""
+    route = resolve_route(
+        "hk_edu_edb_pdf",
+        "https://www.edb.gov.hk/attachment/sc/student-parents/support-subsidies/"
+        "snqqa/FAQ (SC) (Jan 2026).pdf",
+    )
+    assert route.dataset_id == EDU_DATASET_ID
+    assert route.department == "教育局"
+    assert route.folder_path == ("90 学生资助与奖学",)

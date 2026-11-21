@@ -248,7 +248,7 @@ def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
         raise MappingError(
             f"高校源暂缓导入：{source_code}（用户 2026-09-13 决策，待内容扩充再定）"
         )
-    if source_code == "hk_edu_edb":
+    if source_code in ("hk_edu_edb", "hk_edu_edb_pdf"):
         folder = edu_edb_folder(canonical_url)
         return KbRoute("edu", EDU_DATASET_ID, "香港", "教育局", folder, folder[-1])
     if source_code in _HK_EDU_SOURCES:
@@ -288,7 +288,7 @@ def is_routable(source_code: str) -> bool:
     return (
         source_code in _HK_DEPARTMENTS
         or source_code in _HK_EDU_SOURCES
-        or source_code == "hk_edu_edb"
+        or source_code in ("hk_edu_edb", "hk_edu_edb_pdf")
         or source_code in _HK_BANK_SOURCES
         or source_code in _HK_BANK_MAINLAND
         or source_code in _HK_MED_SOURCES

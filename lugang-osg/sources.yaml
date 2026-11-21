@@ -373,6 +373,28 @@ sources:
     max_pages_per_run: 150
     enabled: true
 
+  - id: hk_edu_edb_pdf
+    # 鲁港通 - EDB sitemap 不收录附件；学生资助政策页上的小册子/FAQ 走本来源直采 PDF
+    # 原文件入库（学历评估资助小册子 + 简体 FAQ 实测可达，2026-11-21）
+    name: 教育局（政策附件 PDF）
+    group: hk_education
+    organization: 香港教育局
+    base_domains: [www.edb.gov.hk]
+    allowed_path_prefixes: [/attachment/sc/, /attachment/en/, /sc/student-parents/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.edb.gov.hk/sc/student-parents/support-subsidies/snqqa/index.html"
+    link_pattern: "https?://www\\.edb\\.gov\\.hk/attachment/(sc|en)/student-parents/.+\\.pdf"
+    title_exclude_patterns:
+      - "Privacy"
+      - "私隱"
+      - "隐私"
+      - "PDPO"
+    schedule: "35 3 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 40
+    enabled: true
+
   - id: hk_edu_hkeaa
     name: 香港考试及评核局
     group: hk_education
