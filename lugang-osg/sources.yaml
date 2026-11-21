@@ -690,6 +690,25 @@ sources:
     max_pages_per_run: 60
     enabled: true
 
+  - id: hk_edu_eduhk_fees
+    name: 香港教育大学收费与资助
+    group: hk_education
+    organization: 香港教育大学 EdUHK
+    base_domains: [www.apply.eduhk.hk]
+    # 鲁港通 - 学费页在独立申请子站（apply.eduhk.hk/ug/fees），www.eduhk.hk 站内仅此一处外链；
+    # 英文页正文 2173 字、简体页 617 字（2026-11-21 实测，含 2027/28 本地/非本地生学费表）
+    allowed_path_prefixes: [/ug/fees, /ug/zh-hans/Fees]
+    discovery_method: fixed_url
+    fixed_urls:
+      - "https://www.apply.eduhk.hk/ug/fees"
+      - "https://www.apply.eduhk.hk/ug/zh-hans/Fees"
+    content_selector: .field--name-body
+    title_strip_suffixes: [" | Undergraduate Programmes | The Education University of Hong Kong"]
+    schedule: "35 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 10
+    enabled: true
+
   - id: hk_hkma
     name: 香港金融管理局
     group: hk_livelihood_finance

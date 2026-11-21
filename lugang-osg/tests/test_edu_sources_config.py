@@ -64,6 +64,24 @@ def test_cuhk_pdf_source_direct_download():
     assert route.folder_path == ("60 院校档案", "香港中文大学")
 
 
+def test_eduhk_fees_source_collects_apply_subsite():
+    """鲁港通 - 教大学费页在独立申请子站 apply.eduhk.hk（2026-11-21 实测），
+    www 站内仅此一处外链，须用 fixed_url 直采英文/简体两页并锁定正文容器。"""
+    from app.fastgpt.mapping import resolve_route
+
+    src = _load_sources()["hk_edu_eduhk_fees"]
+    assert src["discovery_method"] == "fixed_url"
+    assert "www.apply.eduhk.hk" in src["base_domains"]
+    assert "https://www.apply.eduhk.hk/ug/fees" in src["fixed_urls"]
+    assert "https://www.apply.eduhk.hk/ug/zh-hans/Fees" in src["fixed_urls"]
+    assert src["content_selector"] == ".field--name-body"
+
+    route = resolve_route("hk_edu_eduhk_fees", "https://www.apply.eduhk.hk/ug/fees")
+    assert route.kb_key == "edu"
+    assert route.department == "香港教育大学"
+    assert route.folder_path == ("60 院校档案", "香港教育大学")
+
+
 def test_jupas_and_ugc_exclude_privacy_notices():
     """鲁港通 - JUPAS/UGC 的隐私声明页面无政策办理价值（2026-11-21 存量 3 篇已归档），
     来源层加入标题排除词，防止后续再采。"""

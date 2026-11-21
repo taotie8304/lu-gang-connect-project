@@ -143,6 +143,7 @@ _HK_EDU_SOURCES: dict[str, tuple[str, tuple[str, ...]]] = {
     "hk_edu_lingnan": ("岭南大学", ("60 院校档案", "岭南大学")),
     "hk_edu_thei": ("香港高等教育科技学院", ("60 院校档案", "香港高等教育科技学院")),
     "hk_edu_eduhk": ("香港教育大学", ("60 院校档案", "香港教育大学")),
+    "hk_edu_eduhk_fees": ("香港教育大学", ("60 院校档案", "香港教育大学")),
 }
 
 _EDU_OVERVIEW = "00 教育体系总览"
