@@ -2704,3 +2704,24 @@ class TestPipelineKeepForm:
         assert stats.new_docs == 0
         tasks = db.execute(select(CrawlTask)).scalars().all()
         assert any(t.status == "skipped_low_content" for t in tasks)
+
+
+def test_strip_nav_residue_lines_removes_nav_labels():
+    """鲁港通 - 存量院校页正文夹杂「閱讀更多/詳情」等导航行（2026-11-21 截图案例），
+    导入前按残渣词典整行剔除，正文句子不受影响。"""
+    from app.ingest.extract import strip_nav_residue_lines
+
+    text = (
+        "中大排名全港第二，多个学科位列全球前五十。\n"
+        "閱讀更多\n"
+        "詳情\n"
+        "版權所有 © 2026 香港中文大學\n"
+        "課程結構為四年制，須修滿 123 學分方可畢業。"
+    )
+    cleaned = strip_nav_residue_lines(text)
+    assert cleaned is not None
+    assert "閱讀更多" not in cleaned
+    assert "詳情" not in cleaned.splitlines()
+    assert "版權所有" not in cleaned
+    assert "中大排名全港第二，多个学科位列全球前五十。" in cleaned
+    assert "課程結構為四年制，須修滿 123 學分方可畢業。" in cleaned

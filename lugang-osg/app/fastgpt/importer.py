@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.fastgpt.client import FastGPTClient, FastGPTError
 from app.fastgpt.formatting import build_import_text
 from app.fastgpt.mapping import MappingError, resolve_route
+from app.ingest.extract import strip_nav_residue_lines
 from app.models import AuditLog, Document, DocumentVersion, ImportMap, Source
 
 logger = logging.getLogger(__name__)
@@ -466,7 +467,8 @@ def run_import(
                 url=doc.canonical_url,
                 organization=doc.organization or source.organization,
                 published_at=doc.published_at,
-                body=version.extracted_text or "",
+                # 鲁港通 - 导入前整行剔除导航残渣（閱讀更多/詳情/版权行），2026-11-21
+                body=strip_nav_residue_lines(version.extracted_text) or "",
                 # 鲁港通 - 开户库导入头带「核对日期」=本次同步当日（时效敏感，2026-11-19）
                 verified_on=(
                     date.today()

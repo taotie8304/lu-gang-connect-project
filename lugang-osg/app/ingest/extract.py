@@ -93,6 +93,21 @@ def nav_residue_stats(text: str) -> tuple[float, int]:
     return hits / len(lines), paras
 
 
+def strip_nav_residue_lines(text: str | None) -> str | None:
+    """鲁港通 - 导入前剔除整行命中导航残渣词典的文字。
+
+    只删整行（如「閱讀更多」「詳情」「版權所有 © 2026」），正文句子不受影响；
+    仅用于导入内容，pipeline 的 shell 页判定仍看原始正文（见 nav_residue_stats）。
+    """
+    if not text:
+        return text
+    kept = [
+        ln for ln in text.splitlines()
+        if not (_NAV_RESIDUE_LINE_RE.match(ln.strip()) or _NAV_RESIDUE_SUBSTR_RE.search(ln))
+    ]
+    return "\n".join(kept).strip() or None
+
+
 def _parse_selector(selector: str | None) -> tuple[str, str] | None:
     """解析极简选择器：`#id` 或 `.class`（实测政务站正文容器均为这两种）。
 
