@@ -510,9 +510,9 @@ sources:
     group: hk_education
     organization: 香港中文大学 CUHK
     base_domains: [admission.cuhk.edu.hk, www.cuhk.edu.hk, www.gs.cuhk.edu.hk]
-    # 鲁港通 - 2026-11-21 招生 PDF 直采：学费页挂 /wp-content/uploads/*.pdf（实测）
-    # /tc/fees/ 301 到 /fees-financing-your-studies/fees/（无语言前缀），入口直接用最终地址
-    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/, /wp-content/uploads/, /fees-financing-your-studies/]
+    # 鲁港通 - /tc/fees/ 301 到 /fees-financing-your-studies/fees/（无语言前缀），入口直接用最终地址
+    # 学费页挂的附件 PDF 由专项源 hk_edu_cuhk_pdf 直采，本源不放行 PDF 目录（防跨源撞唯一约束）
+    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/, /fees-financing-your-studies/]
     discovery_method: listing
     listing_urls:
       - "https://admission.cuhk.edu.hk/tc/"
@@ -525,6 +525,24 @@ sources:
     schedule: "25 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 100
+    enabled: true
+
+  - id: hk_edu_cuhk_pdf
+    # 鲁港通 - 招生 PDF 直采（2026-11-21）：学费页实测挂 /wp-content/uploads/*.pdf
+    # （local_students_category_2027-entry.pdf）。主源候选 469 条、单轮上限 100，
+    # PDF 常被截断轮不到；本源只发现 PDF 直链，原文件入文件集合。
+    name: 香港中文大学（招生 PDF）
+    group: hk_education
+    organization: 香港中文大学 CUHK
+    base_domains: [admission.cuhk.edu.hk]
+    allowed_path_prefixes: [/fees-financing-your-studies/, /wp-content/uploads/]
+    discovery_method: listing
+    listing_urls:
+      - "https://admission.cuhk.edu.hk/fees-financing-your-studies/fees/"
+    link_pattern: "https?://admission\\.cuhk\\.edu\\.hk/wp-content/uploads/.+\\.pdf"
+    schedule: "35 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 20
     enabled: true
 
   - id: hk_edu_hkust

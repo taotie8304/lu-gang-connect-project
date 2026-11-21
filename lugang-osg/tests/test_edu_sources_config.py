@@ -41,6 +41,29 @@ def test_cuhk_fees_entry_uses_final_url():
     assert "/fees-financing-your-studies/" in source["allowed_path_prefixes"]
 
 
+def test_cuhk_pdf_source_direct_download():
+    """鲁港通 - 港中文学费页 PDF（2027-entry 学费表）由专项源直采原文件：
+    主源候选量大轮不到 PDF，故单独发现；两源均映射到港中文院校文件夹。"""
+    from app.fastgpt.mapping import resolve_route
+
+    sources = _load_sources()
+    pdf_src = sources["hk_edu_cuhk_pdf"]
+    assert pdf_src["discovery_method"] == "listing"
+    assert "https://admission.cuhk.edu.hk/fees-financing-your-studies/fees/" in pdf_src["listing_urls"]
+    assert "/wp-content/uploads/" in pdf_src["allowed_path_prefixes"]
+    assert ".pdf" in pdf_src["link_pattern"]
+    # 鲁港通 - PDF 主链接不收 HTML 页面（防与主源重复采同一页）
+    assert "fees-financing-your-studies/.+" not in pdf_src["link_pattern"]
+
+    # 鲁港通 - PDF 只由专项源采：主源不放行 PDF 目录，防跨源撞 document 唯一约束
+    assert "/wp-content/uploads/" not in sources["hk_edu_cuhk"]["allowed_path_prefixes"]
+
+    route = resolve_route("hk_edu_cuhk_pdf", "https://admission.cuhk.edu.hk/wp-content/uploads/x.pdf")
+    assert route.kb_key == "edu"
+    assert route.department == "香港中文大学"
+    assert route.folder_path == ("60 院校档案", "香港中文大学")
+
+
 def test_jupas_and_ugc_exclude_privacy_notices():
     """鲁港通 - JUPAS/UGC 的隐私声明页面无政策办理价值（2026-11-21 存量 3 篇已归档），
     来源层加入标题排除词，防止后续再采。"""
