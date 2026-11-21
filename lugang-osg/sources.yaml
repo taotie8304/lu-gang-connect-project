@@ -507,13 +507,14 @@ sources:
     organization: 香港中文大学 CUHK
     base_domains: [admission.cuhk.edu.hk, www.cuhk.edu.hk, www.gs.cuhk.edu.hk]
     # 鲁港通 - 2026-11-21 招生 PDF 直采：学费页挂 /wp-content/uploads/*.pdf（实测）
-    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/, /wp-content/uploads/]
+    # /tc/fees/ 301 到 /fees-financing-your-studies/fees/（无语言前缀），入口直接用最终地址
+    allowed_path_prefixes: [/tc/, /sc/, /en/, /programmes/, /application/, /introducing-cuhk/, /english/faculties/, /admissions/, /wp-content/uploads/, /fees-financing-your-studies/]
     discovery_method: listing
     listing_urls:
       - "https://admission.cuhk.edu.hk/tc/"
       - "https://admission.cuhk.edu.hk/sc/"
       - "https://admission.cuhk.edu.hk/programmes/list/"
-      - "https://admission.cuhk.edu.hk/tc/fees/"
+      - "https://admission.cuhk.edu.hk/fees-financing-your-studies/fees/"
       - "https://www.gs.cuhk.edu.hk/admissions/"
       - "https://www.cuhk.edu.hk/english/faculties/arts.html"
     link_pattern: "https?://(admission\\.cuhk\\.edu\\.hk|www\\.gs\\.cuhk\\.edu\\.hk|www\\.cuhk\\.edu\\.hk)/"
@@ -2045,6 +2046,25 @@ sources:
     schedule: "50 3 * * 0"
     rate_limit_per_minute: 4
     max_pages_per_run: 10
+    enabled: true
+
+  - id: hk_bank_dahsing
+    # 鲁港通 - 大新银行存款区（综合户口/内地客户借记卡/目标储蓄，2026-11-21 实测简体版 200）
+    name: 大新银行
+    group: hk_bank_open
+    organization: 大新银行
+    base_domains: [www.dahsing.com]
+    allowed_path_prefixes: [/html/sc/deposit/]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.dahsing.com/html/sc/deposit/index.html"
+    link_pattern: "dahsing\\.com/html/sc/deposit/.+\\.html"
+    user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+    extra_headers:
+      Accept-Language: "zh-CN,zh-HK;q=0.9,zh;q=0.8,en;q=0.7"
+    schedule: "15 4 * * 0"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 30
     enabled: true
 
   # ---------- 7 虚拟银行 ----------

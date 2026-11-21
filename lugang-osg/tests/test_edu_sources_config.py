@@ -30,3 +30,12 @@ def test_hku_admissions_allows_redirect_targets():
     # 鲁港通 - /zh-hans/node/1749 与 sndas_highschool 分别 302 到 /node/ 与 /talent_search_scheme_TSS
     assert "/node/" in prefixes
     assert "/talent_search_scheme_TSS" in prefixes
+
+
+def test_cuhk_fees_entry_uses_final_url():
+    """鲁港通 - /tc/fees/ 301 到 /fees-financing-your-studies/fees/（2026-11-21 实测），
+    入口必须直接用最终地址，否则整轮采集 REDIRECT_OUT_OF_ALLOWLIST 中止。"""
+    source = _load_sources()["hk_edu_cuhk"]
+    assert "https://admission.cuhk.edu.hk/fees-financing-your-studies/fees/" in source["listing_urls"]
+    assert "https://admission.cuhk.edu.hk/tc/fees/" not in source["listing_urls"]
+    assert "/fees-financing-your-studies/" in source["allowed_path_prefixes"]

@@ -91,3 +91,19 @@ def test_bea_corporate_account_fixed_url():
     route = resolve_route("hk_bank_bea", url)
     assert route.kb_key == "bank"
     assert route.folder_path == ("10 传统银行", "东亚银行")
+
+
+def test_dahsing_source_lists_deposit_pages_and_routes():
+    """鲁港通 - 大新银行存款/内地客户借记卡页（2026-11-21 实测双版 200），简体单入口。"""
+    source = _load_sources()["hk_bank_dahsing"]
+    assert source["group"] == "hk_bank_open"
+    assert source["enabled"] is True
+    assert source["listing_urls"] == ["https://www.dahsing.com/html/sc/deposit/index.html"]
+    assert source["allowed_path_prefixes"] == ["/html/sc/deposit/"]
+    assert source["link_pattern"] == r"dahsing\.com/html/sc/deposit/.+\.html"
+    route = resolve_route(
+        "hk_bank_dahsing", "https://www.dahsing.com/html/sc/deposit/mcy_debit_card.html"
+    )
+    assert route.dataset_id == "6afed05e1f0af75b59e136ec"
+    assert route.department == "大新银行"
+    assert route.folder_path == ("10 传统银行", "大新银行")
