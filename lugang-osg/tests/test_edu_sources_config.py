@@ -39,3 +39,13 @@ def test_cuhk_fees_entry_uses_final_url():
     assert "https://admission.cuhk.edu.hk/fees-financing-your-studies/fees/" in source["listing_urls"]
     assert "https://admission.cuhk.edu.hk/tc/fees/" not in source["listing_urls"]
     assert "/fees-financing-your-studies/" in source["allowed_path_prefixes"]
+
+
+def test_jupas_and_ugc_exclude_privacy_notices():
+    """鲁港通 - JUPAS/UGC 的隐私声明页面无政策办理价值（2026-11-21 存量 3 篇已归档），
+    来源层加入标题排除词，防止后续再采。"""
+    sources = _load_sources()
+    jupas = sources["hk_edu_jupas"]
+    ugc = sources["hk_edu_ugc"]
+    assert "Personal Data" in jupas["title_exclude_patterns"]
+    assert "Privacy" in ugc["title_exclude_patterns"]

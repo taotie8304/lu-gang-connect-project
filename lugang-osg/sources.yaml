@@ -425,6 +425,8 @@ sources:
       - "https://www.jupas.edu.hk/tc/"
       - "https://www.jupas.edu.hk/en/"
     link_pattern: "https?://www\\.jupas\\.edu\\.hk/(tc|en)/(about-jupas|programmes-offered|applicants-user-guide-faq)/"
+    # 鲁港通 - 隐私声明页对用户无办理价值（2026-11-21 存量已归档），后续不再采集
+    title_exclude_patterns: ["Personal Data", "個人資料保障", "个人资料保障", "Privacy", "私隱", "隐私"]
     schedule: "30 3 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 80
@@ -440,6 +442,8 @@ sources:
     listing_urls:
       - "https://www.ugc.edu.hk/eng/ugc/sitemap.html"
     link_pattern: "https?://www\\.ugc\\.edu\\.hk/eng/(ugc|rgc)/(?!(?:about/press_speech_other))"
+    # 鲁港通 - 隐私政策页无办理价值（2026-11-21 存量已归档）
+    title_exclude_patterns: ["Privacy", "私隱", "隐私", "Personal Data"]
     schedule: "40 3 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
