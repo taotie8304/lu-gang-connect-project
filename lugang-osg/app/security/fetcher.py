@@ -109,6 +109,13 @@ def _max_bytes_for(content_type: str, settings: Settings) -> int:
     return settings.max_bytes_pdf if content_type == "application/pdf" else settings.max_bytes_html
 
 
+def _make_transport(local_addr: str | None) -> httpx.HTTPTransport:
+    """鲁港通 - 自建 transport 必须显式带 _TLS_CONTEXT：httpx 的客户端级 verify
+    在传入现成 transport 时不生效，force_ipv4 分支漏传会让教大等 legacy 站握手被拒
+    （2026-11-21 生产回归）。"""
+    return httpx.HTTPTransport(local_address=local_addr, verify=_TLS_CONTEXT)
+
+
 def fetch_url(
     url: str,
     rules: tuple[DomainRule, ...] | list[DomainRule],
@@ -142,7 +149,7 @@ def fetch_url(
     if transport is not None:
         client_kwargs["transport"] = transport
     elif local_addr is not None:
-        client_kwargs["transport"] = httpx.HTTPTransport(local_address=local_addr)
+        client_kwargs["transport"] = _make_transport(local_addr)
 
     # 鲁港通 - 已知可达节点直接复用：同轮后续请求不必再吃一次握手超时
     pinned: dict[str, str] = {}
@@ -156,7 +163,7 @@ def fetch_url(
         if transport is not None:
             kwargs["transport"] = transport
         elif pinned or local_addr is not None:
-            pinned_transport = httpx.HTTPTransport(local_address=local_addr)
+            pinned_transport = _make_transport(local_addr)
             if pinned:
                 dns_fallback.pin_transport(pinned_transport, pinned)
             kwargs["transport"] = pinned_transport

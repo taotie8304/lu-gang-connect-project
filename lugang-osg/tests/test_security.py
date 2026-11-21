@@ -404,3 +404,18 @@ class TestLegacyTLSCompat:
         from app.security import fetcher
 
         assert fetcher._TLS_CONTEXT.options & ssl.OP_LEGACY_SERVER_CONNECT
+
+    def test_force_ipv4_transport_keeps_legacy_tls_context(self):
+        """鲁港通 - 生产默认 force_ipv4=True 会走自建 HTTPTransport 分支；
+        客户端级 verify 对显式 transport 不生效，该分支必须自己带上同一个
+        TLS 上下文，否则教大实测仍在握手阶段被拒（2026-11-21 回归）。"""
+        import ssl
+
+        from app.security import fetcher
+
+        transport = fetcher._make_transport("0.0.0.0")
+        try:
+            context = transport._pool._ssl_context
+            assert context.options & ssl.OP_LEGACY_SERVER_CONNECT
+        finally:
+            transport.close()
