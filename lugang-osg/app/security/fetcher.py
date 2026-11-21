@@ -2,6 +2,7 @@
 # 内容类型白名单、大小上限、超时控制；403/429 上抛供 Worker 退避，绝不重试轰炸。
 from __future__ import annotations
 
+import ssl
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
@@ -23,6 +24,12 @@ _BLOCKED_STATUSES = {401, 403}
 # 鲁港通 - 5xx 与 429 是「现在不行」而不是「不许来」：政务站网关抖动/WAF CC 限流实测
 # 大量返回 500/502/503，旧实现一律归为 FetchAborted 且不重试，一次抖动即整天零发现。
 _TRANSIENT_STATUSES = {429, 500, 502, 503, 504}
+
+# 鲁港通 - 教大等院校站点不支持 RFC 5746 安全重协商，Python 3.12+ 默认拒绝连接
+# （UNSAFE_LEGACY_RENEGOTIATION_DISABLED）；开启与浏览器一致的 legacy 兼容，
+# 证书链校验仍保持严格，仅放行旧式重协商握手。
+_TLS_CONTEXT = ssl.create_default_context()
+_TLS_CONTEXT.options |= ssl.OP_LEGACY_SERVER_CONNECT
 
 
 @dataclass(frozen=True)
@@ -123,6 +130,7 @@ def fetch_url(
     local_addr = "0.0.0.0" if settings.force_ipv4 else None
     client_kwargs: dict = {
         "follow_redirects": False,
+        "verify": _TLS_CONTEXT,
         "timeout": httpx.Timeout(
             connect=settings.connect_timeout_s,
             read=settings.read_timeout_s,

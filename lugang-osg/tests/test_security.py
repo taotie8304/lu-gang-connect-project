@@ -393,3 +393,14 @@ class TestFetcherLimits:
                 transport=httpx.MockTransport(handler),
                 resolver=fake_resolver,
             )
+
+
+class TestLegacyTLSCompat:
+    """鲁港通 - 教大等院校站点不支持 RFC 5746 安全重协商，默认 SSL 上下文直接拒连。"""
+
+    def test_tls_context_allows_legacy_renegotiation(self):
+        import ssl
+
+        from app.security import fetcher
+
+        assert fetcher._TLS_CONTEXT.options & ssl.OP_LEGACY_SERVER_CONNECT
