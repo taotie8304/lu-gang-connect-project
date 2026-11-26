@@ -509,6 +509,7 @@ sources:
       - "Personal Information Collection"
       - "Privacy Notice"
       - "通用数据保障条例"
+      - "(网站|網站)地图|(网站|網站)地圖|^Sitemap$"
     schedule: "15 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
@@ -531,6 +532,9 @@ sources:
       - "https://www.gs.cuhk.edu.hk/admissions/"
       - "https://www.cuhk.edu.hk/english/faculties/arts.html"
     link_pattern: "https?://(admission\\.cuhk\\.edu\\.hk|www\\.gs\\.cuhk\\.edu\\.hk|www\\.cuhk\\.edu\\.hk)/"
+    # 鲁港通 - 隐私/免责/站点地图类页不入库（2026-11-26 归档存量 1 篇）
+    title_exclude_patterns:
+      - '(私隐|私隱)政策|(免责|免責)声明|(免责|免責)聲明|(网站|網站)地图|(网站|網站)地圖'
     schedule: "25 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 100
@@ -761,6 +765,9 @@ sources:
     listing_urls:
       - "https://www.ird.gov.hk/chi/welcome.htm"
     content_selector: "#content"
+    # 鲁港通 - 个人资料政策声明不入库（2026-11-26 归档存量 1 篇）
+    title_exclude_patterns:
+      - "個人資料方面的政策|个人资料方面的政策"
     schedule: "30 2 * * *"
     rate_limit_per_minute: 4
     enabled: true
