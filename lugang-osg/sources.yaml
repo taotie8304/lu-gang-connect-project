@@ -639,6 +639,9 @@ sources:
       - "https://www.hkbu.edu.hk/en/about/faculties.html"
     # 鲁港通 - www 站只放行 en/about/（科研新闻 research.hkbu 不属招生内容，不再发现）
     link_pattern: "https?://(admissions\\.hkbu\\.edu\\.hk/(en/|admissions/|programmes|fees-and-scholarships\\.html|content/dam/ao-assets/[^?]+\\.pdf)|www\\.hkbu\\.edu\\.hk/en/about/)"
+    # 鲁港通 - 站点地图纯链接页不入库（2026-11-26 归档存量 1 篇）
+    title_exclude_patterns:
+      - '^Sitemap$'
     schedule: "5 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
