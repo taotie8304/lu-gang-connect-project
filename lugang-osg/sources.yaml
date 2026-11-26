@@ -270,7 +270,10 @@ sources:
     schedule: "30 11 * * *"
     rate_limit_per_minute: 6
     max_pages_per_run: 100
-    enabled: true
+    # 鲁港通 - 2026-11-26 停用：新闻频道通过白名单的条目实测均为企业表态/庆祝/实习招募新闻稿
+    # （无申请流程、截止时间、费用等办事要素），历史累计归档 188 篇、现存 6 篇全数下线。
+    # 该站政策正文不在新闻频道，保留配置以便日后发现政策栏目时改路径重启。
+    enabled: false
 
   - id: hk_smefund
     name: 中小企业市场推广基金（EMF）重点资讯
@@ -533,8 +536,10 @@ sources:
       - "https://www.cuhk.edu.hk/english/faculties/arts.html"
     link_pattern: "https?://(admission\\.cuhk\\.edu\\.hk|www\\.gs\\.cuhk\\.edu\\.hk|www\\.cuhk\\.edu\\.hk)/"
     # 鲁港通 - 隐私/免责/站点地图类页不入库（2026-11-26 归档存量 1 篇）
+    # 2026-11-26 晚追加：公开讲座系列页属活动预告且正文为导航残渣，归档存量 2 篇
     title_exclude_patterns:
       - '(私隐|私隱)政策|(免责|免責)声明|(免责|免責)聲明|(网站|網站)地图|(网站|網站)地圖'
+      - '(公開|公开)講座'
     schedule: "25 4 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 100
