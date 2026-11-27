@@ -205,6 +205,9 @@ sources:
     base_domains: [sie.sdufe.edu.cn]
     # 鲁港通 - 2026-11-27 实测：lxsc/zsxx.htm 招生信息 14+ 篇（2026 国际研究生/本科生/语言生
     # 招生简章中英双版、国际学生奖学金、汉语/英语授课学位项目），正文容器 .v_news_content
+    # 鲁港通 - 2026-11-27 试采停用：发现 10 篇中 7 篇正文 <200 字（简章正文为图片海报外壳）、
+    # 3 篇非港澳台侨主题；与山大/海大同属图片海报形态，无文本与 PDF 直链，静态采集不可行
+    enabled: false
     allowed_path_prefixes: [/lxsc/, /info/]
     discovery_method: listing
     listing_urls:
@@ -218,7 +221,6 @@ sources:
     schedule: "40 6 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
-    enabled: true
 
   - id: sd_ujn_isao
     name: 济南大学留学生招生网
