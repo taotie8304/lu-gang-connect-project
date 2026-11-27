@@ -187,8 +187,10 @@ sources:
       - "http://www.cie.sdnu.edu.cn/lxsgz/zsxx.htm"
       - "http://www.cie.sdnu.edu.cn/lxsgz/jxj.htm"
     link_pattern: "https?://www\\.cie\\.sdnu\\.edu\\.cn/lxsgz/[a-z0-9_/]+\\.htm"
-    # 鲁港通 - 2026-11-27 补配：博达模板正文容器 #vsb_content（缺省整页混页头/菜单）
-    content_selector: "#vsb_content"
+    # 鲁港通 - 2026-11-27 修正：站点存在两套模板——旧页 id="vsb_content"、新页 id="vsb_content_2"，
+    # 单配 #vsb_content 在新页面（如收费标准 sfbz.htm）漏命中回退整页，混入整站菜单 2143 字；
+    # 外层 .b1_con 两套模板都包住正文（实测 sfbz 2143→1162 字、开头即学费表）
+    content_selector: ".b1_con"
     title_include_patterns:
       - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|缴费'
     title_exclude_patterns:
