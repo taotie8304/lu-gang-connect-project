@@ -5,6 +5,7 @@
 # 抓取礼仪：UA=LuGangTongOfficialSourceBot/1.0 (+https://www.airscend.com/official-sources; contact=service@airscend.com)
 
 sources:
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_ouc
     name: 中国海洋大学
     group: academic
@@ -16,8 +17,9 @@ sources:
       - "https://www.ouc.edu.cn/"
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
-    enabled: true
+    enabled: false
 
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_qdu
     name: 青岛大学
     group: academic
@@ -29,8 +31,9 @@ sources:
       - "https://www.qdu.edu.cn/"
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
-    enabled: true
+    enabled: false
 
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_sdnu
     name: 山东师范大学
     group: academic
@@ -44,8 +47,9 @@ sources:
     content_selector: .school
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
-    enabled: true
+    enabled: false
 
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_sdu
     name: 山东大学
     group: academic
@@ -58,8 +62,9 @@ sources:
     content_selector: .row-a
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
-    enabled: true
+    enabled: false
 
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_sdufe
     name: 山东财经大学
     group: academic
@@ -71,8 +76,9 @@ sources:
       - "https://www.sdufe.edu.cn/"
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
-    enabled: true
+    enabled: false
 
+  # 鲁港通 - 2026-11-27 停用：全站采校园新闻 imported=0，且范围不符「大专院校只收港澳台侨/海外留学生招生政策（含奖学金）」；由 sd_*_istudy/sie/isao 留学生招生定向来源替代
   - id: sd_ujn
     name: 济南大学
     group: academic
@@ -85,6 +91,150 @@ sources:
     content_selector: .arc-con
     schedule: "0 5 * * *"
     rate_limit_per_minute: 4
+    enabled: false
+
+  # 鲁港通 - 山东高校港澳台侨与国际学生招生（2026-11-27 用户指令）：大专院校只收港澳台/华侨生
+  # 与海外留学生招生政策（含奖学金）；原 6 校全站新闻源已停用，改为各校留学生招生门户定向采集。
+  - id: sd_sdu_istudy
+    name: 山东大学国际学生招生（留学山大）
+    group: academic
+    organization: 山东大学
+    base_domains: [www.istudy.sdu.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：zsjz.htm 列表 10 篇（2027 国际学生本硕博/预科/中文研修 +
+    # 中国政府奖学金 A 类申请指引），正文容器 #vsb_content（博达模板），无 PDF 附件
+    allowed_path_prefixes: [/info/, /jxj/, /lxxm/, /FAQ/, /xysh/, /zsjz.htm, /cyxz.htm]
+    discovery_method: listing
+    listing_urls:
+      - "https://www.istudy.sdu.edu.cn/zsjz.htm"
+      - "https://www.istudy.sdu.edu.cn/jxj/jxjgs.htm"
+      - "https://www.istudy.sdu.edu.cn/lxxm/xlxm.htm"
+    link_pattern: "https?://www\\.istudy\\.sdu\\.edu\\.cn/(info/\\d+/\\d+\\.htm|jxj/[a-z0-9_]+\\.htm|.*\\.pdf)"
+    content_selector: "#vsb_content"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|培训会|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
+    schedule: "50 5 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_ouc_sie
+    name: 中国海洋大学国际教育学院
+    group: academic
+    organization: 中国海洋大学
+    base_domains: [sie.ouc.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：首页导航为图片链接，真实栏目 /zsjz/list.htm（招生简章 9 篇）与
+    # /jxj/list.htm（中国政府奖学金等项目简章 4 篇）；文章形态 /2026/1126/c17892a5xxxxx/page.htm
+    allowed_path_prefixes: [/zsjz/, /jxj/, /zzbl/, /zlxz/, /20, /_upload/]
+    allow_http: true
+    discovery_method: listing
+    listing_urls:
+      - "http://sie.ouc.edu.cn/zsjz/list.htm"
+      - "http://sie.ouc.edu.cn/jxj/list.htm"
+    link_pattern: "https?://sie\\.ouc\\.edu\\.cn/(\\d{4}/\\d{4}/c\\d+a\\d+/page\\.htm|.*\\.pdf)"
+    content_selector: ".v_news_content"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|培训会|来访|参观|迎新|中秋|端午|春节|风采|声明|开学|结业|校友|剪影'
+    schedule: "10 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_qdu_istudy
+    name: 青岛大学留学生招生（留学青大）
+    group: academic
+    organization: 青岛大学
+    base_domains: [istudy.qdu.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：新版站点，列表页 /cn/article?cid=55|63|69&pid=54|62|68
+    # （留学项目/申请信息/奖学金），文章带 detail= 查询参数，奖学金指南附 3 个 PDF 直链
+    allowed_path_prefixes: [/cn/, /uploads/attached/]
+    discovery_method: listing
+    listing_urls:
+      - "https://istudy.qdu.edu.cn/cn/article?cid=55&pid=54"
+      - "https://istudy.qdu.edu.cn/cn/article?cid=63&pid=62"
+      - "https://istudy.qdu.edu.cn/cn/article?cid=69&pid=68"
+    link_pattern: 'https?://istudy\.qdu\.edu\.cn/(cn/article\?[^\s"]*detail=\d+|uploads/attached/file/[^\s"]+\.pdf)'
+    content_selector: "#vsb_content"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|MBBS'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
+    schedule: "20 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_sdnu_cie
+    name: 山东师范大学国际教育学院
+    group: academic
+    organization: 山东师范大学
+    base_domains: [www.cie.sdnu.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：栏目页自带正文（博达模板），lxsgz/zsxx.htm 招生信息与
+    # lxsgz/jxj.htm 奖学金（中国政府/山东省政府/山师奖学金子栏目）；图片导航多，正文偏短
+    allowed_path_prefixes: [/lxsgz/]
+    allow_http: true
+    discovery_method: listing
+    listing_urls:
+      - "http://www.cie.sdnu.edu.cn/lxsgz/zsxx.htm"
+      - "http://www.cie.sdnu.edu.cn/lxsgz/jxj.htm"
+    link_pattern: "https?://www\\.cie\\.sdnu\\.edu\\.cn/lxsgz/[a-z0-9_/]+\\.htm"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
+    schedule: "30 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_sdufe_sie
+    name: 山东财经大学国际教育学院（留学生工作办公室）
+    group: academic
+    organization: 山东财经大学
+    base_domains: [sie.sdufe.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：lxsc/zsxx.htm 招生信息 14+ 篇（2026 国际研究生/本科生/语言生
+    # 招生简章中英双版、国际学生奖学金、汉语/英语授课学位项目），正文容器 .v_news_content
+    allowed_path_prefixes: [/lxsc/, /info/]
+    discovery_method: listing
+    listing_urls:
+      - "https://sie.sdufe.edu.cn/lxsc/zsxx.htm"
+    link_pattern: "https?://sie\\.sdufe\\.edu\\.cn/(info/\\d+/\\d+\\.htm|.*\\.pdf)"
+    content_selector: ".v_news_content"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|学位'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影|调剂|复试成绩|培训会'
+    schedule: "40 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
+    enabled: true
+
+  - id: sd_ujn_isao
+    name: 济南大学留学生招生网
+    group: academic
+    organization: 济南大学
+    base_domains: [isao.ujn.edu.cn]
+    # 鲁港通 - 2026-11-27 实测：zszy1/hyywhxm.htm 招生专业（汉语进修/3+1 学分/夏令营项目）、
+    # jxjxm1/zgzfjxj.htm 奖学金项目、index/jfzn.htm 收费标准（32KB 实质内容）
+    allowed_path_prefixes: [/zszy1/, /jxjxm1/, /index/, /info/]
+    allow_http: true
+    discovery_method: listing
+    listing_urls:
+      - "http://isao.ujn.edu.cn/zszy1/hyywhxm.htm"
+      - "http://isao.ujn.edu.cn/jxjxm1/zgzfjxj.htm"
+      - "http://isao.ujn.edu.cn/index/jfzn.htm"
+    link_pattern: "https?://isao\\.ujn\\.edu\\.cn/(info/\\d+/\\d+\\.htm|zszy1/[a-z0-9_]+\\.htm|jxjxm1/[a-z0-9_]+\\.htm|index/jfzn\\.htm|.*\\.pdf)"
+    content_selector: ".v_news_content"
+    title_include_patterns:
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+    title_exclude_patterns:
+      - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
+    schedule: "50 6 * * *"
+    rate_limit_per_minute: 4
+    max_pages_per_run: 60
     enabled: true
 
   - id: hk_data_gov
