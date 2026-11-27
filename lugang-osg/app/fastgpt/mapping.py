@@ -92,6 +92,17 @@ _SD_JINAN: dict[str, str] = {
     "jinan_tianqiao": "济南市天桥区人民政府",
 }
 
+# 鲁港通 - 山东高校留学生招生源 → (部门标签, 文件夹路径)（2026-11-27 用户指令：
+# 大专院校只收港澳台侨与海外留学生招生政策，含奖学金）
+_SD_UNI_INTL: dict[str, tuple[str, tuple[str, ...]]] = {
+    "sd_sdu_istudy": ("山东大学", ("高校招生", "山东大学")),
+    "sd_ouc_sie": ("中国海洋大学", ("高校招生", "中国海洋大学")),
+    "sd_qdu_istudy": ("青岛大学", ("高校招生", "青岛大学")),
+    "sd_sdnu_cie": ("山东师范大学", ("高校招生", "山东师范大学")),
+    "sd_sdufe_sie": ("山东财经大学", ("高校招生", "山东财经大学")),
+    "sd_ujn_isao": ("济南大学", ("高校招生", "济南大学")),
+}
+
 # 鲁港通 - 高校源（academic 6 校）暂缓导入（用户 2026-09-13 决策）
 _ACADEMIC_DEFERRED = (
     "sd_sdu",
@@ -283,6 +294,9 @@ def resolve_route(source_code: str, canonical_url: str) -> KbRoute:
     if source_code in _SD_JINAN:
         dept = _SD_JINAN[source_code]
         return KbRoute("sd", SD_DATASET_ID, "山东", dept, ("济南市", dept))
+    if source_code in _SD_UNI_INTL:
+        dept, folder = _SD_UNI_INTL[source_code]
+        return KbRoute("sd", SD_DATASET_ID, "山东", dept, folder)
     raise MappingError(f"源未配置导入路由：{source_code}（请在 mapping.py 补充映射）")
 
 
@@ -297,4 +311,5 @@ def is_routable(source_code: str) -> bool:
         or source_code in _HK_MED_SOURCES
         or source_code in _SD_PROVINCIAL
         or source_code in _SD_JINAN
+        or source_code in _SD_UNI_INTL
     )

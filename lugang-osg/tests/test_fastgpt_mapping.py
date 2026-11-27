@@ -108,6 +108,25 @@ def test_sd_jinan_source():
     assert route.folder_path == ("济南市", "济南市人民政府")
 
 
+def test_sd_uni_intl_sources_route_to_college_folders():
+    route = resolve_route("sd_qdu_istudy", "https://istudy.qdu.edu.cn/info/1013/1234.htm")
+    assert route.kb_key == "sd"
+    assert route.dataset_id == SD_DATASET_ID
+    assert route.region == "山东"
+    assert route.department == "青岛大学"
+    assert route.folder_path == ("高校招生", "青岛大学")
+    for code, name in [
+        ("sd_sdu_istudy", "山东大学"),
+        ("sd_ouc_sie", "中国海洋大学"),
+        ("sd_sdnu_cie", "山东师范大学"),
+        ("sd_sdufe_sie", "山东财经大学"),
+        ("sd_ujn_isao", "济南大学"),
+    ]:
+        r = resolve_route(code, "https://example.com/x")
+        assert r.folder_path == ("高校招生", name), code
+        assert is_routable(code) is True, code
+
+
 def test_academic_source_deferred():
     with pytest.raises(MappingError, match="暂缓"):
         resolve_route("sd_sdu", "https://www.sdu.edu.cn/x.html")

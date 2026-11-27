@@ -111,13 +111,15 @@ sources:
     link_pattern: "https?://www\\.istudy\\.sdu\\.edu\\.cn/(info/\\d+/\\d+\\.htm|jxj/[a-z0-9_]+\\.htm|.*\\.pdf)"
     content_selector: "#vsb_content"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|培训会|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
     schedule: "50 5 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
-    enabled: true
+    # 鲁港通 - 2026-11-27 试采停用：16 篇发现全部为图片海报（正文 177 字外壳 + img），
+    # 无文本可提取、无 PDF/docx 直链，静态采集不可行
+    enabled: false
 
   - id: sd_ouc_sie
     name: 中国海洋大学国际教育学院
@@ -135,13 +137,15 @@ sources:
     link_pattern: "https?://sie\\.ouc\\.edu\\.cn/(\\d{4}/\\d{4}/c\\d+a\\d+/page\\.htm|.*\\.pdf)"
     content_selector: ".v_news_content"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|培训会|来访|参观|迎新|中秋|端午|春节|风采|声明|开学|结业|校友|剪影'
     schedule: "10 6 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 60
-    enabled: true
+    # 鲁港通 - 2026-11-27 试采停用：14 篇发现全部为图片海报（正文 91-182 字外壳 + img），
+    # 无文本可提取、无 PDF/docx 直链，静态采集不可行
+    enabled: false
 
   - id: sd_qdu_istudy
     name: 青岛大学留学生招生（留学青大）
@@ -157,9 +161,11 @@ sources:
       - "https://istudy.qdu.edu.cn/cn/article?cid=63&pid=62"
       - "https://istudy.qdu.edu.cn/cn/article?cid=69&pid=68"
     link_pattern: 'https?://istudy\.qdu\.edu\.cn/(cn/article\?[^\s"]*detail=\d+|uploads/attached/file/[^\s"]+\.pdf)'
-    content_selector: "#vsb_content"
+    # 鲁港通 - 2026-11-27 修正：新版站点无 #vsb_content（未命中回退整页，混入页头
+    # 联系块与菜单约 300 字），正文容器实为 .page_con
+    content_selector: ".page_con"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|MBBS'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|MBBS|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
     schedule: "20 6 * * *"
@@ -181,8 +187,10 @@ sources:
       - "http://www.cie.sdnu.edu.cn/lxsgz/zsxx.htm"
       - "http://www.cie.sdnu.edu.cn/lxsgz/jxj.htm"
     link_pattern: "https?://www\\.cie\\.sdnu\\.edu\\.cn/lxsgz/[a-z0-9_/]+\\.htm"
+    # 鲁港通 - 2026-11-27 补配：博达模板正文容器 #vsb_content（缺省整页混页头/菜单）
+    content_selector: "#vsb_content"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
     schedule: "30 6 * * *"
@@ -204,7 +212,7 @@ sources:
     link_pattern: "https?://sie\\.sdufe\\.edu\\.cn/(info/\\d+/\\d+\\.htm|.*\\.pdf)"
     content_selector: ".v_news_content"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|学位'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|学位|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影|调剂|复试成绩|培训会'
     schedule: "40 6 * * *"
@@ -229,7 +237,7 @@ sources:
     link_pattern: "https?://isao\\.ujn\\.edu\\.cn/(info/\\d+/\\d+\\.htm|zszy1/[a-z0-9_]+\\.htm|jxjxm1/[a-z0-9_]+\\.htm|index/jfzn\\.htm|.*\\.pdf)"
     content_selector: ".v_news_content"
     title_include_patterns:
-      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务'
+      - '招生|简章|申请|奖学|学费|收费|费用|专业|项目|课程|入学|指南|签证|住宿|保险|进修|预科|研修|本科|硕士|博士|留学|汉语|中文|商务|缴费'
     title_exclude_patterns:
       - '活动|典礼|晚会|比赛|大赛|讲座|座谈|来访|参观|迎新|中秋|端午|春节|风采|开学|结业|校友|剪影'
     schedule: "50 6 * * *"
@@ -1591,6 +1599,10 @@ sources:
     listing_urls:
       - "http://edu.shandong.gov.cn/col/col11990/index.html"
     content_selector: "#zoom"
+    # 鲁港通 - 2026-11-27 用户指令：中小学招生只收港澳台/华侨生政策；本厅公告仅保留
+    # 涉及港澳台侨/国际学生的条目，其余中小学招生与通用通知不再入采集范围
+    title_include_patterns:
+      - '港澳|香港|澳门|台湾|华侨|侨生|侨眷|留学生|国际学生|外籍人员子女'
     schedule: "0 */8 * * *"
     rate_limit_per_minute: 4
     max_pages_per_run: 70
