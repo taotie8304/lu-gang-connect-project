@@ -76,6 +76,13 @@ _NAV_RESIDUE_LINE_RE = re.compile(
 )
 # 行内命中即可的残渣（版权行、App 商标声明）
 _NAV_RESIDUE_SUBSTR_RE = re.compile(r"版權所有|版权所有|©\s*\d{4}|(?:商標|商标)")
+# 鲁港通 - 页首无障碍「跳至主要内容/导览」跳过链接（2026-11-27 HKEAA 实测两个 <a>
+# 拼接成一行，整行词典未覆盖）；仅导入清洗使用，不计入壳页守卫，避免影响判定口径。
+_NAV_SKIP_LINK_RE = re.compile(
+    r"^(?:(?:skip to (?:the )?(?:main )?(?:content|navigation)"
+    r"|跳至(?:主要|主)?(?:內容|内容|瀏覽|浏览|導覽|导览))\s*)+$",
+    re.IGNORECASE,
+)
 # 鲁港通 - 段尾粘连的「更多」链接文本（2026-11-21 教大课程页实测
 # 「...theory and practice.Read More」与正文同一行，整行匹配删不掉）
 _NAV_INLINE_SUFFIX_RE = re.compile(
@@ -113,7 +120,11 @@ def strip_nav_residue_lines(text: str | None) -> str | None:
         return text
     kept = []
     for ln in text.splitlines():
-        if _NAV_RESIDUE_LINE_RE.match(ln.strip()) or _NAV_RESIDUE_SUBSTR_RE.search(ln):
+        if (
+            _NAV_RESIDUE_LINE_RE.match(ln.strip())
+            or _NAV_RESIDUE_SUBSTR_RE.search(ln)
+            or _NAV_SKIP_LINK_RE.match(ln.strip())
+        ):
             continue
         # 鲁港通 - 段落行仅剔除行尾「更多」链接文本，正文本身保留
         kept.append(_NAV_INLINE_SUFFIX_RE.sub("", ln.rstrip()))

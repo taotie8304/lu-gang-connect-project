@@ -413,17 +413,22 @@ sources:
     organization: 香港考试及评核局
     base_domains: [www.hkeaa.edu.hk]
     # 鲁港通 - SBA 专题页 302 到独立顶级路径 /tc|en/sba/（2026-11-19 实测 14 页 REDIRECT_OUT_OF_ALLOWLIST）
-    allowed_path_prefixes: [/tc/hkdse/, /en/hkdse/, /tc/sba/, /en/sba/]
+    # 鲁港通 - 2026-11-27 放行考试费 PDF 目录：栏目页归档后考试费无来源，实测 2027ExamFees_HKDSE_Chi.pdf（207KB）等 5 个 PDF 直链
+    allowed_path_prefixes: [/tc/hkdse/, /en/hkdse/, /tc/sba/, /en/sba/, /DocLibrary/HKDSE/Exam_Fees/]
     discovery_method: listing
     listing_urls:
       - "https://www.hkeaa.edu.hk/tc/hkdse/"
       - "https://www.hkeaa.edu.hk/en/hkdse/"
-    link_pattern: "https?://www\\.hkeaa\\.edu\\.hk/(tc|en)/(hkdse|sba)/"
+      # 鲁港通 - 考试费 PDF 挂载页（max_depth=1 下距根 3 层不可达，直接作为入口）
+      - "https://www.hkeaa.edu.hk/tc/hkdse/admin/exam_reg_fee/exam_fee/"
+      - "https://www.hkeaa.edu.hk/en/hkdse/admin/exam_reg_fee/exam_fee/"
+    link_pattern: "https?://www\\.hkeaa\\.edu\\.hk/((tc|en)/(hkdse|sba)/|DocLibrary/HKDSE/Exam_Fees/)"
     # 鲁港通 - ASP.NET 整页 form 包裹（2026-11-18 实测零正文修复）
     keep_form: true
     schedule: "20 3 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 80
+    # 鲁港通 - 2026-11-27 提至 120：存量 77 篇 + 新增 5 个考试费 PDF，80 上限会截断尾部
+    max_pages_per_run: 120
     enabled: true
 
   - id: hk_edu_jupas
@@ -441,7 +446,8 @@ sources:
     title_exclude_patterns: ["Personal Data", "個人資料保障", "个人资料保障", "Privacy", "私隱", "隐私"]
     schedule: "30 3 * * *"
     rate_limit_per_minute: 4
-    max_pages_per_run: 80
+    # 鲁港通 - 2026-11-27 提至 120：存量 108 篇超原 80 上限，force 重采会被截断
+    max_pages_per_run: 120
     enabled: true
 
   - id: hk_edu_ugc

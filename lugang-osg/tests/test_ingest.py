@@ -2792,3 +2792,32 @@ def test_strip_nav_residue_lines_removes_inline_read_more_suffix():
     assert "between theory and practice." in cleaned
     # 句尾带句号的正文 sentence 不受影响
     assert "handbook." in cleaned
+
+
+def test_strip_nav_residue_lines_removes_skip_to_content_links():
+    """鲁港通 - 英文/繁体页首无障碍「跳至主要内容/导览」跳过链接（2026-11-27 HKEAA 实测
+    两个 <a> 拼接成一行），整行词典未覆盖，导入前须整行剔除，正文与标题不受影响。"""
+    from app.ingest.extract import strip_nav_residue_lines
+
+    text = (
+        "Skip to main contentSkip to navigation\n"
+        "\n"
+        "Exam Fees\n"
+        "跳至主要內容跳至瀏覽\n"
+        "考評局公布 2027 年考試費，甲類科目每科 573 元。"
+    )
+    cleaned = strip_nav_residue_lines(text)
+    assert cleaned is not None
+    assert "Skip to main content" not in cleaned
+    assert "跳至主要內容" not in cleaned
+    assert "Exam Fees" in cleaned
+    assert "考評局公布 2027 年考試費" in cleaned
+
+
+def test_strip_nav_residue_lines_keeps_sentence_mentioning_skip():
+    """鲁港通 - 仅剔除整行跳过链接；正文句子中出现 skip content 字样不受影响。"""
+    from app.ingest.extract import strip_nav_residue_lines
+
+    text = "Use the skip to main content link for keyboard navigation guidance."
+    cleaned = strip_nav_residue_lines(text)
+    assert cleaned == text
