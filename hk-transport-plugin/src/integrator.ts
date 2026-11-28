@@ -441,6 +441,14 @@ export function generateTips(
     tips.push(`路线包含约 ${walkKm} 公里步行距离，预计步行 ${walkMin} 分钟，请穿着舒适的鞋子`);
   }
 
+  // 鲁港通 - 渡轮班次较疏且无实时接口：说明班距与船程口径，避免模型给出「下一班约N分钟」的假精确
+  const hasFerry = routes.some(r => r.steps.some(s => s.type === 'ferry'));
+  if (hasFerry) {
+    tips.push(
+      '渡轮班次较疏（部分航线约 20–60 分钟一班），候船时间未计入总时长；政府数据集也未区分普通船与快速船的船程，请以码头时间表或营办商 App 为准。'
+    );
+  }
+
   // 无障碍设施提示（Requirements 12.4）
   const hasMTR = routes.some(r => r.steps.some(s => s.type === 'mtr'));
   if (hasMTR) {

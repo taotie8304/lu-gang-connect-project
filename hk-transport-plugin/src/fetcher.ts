@@ -734,8 +734,9 @@ export async function enrichCandidateWithRealTimeETA(
   }
 
   // 鲁港通 - 不虚构候车时间：查不到班次就如实记为「无班次信息」。
-  // 仅无实时接口且班次稳定的模式（小巴/电车/渡轮/山顶缆车）保留 5 分钟静态估算
-  const NO_ETA_MODES = new Set(['gmb', 'tram', 'ferry', 'ptram']);
+  // 仅无实时接口且班次密集稳定的模式（小巴/电车/山顶缆车）保留 5 分钟静态估算；
+  // 渡轮班距常达 20–60 分钟，给 5 分钟会误导用户，须如实无班次并由 tips 说明班距与码头时间表
+  const NO_ETA_MODES = new Set(['gmb', 'tram', 'ptram']);
   if (nextBusMinutes === -1 && NO_ETA_MODES.has(candidate.mode ?? '')) {
     nextBusMinutes = 5;
     dataSource = 'static';

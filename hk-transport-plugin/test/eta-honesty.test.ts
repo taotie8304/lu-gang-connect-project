@@ -8,9 +8,11 @@ import {
   ESTIMATE_TIP,
   companyLabel,
   routeServiceHint,
+  fareNoteFor,
 } from '../src/eta';
 import { transitCandidateToRouteOption, generateTips } from '../src/integrator';
 import { buildRouteOptions, buildRealTimeData, OutputType } from '../src/index';
+import { enrichCandidateWithRealTimeETA } from '../src/fetcher';
 import type { TransitCandidate } from '../src/types';
 
 function busCandidate(over: Partial<TransitCandidate> = {}): TransitCandidate {
@@ -148,6 +150,30 @@ describe('路线渲染：来源与票价口径', () => {
       busCandidate({ company: 'MTR', mode: 'mtr', fare: 27 })
     );
     expect(route.fareNote).toBeUndefined();
+  });
+});
+
+describe('渡轮口径：票价船种与候船诚实', () => {
+  it('渡轮票价标注为数据集单一票价，不区分船种与平日假日', () => {
+    const note = fareNoteFor('ferry', 34.7);
+    expect(note).toContain('渡轮');
+    expect(note).toContain('单一票价');
+    expect(note).toContain('快速船');
+    expect(note).toContain('平日');
+  });
+
+  it('渡轮不再虚构 5 分钟静态候船', async () => {
+    const cand = busCandidate({ company: 'FERRY', mode: 'ferry', route: '中環 - 榕樹灣', fare: 34.7 });
+    const out = await enrichCandidateWithRealTimeETA(cand);
+    expect(out.realTimeETA!.nextBusMinutes).toBe(-1);
+  });
+
+  it('渡轮方案附带班距与码头时间表提示', () => {
+    const route = transitCandidateToRouteOption(
+      busCandidate({ company: 'FERRY', mode: 'ferry', route: '中環 - 榕樹灣', fare: 34.7 })
+    );
+    const tips = generateTips([route], '中环', '榕树湾');
+    expect(tips.some((t) => t.includes('渡轮') && t.includes('班次较疏'))).toBe(true);
   });
 });
 

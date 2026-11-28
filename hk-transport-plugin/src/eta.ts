@@ -54,11 +54,14 @@ export function routeServiceHint(routeName: string, mode?: string): string | und
   return undefined;
 }
 
-/** 巴士／小巴票价口径：数据集只有全程票价，分段收费需提醒 */
+/** 巴士／小巴票价口径：数据集只有全程票价，分段收费需提醒；渡轮为单一票价，不分船种与平日假日 */
 export function fareNoteFor(mode: string | undefined, fare: number | null | undefined): string | undefined {
   if (typeof fare !== 'number' || fare <= 0) return undefined;
   if (mode === 'bus' || mode === 'gmb') {
     return `全程票价 HK$${fare}，中途上车按分段收费，以站牌为准`;
+  }
+  if (mode === 'ferry') {
+    return `渡轮票价 HK$${fare} 为政府数据集单一票价，未区分普通船/快速船与平日/假日，实际票价与船程以营办商时间表为准`;
   }
   return undefined;
 }
