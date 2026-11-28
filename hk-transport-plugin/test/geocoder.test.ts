@@ -233,7 +233,10 @@ describe('机场全称识别（回归：香港国际机场不得错配香港站�
   it('机场坐标在本地规划器能出路线（旺角 → 机场）', async () => {
     const dest = geocode('香港国际机场');
     expect(dest).toBeDefined();
-    const plan = await planPublicTransit(22.3193, 114.1694, dest!.lat, dest!.lng);
+    // 鲁港通 - 固定周一日间出发，避免 CI 在港铁/巴士收车时段运行被服务期过滤
+    const plan = await planPublicTransit(22.3193, 114.1694, dest!.lat, dest!.lng, {
+      departure: new Date('2026-11-30T10:00:00+08:00'),
+    });
     expect(plan.candidates.length, '旺角 → 机场应规划出至少一条路线').toBeGreaterThan(0);
   });
 });

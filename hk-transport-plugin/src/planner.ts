@@ -16,8 +16,13 @@ import { TRANSIT_DATA, type TransitStop } from './data/transit';
 import { planMtrJourney } from './data/mtr-network';
 import { estimateRideMinutes, segmentRunMinutes } from './journey-time';
 import { routeServiceHint } from './eta';
+import { classifyService, isOvernightRoute, hongKongMinutes } from './service-window';
+
+export { isOvernightRoute };
 
 const NEARBY_RADIUS_M = 1200;
+// 方案不足 2 条时的扩展半径（P1-1 备选保障）
+const WIDE_NEARBY_RADIUS_M = 2000;
 const MAX_NEARBY_STOPS = 15;
 const MAX_CANDIDATES = 10;
 
@@ -25,12 +30,8 @@ const MAX_CANDIDATES = 10;
 const WALK_DETOUR_FACTOR = 1.4;
 
 // ============================================================
-// 通宵线识别与香港时区判断（深夜排序优化：通宵线白天沉底）
+// 服务期判定入口（P0-2：按出发时刻判断线路是否在服务期）
 // ============================================================
-
-// N/NA 字头 = 通宵巴士线（如 N23 / N21A / NA21；实测全库 N 字头均为通宵巴士）。
-// 通宵线车程短，历史问题：白天规划时因评分低排到首位，误导"日间推荐"
-const OVERNIGHT_ROUTE_RE = /^N[A-Z]?\d/;
 
 // 鲁港通 - 机场快线成人八达通单程票价（按上车站），普通港铁票价的十倍量级
 const AEL_FARE_BY_BOARD: Record<string, number> = {
@@ -42,23 +43,10 @@ const AEL_FARE_BY_BOARD: Record<string, number> = {
 };
 // 转乘机场快线前的普通港铁接驳段票价
 const MTR_FEEDER_FARE = 10;
-// 日间惩罚值：兜底场景（未过滤干净）仍确保日间候选整列排前
-const OVERNIGHT_DAYTIME_PENALTY = 1000;
 
-export function isOvernightRoute(routeName: string): boolean {
-  return OVERNIGHT_ROUTE_RE.test((routeName || '').trim());
-}
-
-const HK_HOUR_FORMAT = new Intl.DateTimeFormat('en-GB', {
-  timeZone: 'Asia/Hong_Kong',
-  hour: '2-digit',
-  hourCycle: 'h23',
-});
-
-/** 香港时区是否处于日间（06:00–23:59）；通宵线只在 00:00–05:59 保持原始排序 */
+/** 香港时区是否处于日间（06:00–23:59）；排序层继续用它判断通宵线沉底 */
 export function isHongKongDaytime(now: Date = new Date()): boolean {
-  const hour = parseInt(HK_HOUR_FORMAT.format(now), 10);
-  return hour >= 6 && hour <= 23;
+  return hongKongMinutes(now) >= 6 * 60;
 }
 
 // MTR 站点名 → { line(线路代码), code(车站代码) } 映射表
@@ -347,13 +335,32 @@ function findNearbyStops(
 // 在不同公司/路线的 stopId 不同，按 sid 匹配会漏掉大量直达）
 // ============================================================
 
+/** 被服务期过滤掉的线路（如深夜已收车的日间线），供上层如实提示 */
+export interface ExcludedServiceRoute {
+  route: string;
+  reason: string;
+}
+
+interface DirectSearchOptions {
+  /** 出发时刻（决定线路是否在服务期） */
+  departure: Date;
+  radius?: number;
+  /** 诊断用：保留已收车线路（仅用于「是否只有通宵线覆盖」判定） */
+  includeOutOfService?: boolean;
+}
+
+interface DirectSearchResult {
+  candidates: TransitCandidate[];
+  excluded: Map<string, string>;
+}
+
 function findDirectRoutes(
   index: TransitIndex,
   originLat: number, originLng: number,
   destLat: number, destLng: number,
-  radius: number = NEARBY_RADIUS_M,
-  includeOvernight = false
-): TransitCandidate[] {
+  options: DirectSearchOptions
+): DirectSearchResult {
+  const { departure, radius = NEARBY_RADIUS_M, includeOutOfService = false } = options;
   // 对所有 routeStopPoints 做单次扫描，分别收集：
   //   nearOrigin[rid|seq] → 该路线方向上，距起点最近的那个站
   //   nearDest[rid|seq]   → 该路线方向上，距终点最近的那个站
@@ -365,9 +372,7 @@ function findDirectRoutes(
   }
   const nearOrigin = new Map<string, NearEntry>();
   const nearDest = new Map<string, NearEntry>();
-
-  // 鲁港通 - 日间标记：通宵线（N/NA 字头）在日间时段加惩罚分沉底
-  const daytime = isHongKongDaytime();
+  const excluded = new Map<string, string>();
 
   const latEps = 0.01, lngEps = 0.01;
 
@@ -417,9 +422,23 @@ function findDirectRoutes(
     const numStops = d.sseq - o.sseq;
     if (numStops <= 0) continue;
 
+    // 鲁港通 - 服务期判定：按出发时刻而非「现在」，已收车线路不进候选
+    const verdict = classifyService(meta.name, meta.mode, departure);
+    if (verdict.status === 'out-of-service' && !includeOutOfService) {
+      if (!excluded.has(meta.name)) excluded.set(meta.name, verdict.note || '此时段不在服务时间');
+      continue;
+    }
+
+    // 鲁港通 - 真实方向终点：同一 rid 两个方向共用 origin/dest 元信息，
+    // 「往 X」必须取该方向末站，否则会把反方向终点写进方案
+    const dirStops = index.stopsByRoute.get(key);
+    const lastSid = dirStops?.[dirStops.length - 1]?.sid;
+    const directionLabel =
+      (lastSid != null ? index.stopById.get(lastSid)?.name : undefined)?.trim() || meta.dest;
+
     // 鲁港通 - 真实车程：官方全程时间 × 站数/距离分摊，与物理速度模型取中位数
     const geom = index.routeGeom.get(key);
-    const totalStops = index.stopsByRoute.get(key)?.length ?? 0;
+    const totalStops = dirStops?.length ?? 0;
     const totalKm = geom?.totalKm ?? 0;
     const fromCum = geom?.bySseq.get(o.sseq);
     const toCum = geom?.bySseq.get(d.sseq);
@@ -438,19 +457,18 @@ function findDirectRoutes(
 
     const isOvernight = isOvernightRoute(meta.name);
 
-    // 白天直接剔除通宵线，不再给出「白天可乘 N 线」的误导方案
-    if (isOvernight && daytime && !includeOvernight) continue;
-
     // 步行距离校正（城市直线距离 × 1.4 ≈ 实际道路距离）
     const correctedWalkIn = o.distanceM === 0 ? 0 : Math.round(o.distanceM * WALK_DETOUR_FACTOR);
     const correctedWalkOut = d.distanceM === 0 ? 0 : Math.round(d.distanceM * WALK_DETOUR_FACTOR);
     const walkMinutes = (correctedWalkIn + correctedWalkOut) / 80;
-    const score = rideMinutes + walkMinutes + (isOvernight && daytime ? OVERNIGHT_DAYTIME_PENALTY : 0);
+    const score = rideMinutes + walkMinutes;
 
+    const hasFare = typeof meta.fare === 'number' && meta.fare > 0;
     candidates.push({
       company: modeToCompany(meta.mode, meta.co),
       mode: meta.mode,
       route: meta.name,
+      rid,
       bound: seq === 1 ? 'O' : 'I',
       serviceType: '1',
       boardStopId: String(o.sid),
@@ -462,17 +480,18 @@ function findDirectRoutes(
       numStops,
       walkInMeters: correctedWalkIn,
       walkOutMeters: correctedWalkOut,
-      destination: meta.dest,
+      destination: directionLabel,
+      directionLabel,
       fare: meta.fare,
+      fareIsEstimate: hasFare ? false : undefined,
+      fareSource: hasFare ? 'data.gov.hk 路线票价（全程）' : undefined,
       score,
       isOvernight,
       rideMinutes,
       officialRouteMinutes: meta.time,
       legKm: Math.round(legKm * 10) / 10,
       totalKm: Math.round(totalKm * 10) / 10,
-      serviceNote: isOvernight
-        ? '通宵线（约 00:30–05:00 提供服务），日间不适用'
-        : routeServiceHint(meta.name, meta.mode),
+      serviceNote: verdict.note ?? routeServiceHint(meta.name, meta.mode),
     });
   }
 
@@ -486,7 +505,7 @@ function findDirectRoutes(
 
   const arr = Array.from(best.values());
   arr.sort((a, b) => a.score - b.score);
-  return arr.slice(0, MAX_CANDIDATES);
+  return { candidates: arr.slice(0, MAX_CANDIDATES), excluded };
 }
 
 // ============================================================
@@ -561,7 +580,11 @@ function recommendMTR(
     walkInMeters,
     walkOutMeters,
     destination: `${alightStation}站`,
+    directionLabel: `${alightStation}站`,
     fare: estFare,
+    // 机场快线按官方票价表，普通港铁按里程估算（非官方票价）
+    fareIsEstimate: aelLeg ? false : true,
+    fareSource: aelLeg ? '机场快线票价表（官方）' : '按里程估算（非官方票价）',
     score: rideMinutes + (walkInMeters + walkOutMeters) / 80,
     rideMinutes,
     mtrLegs: journey.legs,
@@ -575,27 +598,65 @@ function recommendMTR(
 // 主入口
 // ============================================================
 
+export interface PlanOptions {
+  /** 出发时刻（默认现在），决定线路是否在服务期 */
+  departure?: Date;
+}
+
 export interface PlanResult {
   candidates: TransitCandidate[];
   indexError?: string;
   noNearbyStops?: boolean;
   /** 日间查询且只找到通宵线：上层应提示「白天无此线路」 */
   overnightOnly?: boolean;
+  /** 因服务期被排除的线路（收车/假日专线等），供上层如实提示 */
+  excludedServiceRoutes?: ExcludedServiceRoute[];
+}
+
+function excludedToArray(excluded: Map<string, string>): ExcludedServiceRoute[] {
+  return Array.from(excluded.entries())
+    .map(([route, reason]) => ({ route, reason }))
+    .slice(0, 20);
 }
 
 export async function planPublicTransit(
   originLat: number, originLng: number,
-  destLat: number, destLng: number
+  destLat: number, destLng: number,
+  options: PlanOptions = {}
 ): Promise<PlanResult> {
   const index = buildIndex();
+  const departure = options.departure ?? new Date();
 
-  // 直接坐标匹配找直达路线（跨公司/跨 mode，日间已剔除通宵线）
-  const candidates = findDirectRoutes(index, originLat, originLng, destLat, destLng);
+  // 直接坐标匹配找直达路线（跨公司/跨 mode，已收车线路被排除并记录原因）
+  let { candidates, excluded } = findDirectRoutes(
+    index, originLat, originLng, destLat, destLng, { departure }
+  );
 
-  // 额外推 MTR（作为高优先级选项）
-  const mtrRec = recommendMTR(index, originLat, originLng, destLat, destLng);
-  if (mtrRec) {
-    candidates.unshift(mtrRec);
+  // 鲁港通 - 方案不足 2 条时扩展搜索半径，合并去重（P1-1 备选保障）
+  if (candidates.length < 2) {
+    const wide = findDirectRoutes(
+      index, originLat, originLng, destLat, destLng,
+      { departure, radius: WIDE_NEARBY_RADIUS_M }
+    );
+    for (const [route, reason] of wide.excluded) {
+      if (!excluded.has(route)) excluded.set(route, reason);
+    }
+    const best = new Map<string, TransitCandidate>();
+    for (const c of [...candidates, ...wide.candidates]) {
+      const k = `${c.company}|${c.route}|${c.bound}`;
+      const prev = best.get(k);
+      if (!prev || c.score < prev.score) best.set(k, c);
+    }
+    candidates = Array.from(best.values());
+  }
+
+  // 额外推 MTR（作为高优先级选项）；港铁收车时如实记入排除清单
+  const mtrVerdict = classifyService('港铁', 'mtr', departure);
+  if (mtrVerdict.status === 'out-of-service') {
+    if (!excluded.has('港铁')) excluded.set('港铁', mtrVerdict.note || '港铁此时段已停止服务');
+  } else {
+    const mtrRec = recommendMTR(index, originLat, originLng, destLat, destLng);
+    if (mtrRec) candidates.unshift(mtrRec);
   }
 
   if (candidates.length === 0) {
@@ -606,27 +667,28 @@ export async function planPublicTransit(
 
     // 白天无候选时，判断是否只有通宵线覆盖（用于给出更准确的无方案说明）
     let overnightOnly = false;
-    if (hasNearby && isHongKongDaytime()) {
-      const nightCandidates = findDirectRoutesForOvernightOnly(index, originLat, originLng, destLat, destLng);
-      overnightOnly = nightCandidates.length > 0;
+    if (hasNearby && isHongKongDaytime(departure)) {
+      const retry = findDirectRoutes(
+        index, originLat, originLng, destLat, destLng,
+        { departure, includeOutOfService: true }
+      );
+      overnightOnly = retry.candidates.some(c => c.isOvernight);
     }
 
-    return { candidates: [], noNearbyStops: !hasNearby, overnightOnly };
+    return {
+      candidates: [],
+      noNearbyStops: !hasNearby,
+      overnightOnly,
+      excludedServiceRoutes: excludedToArray(excluded),
+    };
   }
 
   // 统一重新排序
   candidates.sort((a, b) => a.score - b.score);
-  return { candidates: candidates.slice(0, MAX_CANDIDATES) };
-}
-
-/** 仅供「日间只剩通宵线」的判定使用：临时关闭日间过滤，看是否有通宵线覆盖 */
-function findDirectRoutesForOvernightOnly(
-  index: TransitIndex,
-  originLat: number, originLng: number,
-  destLat: number, destLng: number
-): TransitCandidate[] {
-  return findDirectRoutes(index, originLat, originLng, destLat, destLng, NEARBY_RADIUS_M, true)
-    .filter(c => c.isOvernight);
+  return {
+    candidates: candidates.slice(0, MAX_CANDIDATES),
+    excludedServiceRoutes: excludedToArray(excluded),
+  };
 }
 
 // 为外部诊断保留

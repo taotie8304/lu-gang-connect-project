@@ -238,6 +238,14 @@ export interface RouteOption {
   steps: RouteStep[];
   estimatedCost: number;
   fareNote?: string;          // 票价口径（巴士/小巴为全程票价，中途上车按分段收费）
+  /** 鲁港通 - 门到门总时长（含步行与候车），与车程分开报告 */
+  doorToDoorMinutes?: number;
+  /** 鲁港通 - 车程（不含候车与步行） */
+  inVehicleMinutes?: number;
+  /** 鲁港通 - 票价是否为估算值（非官方票价） */
+  fareIsEstimate?: boolean;
+  /** 鲁港通 - 票价来源口径，供回答原样转述 */
+  fareSource?: string;
   recommended?: boolean;      // 是否为推荐路线（基于实时数据的最优选择）
   realTimeData?: {
     nextBusArrival: string;   // 下一班车「实时」或「约X分钟（估算）」
@@ -331,7 +339,15 @@ export interface TransitCandidate {
   walkInMeters: number;       // 起点到上车站步行距离
   walkOutMeters: number;      // 下车站到终点步行距离
   destination: string;        // 路线终点站名
+  /** 鲁港通 - 路线 rid（用于反查该方向真实终点） */
+  rid?: number;
+  /** 鲁港通 - 该方向真实终点站名（「往 X」以此为准，不套用另一方向的终点） */
+  directionLabel?: string;
   fare?: number | null;       // 票价（HKD）
+  /** 鲁港通 - 票价是否为估算值（如普通港铁按里程估） */
+  fareIsEstimate?: boolean;
+  /** 鲁港通 - 票价来源口径 */
+  fareSource?: string;
   score: number;              // 综合评分（越小越优）
   /** 鲁港通 - 是否为通宵线（N/NA 字头巴士）：白天停开，日间不再作为推荐 */
   isOvernight?: boolean;

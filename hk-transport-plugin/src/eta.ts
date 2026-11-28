@@ -10,9 +10,9 @@ export function isEstimatedEta(dataSource?: EtaDataSource | string): boolean {
   return !dataSource || dataSource === 'static';
 }
 
-/** 候车时间措辞：实时给确定值，估算必须显式标注 */
+/** 候车时间措辞：实时给确定值，估算必须显式标注；无班次数据时如实说明 */
 export function formatNextBusArrival(minutes: number, dataSource?: EtaDataSource | string): string {
-  if (minutes < 0) return '暂无数据';
+  if (minutes < 0) return '暂无班次信息（可能已收车）';
   const estimated = isEstimatedEta(dataSource);
   if (minutes === 0) return estimated ? '即将到达（估算）' : '即将到达';
   return estimated ? `约${minutes}分钟（估算）` : `${minutes}分钟后`;

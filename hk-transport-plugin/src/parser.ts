@@ -2,6 +2,7 @@
 
 import type { ParsedQuestion } from './types';
 import { findKnownLocationsInText } from './stop-db';
+import { addHongKongDays, formatHongKongDateTime, fromHongKongTime, hongKongDateParts } from './service-window';
 
 // ============================================================
 // 地点名称词典（口岸、地标、车站等常见地点）
@@ -596,6 +597,90 @@ export function extractTimeRequirement(question: string): string {
   }
 
   return 'now';
+}
+
+// ============================================================
+// 出发时刻解析（P0-1：用户说「明早5点/凌晨0:30」不能按当前时刻规划）
+// ============================================================
+
+const DATE_TIME_RE = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[T ](\d{1,2}):(\d{2})(?::\d{2})?\s*(Z|[+-]\d{2}:?\d{2})?$/;
+const CLOCK_RE = /^(\d{1,2}):(\d{2})$/;
+
+/** 解析结构化 departAt：ISO / "YYYY-MM-DD HH:mm"（无时区按香港时间）/ "HH:mm"（已过则次日） */
+export function parseDepartureAt(raw?: string, now: Date = new Date()): Date | undefined {
+  if (!raw) return undefined;
+  const s = raw.trim();
+  if (!s) return undefined;
+
+  const dt = s.match(DATE_TIME_RE);
+  if (dt) {
+    const [, y, mo, d, h, mi, tz] = dt;
+    if (tz) {
+      const at = new Date(s);
+      return Number.isNaN(at.getTime()) ? undefined : at;
+    }
+    const at = fromHongKongTime(Number(y), Number(mo), Number(d), Number(h), Number(mi));
+    return Number.isNaN(at.getTime()) ? undefined : at;
+  }
+
+  const clock = s.match(CLOCK_RE);
+  if (clock) {
+    const hour = Number(clock[1]);
+    const minute = Number(clock[2]);
+    if (hour > 23 || minute > 59) return undefined;
+    const p = hongKongDateParts(now);
+    const at = fromHongKongTime(p.year, p.month, p.day, hour, minute);
+    return at.getTime() <= now.getTime() ? addHongKongDays(at, 1) : at;
+  }
+  return undefined;
+}
+
+const DEPARTURE_PREFIX_RE =
+  /((?:今天|今日|明天|明日|明早|明晚|今晚|今早|今晨|凌晨|早上|上午|中午|下午|傍晚|晚上|夜晚|次日|隔天)*)\s*(\d{1,2})\s*[:：点時时]\s*(半|\d{1,2})?\s*分?/;
+
+/** 从问题文本解析「明天早上5点 / 凌晨0:30 / 下午3点半」等出发时刻 */
+export function extractDepartureTime(
+  question: string,
+  now: Date = new Date()
+): { at?: Date; label?: string } {
+  const q = (question || '').trim();
+  if (!q) return {};
+  const m = q.match(DEPARTURE_PREFIX_RE);
+  if (!m) return {};
+
+  const prefix = m[1] || '';
+  let hour = parseInt(m[2], 10);
+  const minuteRaw = m[3];
+  const minute = minuteRaw === '半' ? 30 : minuteRaw ? parseInt(minuteRaw, 10) : 0;
+  if (hour > 23 || minute > 59) return {};
+
+  const isPm = /下午|傍晚|晚上|夜晚|今晚|明晚/.test(prefix);
+  const isNoon = prefix.includes('中午');
+  if ((isPm || isNoon) && hour > 0 && hour < 11) hour += 12;
+  if (isPm && hour === 12) hour = 0; // 晚上12点 = 次日 00:00
+
+  const explicitTomorrow = /明天|明日|明早|明晚|次日|隔天/.test(prefix);
+  const p = hongKongDateParts(now);
+  let at = fromHongKongTime(p.year, p.month, p.day, hour, minute);
+  if (explicitTomorrow) {
+    at = addHongKongDays(at, 1);
+  } else if (at.getTime() <= now.getTime()) {
+    at = addHongKongDays(at, 1);
+  }
+  return { at, label: formatHongKongDateTime(at) };
+}
+
+/** 出发时刻决议：结构化 departAt 优先，其次问题文本，最后当前时刻 */
+export function resolveDeparture(
+  departAt?: string,
+  question?: string,
+  now: Date = new Date()
+): { at: Date; explicit: boolean } {
+  const fromParam = parseDepartureAt(departAt, now);
+  if (fromParam) return { at: fromParam, explicit: true };
+  const fromText = question ? extractDepartureTime(question, now) : {};
+  if (fromText.at) return { at: fromText.at, explicit: true };
+  return { at: now, explicit: false };
 }
 
 // ============================================================

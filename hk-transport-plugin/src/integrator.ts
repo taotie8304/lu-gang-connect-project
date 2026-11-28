@@ -16,6 +16,7 @@ import type {
 } from './types';
 import type { BatchFetchResult } from './fetcher';
 import { companyLabel, fareNoteFor, formatNextBusArrival, ESTIMATE_TIP } from './eta';
+import { hongKongMinutes } from './service-window';
 
 // ============================================================
 // 7.1 TDAS 路线方案解析（Requirements 2.2, 2.3, 2.4, 2.6）
@@ -360,12 +361,9 @@ function involvesBorder(origin?: string, destination?: string): boolean {
   return BORDER_KEYWORDS.some(kw => text.includes(kw));
 }
 
-/** 检查是否在高峰时段 */
+/** 检查是否在高峰时段（按香港时间，避免服务器时区影响） */
 function isPeakHour(date?: Date): boolean {
-  const d = date || new Date();
-  const hour = d.getHours();
-  const minute = d.getMinutes();
-  const timeVal = hour * 60 + minute;
+  const timeVal = hongKongMinutes(date || new Date());
   // 早高峰 07:00-09:30，晚高峰 17:00-19:30
   return (timeVal >= 420 && timeVal <= 570) || (timeVal >= 1020 && timeVal <= 1170);
 }
@@ -416,6 +414,12 @@ export function generateTips(
   }
   if (hasEstimate) {
     tips.push(ESTIMATE_TIP);
+  }
+
+  // 鲁港通 - 无班次信息（可能已收车）时如实说明，并提醒总时长未含候车
+  const noSchedule = routes.some(r => r.realTimeData?.nextBusArrival?.includes('可能已收车'));
+  if (noSchedule) {
+    tips.push('部分路线暂无班次信息（可能已收车），方案总时长未含候车时间，请以站牌或运营方 App 为准。');
   }
 
   // 高峰时段提示（Requirements 12.1）
@@ -557,19 +561,21 @@ export function transitCandidateToRouteOption(
       });
     }
   } else {
+    // 鲁港通 - 「往 X」以该方向真实终点为准，不套用另一方向的终点
+    const heading = cand.directionLabel || cand.destination;
     const rideDesc = nextBusInfo
       ? mode === 'mtr'
-        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站），下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达 🚇`
-        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"，下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达`
+        ? `乘坐 港铁 ${heading} 方向列车（${cand.numStops} 站），下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达 🚇`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${heading}），${cand.numStops} 站到"${cand.alightStopName}"，下一班${formatNextBusArrival(nextBusInfo.minutesAway, 'realtime')}到达`
       : mode === 'mtr'
-        ? `乘坐 港铁 ${cand.destination} 方向列车（${cand.numStops} 站）${waitText}`
-        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${cand.destination}），${cand.numStops} 站到"${cand.alightStopName}"${waitText}`;
+        ? `乘坐 港铁 ${heading} 方向列车（${cand.numStops} 站）${waitText}`
+        : `乘坐 ${modeLabel} ${cand.route} 线（往 ${heading}），${cand.numStops} 站到"${cand.alightStopName}"${waitText}`;
 
     steps.push({
       type: stepType,
       description: cand.serviceNote ? `${rideDesc}。${cand.serviceNote}` : rideDesc,
       route: cand.route,
-      routeDetail: `${companyLabel(cand.company)} ${cand.route} ${cand.bound === 'O' ? '去程' : '回程'}`,
+      routeDetail: `${companyLabel(cand.company)} ${cand.route}（往 ${heading}）`,
       from: cand.boardStopName,
       to: cand.alightStopName,
       duration: rideMin + waitMin,
@@ -598,6 +604,11 @@ export function transitCandidateToRouteOption(
     steps,
     estimatedCost: typeof cand.fare === 'number' ? cand.fare : 0,
     fareNote: fareNoteFor(mode, cand.fare),
+    // 鲁港通 - 门到门总时长与车程分开报告（总时长含步行/候车，车程不含）
+    doorToDoorMinutes: totalTime,
+    inVehicleMinutes: rideMin,
+    fareIsEstimate: cand.fareIsEstimate,
+    fareSource: cand.fareSource,
   };
 }
 

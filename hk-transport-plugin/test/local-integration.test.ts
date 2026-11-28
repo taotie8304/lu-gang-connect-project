@@ -13,10 +13,14 @@ import { createAPICallPlan } from '../src/router';
 // ============================================================
 
 describe('端到端流程：各种用户问题', () => {
+  // 鲁港通 - 固定周一日间出发，避免 CI 在收车时段运行导致有解场景被服务期过滤
+  const DAY_DEPART_AT = '2026-11-30T10:00:00+08:00';
+
   // 简体中文路线查询
   it('简体中文：从口岸到市区', async () => {
     const output = await tool({
       question: '从落马洲口岸到香港立法会怎么走',
+      departAt: DAY_DEPART_AT,
       language: 'zh-CN',
     });
     const v = OutputType.safeParse(output);
@@ -32,6 +36,7 @@ describe('端到端流程：各种用户问题', () => {
   it('繁体中文：從口岸到市區', async () => {
     const output = await tool({
       question: '從落馬洲到銅鑼灣怎麼走',
+      departAt: DAY_DEPART_AT,
       language: 'zh-HK',
     });
     const v = OutputType.safeParse(output);
@@ -44,6 +49,7 @@ describe('端到端流程：各种用户问题', () => {
   it('英文：from border to city', async () => {
     const output = await tool({
       question: 'from central to causeway bay',
+      departAt: DAY_DEPART_AT,
       language: 'en',
     });
     const v = OutputType.safeParse(output);
@@ -56,6 +62,7 @@ describe('端到端流程：各种用户问题', () => {
   it('带交通偏好：坐地铁', async () => {
     const output = await tool({
       question: '坐地铁从尖沙咀到中环',
+      departAt: DAY_DEPART_AT,
       language: 'zh-CN',
     });
     const v = OutputType.safeParse(output);

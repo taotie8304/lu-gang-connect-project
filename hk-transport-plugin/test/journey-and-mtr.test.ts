@@ -294,8 +294,11 @@ describe('港铁票价估算', () => {
   const AIRPORT = { lat: 22.313642, lng: 113.937089 };
   const TST = { lat: 22.2783, lng: 114.1747 };
 
+  // 鲁港通 - 固定周一日间出发，避免 CI 在收车时段运行被服务期过滤
+  const DAY_DEPARTURE = { departure: new Date('2026-11-30T10:00:00+08:00') };
+
   it('旺角→机场走机场快线时票价应在 HK$70 以上（旧算法只算出 HK$30）', async () => {
-    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, AIRPORT.lat, AIRPORT.lng);
+    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, AIRPORT.lat, AIRPORT.lng, DAY_DEPARTURE);
     const mtr = res.candidates.find((c) => c.mode === 'mtr');
     expect(mtr).toBeDefined();
     expect(mtr!.mtrLegs?.some((leg) => leg.lineId === 'AEL')).toBe(true);
@@ -303,7 +306,7 @@ describe('港铁票价估算', () => {
   });
 
   it('不含机场快线的市区行程仍是普通港铁票价量级', async () => {
-    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, TST.lat, TST.lng);
+    const res = await planPublicTransit(MONG_KOK.lat, MONG_KOK.lng, TST.lat, TST.lng, DAY_DEPARTURE);
     const mtr = res.candidates.find((c) => c.mode === 'mtr');
     expect(mtr).toBeDefined();
     expect(mtr!.mtrLegs?.some((leg) => leg.lineId === 'AEL')).toBe(false);

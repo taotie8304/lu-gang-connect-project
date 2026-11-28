@@ -3,7 +3,7 @@
 // 导出 InputType, OutputType, tool 供根目录 index.ts 使用
 
 import { z } from 'zod';
-import { parseQuestion } from './parser';
+import { parseQuestion, resolveDeparture } from './parser';
 import { geocode, geocodeRoute, geocodeRouteWithFallback, isOrganizationName } from './geocoder';
 import { createAPICallPlan } from './router';
 import { executeBatchFetch, fetchKMBStopETA, enrichCandidatesWithRealTimeETA } from './fetcher';
@@ -14,6 +14,7 @@ import {
   generateTips,
 } from './integrator';
 import { planPublicTransit, isHongKongDaytime } from './planner';
+import { formatHongKongDateTime } from './service-window';
 import { findStopByName } from './stop-db';
 import { formatNextBusArrival, isEstimatedEta } from './eta';
 import type { ResponseMetadata, RouteOption, ParsedQuestion, TransitCandidate } from './types';
@@ -30,6 +31,7 @@ export const InputType = z.object({
   origin: z.string().optional().describe('起点（由上层 LLM 提取，如"落马洲口岸"）'),
   destination: z.string().optional().describe('终点（由上层 LLM 提取，如"尖沙咀"）'),
   transportMode: z.string().optional().describe('交通方式偏好：bus/mtr/gmb/nlb/ferry/tram'),
+  departAt: z.string().optional().describe('出发时刻（YYYY-MM-DD HH:mm，香港时间；用户提到明早/几点出发时传入）'),
   language: z.enum(['zh-CN', 'zh-HK', 'en']).default('zh-CN').describe('返回数据的语言'),
 }).refine(
   (data) => !!(data.question || data.origin || data.destination),
@@ -62,6 +64,10 @@ export const RouteOptionSchema = z.object({
   // 鲁港通 - 补齐与 types.ts RouteOption 一致的字段，避免新插件按 outputSchema 剥离推荐标记与实时数据
   recommended: z.boolean().optional(),
   fareNote: z.string().optional().describe('票价口径（巴士/小巴为全程票价，中途上车按分段收费）'),
+  doorToDoorMinutes: z.number().optional().describe('门到门总时长（含步行与候车）'),
+  inVehicleMinutes: z.number().optional().describe('车程（不含候车与步行）'),
+  fareIsEstimate: z.boolean().optional().describe('票价是否为估算值（非官方票价）'),
+  fareSource: z.string().optional().describe('票价来源口径'),
   realTimeData: z.object({
     nextBusArrival: z.string(),
     totalTravelTime: z.number(),
@@ -136,6 +142,7 @@ export function buildRouteOptions(candidates: TransitCandidate[]): RouteOption[]
     if (cand.realTimeETA) {
       routeOption.realTimeData = buildRealTimeData(cand.realTimeETA);
       routeOption.totalTime = cand.realTimeETA.totalMinutes;
+      routeOption.doorToDoorMinutes = cand.realTimeETA.totalMinutes;
     }
     return routeOption;
   });
@@ -216,6 +223,12 @@ export async function tool(
       routeNumbers: questionParsed?.routeNumbers,
       isETAQuery: questionParsed?.isETAQuery,
     };
+
+    // 鲁港通 - 出发时刻：结构化 departAt 优先，其次从问题文本解析，最后当前时刻
+    const departure = resolveDeparture(input.departAt, input.question, new Date());
+    if (departure.explicit) {
+      diagLines.push(`出发时刻: ${formatHongKongDateTime(departure.at)}（${input.departAt ? 'departAt' : '文本解析'}）`);
+    }
 
     // ===== ETA 查询：单地点 + 路线编号 + 到站时间关键词 =====
     if (parsed.isETAQuery && parsed.routeNumbers && parsed.routeNumbers.length > 0) {
@@ -327,12 +340,15 @@ export async function tool(
     const routeOptions: RouteOption[] = [];
     let plannerErrorDetail: string | undefined;
     let overnightOnly = false;
+    let excludedServiceRoutes: Array<{ route: string; reason: string }> = [];
 
     if (originCoord && destCoord) {
       const planResult = await planPublicTransit(
         originCoord.lat, originCoord.lng,
-        destCoord.lat, destCoord.lng
+        destCoord.lat, destCoord.lng,
+        { departure: departure.at }
       );
+      excludedServiceRoutes = planResult.excludedServiceRoutes ?? [];
 
       apisCalled.push('transit-planner');
       if (planResult.indexError) {
@@ -360,9 +376,9 @@ export async function tool(
         diagLines.push(`实时数据获取成功: ${realTimeCount}/${enrichedCandidates.length} 条路线`);
         
         // ========================================================
-        // 3.2 智能排序：基于实时总时长重新排序（白天通宵线沉底）
+        // 3.2 智能排序：基于实时总时长重新排序（按出发时刻判断通宵线沉底）
         // ========================================================
-        sortEnrichedCandidates(enrichedCandidates);
+        sortEnrichedCandidates(enrichedCandidates, departure.at);
         
         // 转换为 RouteOption 并标记推荐路线
         routeOptions.push(...buildRouteOptions(enrichedCandidates));
@@ -401,13 +417,15 @@ export async function tool(
           diagLines.push(`地名扩展重试: origin="${expandedOrigin}" → (${newOriginCoord.lat.toFixed(4)}, ${newOriginCoord.lng.toFixed(4)}), dest="${expandedDest}" → (${newDestCoord.lat.toFixed(4)}, ${newDestCoord.lng.toFixed(4)})`);
           const retryResult = await planPublicTransit(
             newOriginCoord.lat, newOriginCoord.lng,
-            newDestCoord.lat, newDestCoord.lng
+            newDestCoord.lat, newDestCoord.lng,
+            { departure: departure.at }
           );
 
           if (retryResult.candidates.length > 0) {
             apiStatus['transit-planner'] = 'success';
+            excludedServiceRoutes = retryResult.excludedServiceRoutes ?? excludedServiceRoutes;
             const enrichedRetry = await enrichCandidatesWithRealTimeETA(retryResult.candidates);
-            sortEnrichedCandidates(enrichedRetry);
+            sortEnrichedCandidates(enrichedRetry, departure.at);
             routeOptions.push(...buildRouteOptions(enrichedRetry));
             diagLines.push(`地名扩展成功: 找到 ${routeOptions.length} 条路线`);
             break;
@@ -440,7 +458,7 @@ export async function tool(
 
     // 5. 付款信息 & tips
     const paymentInfo = generatePaymentInfo(routeOptions);
-    const baseTips = generateTips(routeOptions, parsed.origin, parsed.destination, new Date());
+    const baseTips = generateTips(routeOptions, parsed.origin, parsed.destination, departure.at);
 
     const metadata: ResponseMetadata = {
       dataTimestamp: new Date().toISOString(),
@@ -456,7 +474,13 @@ export async function tool(
       } else if (apiStatus['transit-planner'] === 'skipped' && !destCoord && destination) {
         errorMsg = `未找到"${destination}"附近的公共交通站点。`;
       } else if (overnightOnly) {
-        errorMsg = `从"${origin || '起点'}"到"${destination || '终点'}"只有通宵巴士线路（N/NA 字头）覆盖，这类线路白天不发车，建议改乘港铁或分段出行。`;
+        errorMsg = `从"${origin || '起点'}"到"${destination || '终点'}"只有通宵巴士线路（N/NA 字头）覆盖，这类线路在 ${formatHongKongDateTime(departure.at)} 这个时段不服务，建议改乘港铁或分段出行。`;
+      } else if (excludedServiceRoutes.length > 0) {
+        // 鲁港通 - 深夜/凌晨出行：日间线路已收车时如实说明，不给已收车的方案
+        const reasons = excludedServiceRoutes.slice(0, 3)
+          .map(e => `${e.route}（${e.reason}）`)
+          .join('；');
+        errorMsg = `从"${origin || '起点'}"到"${destination || '终点'}"的常规直达线路在 ${formatHongKongDateTime(departure.at)} 不在服务时间，例如：${reasons}。建议调整出发时间或改乘其他出行方式。`;
       } else {
         // 不再建议"换更大范围查询"——该措辞会导致 LLM 反复调用工具
         errorMsg = `暂未查询到从"${origin || '起点'}"到"${destination || '终点'}"的公共交通直达路线，建议改用其他出行方式或尝试分段查询不同路段。`;
@@ -476,6 +500,16 @@ export async function tool(
       .map(([api]) => api);
 
     const tips = [...baseTips];
+    if (departure.explicit) {
+      tips.push(`已按出发时刻 ${formatHongKongDateTime(departure.at)} 评估线路服务状态。`);
+    }
+    if (excludedServiceRoutes.length > 0) {
+      const names = excludedServiceRoutes.slice(0, 3).map(e => e.route).join('、');
+      tips.push(`以下线路在出发时刻不在服务期，未纳入方案：${names}`);
+    }
+    if (routeOptions.length === 1) {
+      tips.push('当前仅找到 1 条可行方案，建议同时留意站牌与实际班次。');
+    }
     if (failedAPIs.length > 0) {
       tips.push(`部分数据源暂不可用，可能影响实时信息的准确性。`);
     }

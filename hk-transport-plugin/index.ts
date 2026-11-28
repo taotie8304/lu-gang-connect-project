@@ -49,6 +49,13 @@ const inputSchema = z.object({
       '用户的原始问题文本，如“从落马洲到尖沙咀怎么走”。当未提取 origin/destination 时由插件自动解析',
     isToolParam: true
   } satisfies InputSchemaMetaType),
+  departAt: z.string().optional().meta({
+    title: '出发时刻',
+    description: '计划出发时间（YYYY-MM-DD HH:mm，香港时间）',
+    toolDescription:
+      '出发时刻（香港时间，格式 YYYY-MM-DD HH:mm）。用户说“明早5点/今晚8点/凌晨0:30出发”等具体出发时间时必须传入，用于判断线路是否在服务时间',
+    isToolParam: true
+  } satisfies InputSchemaMetaType),
   language: z
     .enum(['zh-CN', 'zh-HK', 'en'])
     .optional()
@@ -113,7 +120,7 @@ const handler = createToolHandler({
 export default defineTool({
   manifest: {
     pluginId: 'hk_transport_assistant',
-    version: '1.0.7',
+    version: '1.0.8',
     name: {
       en: 'HK Smart Transport Assistant',
       'zh-CN': '香港智能交通助手',
@@ -127,13 +134,13 @@ export default defineTool({
         '【必須對任何香港交通問題調用此工具】處理所有香港公共交通需求——從A到B怎麼走、乘車路線規劃、實時到站時間、末班車查詢、費用和付款方式。覆蓋巴士(KMB/CTB/NLB/LWB)、小巴(GMB)、港鐵(MTR)、渡輪、電車、山頂纜車。'
     },
     toolDescription:
-      '香港公共交通万能查询工具。当用户问“从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价”等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。\n【重要】传入的地名必须是具体地理位置（如“尖沙咀”“中环”“落马洲口岸”）。如果用户提到的是组织/机构名称（如“联合会”“协会”“大厦”“公司”“学校”“医院”），请先联网搜索该组织的具体地址，再将搜索到的最近地铁站或街道名称传入此工具，不要直接传入组织名称。\n【重要】回答时必须原样转述工具返回的线路名、换乘站、站数和行驶时间，不得自行改写、合并或补充工具未返回的线路、换乘和耗时。\n【重要】候车时间必须照抄 nextBusArrival：若其中含「估算」字样（或 dataBasis 为 estimate），必须原文说明这是估算值、非实时到站，禁止改称“实时”或“实时到站”。\n【重要】票价须照抄 fareNote 口径；若提示为全程票价，必须说明中途上车按分段收费可能更低，不得把全程票价说成用户实际需付金额。\n【重要】若某条路线带 serviceNote（如通宵线、假日路线），回答时必须原样转述该服务提示。\n【重要】如果此工具返回空路线(routes为空数组)，说明确实无直达公共交通方案，请直接告知用户而不要重复调用此工具——重复调用无法改变结果。',
+      '香港公共交通万能查询工具。当用户问“从X到Y怎么走/怎么去/坐什么车/路线/乘车方案/几时到/末班车/首班车/到站时间/票价”等任何香港交通问题时，必须调用此工具。传入起点(origin)和终点(destination)直接规划路线；或传入用户原始问题文本(question)自动解析。覆盖全港所有巴士、小巴、港铁、渡轮、电车。\n【重要】用户提到具体出发时间（明早5点、今晚8点、凌晨0:30等）时，必须把出发时刻作为 departAt 传入（格式 YYYY-MM-DD HH:mm，香港时间）。\n【重要】传入的地名必须是具体地理位置（如“尖沙咀”“中环”“落马洲口岸”）。如果用户提到的是组织/机构名称（如“联合会”“协会”“大厦”“公司”“学校”“医院”），请先联网搜索该组织的具体地址，再将搜索到的最近地铁站或街道名称传入此工具，不要直接传入组织名称。\n【重要】回答时必须原样转述工具返回的线路名、换乘站、站数和行驶时间，不得自行改写、合并或补充工具未返回的线路、换乘和耗时。\n【重要】必须同时报告门到门总时长（doorToDoorMinutes，含步行与候车）与车程（inVehicleMinutes，不含候车步行），不得只报车程或自行加减。\n【重要】候车时间必须照抄 nextBusArrival：若其中含「估算」字样（或 dataBasis 为 estimate），必须原文说明这是估算值、非实时到站，禁止改称“实时”或“实时到站”；若为“暂无班次信息（可能已收车）”，必须如实转述，不得编造候车分钟数。\n【重要】票价须照抄 fareNote 口径；若 fareIsEstimate 为 true（如普通港铁按里程估算），必须说明这是估算票价；若提示为全程票价，必须说明中途上车按分段收费可能更低，不得把全程票价说成用户实际需付金额。\n【重要】若某条路线带 serviceNote（如通宵线、假日路线），回答时必须原样转述该服务提示。\n【重要】若返回 tips 中提到某些线路“不在服务期/已收车”，回答时应如实告知用户这些线路在指定时刻不服务，不得再列为可选方案。\n【重要】如果此工具返回空路线(routes为空数组)，说明确实无直达公共交通方案，请直接告知用户而不要重复调用此工具——重复调用无法改变结果。',
     tags: ['tools'],
     author: '鲁港通 (Lugang Connect)',
     versionDescription: {
-      en: 'ETA honesty: static estimates labelled as estimates (never called real-time), Chinese operator names, full-route fare basis with section-fare note, holiday/overnight service hints',
-      'zh-CN': '到站时间诚实化：无实时数据时明确标注「估算」、不再冒充实时，运营商改为中文名，票价标注全程价口径与分段收费，假日/通宵路线补充服务提示',
-      'zh-Hant': '到站時間誠實化：無實時數據時明確標註「估算」、不再冒充實時，運營商改為中文名，票價標註全程價口徑與分段收費，假日/通宵路線補充服務提示'
+      en: 'Departure-time aware service windows (no sold-out routes at night), real direction terminus, door-to-door vs in-vehicle time, ETA direction filtering, fare source labelling',
+      'zh-CN': '出发时刻服务期判定（深夜不再推荐已收车线路）、真实方向终点、门到门与车程分离、ETA 按方向过滤、票价来源标注',
+      'zh-Hant': '出發時刻服務期判定（深夜不再推薦已收車路線）、真實方向終點、門到門與車程分離、ETA 按方向過濾、票價來源標註'
     }
   },
   handler

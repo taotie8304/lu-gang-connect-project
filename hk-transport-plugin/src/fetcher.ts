@@ -8,6 +8,7 @@ import type {
   GMBETARouteStop,
   NLBETAItem,
   MTRScheduleResponse,
+  MTRStationSchedule,
   TDASRouteResult,
   KMBRoute,
   CTBRoute,
@@ -581,8 +582,10 @@ export async function enrichCandidateWithRealTimeETA(
     if (company === 'KMB' || company === 'LWB') {
       const result = await fetchKMBStopETA(boardStopId);
       if (result.success && result.data) {
+        // 鲁港通 - 必须同时匹配路线与方向：站点的 stop-eta 同时返回两个方向的班次，
+        // 只按路线过滤会把反方向的车当成上车站的下一班
         const matchingETAs = result.data.filter(
-          item => item.route.toUpperCase() === route.toUpperCase()
+          item => item.route.toUpperCase() === route.toUpperCase() && item.dir === candidate.bound
         );
         if (matchingETAs.length > 0 && matchingETAs[0].eta) {
           const etaTime = new Date(matchingETAs[0].eta);
@@ -594,8 +597,8 @@ export async function enrichCandidateWithRealTimeETA(
     } else if (company === 'CTB' || company === 'NLB') {
       const result = await fetchCTBStopETA(boardStopId, route);
       if (result.success && result.data && result.data.length > 0) {
-        const firstETA = result.data[0];
-        if (firstETA.eta) {
+        const firstETA = result.data.find(item => item.dir === candidate.bound && item.eta);
+        if (firstETA && firstETA.eta) {
           const etaTime = new Date(firstETA.eta);
           const diffMs = etaTime.getTime() - Date.now();
           nextBusMinutes = Math.max(0, Math.round(diffMs / 60000));
@@ -624,14 +627,17 @@ export async function enrichCandidateWithRealTimeETA(
   } catch (err) {
     // API 失败时静默降级到静态数据
   }
-  
-  // 如果没有实时数据，使用静态估算（港铁班次密，默认候车 2 分钟；其余 5 分钟）
-  if (nextBusMinutes === -1) {
-    nextBusMinutes = candidate.mode === 'mtr' ? 2 : 5;
+
+  // 鲁港通 - 不虚构候车时间：查不到班次就如实记为「无班次信息」。
+  // 仅无实时接口且班次稳定的模式（小巴/电车/渡轮/山顶缆车）保留 5 分钟静态估算
+  const NO_ETA_MODES = new Set(['gmb', 'tram', 'ferry', 'ptram']);
+  if (nextBusMinutes === -1 && NO_ETA_MODES.has(candidate.mode ?? '')) {
+    nextBusMinutes = 5;
     dataSource = 'static';
   }
-  
-  const totalMinutes = walkInMinutes + nextBusMinutes + estimatedTripMinutes + walkOutMinutes;
+
+  // 无班次信息（-1）时不把候车计入总时长，避免用虚构分钟数抬高门到门时间
+  const totalMinutes = walkInMinutes + Math.max(0, nextBusMinutes) + estimatedTripMinutes + walkOutMinutes;
   
   return {
     ...candidate,
