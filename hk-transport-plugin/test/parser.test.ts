@@ -69,6 +69,12 @@ describe('地点名称提取', () => {
     expect(result2.origin).toBeDefined();
     expect(result2.destination).toBeDefined();
   });
+
+  it('赛马日问题应把沙田马场识别为终点', () => {
+    // 鲁港通 - D4 回归：沙田马场不得被「沙田」抢占后丢失
+    const result = extractLocations('赛马日去沙田马场，怎么去最顺？散场怎么回？');
+    expect(result.destination).toBe('沙田马场');
+  });
 });
 
 // ============================================================

@@ -1,6 +1,10 @@
 // 鲁港通 - API 调用器模块
 // 并发调用多个香港交通 API，含超时、错误处理和内存缓存
 
+/** 鲁港通 - 生产容器无 IPv6 出口：优先 IPv4，避免 happy-eyeballs 先试 IPv6 直接 ENETUNREACH */
+import { setDefaultResultOrder } from 'node:dns';
+setDefaultResultOrder('ipv4first');
+
 import type {
   FetchResult,
   KMBETAItem,
@@ -14,6 +18,7 @@ import type {
   CTBRoute,
   KMBStop,
   KMBRouteStop,
+  CTBRouteStop,
 } from './types';
 
 // ============================================================
@@ -207,6 +212,74 @@ export async function fetchKMBStops(): Promise<FetchResult<KMBStop[]>> {
   return { success: false, error: result.error };
 }
 
+/** 鲁港通 - 站名规范化：跨数据源匹配时去空白、统一大小写 */
+function normalizeStopName(name: string): string {
+  return name.replace(/\s+/g, '').toLowerCase();
+}
+
+/** 鲁港通 - 同名站最大容忍距离，超出视为不同站（避免串站查错 ETA） */
+const KMB_STOP_MATCH_RADIUS_M = 150;
+
+/**
+ * 鲁港通 - 按路线+方向+站序定位九巴/龙运真实站点 ID。
+ * 数据集站名常带「總站」等后缀差异（如 A33X 停「屯門市中心」而数据集叫「屯門市中心總站」），
+ * 序号映射比站名匹配更可靠。
+ */
+export async function resolveKMBStopByRouteSeq(
+  route: string,
+  bound: string,
+  serviceType: string,
+  seq: number
+): Promise<string | null> {
+  const cacheKey = `kmb:route-stop:${route}:${bound}:${serviceType}`;
+  let rows = cache.get<KMBRouteStop[]>(cacheKey);
+  if (!rows) {
+    const dir = bound === 'O' ? 'outbound' : 'inbound';
+    const url = `https://data.etabus.gov.hk/v1/transport/kmb/route-stop/${route}/${dir}/${serviceType}`;
+    const result = await fetchWithTimeout<KMBAPIResponse<KMBRouteStop[]>>(url, 15_000);
+    if (!result.success || !result.data) return null;
+    rows = result.data.data;
+    cache.set(cacheKey, rows, STATIC_TTL);
+  }
+  const hit = rows.find(r => parseInt(r.seq, 10) === seq);
+  return hit ? hit.stop : null;
+}
+
+/**
+ * 鲁港通 - PT 路线数据集给的是数字 sid，九巴 stop-eta 接口只认 16 位哈希站 ID。
+ * 按站名（繁/简/英）+ 坐标最近邻反查真实站点 ID；同名站按坐标取最近，过远返回 null。
+ */
+export async function resolveKMBStopId(
+  stopName: string,
+  lat?: number,
+  lng?: number
+): Promise<string | null> {
+  if (!stopName) return null;
+  const result = await fetchKMBStops();
+  if (!result.success || !result.data) return null;
+
+  const target = normalizeStopName(stopName);
+  const exact = result.data.filter(
+    s =>
+      normalizeStopName(s.name_tc) === target ||
+      normalizeStopName(s.name_sc) === target ||
+      normalizeStopName(s.name_en) === target
+  );
+  if (exact.length === 0) return null;
+  if (lat == null || lng == null) return exact[0].stop;
+
+  let best = exact[0];
+  let bestD = Infinity;
+  for (const s of exact) {
+    const d = haversineDistanceM(lat, lng, parseFloat(s.lat), parseFloat(s.long));
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return bestD <= KMB_STOP_MATCH_RADIUS_M ? best.stop : null;
+}
+
 /** KMB 路线-站点对应关系（约 40 万条记录，约 15MB，缓存 24 小时） */
 export async function fetchKMBRouteStops(): Promise<FetchResult<KMBRouteStop[]>> {
   const cacheKey = 'kmb:route-stops';
@@ -267,6 +340,28 @@ export async function fetchCTBStopETA(
     return { success: true, data: result.data.data };
   }
   return { success: false, error: result.error };
+}
+
+/**
+ * 鲁港通 - 按路线+方向+站序定位城巴真实站点 ID（数据集数字 sid 对城巴 ETA 接口同样无效）
+ */
+export async function resolveCTBStopByRouteSeq(
+  route: string,
+  bound: string,
+  seq: number
+): Promise<string | null> {
+  const cacheKey = `ctb:route-stop:${route}:${bound}`;
+  let rows = cache.get<CTBRouteStop[]>(cacheKey);
+  if (!rows) {
+    const dir = bound === 'O' ? 'outbound' : 'inbound';
+    const url = `https://rt.data.gov.hk/v2/transport/citybus/route-stop/CTB/${route}/${dir}`;
+    const result = await fetchWithTimeout<CTBAPIResponse<CTBRouteStop[]>>(url, 15_000);
+    if (!result.success || !result.data) return null;
+    rows = result.data.data;
+    cache.set(cacheKey, rows, STATIC_TTL);
+  }
+  const hit = rows.find(r => Number(r.seq) === seq);
+  return hit ? hit.stop : null;
 }
 
 /** CTB 路线列表（缓存 24 小时） */
@@ -561,7 +656,7 @@ export async function executeBatchFetch(plan: {
 export async function enrichCandidateWithRealTimeETA(
   candidate: import('./types').TransitCandidate
 ): Promise<import('./types').TransitCandidate> {
-  const { company, route, boardStopId, walkInMeters, walkOutMeters } = candidate;
+  const { company, route, boardStopId, boardStopName, boardStopLat, boardStopLng, walkInMeters, walkOutMeters } = candidate;
   
   // 步行时间估算（80米/分钟）
   const walkInMinutes = Math.ceil(walkInMeters / 80);
@@ -580,8 +675,13 @@ export async function enrichCandidateWithRealTimeETA(
   try {
     // 根据公司类型调用对应 API
     if (company === 'KMB' || company === 'LWB') {
-      const result = await fetchKMBStopETA(boardStopId);
-      if (result.success && result.data) {
+      // 鲁港通 - 数据集 sid 对九巴接口无效：先按路线+方向+站序定位，站名匹配作回退；
+      // 都解析不到就如实无实时数据
+      const kmbStopId =
+        (await resolveKMBStopByRouteSeq(route, candidate.bound, candidate.serviceType ?? '1', candidate.boardSeq)) ??
+        (await resolveKMBStopId(boardStopName, boardStopLat, boardStopLng));
+      const result = kmbStopId ? await fetchKMBStopETA(kmbStopId) : null;
+      if (result?.success && result.data) {
         // 鲁港通 - 必须同时匹配路线与方向：站点的 stop-eta 同时返回两个方向的班次，
         // 只按路线过滤会把反方向的车当成上车站的下一班
         const matchingETAs = result.data.filter(
@@ -595,7 +695,12 @@ export async function enrichCandidateWithRealTimeETA(
         }
       }
     } else if (company === 'CTB' || company === 'NLB') {
-      const result = await fetchCTBStopETA(boardStopId, route);
+      // 鲁港通 - 城巴同样先按路线+方向+站序解析真实站点 ID，解析不到才沿用原 ID
+      const ctbStopId =
+        company === 'CTB'
+          ? (await resolveCTBStopByRouteSeq(route, candidate.bound, candidate.boardSeq)) ?? boardStopId
+          : boardStopId;
+      const result = await fetchCTBStopETA(ctbStopId, route);
       if (result.success && result.data && result.data.length > 0) {
         const firstETA = result.data.find(item => item.dir === candidate.bound && item.eta);
         if (firstETA && firstETA.eta) {

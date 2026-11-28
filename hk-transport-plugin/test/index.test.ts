@@ -10,7 +10,7 @@ describe('FastGPT plugin export (新插件 SDK v1.x 格式)', () => {
     const manifest = pluginExport.getUserToolManifest();
     expect(manifest).toBeDefined();
     expect(manifest.pluginId).toBe('hk_transport_assistant');
-    expect(manifest.version).toBe('1.0.8');
+    expect(manifest.version).toBe('1.0.13');
     expect(manifest.name['zh-CN']).toBe('香港智能交通助手');
     expect(manifest.name.en).toBe('HK Smart Transport Assistant');
     expect(manifest.description['zh-CN']).toContain('必须');
@@ -217,6 +217,33 @@ describe('error handling and degradation', () => {
     expect(output.metadata).toBeDefined();
     expect(output.metadata.dataTimestamp).toBeDefined();
   }, 20000);
+});
+
+// ============================================================
+// 缺起点/缺终点提示（D4 后续：不再把"起点/终点"占位词拼进错误文案）
+// ============================================================
+
+describe('缺起点/缺终点提示', () => {
+  it('只给终点时应提示补充起点，不把"起点"当字面地名，也不空跑下游查询', async () => {
+    const output = await tool({ question: '去沙田马场怎么走', language: 'zh-CN' });
+
+    expect(output.routes).toEqual([]);
+    expect(output.error).toBeDefined();
+    expect(output.error).toContain('缺少起点');
+    expect(output.error).toContain('沙田马场');
+    expect(output.error).not.toContain('"起点"');
+    expect(output.metadata.apisCalled).toEqual([]);
+  });
+
+  it('只给起点时应提示补充终点，不空跑下游查询', async () => {
+    const output = await tool({ origin: '旺角', language: 'zh-CN' });
+
+    expect(output.routes).toEqual([]);
+    expect(output.error).toBeDefined();
+    expect(output.error).toContain('缺少终点');
+    expect(output.error).toContain('旺角');
+    expect(output.metadata.apisCalled).toEqual([]);
+  });
 });
 
 // ============================================================

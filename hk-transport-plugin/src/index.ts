@@ -313,6 +313,24 @@ export async function tool(
       }
     }
 
+    // 鲁港通 - 缺起点/缺终点：必须两端齐全才能规划路线。
+    // 直接给出可操作提示，避免把"起点/终点"占位词拼进错误文案，也避免白跑下游 API
+    if (!parsed.origin && !parsed.destination) {
+      return buildErrorResponse(
+        '无法识别您想去的地点，请直接告诉我起点和终点。例如"从中环到铜锣湾怎么走"。',
+        apisCalled, apiStatus, diagLines
+      );
+    }
+    if (!parsed.origin || !parsed.destination) {
+      const missingOrigin = !parsed.origin;
+      const known = (missingOrigin ? parsed.destination : parsed.origin) as string;
+      const errorMsg = missingOrigin
+        ? `缺少起点：暂无法规划到"${known}"的具体路线。请补充出发地点（如旺角、中环、罗湖口岸），即可查询具体路线、候车时间与票价。`
+        : `缺少终点：暂无法规划从"${known}"出发的具体路线。请补充目的地点（如尖沙咀、铜锣湾、香港机场），即可查询具体路线、候车时间与票价。`;
+      diagLines.push(`缺少${missingOrigin ? '起点' : '终点'}，跳过路线规划`);
+      return buildErrorResponse(errorMsg, apisCalled, apiStatus, diagLines);
+    }
+
     // 2. 地理编码（带 OSM Nominatim 外网回退）
     const { originCoord, destCoord } = await geocodeRouteWithFallback(parsed.origin, parsed.destination);
 
@@ -324,13 +342,6 @@ export async function tool(
       const sourceNote = isOrganizationName(parsed.destination || '') ? ' [Nominatim联网搜索]' : '';
       diagLines.push(`终点坐标: ${destCoord.name} (${destCoord.lat.toFixed(4)}, ${destCoord.lng.toFixed(4)})${sourceNote}`);
     } else if (destination) diagLines.push(`终点"${destination}"未找到坐标`);
-
-    if (!parsed.origin && !parsed.destination) {
-      return buildErrorResponse(
-        '无法识别您想去的地点，请直接告诉我起点和终点。例如"从中环到铜锣湾怎么走"。',
-        apisCalled, apiStatus, diagLines
-      );
-    }
 
     // ========================================================
     // 3. 多模态公交规划器（使用内置的香港政府官方 GeoJSON 数据）

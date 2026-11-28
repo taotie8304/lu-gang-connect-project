@@ -164,6 +164,9 @@ const LOCATION_ALIASES: Record<string, string[]> = {
   '迪士尼乐园': ['迪士尼乐园', '迪士尼', '迪士尼樂園', 'disneyland', '迪士尼站', '迪士尼地铁站', '迪士尼地鐵站', 'disneyland resort station'],
   '海洋公园': ['海洋公园', '海洋公園', 'ocean park', '海洋公园站', '海洋公园地铁站', '海洋公園站', '海洋公園地鐵站'],
 
+  // 赛马日沙田马场（D4 回归）。别名不含裸「马场」，避免把「跑马地马场」误解析为沙田马场
+  '沙田马场': ['沙田马场', '沙田馬場', '沙田马场站', '沙田馬場站', 'sha tin racecourse'],
+
   // MTR 缺失站补充
   '美孚': ['美孚', '美孚站', '美孚地鐵站'],
 
@@ -304,7 +307,9 @@ export function extractLocations(question: string): { origin?: string; destinati
       priority: f.priority,
       end: f.position + f.matchLen,
     })),
-  ].sort((a, b) => a.pos - b.pos);
+    // 鲁港通 - 同起点时长匹配优先：「沙田马场」必须先于「沙田」进入去重，
+    // 否则更具体的全称会被被包含的短名抢占丢弃
+  ].sort((a, b) => a.pos - b.pos || b.end - a.end);
 
   // 去重：跳过被已有匹配完全包含的短匹配（如"九龙站"被"西九龙站"包含）
   const uniqueMatches: Array<{ pos: number; name: string }> = [];

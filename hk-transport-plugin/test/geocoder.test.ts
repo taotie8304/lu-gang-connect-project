@@ -192,6 +192,45 @@ describe('parser → geocoder 集成', () => {
 });
 
 // ============================================================
+// 回归测试：沙田马场不得错配到沙田站（D4 赛马日拒答缺陷）
+// ============================================================
+
+describe('沙田马场地理编码（回归：赛马日去沙田马场）', () => {
+  // 马场站（RAC）实测坐标 22.4017, 114.2036；沙田站 22.3813, 114.1886
+  const nearRacecourse = (coord: { lat: number; lng: number } | undefined) =>
+    !!coord && Math.abs(coord.lat - 22.4017) < 0.01 && Math.abs(coord.lng - 114.2036) < 0.01;
+
+  it('geocode「沙田马场」落在马场站附近而非沙田站', () => {
+    const result = geocode('沙田马场');
+    expect(result).toBeDefined();
+    expect(nearRacecourse(result), `坐标 ${result?.lat},${result?.lng} 不在马场站附近`).toBe(true);
+    expect(result!.name).toContain('马场');
+  });
+
+  it('geocode 繁体「沙田馬場」同样落在马场站附近', () => {
+    const result = geocode('沙田馬場');
+    expect(result).toBeDefined();
+    expect(nearRacecourse(result), `坐标 ${result?.lat},${result?.lng} 不在马场站附近`).toBe(true);
+  });
+
+  it('geocode「沙田」保持不变（仍为沙田站方向）', () => {
+    const result = geocode('沙田');
+    expect(result).toBeDefined();
+    expect(result!.lat).toBeCloseTo(22.3813, 2);
+  });
+
+  it('沙田站 → 沙田马场应规划出港铁东铁线方案（不再只剩 16 米步行段）', async () => {
+    const dest = geocode('沙田马场');
+    expect(dest).toBeDefined();
+    const plan = await planPublicTransit(22.3813, 114.1886, dest!.lat, dest!.lng, {
+      departure: new Date('2026-11-29T13:00:00+08:00'),
+    });
+    expect(plan.candidates.length).toBeGreaterThan(0);
+    expect(plan.candidates.some((c) => c.mode === 'mtr')).toBe(true);
+  });
+});
+
+// ============================================================
 // 回归测试：机场全称不得错配到市区（香港国际机场 → 香港站 缺陷）
 // ============================================================
 

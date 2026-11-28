@@ -60,7 +60,7 @@ describe('候车时间措辞：估算 vs 实时', () => {
   });
 
   it('无数据与缺省来源都按估算处理', () => {
-    expect(formatNextBusArrival(-1, 'static')).toBe('暂无班次信息（可能已收车）');
+    expect(formatNextBusArrival(-1, 'static')).toBe('暂无实时到站数据');
     expect(isEstimatedEta(undefined)).toBe(true);
     expect(isEstimatedEta('static')).toBe(true);
     expect(isEstimatedEta('nlb')).toBe(false);

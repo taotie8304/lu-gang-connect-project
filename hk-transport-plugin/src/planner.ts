@@ -369,6 +369,8 @@ function findDirectRoutes(
     sid: number;
     stopName: string;
     distanceM: number;
+    lat: number;
+    lng: number;
   }
   const nearOrigin = new Map<string, NearEntry>();
   const nearDest = new Map<string, NearEntry>();
@@ -388,7 +390,7 @@ function findDirectRoutes(
         // 取"距起点最近的站"但优先 sseq 较小的（更早上车 = 有更长同路可行）
         // 其实对起点：优先最近的，如果并列再取 sseq 小
         if (!prev || d < prev.distanceM) {
-          nearOrigin.set(key, { sseq: p.sseq, sid: p.sid, stopName: p.stopName, distanceM: d });
+          nearOrigin.set(key, { sseq: p.sseq, sid: p.sid, stopName: p.stopName, distanceM: d, lat: p.lat, lng: p.lng });
         }
       }
     }
@@ -400,7 +402,7 @@ function findDirectRoutes(
         const key = `${p.rid}|${p.seq}`;
         const prev = nearDest.get(key);
         if (!prev || d < prev.distanceM) {
-          nearDest.set(key, { sseq: p.sseq, sid: p.sid, stopName: p.stopName, distanceM: d });
+          nearDest.set(key, { sseq: p.sseq, sid: p.sid, stopName: p.stopName, distanceM: d, lat: p.lat, lng: p.lng });
         }
       }
     }
@@ -473,6 +475,8 @@ function findDirectRoutes(
       serviceType: '1',
       boardStopId: String(o.sid),
       boardStopName: o.stopName,
+      boardStopLat: o.lat,
+      boardStopLng: o.lng,
       boardSeq: o.sseq,
       alightStopId: String(d.sid),
       alightStopName: d.stopName,

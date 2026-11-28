@@ -296,22 +296,29 @@ describe('ETA 诚实化与方向过滤', () => {
     vi.restoreAllMocks();
   });
 
-  it('无班次时措辞为「暂无班次信息（可能已收车）」', () => {
-    expect(formatNextBusArrival(-1, 'static')).toBe('暂无班次信息（可能已收车）');
+  it('无班次时措辞为「暂无实时到站数据」', () => {
+    expect(formatNextBusArrival(-1, 'static')).toBe('暂无实时到站数据');
   });
 
   it('KMB 只有反方向数据时不得用于候车，保持无数据', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({
-        type: 'ETA', version: '1.0',
-        data: [{
-          co: 'KMB', route: '960', dir: 'I', service_type: '1', seq: 1,
-          dest_tc: '屯门（建生）', dest_sc: '', dest_en: '',
-          eta: new Date(Date.now() + 5 * 60000).toISOString(),
-          rmk_tc: '', rmk_sc: '', rmk_en: '', eta_seq: 1, data_timestamp: '',
-        }],
-      }), { status: 200 })
-    );
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          type: 'RouteStop', version: '1.0',
+          data: [{ route: '960', bound: 'O', service_type: '1', seq: '3', stop: 'HASH-TM' }],
+        }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          type: 'ETA', version: '1.0',
+          data: [{
+            co: 'KMB', route: '960', dir: 'I', service_type: '1', seq: 1,
+            dest_tc: '屯门（建生）', dest_sc: '', dest_en: '',
+            eta: new Date(Date.now() + 5 * 60000).toISOString(),
+            rmk_tc: '', rmk_sc: '', rmk_en: '', eta_seq: 1, data_timestamp: '',
+          }],
+        }), { status: 200 })
+      );
 
     const enriched = await enrichCandidateWithRealTimeETA(makeCandidate({ bound: 'O' }));
     expect(enriched.realTimeETA?.nextBusMinutes).toBe(-1);
@@ -321,17 +328,24 @@ describe('ETA 诚实化与方向过滤', () => {
   });
 
   it('KMB 同方向数据正常采用', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(JSON.stringify({
-        type: 'ETA', version: '1.0',
-        data: [{
-          co: 'KMB', route: '960', dir: 'O', service_type: '1', seq: 3,
-          dest_tc: '湾仔北', dest_sc: '', dest_en: '',
-          eta: new Date(Date.now() + 5 * 60000).toISOString(),
-          rmk_tc: '', rmk_sc: '', rmk_en: '', eta_seq: 1, data_timestamp: '',
-        }],
-      }), { status: 200 })
-    );
+    vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          type: 'RouteStop', version: '1.0',
+          data: [{ route: '960', bound: 'O', service_type: '1', seq: '3', stop: 'HASH-TM' }],
+        }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({
+          type: 'ETA', version: '1.0',
+          data: [{
+            co: 'KMB', route: '960', dir: 'O', service_type: '1', seq: 3,
+            dest_tc: '湾仔北', dest_sc: '', dest_en: '',
+            eta: new Date(Date.now() + 5 * 60000).toISOString(),
+            rmk_tc: '', rmk_sc: '', rmk_en: '', eta_seq: 1, data_timestamp: '',
+          }],
+        }), { status: 200 })
+      );
 
     const enriched = await enrichCandidateWithRealTimeETA(makeCandidate({ bound: 'O' }));
     expect(enriched.realTimeETA?.nextBusMinutes).toBeGreaterThanOrEqual(4);
@@ -361,13 +375,13 @@ describe('ETA 诚实化与方向过滤', () => {
   it('无班次信息时生成注意事项，说明总时长未含候车', () => {
     const route = transitCandidateToRouteOption(makeCandidate());
     route.realTimeData = {
-      nextBusArrival: '暂无班次信息（可能已收车）',
+      nextBusArrival: '暂无实时到站数据',
       totalTravelTime: 60,
       dataTimestamp: '2026-11-26T18:00:00.000Z',
       dataBasis: 'estimate',
     };
     const tips = generateTips([route]);
-    expect(tips.some((t) => t.includes('可能已收车'))).toBe(true);
+    expect(tips.some((t) => t.includes('暂无实时到站数据'))).toBe(true);
   });
 });
 

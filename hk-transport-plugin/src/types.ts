@@ -207,6 +207,16 @@ export interface CTBRoute {
   dest_en: string;
 }
 
+// CTB route-stop data（每路线每站的关系，stop 为城巴站点 ID）
+export interface CTBRouteStop {
+  co: string;
+  route: string;
+  dir: 'O' | 'I';
+  seq: number;
+  stop: string;
+  data_timestamp?: string;
+}
+
 // Fetcher result wrapper
 export interface FetchResult<T> {
   success: boolean;
@@ -331,6 +341,9 @@ export interface TransitCandidate {
   serviceType: string;
   boardStopId: string;
   boardStopName: string;
+  /** 鲁港通 - 上车站坐标：PT 数据集的数字 sid 对九巴 ETA 接口无效，需按站名+坐标反查哈希站 ID */
+  boardStopLat?: number;
+  boardStopLng?: number;
   boardSeq: number;
   alightStopId: string;
   alightStopName: string;

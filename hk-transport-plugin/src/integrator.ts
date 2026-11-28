@@ -416,10 +416,10 @@ export function generateTips(
     tips.push(ESTIMATE_TIP);
   }
 
-  // 鲁港通 - 无班次信息（可能已收车）时如实说明，并提醒总时长未含候车
-  const noSchedule = routes.some(r => r.realTimeData?.nextBusArrival?.includes('可能已收车'));
+  // 鲁港通 - 无实时到站数据时如实说明，并提醒总时长未含候车
+  const noSchedule = routes.some(r => r.realTimeData?.nextBusArrival?.includes('暂无实时到站数据'));
   if (noSchedule) {
-    tips.push('部分路线暂无班次信息（可能已收车），方案总时长未含候车时间，请以站牌或运营方 App 为准。');
+    tips.push('部分路线暂无实时到站数据，方案总时长未含候车时间，请以站牌或运营方 App 为准。');
   }
 
   // 高峰时段提示（Requirements 12.1）
