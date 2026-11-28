@@ -1,6 +1,6 @@
 {
   "name": "fastgpt-tools-hk-transport-assistant",
-  "version": "1.0.0",
+  "version": "1.0.8",
   "description": "香港智能交通助手 - FastGPT 系统插件",
   "type": "module",
   "main": "dist/index.js",
