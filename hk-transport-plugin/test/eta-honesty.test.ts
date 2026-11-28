@@ -154,12 +154,14 @@ describe('路线渲染：来源与票价口径', () => {
 });
 
 describe('渡轮口径：票价船种与候船诚实', () => {
-  it('渡轮票价标注为数据集单一票价，不区分船种与平日假日', () => {
+  it('渡轮票价标注为数据集单一票价，不区分船种，且提示平日票价一般较低', () => {
     const note = fareNoteFor('ferry', 34.7);
     expect(note).toContain('渡轮');
     expect(note).toContain('单一票价');
     expect(note).toContain('快速船');
     expect(note).toContain('平日');
+    // 数据集单值多为假日/全票价口径，必须提示平日更低，避免平日出行者按假日价高估
+    expect(note).toContain('平日票价一般较低');
   });
 
   it('渡轮不再虚构 5 分钟静态候船', async () => {
